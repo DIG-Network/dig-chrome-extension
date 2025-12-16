@@ -1,0 +1,174 @@
+# DIG Network Browser Extension
+
+A Chromium browser extension that intercepts `dig://` protocol requests and redirects them to a localhost server.
+
+## Features
+
+- **Toggle Control**: Activate or deactivate the extension with a simple toggle switch
+- **Comprehensive Protocol Interception**: Automatically intercepts ALL `dig://` protocol requests when active, including:
+  - Image tags (`<img src="dig://...">`)
+  - Script tags (`<script src="dig://...">`)
+  - Stylesheet links (`<link href="dig://...">`)
+  - Video/Audio sources
+  - Iframe sources
+  - CSS `url()` references (inline styles and `<style>` tags)
+  - Fetch API requests (`fetch('dig://...')`)
+  - XMLHttpRequest calls
+  - Link navigation (`<a href="dig://...">`)
+  - Any other DOM resource requests
+- **Localhost Redirection**: Redirects all intercepted requests to `http://localhost:8080`
+- **DIG Network Branding**: Uses the official DIG Network colors and styling (dark purple background, magenta/purple gradients)
+
+## Installation
+
+### Quick Start
+
+1. **Build the extension:**
+   ```bash
+   npm run build
+   ```
+
+2. **Install in your browser:**
+   - Open Chrome/Edge/Brave (or any Chromium-based browser)
+   - Navigate to `chrome://extensions/` (or `edge://extensions/` for Edge)
+   - Enable "Developer mode" (toggle in the top right)
+   - Click "Load unpacked"
+   - Select the `dist` folder created by the build script
+
+### Build Scripts
+
+- `npm run build` - Validates and prepares the extension in the `dist/` folder
+- `npm run build:zip` - Builds the extension and creates a zip file for distribution
+- `npm run server` - Starts the Express test server (recommended)
+- `npm run server:stub` - Starts the simple stub server (alternative)
+- `npm run generate-icons` - Generates icon placeholder files (icons should be created using `create-icons.html`)
+
+The build script will:
+- ✅ Validate all required extension files
+- ✅ Check for icons (optional, but recommended)
+- ✅ Copy all files to a `dist/` directory ready for installation
+- ✅ Optionally create a zip file for distribution
+
+## Usage
+
+1. **Install and start the test server** (required for testing):
+   ```bash
+   # First time: Install server dependencies
+   cd server
+   npm install
+   cd ..
+   
+   # Start the server
+   npm run server
+   ```
+   This starts the Express test server on `http://localhost:8080`.
+
+2. **Activate the extension**:
+   - Click the extension icon in your browser toolbar
+   - Toggle the switch to "Active"
+
+3. **Test the protocol interception**:
+   - **Quick test**: Open `test.html` in your browser (after building, it's in the `dist/` folder)
+   - **Manual test**: Navigate to a `dig://` URL (e.g., `dig://example.com/image.png`)
+   - The extension will redirect it to `http://localhost:8080/example.com/image.png`
+
+### Test Page
+
+The project includes `test.html` - a comprehensive test page that exercises `dig://` protocol in:
+- Image tags (`<img>`, `<picture>`, `srcset`)
+- Script tags (`<script>`)
+- Stylesheet links (`<link>`)
+- CSS `url()` references
+- Fetch API calls
+- XMLHttpRequest
+- Video/Audio elements
+- Iframes
+- Dynamic content creation
+
+Open `test.html` in your browser and check the Developer Tools (F12) Network tab to see all `dig://` requests being redirected to `localhost:8080`.
+
+## Test Server
+
+The extension uses the **Express Test Server** located in the `server/` folder. This is the recommended and default server for testing.
+
+### Express Test Server (Default)
+
+Start the server with:
+```bash
+npm run server
+```
+
+Or manually:
+```bash
+cd server
+npm install  # First time only
+npm start
+```
+
+The Express server:
+- Handles all `/test/*` routes from the test page
+- Returns appropriate responses based on file type (images, CSS, JS, JSON, HTML)
+- Includes proper CORS headers
+- Logs all requests for debugging
+- Runs on `http://localhost:8080` (matching the extension configuration)
+
+### Alternative: Simple Stub Server
+
+For a minimal alternative, you can use the simple stub server:
+```bash
+npm run server:stub
+# or
+node stub-server.js
+```
+
+The stub server provides basic placeholder responses but has limited functionality compared to the Express server.
+
+## Development
+
+### Project Structure
+
+```
+dig-browser-extension/
+├── manifest.json          # Extension manifest (Manifest V3)
+├── popup.html             # Extension popup UI
+├── popup.css              # Popup styling with DIG branding
+├── popup.js               # Popup logic and toggle handling
+├── background.js          # Service worker for protocol interception
+├── content.js             # Content script to intercept dig:// links
+├── stub-server.js         # Simple stub server (alternative to Express server)
+├── server/                # Express test server (recommended)
+│   ├── server.js         # Main Express server
+│   ├── package.json      # Server dependencies
+│   └── README.md         # Server documentation
+├── create-icons.html      # Tool to generate extension icons
+├── package.json           # Node.js dependencies and scripts
+├── icons/                 # Extension icons (generate using create-icons.html)
+└── README.md             # This file
+```
+
+### Generating Icons
+
+To generate the extension icons:
+1. Open `create-icons.html` in your browser
+2. Click "Download All Icons"
+3. Save the downloaded files as `icon16.png`, `icon48.png`, and `icon128.png` in the `icons/` directory
+
+### Customization
+
+- **Change localhost port**: Edit `LOCALHOST_PORT` in `background.js` and `content.js`, and update `PORT` in `server/server.js`
+- **Modify server responses**: Edit `server/server.js` to customize responses for different file types
+
+## Notes
+
+- The extension uses Manifest V3 (Chrome's latest extension format)
+- Protocol interception works by redirecting navigation attempts to `dig://` URLs
+- The Express test server is provided for testing purposes and should be replaced with the actual DIG Network server implementation
+
+## Branding
+
+The extension uses DIG Network's official branding:
+- **Primary Background**: Deep indigo/dark purple gradient (#1a0a2e → #0f3460)
+- **Accent Colors**: Magenta to purple gradient (#FF00FF → #9D4EDD)
+- **Text**: White on dark background
+- **Logo**: Stylized "D" in hexagonal outline with gradient
+# dig-chrome-extension
