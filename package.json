@@ -1,0 +1,23 @@
+{
+  "name": "dig-browser-extension",
+  "version": "1.0.0",
+  "description": "DIG Network Browser Extension - Intercepts dig:// protocol requests",
+  "main": "stub-server.js",
+  "scripts": {
+    "build": "node build.js",
+    "build:zip": "node build.js --zip",
+    "server": "cd server && npm start",
+    "server:install": "cd server && npm install",
+    "server:stub": "node stub-server.js",
+    "generate-icons": "node generate-icons.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "dig-network",
+    "browser-extension",
+    "protocol-handler"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+

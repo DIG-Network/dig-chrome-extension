@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "DIG Network Extension",
+  "version": "1.0.0",
+  "description": "Intercept and redirect dig:// protocol requests to localhost",
+  "permissions": [
+    "storage",
+    "webNavigation",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["middleware.js", "content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "src/favicon.png",
+      "48": "src/favicon.png",
+      "128": "src/favicon.png"
+    }
+  },
+  "icons": {
+    "16": "src/favicon.png",
+    "48": "src/favicon.png",
+    "128": "src/favicon.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["page-script.js", "logo.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
+

@@ -21,6 +21,26 @@ A Chromium browser extension that intercepts `dig://` protocol requests and redi
 
 ## Installation
 
+### Browser Extension Installation
+
+1. Build the extension:
+```bash
+npm run build
+```
+
+2. Install in your browser:
+   - Open Chrome/Edge/Brave
+   - Go to `chrome://extensions/` (or `edge://extensions/`)
+   - Enable "Developer mode"
+   - Click "Load unpacked"
+   - Select the `dist` folder
+
+### OS-Level Protocol Handler (Optional)
+
+To register `dig://` as a system-wide protocol handler (eliminates "scheme does not have a registered handler" errors), see the [installers/README.md](installers/README.md) directory.
+
+**Note**: The browser extension will work without OS-level registration, but you may see error messages. OS-level registration is optional but recommended for a better user experience.
+
 ### Quick Start
 
 1. **Build the extension:**

@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DIG Protocol Test Suite</title>
+    
+    
+    <!-- Test 1: External stylesheet -->
+    <link rel="stylesheet" href="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/styles.css">
+    <!-- Code: &lt;link rel="stylesheet" href="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/styles.css"&gt; -->
+    
+    <!-- Test 2: Favicon -->
+    <link rel="icon" href="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/favicon.ico">
+    <!-- Code: &lt;link rel="icon" href="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/favicon.ico"&gt; -->
+    
+    <!-- Test 3: Preconnect resource hint -->
+    <link rel="preconnect" href="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/api">
+    <!-- Code: &lt;link rel="preconnect" href="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/api"&gt; -->
+    
+    <!-- Test 4: Meta tags with dig:// URLs -->
+    <meta property="og:image" content="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/og-image.png">
+    <meta name="twitter:image" content="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/twitter-image.png">
+    <!-- Code: &lt;meta property="og:image" content="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/og-image.png"&gt; -->
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary: #9CA3AF;
+            --primary-dark: #6B7280;
+            --secondary: #D1D5DB;
+            --accent: #D1D5DB;
+            --success: #9CA3AF;
+            --error: #9CA3AF;
+            --warning: #9CA3AF;
+            --bg: #1F2937;
+            --bg-light: #374151;
+            --text: #F9FAFB;
+            --text-muted: #9CA3AF;
+            --border: #4B5563;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, var(--bg) 0%, var(--bg-light) 100%);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: rgba(156, 163, 175, 0.1);
+            border-radius: 1rem;
+            border: 1px solid var(--border);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+        
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+        
+        .test-section {
+            background: var(--bg-light);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .test-section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .test-section h2 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .test-section h2::before {
+            content: '✓';
+            color: var(--accent);
+            font-weight: bold;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .test-item {
+            background: rgba(156, 163, 175, 0.08);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border);
+        }
+        
+        .test-item img,
+        .test-item video,
+        .test-item audio,
+        .test-item iframe {
+            max-width: 100%;
+            border-radius: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        
+        .code-display {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            font-family: 'Courier New', 'Consolas', 'Monaco', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            position: relative;
+        }
+        
+        .code-display-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .code-display-title {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        
+        .code-toggle {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .code-toggle:hover {
+            background: rgba(156, 163, 175, 0.15);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        .code-content {
+            color: var(--text);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.5;
+        }
+        
+        .code-content.collapsed {
+            display: none;
+        }
+        
+        .code-content code {
+            color: #D1D5DB;
+        }
+        
+        .code-content .tag {
+            color: #F3F4F6;
+        }
+        
+        .code-content .attr {
+            color: #E5E7EB;
+        }
+        
+        .code-content .string {
+            color: #D1D5DB;
+        }
+        
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-top: 2rem;
+        }
+        
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            background: var(--primary-dark);
+            box-shadow: 0 5px 15px rgba(107, 114, 128, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        #results {
+            background: var(--bg-light);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            border: 1px solid var(--border);
+        }
+        
+        #results h2 {
+            margin-bottom: 1rem;
+            color: var(--primary);
+        }
+        
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.75rem;
+        }
+        
+        .result-item {
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.9rem;
+        }
+        
+        .result-item.success {
+            background: rgba(156, 163, 175, 0.12);
+            border: 1px solid var(--primary);
+            color: var(--text);
+        }
+        
+        .result-item.error {
+            background: rgba(156, 163, 175, 0.12);
+            border: 1px solid var(--primary);
+            color: var(--text);
+        }
+        
+        .result-item.pending {
+            background: rgba(156, 163, 175, 0.08);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+        
+        .status-icon {
+            font-weight: bold;
+            margin-left: 0.5rem;
+        }
+        
+        /* Test 5: CSS @import */
+        @import url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/imported.css');
+        /* Code: @import url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/imported.css'); */
+        
+        /* Test 6: CSS url() in background - commented out to avoid green background */
+        /* body {
+            background-image: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/background.png');
+            background-size: cover;
+            background-attachment: fixed;
+        } */
+        /* Code: background-image: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/background.png'); */
+        
+        /* Test 7: CSS custom property with dig:// URL */
+        :root {
+            --test-image: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/css-variable-image.png');
+        }
+        /* Code: --test-image: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/css-variable-image.png'); */
+        
+        .test-box {
+            background-image: var(--test-image);
+        }
+        
+        /* Test 8: @font-face with dig:// URL */
+        @font-face {
+            font-family: 'TestFont';
+            src: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/font.woff2') format('woff2');
+        }
+        /* Code: @font-face { src: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/font.woff2') format('woff2'); } */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>DIG Protocol Test Suite</h1>
+            <p class="subtitle">Comprehensive testing for dig:// URL interception</p>
+        </header>
+        
+        <div class="test-grid">
+            <!-- Test 9: Image with src -->
+            <div class="test-section">
+                <h2>Image (img src)</h2>
+                <div class="test-item">
+                    <img src="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image1.png" alt="Test Image 1" id="img1" 
+                         onerror="markError('img1', new Error('Image failed to load: dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image1.png'))" 
+                         onload="markSuccess('img1')">
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">img</span> <span class="attr">src</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image1.png"</span> 
+     <span class="attr">alt</span>=<span class="string">"Test Image 1"</span> 
+     <span class="attr">id</span>=<span class="string">"img1"</span> 
+     <span class="attr">onload</span>=<span class="string">"markSuccess('img1')"</span> 
+     <span class="attr">onerror</span>=<span class="string">"markError('img1', ...)"</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 10: Image with srcset -->
+            <div class="test-section">
+                <h2>Image with srcset</h2>
+                <div class="test-item">
+                    <img src="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image2-small.png" 
+                         srcset="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image2-small.png 300w, dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image2-large.png 800w" 
+                         alt="Responsive Image" 
+                         id="img2" 
+                         onerror="markError('img2', new Error('Image with srcset failed to load'))" 
+                         onload="markSuccess('img2')">
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">img</span> <span class="attr">src</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image2-small.png"</span> 
+     <span class="attr">srcset</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image2-small.png 300w, dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image2-large.png 800w"</span> 
+     <span class="attr">alt</span>=<span class="string">"Responsive Image"</span> 
+     <span class="attr">id</span>=<span class="string">"img2"</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 11: Picture element with source -->
+            <div class="test-section">
+                <h2>Picture Element</h2>
+                <div class="test-item">
+                    <picture>
+                        <source media="(min-width: 800px)" srcset="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/picture-large.png">
+                        <source media="(min-width: 400px)" srcset="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/picture-medium.png">
+                        <img src="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/picture-small.png" alt="Picture Element" 
+                             id="picture" 
+                             onerror="markError('picture', new Error('Picture element failed to load'))" 
+                             onload="markSuccess('picture')">
+                    </picture>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">picture</span>&gt;
+  &lt;<span class="tag">source</span> <span class="attr">media</span>=<span class="string">"(min-width: 800px)"</span> 
+        <span class="attr">srcset</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/picture-large.png"</span>&gt;
+  &lt;<span class="tag">source</span> <span class="attr">media</span>=<span class="string">"(min-width: 400px)"</span> 
+        <span class="attr">srcset</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/picture-medium.png"</span>&gt;
+  &lt;<span class="tag">img</span> <span class="attr">src</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/picture-small.png"</span> 
+     <span class="attr">alt</span>=<span class="string">"Picture Element"</span>&gt;
+&lt;/<span class="tag">picture</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 12: Script tag -->
+            <div class="test-section">
+                <h2>Script Tag</h2>
+                <div class="test-item">
+                    <p>Check console for script load status</p>
+                    <script src="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/script.js" 
+                            onerror="markError('script', new Error('Script failed to load: dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/script.js'))" 
+                            onload="markSuccess('script')"></script>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">script</span> <span class="attr">src</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/script.js"</span> 
+        <span class="attr">onload</span>=<span class="string">"markSuccess('script')"</span> 
+        <span class="attr">onerror</span>=<span class="string">"markError('script', ...)"</span>&gt;
+&lt;/<span class="tag">script</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 13: Video -->
+            <div class="test-section">
+                <h2>Video Element</h2>
+                <div class="test-item">
+                    <video src="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/video.mp4" controls id="video" 
+                           onerror="markError('video', new Error('Video failed to load: dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/video.mp4'))" 
+                           onloadstart="markSuccess('video')"
+                           style="width: 100%; max-width: 400px;">
+                        Your browser does not support video.
+                    </video>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">video</span> <span class="attr">src</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/video.mp4"</span> 
+       <span class="attr">controls</span> 
+       <span class="attr">id</span>=<span class="string">"video"</span> 
+       <span class="attr">onloadstart</span>=<span class="string">"markSuccess('video')"</span>&gt;
+  Your browser does not support video.
+&lt;/<span class="tag">video</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 14: Audio -->
+            <div class="test-section">
+                <h2>Audio Element</h2>
+                <div class="test-item">
+                    <audio src="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/audio.mp3" controls id="audio" 
+                           onerror="markError('audio', new Error('Audio failed to load: dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/audio.mp3'))" 
+                           onloadstart="markSuccess('audio')"
+                           style="width: 100%;">
+                        Your browser does not support audio.
+                    </audio>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">audio</span> <span class="attr">src</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/audio.mp3"</span> 
+       <span class="attr">controls</span> 
+       <span class="attr">id</span>=<span class="string">"audio"</span> 
+       <span class="attr">onloadstart</span>=<span class="string">"markSuccess('audio')"</span>&gt;
+  Your browser does not support audio.
+&lt;/<span class="tag">audio</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 15: Iframe -->
+            <div class="test-section">
+                <h2>Iframe</h2>
+                <div class="test-item">
+                    <iframe src="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/iframe.html" width="100%" height="300" 
+                            id="iframe" 
+                            onerror="markError('iframe', new Error('Iframe failed to load: dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/iframe.html'))" 
+                            onload="markSuccess('iframe')"
+                            style="border: 1px solid var(--border); border-radius: 0.5rem;"></iframe>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">iframe</span> <span class="attr">src</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/iframe.html"</span> 
+        <span class="attr">width</span>=<span class="string">"100%"</span> 
+        <span class="attr">height</span>=<span class="string">"300"</span> 
+        <span class="attr">id</span>=<span class="string">"iframe"</span> 
+        <span class="attr">onload</span>=<span class="string">"markSuccess('iframe')"</span>&gt;
+&lt;/<span class="tag">iframe</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 18: SVG use element (modern href, no xlink:href) -->
+            <div class="test-section">
+                <h2>SVG Use Element</h2>
+                <div class="test-item">
+                    <svg width="100" height="100" style="border: 1px solid var(--border); border-radius: 0.5rem;">
+                        <use href="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/svg-icon.svg#icon"></use>
+                    </svg>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">svg</span> <span class="attr">width</span>=<span class="string">"100"</span> <span class="attr">height</span>=<span class="string">"100"</span>&gt;
+  &lt;<span class="tag">use</span> <span class="attr">href</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/svg-icon.svg#icon"</span>&gt;
+&lt;/<span class="tag">svg</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 19: SVG image element (modern href, no xlink:href) -->
+            <div class="test-section">
+                <h2>SVG Image Element</h2>
+                <div class="test-item">
+                    <svg width="200" height="200" style="border: 1px solid var(--border); border-radius: 0.5rem;">
+                        <image href="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/svg-image.png" width="200" height="200"></image>
+                    </svg>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">svg</span> <span class="attr">width</span>=<span class="string">"200"</span> <span class="attr">height</span>=<span class="string">"200"</span>&gt;
+  &lt;<span class="tag">image</span> <span class="attr">href</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/svg-image.png"</span> 
+         <span class="attr">width</span>=<span class="string">"200"</span> 
+         <span class="attr">height</span>=<span class="string">"200"</span>&gt;
+&lt;/<span class="tag">svg</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 20: Link navigation -->
+            <div class="test-section">
+                <h2>Link Navigation</h2>
+                <div class="test-item">
+                    <a href="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/page.html" id="link1" 
+                       style="color: var(--primary); text-decoration: none; font-weight: 500;">
+                        Navigate to dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/page.html
+                    </a>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">a</span> <span class="attr">href</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/page.html"</span> 
+   <span class="attr">id</span>=<span class="string">"link1"</span>&gt;
+  Navigate to dig:// page
+&lt;/<span class="tag">a</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 21: Form action -->
+            <div class="test-section">
+                <h2>Form Action</h2>
+                <div class="test-item">
+                    <form action="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/submit" method="post" id="form1">
+                        <input type="text" name="test" value="test" 
+                               style="padding: 0.5rem; border-radius: 0.25rem; border: 1px solid var(--border); 
+                                      background: var(--bg); color: var(--text); margin-right: 0.5rem;">
+                        <button type="submit" style="margin-top: 0.5rem;">Submit</button>
+                    </form>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">form</span> <span class="attr">action</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/submit"</span> 
+      <span class="attr">method</span>=<span class="string">"post"</span> 
+      <span class="attr">id</span>=<span class="string">"form1"</span>&gt;
+  &lt;<span class="tag">input</span> <span class="attr">type</span>=<span class="string">"text"</span> <span class="attr">name</span>=<span class="string">"test"</span>&gt;
+  &lt;<span class="tag">button</span> <span class="attr">type</span>=<span class="string">"submit"</span>&gt;Submit&lt;/<span class="tag">button</span>&gt;
+&lt;/<span class="tag">form</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 22: Form button with formaction -->
+            <div class="test-section">
+                <h2>Button Formaction</h2>
+                <div class="test-item">
+                    <form id="form2">
+                        <button type="submit" formaction="dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/submit-alt">Submit to Alternative</button>
+                    </form>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">form</span> <span class="attr">id</span>=<span class="string">"form2"</span>&gt;
+  &lt;<span class="tag">button</span> <span class="attr">type</span>=<span class="string">"submit"</span> 
+          <span class="attr">formaction</span>=<span class="string">"dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/submit-alt"</span>&gt;
+    Submit to Alternative
+  &lt;/<span class="tag">button</span>&gt;
+&lt;/<span class="tag">form</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test 23: Inline style with background -->
+            <div class="test-section">
+                <h2>Inline Style Background</h2>
+                <div class="test-item">
+                    <div style="background-image: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/inline-bg.png'); width: 200px; height: 200px; 
+                                border: 1px solid var(--border); border-radius: 0.5rem;" id="inline-bg"></div>
+                    <div class="code-display">
+                        <div class="code-display-header">
+                            <span class="code-display-title">HTML Code</span>
+                            <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                        </div>
+                        <div class="code-content collapsed">&lt;<span class="tag">div</span> <span class="attr">style</span>=<span class="string">"background-image: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/inline-bg.png'); 
+                    width: 200px; height: 200px;"</span>&gt;
+&lt;/<span class="tag">div</span>&gt;</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- JavaScript API Tests -->
+        <div class="test-section">
+            <h2>JavaScript API Tests</h2>
+            <div class="button-group">
+                <button onclick="testFetch()">Fetch API</button>
+                <button onclick="testXHR()">XMLHttpRequest</button>
+                <button onclick="testImageConstructor()">Image Constructor</button>
+                <button onclick="createDynamicImage()">Dynamic Image</button>
+                <button onclick="createDynamicScriptTag()">Dynamic Script</button>
+                <button onclick="testProgrammaticNavigation()">Navigation</button>
+                <button onclick="testWorker()">Web Worker</button>
+                <button onclick="testEventSource()">EventSource (SSE)</button>
+                <button onclick="testWebAssembly()">WebAssembly</button>
+                <button onclick="testWebAudio()">Web Audio</button>
+                <button onclick="testCanvas()">Canvas drawImage</button>
+            </div>
+            <div class="code-display" style="margin-top: 1rem;">
+                <div class="code-display-header">
+                    <span class="code-display-title">JavaScript API Code Examples</span>
+                    <button class="code-toggle" onclick="toggleCode(this)">Show</button>
+                </div>
+                <div class="code-content collapsed"><span class="tag">// Fetch API</span>
+<span class="attr">await</span> <span class="tag">fetch</span>(<span class="string">'dig://urn:dig:chia:.../data.json'</span>);
+
+<span class="tag">// XMLHttpRequest</span>
+<span class="attr">const</span> xhr = <span class="tag">new</span> <span class="tag">XMLHttpRequest</span>();
+xhr.<span class="tag">open</span>(<span class="string">'GET'</span>, <span class="string">'dig://urn:dig:chia:.../data.json'</span>);
+
+<span class="tag">// Image Constructor</span>
+<span class="attr">const</span> img = <span class="tag">new</span> <span class="tag">Image</span>();
+img.<span class="tag">src</span> = <span class="string">'dig://urn:dig:chia:.../image.png'</span>;
+
+<span class="tag">// Web Worker</span>
+<span class="attr">const</span> worker = <span class="tag">new</span> <span class="tag">Worker</span>(<span class="string">'dig://urn:dig:chia:.../worker.js'</span>);
+
+<span class="tag">// EventSource (SSE)</span>
+<span class="attr">const</span> eventSource = <span class="tag">new</span> <span class="tag">EventSource</span>(<span class="string">'dig://urn:dig:chia:.../events'</span>);
+
+<span class="tag">// WebAssembly</span>
+<span class="attr">const</span> response = <span class="tag">await</span> <span class="tag">fetch</span>(<span class="string">'dig://urn:dig:chia:.../module.wasm'</span>);
+<span class="attr">const</span> module = <span class="tag">await</span> <span class="tag">WebAssembly</span>.<span class="tag">instantiate</span>(<span class="tag">await</span> response.<span class="tag">arrayBuffer</span>());
+
+<span class="tag">// Web Audio</span>
+<span class="attr">const</span> audioContext = <span class="tag">new</span> <span class="tag">AudioContext</span>();
+<span class="attr">const</span> audioBuffer = <span class="tag">await</span> audioContext.<span class="tag">decodeAudioData</span>(<span class="tag">await</span> (<span class="tag">await</span> <span class="tag">fetch</span>(<span class="string">'dig://urn:dig:chia:.../audio.mp3'</span>)).<span class="tag">arrayBuffer</span>());
+
+<span class="tag">// Canvas drawImage</span>
+<span class="attr">const</span> img = <span class="tag">new</span> <span class="tag">Image</span>();
+img.<span class="tag">src</span> = <span class="string">'dig://urn:dig:chia:.../canvas-image.png'</span>;
+ctx.<span class="tag">drawImage</span>(img, <span class="tag">0</span>, <span class="tag">0</span>);</div>
+            </div>
+        </div>
+        
+        <div id="results">
+            <h2>Test Results</h2>
+            <div class="results-grid" id="results-grid">
+                <p style="color: var(--text-muted);">Run tests to see results...</p>
+            </div>
+            
+            <!-- Summary Log -->
+            <div id="summary" style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border); display: none;">
+                <h2 style="margin-bottom: 1rem;">Test Summary</h2>
+                <div id="summary-content"></div>
+            </div>
+            
+            <!-- Text Log for Copying -->
+            <div id="text-log-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border); display: none;">
+                <h2 style="margin-bottom: 1rem;">Test Results Log (Copy for LLM)</h2>
+                <textarea id="text-log" readonly 
+                    style="width: 100%; min-height: 200px; padding: 1rem; 
+                           background: var(--bg); color: var(--text); 
+                           border: 1px solid var(--border); border-radius: 0.5rem; 
+                           font-family: 'Courier New', monospace; font-size: 0.9rem;
+                           resize: vertical; white-space: pre-wrap; word-wrap: break-word;"
+                    onclick="this.select(); document.execCommand('copy');">
+                </textarea>
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">
+                    Click the text area to select all and copy
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Store ID for test resources
+        const STORE_ID = '17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb';
+        const DIG_URN_PREFIX = `urn:dig:chia:${STORE_ID}`;
+        
+        // Helper function to create dig:// URN URLs
+        function digUrl(path) {
+            return `dig://${DIG_URN_PREFIX}/${path}`;
+        }
+        
+        // Track test results with detailed error information
+        const results = {};
+        const errorDetails = {}; // Store detailed error information
+        
+        function markSuccess(id) {
+            results[id] = 'success';
+            if (errorDetails[id]) {
+                delete errorDetails[id]; // Clear error details on success
+            }
+            updateResults();
+        }
+        
+        function markError(id, error = null) {
+            results[id] = 'error';
+            if (error) {
+                errorDetails[id] = {
+                    message: error.message || String(error),
+                    stack: error.stack,
+                    name: error.name,
+                    timestamp: new Date().toISOString()
+                };
+            } else {
+                // Try to capture error from console or last error
+                errorDetails[id] = {
+                    message: 'Test failed (no error details captured)',
+                    timestamp: new Date().toISOString()
+                };
+            }
+            updateResults();
+        }
+        
+        function markPending(id) {
+            results[id] = 'pending';
+            updateResults();
+        }
+        
+        // Capture console errors for debugging
+        const originalConsoleError = console.error;
+        const consoleErrors = [];
+        console.error = function(...args) {
+            consoleErrors.push({
+                message: args.join(' '),
+                timestamp: new Date().toISOString(),
+                stack: new Error().stack
+            });
+            originalConsoleError.apply(console, args);
+        };
+        
+        // Capture unhandled errors
+        window.addEventListener('error', (event) => {
+            consoleErrors.push({
+                message: event.message,
+                filename: event.filename,
+                lineno: event.lineno,
+                colno: event.colno,
+                error: event.error,
+                timestamp: new Date().toISOString()
+            });
+        });
+        
+        // Capture unhandled promise rejections
+        window.addEventListener('unhandledrejection', (event) => {
+            consoleErrors.push({
+                message: 'Unhandled Promise Rejection',
+                reason: event.reason,
+                timestamp: new Date().toISOString()
+            });
+        });
+        
+        function updateResults() {
+            const resultsGrid = document.getElementById('results-grid');
+            if (Object.keys(results).length === 0) {
+                resultsGrid.innerHTML = '<p style="color: var(--text-muted);">Run tests to see results...</p>';
+                return;
+            }
+            
+            let html = '';
+            for (const [id, status] of Object.entries(results)) {
+                const statusClass = status === 'success' ? 'success' : status === 'error' ? 'error' : 'pending';
+                const icon = status === 'success' ? '✓' : status === 'error' ? '✗' : '⋯';
+                html += `
+                    <div class="result-item ${statusClass}">
+                        <span>${id}</span>
+                        <span class="status-icon">${icon}</span>
+                    </div>
+                `;
+            }
+            resultsGrid.innerHTML = html;
+            
+            // Update summary
+            updateSummary();
+        }
+        
+        function updateSummary() {
+            const summary = document.getElementById('summary');
+            const summaryContent = document.getElementById('summary-content');
+            
+            if (Object.keys(results).length === 0) {
+                summary.style.display = 'none';
+                return;
+            }
+            
+            summary.style.display = 'block';
+            
+            const successful = Object.entries(results).filter(([id, status]) => status === 'success');
+            const failed = Object.entries(results).filter(([id, status]) => status === 'error');
+            const pending = Object.entries(results).filter(([id, status]) => status === 'pending');
+            
+            let html = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="background: rgba(156, 163, 175, 0.12); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--primary);">
+                        <div style="font-size: 2rem; font-weight: bold; color: var(--text);">${successful.length}</div>
+                        <div style="color: var(--text-muted);">Successful</div>
+                    </div>
+                    <div style="background: rgba(156, 163, 175, 0.12); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--primary);">
+                        <div style="font-size: 2rem; font-weight: bold; color: var(--text);">${failed.length}</div>
+                        <div style="color: var(--text-muted);">Failed</div>
+                    </div>
+                    <div style="background: rgba(156, 163, 175, 0.08); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border);">
+                        <div style="font-size: 2rem; font-weight: bold; color: var(--text-muted);">${pending.length}</div>
+                        <div style="color: var(--text-muted);">Pending</div>
+                    </div>
+                </div>
+            `;
+            
+            if (successful.length > 0) {
+                html += `
+                    <div style="margin-bottom: 1.5rem;">
+                        <h3 style="color: var(--text); margin-bottom: 0.5rem;">✓ Successful Tests (${successful.length})</h3>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                            ${successful.map(([id]) => `<span style="background: rgba(156, 163, 175, 0.15); color: var(--text); padding: 0.25rem 0.75rem; border-radius: 0.25rem; border: 1px solid var(--primary);">${id}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (failed.length > 0) {
+                html += `
+                    <div style="margin-bottom: 1.5rem;">
+                        <h3 style="color: var(--text); margin-bottom: 0.5rem;">✗ Failed Tests (${failed.length})</h3>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                            ${failed.map(([id]) => `<span style="background: rgba(156, 163, 175, 0.15); color: var(--text); padding: 0.25rem 0.75rem; border-radius: 0.25rem; border: 1px solid var(--primary);">${id}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (pending.length > 0) {
+                html += `
+                    <div style="margin-bottom: 1.5rem;">
+                        <h3 style="color: var(--text-muted); margin-bottom: 0.5rem;">⋯ Pending Tests (${pending.length})</h3>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                            ${pending.map(([id]) => `<span style="background: rgba(156, 163, 175, 0.1); color: var(--text-muted); padding: 0.25rem 0.75rem; border-radius: 0.25rem; border: 1px solid var(--border);">${id}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            summaryContent.innerHTML = html;
+            
+            // Update text log
+            updateTextLog();
+        }
+        
+        function updateTextLog() {
+            const textLogSection = document.getElementById('text-log-section');
+            const textLog = document.getElementById('text-log');
+            
+            if (Object.keys(results).length === 0) {
+                textLogSection.style.display = 'none';
+                return;
+            }
+            
+            textLogSection.style.display = 'block';
+            
+            const successful = Object.entries(results).filter(([id, status]) => status === 'success');
+            const failed = Object.entries(results).filter(([id, status]) => status === 'error');
+            const pending = Object.entries(results).filter(([id, status]) => status === 'pending');
+            
+            let logText = 'DIG Protocol Extension Test Results\n';
+            logText += '='.repeat(70) + '\n\n';
+            logText += `Total Tests: ${Object.keys(results).length}\n`;
+            logText += `Successful: ${successful.length}\n`;
+            logText += `Failed: ${failed.length}\n`;
+            logText += `Pending: ${pending.length}\n\n`;
+            
+            if (successful.length > 0) {
+                logText += 'SUCCESSFUL TESTS:\n';
+                logText += '-'.repeat(70) + '\n';
+                successful.forEach(([id]) => {
+                    logText += `✓ ${id}\n`;
+                });
+                logText += '\n';
+            }
+            
+            if (failed.length > 0) {
+                logText += 'FAILED TESTS WITH ERROR DETAILS:\n';
+                logText += '-'.repeat(70) + '\n';
+                failed.forEach(([id]) => {
+                    logText += `✗ ${id}\n`;
+                    if (errorDetails[id]) {
+                        const error = errorDetails[id];
+                        logText += `  Error Name: ${error.name || 'Unknown'}\n`;
+                        logText += `  Error Message: ${error.message || 'No message'}\n`;
+                        if (error.stack) {
+                            logText += `  Stack Trace:\n`;
+                            error.stack.split('\n').forEach(line => {
+                                logText += `    ${line.trim()}\n`;
+                            });
+                        }
+                        if (error.filename) {
+                            logText += `  File: ${error.filename}:${error.lineno}:${error.colno}\n`;
+                        }
+                        logText += `  Timestamp: ${error.timestamp}\n`;
+                    } else {
+                        logText += `  No error details captured\n`;
+                    }
+                    logText += '\n';
+                });
+                logText += '\n';
+            }
+            
+            if (pending.length > 0) {
+                logText += 'PENDING TESTS:\n';
+                logText += '-'.repeat(70) + '\n';
+                pending.forEach(([id]) => {
+                    logText += `⋯ ${id}\n`;
+                });
+                logText += '\n';
+            }
+            
+            // Add console errors section
+            if (consoleErrors.length > 0) {
+                logText += 'CONSOLE ERRORS CAPTURED:\n';
+                logText += '-'.repeat(70) + '\n';
+                consoleErrors.forEach((error, index) => {
+                    logText += `Error ${index + 1}:\n`;
+                    logText += `  Message: ${error.message || 'No message'}\n`;
+                    if (error.filename) {
+                        logText += `  File: ${error.filename}:${error.lineno}:${error.colno}\n`;
+                    }
+                    if (error.reason) {
+                        logText += `  Reason: ${error.reason}\n`;
+                    }
+                    if (error.stack) {
+                        logText += `  Stack:\n`;
+                        error.stack.split('\n').slice(0, 5).forEach(line => {
+                            logText += `    ${line.trim()}\n`;
+                        });
+                    }
+                    logText += `  Timestamp: ${error.timestamp}\n`;
+                    logText += '\n';
+                });
+                logText += '\n';
+            }
+            
+            // Add network errors if available
+            if (window.performance && window.performance.getEntriesByType) {
+                const networkEntries = window.performance.getEntriesByType('resource');
+                const failedResources = networkEntries.filter(entry => {
+                    return entry.name.includes('dig://') && 
+                           (entry.transferSize === 0 || entry.duration === 0 || entry.responseStatus >= 400);
+                });
+                
+                if (failedResources.length > 0) {
+                    logText += 'NETWORK ERRORS (dig:// resources):\n';
+                    logText += '-'.repeat(70) + '\n';
+                    failedResources.forEach(entry => {
+                        logText += `Resource: ${entry.name}\n`;
+                        logText += `  Status: ${entry.responseStatus || 'Unknown'}\n`;
+                        logText += `  Duration: ${entry.duration.toFixed(2)}ms\n`;
+                        logText += `  Transfer Size: ${entry.transferSize} bytes\n`;
+                        logText += `  Initiator Type: ${entry.initiatorType}\n`;
+                        logText += '\n';
+                    });
+                    logText += '\n';
+                }
+            }
+            
+            // Add browser/extension info
+            logText += 'ENVIRONMENT INFO:\n';
+            logText += '-'.repeat(70) + '\n';
+            logText += `User Agent: ${navigator.userAgent}\n`;
+            logText += `URL: ${window.location.href}\n`;
+            logText += `Timestamp: ${new Date().toISOString()}\n`;
+            logText += `Extension Active: ${typeof chrome !== 'undefined' && chrome.runtime ? 'Yes' : 'No'}\n`;
+            
+            logText += '\n' + '='.repeat(70) + '\n';
+            logText += `Test completed at: ${new Date().toISOString()}\n`;
+            
+            textLog.value = logText;
+        }
+        
+        // Test Fetch API
+        async function testFetch() {
+            markPending('fetch');
+            try {
+                const response = await fetch(digUrl('data.json'));
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                console.log('Fetch test successful:', data);
+                markSuccess('fetch');
+            } catch (error) {
+                console.error('Fetch test failed:', error);
+                markError('fetch', error);
+            }
+        }
+        
+        // Test XMLHttpRequest
+        function testXHR() {
+            markPending('xhr');
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', digUrl('data.json'));
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        console.log('XHR test successful:', data);
+                        markSuccess('xhr');
+                    } catch (parseError) {
+                        markError('xhr', new Error(`JSON Parse Error: ${parseError.message}`));
+                    }
+                } else {
+                    markError('xhr', new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+                }
+            };
+            xhr.onerror = function() {
+                const error = new Error(`XHR Network Error: ${xhr.statusText || 'Unknown error'}`);
+                console.error('XHR test failed', error);
+                markError('xhr', error);
+            };
+            xhr.ontimeout = function() {
+                markError('xhr', new Error('XHR Request Timeout'));
+            };
+            xhr.send();
+        }
+        
+        // Test Image Constructor
+        function testImageConstructor() {
+            markPending('image-constructor');
+            const img = new Image();
+            img.onload = function() {
+                console.log('Image constructor test successful');
+                markSuccess('image-constructor');
+            };
+            img.onerror = function(event) {
+                const error = new Error(`Image failed to load: ${digUrl('constructor-image.png')}`);
+                error.event = event;
+                console.error('Image constructor test failed', error);
+                markError('image-constructor', error);
+            };
+            img.src = digUrl('constructor-image.png');
+        }
+        
+        // Create dynamic image
+        function createDynamicImage() {
+            markPending('dynamic-image');
+            const img = document.createElement('img');
+            img.src = digUrl('dynamic-image.png');
+            img.style.maxWidth = '200px';
+            img.style.borderRadius = '0.5rem';
+            img.style.marginTop = '1rem';
+            img.onload = function() {
+                console.log('Dynamic image loaded');
+                markSuccess('dynamic-image');
+                const container = document.querySelector('.test-section:has(+ .test-section h2:contains("Dynamic"))') || 
+                                document.body;
+                container.appendChild(img);
+            };
+            img.onerror = function(event) {
+                const error = new Error(`Dynamic image failed to load: ${digUrl('dynamic-image.png')}`);
+                error.event = event;
+                error.src = img.src;
+                error.currentSrc = img.currentSrc;
+                console.error('Dynamic image failed to load', error);
+                markError('dynamic-image', error);
+            };
+        }
+        
+        // Create dynamic script tag
+        function createDynamicScriptTag() {
+            markPending('dynamic-script');
+            const script = document.createElement('script');
+            script.src = digUrl('dynamic-script-tag.js');
+            script.onload = function() {
+                console.log('Dynamic script tag loaded');
+                markSuccess('dynamic-script');
+            };
+            script.onerror = function(event) {
+                const error = new Error(`Dynamic script failed to load: ${digUrl('dynamic-script-tag.js')}`);
+                error.event = event;
+                error.src = script.src;
+                console.error('Dynamic script tag failed', error);
+                markError('dynamic-script', error);
+            };
+            document.head.appendChild(script);
+        }
+        
+        // Test programmatic navigation
+        function testProgrammaticNavigation() {
+            markPending('navigation');
+            // This should be intercepted by the extension
+            setTimeout(() => {
+                window.location.href = digUrl('navigation-test.html');
+            }, 100);
+        }
+        
+        // Test Web Worker
+        function testWorker() {
+            markPending('worker');
+            try {
+                const worker = new Worker(digUrl('worker.js'));
+                worker.onmessage = function(e) {
+                    console.log('Worker test successful:', e.data);
+                    markSuccess('worker');
+                    worker.terminate();
+                };
+                worker.onerror = function(e) {
+                    const error = new Error(`Worker error: ${e.message || 'Unknown error'}`);
+                    error.filename = e.filename;
+                    error.lineno = e.lineno;
+                    error.colno = e.colno;
+                    console.error('Worker test failed:', error);
+                    markError('worker', error);
+                };
+            } catch (error) {
+                console.error('Worker test failed:', error);
+                markError('worker', error);
+            }
+        }
+        
+        // Test EventSource (Server-Sent Events)
+        function testEventSource() {
+            markPending('eventsource');
+            try {
+                const eventSource = new EventSource(digUrl('events'));
+                eventSource.onopen = function() {
+                    console.log('EventSource test successful');
+                    markSuccess('eventsource');
+                    eventSource.close();
+                };
+                eventSource.onerror = function(event) {
+                    const error = new Error(`EventSource error: readyState=${eventSource.readyState}`);
+                    error.readyState = eventSource.readyState;
+                    error.url = eventSource.url;
+                    console.error('EventSource test failed', error);
+                    markError('eventsource', error);
+                    eventSource.close();
+                };
+            } catch (error) {
+                console.error('EventSource test failed:', error);
+                markError('eventsource', error);
+            }
+        }
+        
+        // Test WebAssembly
+        async function testWebAssembly() {
+            markPending('wasm');
+            try {
+                const response = await fetch(digUrl('module.wasm'));
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const bytes = await response.arrayBuffer();
+                if (bytes.byteLength === 0) {
+                    throw new Error('Empty WebAssembly module');
+                }
+                const module = await WebAssembly.instantiate(bytes);
+                console.log('WebAssembly test successful');
+                markSuccess('wasm');
+            } catch (error) {
+                console.error('WebAssembly test failed:', error);
+                markError('wasm', error);
+            }
+        }
+        
+        // Test Web Audio API
+        async function testWebAudio() {
+            markPending('webaudio');
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const response = await fetch(digUrl('audio-sample.mp3'));
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const arrayBuffer = await response.arrayBuffer();
+                if (arrayBuffer.byteLength === 0) {
+                    throw new Error('Empty audio file');
+                }
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                console.log('Web Audio test successful');
+                markSuccess('webaudio');
+            } catch (error) {
+                console.error('Web Audio test failed:', error);
+                markError('webaudio', error);
+            }
+        }
+        
+        // Test Canvas drawImage
+        function testCanvas() {
+            markPending('canvas');
+            const canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 200;
+            canvas.style.border = '1px solid var(--border)';
+            canvas.style.borderRadius = '0.5rem';
+            canvas.style.marginTop = '1rem';
+            const ctx = canvas.getContext('2d');
+            
+            const img = new Image();
+            img.onload = function() {
+                try {
+                    ctx.drawImage(img, 0, 0);
+                    document.body.appendChild(canvas);
+                    console.log('Canvas test successful');
+                    markSuccess('canvas');
+                } catch (drawError) {
+                    markError('canvas', new Error(`Canvas drawImage error: ${drawError.message}`));
+                }
+            };
+            img.onerror = function(event) {
+                const error = new Error(`Canvas image failed to load: ${digUrl('canvas-image.png')}`);
+                error.event = event;
+                error.src = img.src;
+                console.error('Canvas test failed', error);
+                markError('canvas', error);
+            };
+            img.src = digUrl('canvas-image.png');
+        }
+        
+        // Toggle code display
+        function toggleCode(button) {
+            const codeContent = button.parentElement.nextElementSibling;
+            if (codeContent.classList.contains('collapsed')) {
+                codeContent.classList.remove('collapsed');
+                button.textContent = 'Hide';
+            } else {
+                codeContent.classList.add('collapsed');
+                button.textContent = 'Show';
+            }
+        }
+        
+        // Log when page loads
+        console.log('DIG Protocol Test Suite loaded');
+        console.log('All dig:// URLs should be redirected to http://localhost:8080/...');
+        console.log('Check the Network tab to verify redirections');
+    </script>
+</body>
+</html>

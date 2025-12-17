@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DIG Network Extension</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">
+        <img src="logo.png" alt="DIG Network">
+      </div>
+    </div>
+    
+        <div class="url-section">
+          <label for="digUrlInput" class="url-label">Navigate to dig:// URL</label>
+          <div class="url-input-container">
+            <input 
+              type="text" 
+              id="digUrlInput" 
+              class="url-input" 
+              placeholder="dig://urn:dig:chia:storeID/path"
+              autocomplete="off"
+            />
+            <button id="goButton" class="go-button" title="Navigate">→</button>
+          </div>
+        </div>
+    
+    <div class="toggle-section">
+      <label class="toggle-label">
+        <span class="toggle-text">Extension Status</span>
+        <div class="toggle-container">
+          <input type="checkbox" id="extensionToggle" class="toggle-input">
+          <span class="toggle-slider"></span>
+        </div>
+      </label>
+      <p class="status-text" id="statusText">Inactive</p>
+    </div>
+
+    <div class="server-config-section">
+      <label for="serverHostInput" class="server-label">RPC Host</label>
+      <div class="server-input-container">
+        <input 
+          type="text" 
+          id="serverHostInput" 
+          class="server-input" 
+          placeholder="localhost:8080"
+          autocomplete="off"
+        />
+        <button id="restoreDefaultButton" class="restore-button" title="Restore Default">↺</button>
+      </div>
+      <p class="server-info-text" id="serverInfoText">Redirects to: http://localhost:8080</p>
+    </div>
+
+    <div class="info-section">
+      <p class="info-text">When active, dig:// protocol requests will be redirected to the configured server.</p>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
+
