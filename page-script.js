@@ -106,45 +106,13 @@
     }
   });
   
-  // Convert dig:// URL to configured RPC host URL
+  // Convert dig:// URL - ALL dig:// URLs now use RPC via background script
+  // This function returns a placeholder that will be replaced by proxyResource
   function convertDigUrl(url) {
     if (typeof url === 'string' && url.startsWith('dig://')) {
-      const urlPath = url.replace(/^dig:\/\//, '');
-      
-      // Detect current page's domain to avoid mixed content errors
-      // If we're on dig.local, use dig.local; if on localhost, use localhost
-      let serverHost = 'dig.local:80';
-      
-      try {
-        const currentHost = window.location.hostname;
-        if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
-          // We're on localhost, use localhost for converted URLs
-          serverHost = `${currentHost}:${window.location.port || '80'}`;
-        } else if (currentHost === 'dig.local' || currentHost.endsWith('.dig.local')) {
-          // We're on dig.local, use dig.local for converted URLs
-          serverHost = 'dig.local:80';
-        } else {
-          // Default to dig.local, but check if explicitly configured to use localhost
-          if (cachedRpcHost && cachedRpcHost.includes('localhost')) {
-            serverHost = cachedRpcHost.trim();
-          }
-        }
-      } catch (e) {
-        // If we can't detect the current host, default to dig.local
-        if (cachedRpcHost && cachedRpcHost.includes('localhost')) {
-          serverHost = cachedRpcHost.trim();
-        }
-      }
-      
-      // If it doesn't have a protocol, add http://
-      if (!serverHost.includes('://')) {
-        serverHost = `http://${serverHost}`;
-      }
-      
-      // Remove trailing slash
-      serverHost = serverHost.replace(/\/+$/, '');
-      
-      return `${serverHost}/${urlPath}`;
+      // Return a placeholder data URL - actual fetching will be done via proxyResource
+      // This prevents browser errors while proxy loads content via RPC
+      return `data:application/octet-stream;base64,`; // Empty placeholder
     }
     return url;
   }

@@ -8,6 +8,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const http = require('http');
 
 // Import centralized URN utilities
 const {
@@ -19,6 +21,7 @@ const {
 
 const app = express();
 const PORT = 80;
+const RPC_PORT = 3141;
 
 // Enable CORS for all routes with explicit configuration
 app.use(cors({
@@ -58,6 +61,411 @@ function createColoredImage(width = 200, height = 200, text = '') {
   // Using a simple approach with a data URI or actual image generation library
   return createPlaceholderImage();
 }
+
+// ============================================================================
+// RPC Server - Mock Content Store
+// ============================================================================
+
+// Mock content store: maps URN hash (SHA-256) to content
+// In production, this would be a database or file system
+const mockContentStore = new Map();
+
+// Helper to generate content for a URN (same as content server logic)
+function generateContentForURN(urn) {
+  const parsed = parseURN(urn);
+  if (!parsed) {
+    return null;
+  }
+  
+  const resourceKey = parsed.resourceKey || 'index.html';
+  const ext = path.extname(resourceKey).toLowerCase();
+  
+  // Generate content based on file extension (same as content server)
+  switch (ext) {
+    case '.png':
+    case '.jpg':
+    case '.jpeg':
+    case '.gif':
+    case '.webp':
+    case '.ico':
+      // Return example image if it exists, otherwise placeholder
+      const exampleImagePath = path.join(__dirname, 'example_image.png');
+      if (fs.existsSync(exampleImagePath)) {
+        return fs.readFileSync(exampleImagePath);
+      }
+      return createPlaceholderImage();
+    
+    case '.css':
+      return Buffer.from(`
+/* DIG Network Test Stylesheet */
+/* Requested path: ${resourceKey} */
+body {
+  background-color: #f5f5f5;
+}
+
+.test-stylesheet-loaded {
+  color: #9D4EDD;
+  font-weight: bold;
+}
+
+/* Test background image */
+.bg-test {
+  background-image: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/background.png');
+}
+
+/* Import test */
+@import url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/imported.css');
+      `);
+    
+    case '.js':
+      return Buffer.from(`
+// DIG Network Test Script
+// Requested path: ${resourceKey}
+console.log('DIG Network test script loaded: ${resourceKey}');
+
+// Set a global variable to indicate script loaded
+if (typeof window !== 'undefined') {
+  window.digTestScriptLoaded = true;
+  window.digTestScriptPath = '${resourceKey}';
+  
+  // Dispatch custom event
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('digTestScriptLoaded', {
+      detail: { path: '${resourceKey}' }
+    }));
+  }
+}
+      `);
+    
+    case '.json':
+      return Buffer.from(JSON.stringify({
+        success: true,
+        message: 'DIG Network Test Response',
+        path: resourceKey,
+        timestamp: new Date().toISOString(),
+        data: {
+          test: 'This is a test response from the DIG Network RPC server',
+          protocol: 'dig://',
+          urn: urn
+        }
+      }));
+    
+    case '.html':
+      return Buffer.from(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DIG Test - ${resourceKey}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #1a0a2e 0%, #16213e 50%, #0f3460 100%);
+      color: white;
+    }
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 30px;
+      border-radius: 10px;
+      border: 2px solid rgba(255, 0, 255, 0.3);
+    }
+    h1 {
+      color: #FF00FF;
+      text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+    }
+    .success {
+      color: #4CAF50;
+      font-weight: bold;
+      font-size: 18px;
+      margin: 20px 0;
+    }
+    code {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>✅ DIG Network Test Page (RPC)</h1>
+    <div class="success">Successfully loaded via RPC protocol!</div>
+    <p><strong>Requested Path:</strong> <code>${resourceKey}</code></p>
+    <p><strong>Full URN:</strong> <code>${urn}</code></p>
+    <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+    <p>This page was successfully loaded through the DIG Network RPC server!</p>
+  </div>
+</body>
+</html>
+      `);
+    
+    default:
+      return Buffer.from(`DIG Network Test Server Response\nPath: ${resourceKey}\nExtension: ${ext || 'none'}\nTimestamp: ${new Date().toISOString()}\nURN: ${urn}`);
+  }
+}
+
+// Initialize mock content store with test URNs (no longer needed, but kept for reference)
+// Content is now generated on-demand, so we don't need to pre-load
+function initializeMockContentStore() {
+  // Content is generated on-demand, no pre-loading needed
+  console.log('[RPC] Content store initialized (on-demand generation)');
+}
+
+// Generate decoy blob for invalid/non-existent content
+function generateDecoyBlob(hash) {
+  // Calculate decoy size using logarithmic bands with jitter
+  const hashBytes = Buffer.from(hash, 'hex');
+  const exponent = (hashBytes[0] % 19) + 9;
+  const baseSize = Math.pow(2, exponent);
+  const jitterRange = baseSize;
+  const jitterSeed = hashBytes.readUInt32BE(1) % 0xFFFFFFFF;
+  const jitter = jitterSeed % jitterRange;
+  const decoySize = baseSize + jitter;
+  
+  // Generate deterministic decoy content
+  const decoyContent = crypto.pbkdf2Sync(
+    hash,
+    'dig-decoy',
+    1000, // iterations
+    decoySize,
+    'sha256'
+  );
+  
+  return decoyContent.toString('base64');
+}
+
+// Initialize content store on startup
+initializeMockContentStore();
+
+// Create RPC server
+const rpcApp = express();
+rpcApp.use(express.json());
+rpcApp.use(cors({
+  origin: '*',
+  methods: ['POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+  credentials: false
+}));
+
+// RPC endpoint
+rpcApp.post('/rpc', (req, res) => {
+  const { jsonrpc, method, params, id } = req.body;
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Validate JSON-RPC 2.0 request
+  if (jsonrpc !== '2.0') {
+    return res.status(400).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32600,
+        message: 'Invalid Request',
+        data: 'jsonrpc must be "2.0"'
+      },
+      id: id || null
+    });
+  }
+  
+  // Handle getContent method
+  if (method === 'getContent') {
+    if (!params || !params.urn) {
+      return res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32602,
+          message: 'Invalid params',
+          data: 'urn parameter is required'
+        },
+        id: id || null
+      });
+    }
+    
+    const urn = params.urn;
+    
+    // Parse URN to validate format
+    const parsed = parseURN(urn);
+    if (!parsed) {
+      return res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32602,
+          message: 'Invalid params',
+          data: 'Invalid URN format'
+        },
+        id: id || null
+      });
+    }
+    
+    console.log(`[RPC] Request for URN: ${urn.substring(0, 60)}...`);
+    
+    // Generate content for the URN
+    const content = generateContentForURN(urn);
+    
+    if (!content) {
+      // Return decoy for non-existent content (privacy-preserving)
+      console.log(`[RPC] Content not found for URN, returning decoy`);
+      const urnHash = crypto.createHash('sha256').update(urn).digest('hex');
+      const decoyBlob = generateDecoyBlob(urnHash);
+      const decoyDataUrl = `data:application/octet-stream;base64,${decoyBlob}`;
+      
+      return res.json({
+        jsonrpc: '2.0',
+        result: {
+          dataUrl: decoyDataUrl
+        },
+        id: id || null
+      });
+    }
+    
+    // Convert content to data URL with proper MIME type
+    const contentType = getContentTypeForURN(urn, parsed);
+    const base64Content = content.toString('base64');
+    
+    // Ensure data URL has proper format: data:[<mediatype>][;base64],<data>
+    // Add charset for text types
+    let mimeType = contentType;
+    if (contentType.startsWith('text/') && !contentType.includes('charset')) {
+      // Add charset=utf-8 for text types
+      if (contentType === 'text/html' || contentType === 'text/css' || contentType === 'text/javascript' || contentType === 'text/plain' || contentType === 'text/markdown') {
+        mimeType = `${contentType};charset=utf-8`;
+      }
+    } else if (contentType === 'application/json' && !contentType.includes('charset')) {
+      // JSON should also have charset
+      mimeType = `${contentType};charset=utf-8`;
+    } else if (contentType === 'application/javascript' && !contentType.includes('charset')) {
+      // JavaScript should have charset
+      mimeType = `${contentType};charset=utf-8`;
+    } else if (contentType === 'application/xml' && !contentType.includes('charset')) {
+      // XML should have charset
+      mimeType = `${contentType};charset=utf-8`;
+    }
+    
+    const dataUrl = `data:${mimeType};base64,${base64Content}`;
+    
+    console.log(`[RPC] Returning content as data URL (type: ${mimeType})`);
+    
+    return res.json({
+      jsonrpc: '2.0',
+      result: {
+        dataUrl: dataUrl
+      },
+      id: id || null
+    });
+  }
+  
+  // Unknown method
+  return res.status(400).json({
+    jsonrpc: '2.0',
+    error: {
+      code: -32601,
+      message: 'Method not found',
+      data: `Unknown method: ${method}`
+    },
+    id: id || null
+  });
+});
+
+// Helper to determine content type from URN
+function getContentTypeForURN(urn, parsed) {
+  const resourceKey = parsed.resourceKey || 'index.html';
+  
+  // Get extension and remove leading dot
+  const extWithDot = path.extname(resourceKey).toLowerCase();
+  const ext = extWithDot.startsWith('.') ? extWithDot.substring(1) : extWithDot;
+  
+  // Comprehensive MIME type mapping
+  const mimeTypes = {
+    // HTML
+    'html': 'text/html',
+    'htm': 'text/html',
+    
+    // CSS
+    'css': 'text/css',
+    
+    // JavaScript
+    'js': 'application/javascript',
+    'mjs': 'application/javascript',
+    
+    // JSON
+    'json': 'application/json',
+    'jsonld': 'application/ld+json',
+    
+    // Images
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml',
+    'ico': 'image/x-icon',
+    'bmp': 'image/bmp',
+    'tiff': 'image/tiff',
+    'tif': 'image/tiff',
+    
+    // Fonts
+    'woff': 'font/woff',
+    'woff2': 'font/woff2',
+    'ttf': 'font/ttf',
+    'otf': 'font/otf',
+    'eot': 'application/vnd.ms-fontobject',
+    
+    // Audio
+    'mp3': 'audio/mpeg',
+    'ogg': 'audio/ogg',
+    'wav': 'audio/wav',
+    'webm': 'audio/webm',
+    
+    // Video
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'ogv': 'video/ogg',
+    
+    // Text
+    'txt': 'text/plain',
+    'md': 'text/markdown',
+    'xml': 'application/xml',
+    
+    // Other
+    'pdf': 'application/pdf',
+    'zip': 'application/zip',
+    'wasm': 'application/wasm'
+  };
+  
+  // If we have a known extension, return its MIME type
+  if (ext && mimeTypes[ext]) {
+    return mimeTypes[ext];
+  }
+  
+  // Default fallback based on resource key
+  if (!ext || ext === '') {
+    // No extension - try to infer from resource key
+    if (resourceKey === '' || resourceKey === '/') {
+      return 'text/html'; // Root typically serves HTML
+    }
+    // Check if it looks like a directory (ends with /)
+    if (resourceKey.endsWith('/')) {
+      return 'text/html'; // Directory typically serves index.html
+    }
+  }
+  
+  // Unknown extension - use octet-stream
+  return 'application/octet-stream';
+}
+
+// Handle OPTIONS preflight
+rpcApp.options('/rpc', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(200);
+});
 
 // Root route - serve test.html
 app.get('/', (req, res) => {
@@ -480,7 +888,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server - listen on all interfaces (0.0.0.0) to accept dig.local requests
+// Start content server - listen on all interfaces (0.0.0.0) to accept dig.local requests
 // When dig.local is mapped to 127.0.0.1 in hosts file, requests will come here
 app.listen(PORT, '0.0.0.0', () => {
   console.log('╔══════════════════════════════════════════════════════════╗');
@@ -506,6 +914,29 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('╚══════════════════════════════════════════════════════════╝');
   console.log('');
   console.log('Ready to serve test resources!');
-  console.log('Press Ctrl+C to stop the server.');
+});
+
+// Start RPC server - listen on all interfaces (0.0.0.0) to accept rpc.dig.local requests
+rpcApp.listen(RPC_PORT, '0.0.0.0', () => {
+  console.log('╔══════════════════════════════════════════════════════════╗');
+  console.log('║   DIG Network RPC Server                                 ║');
+  console.log('║   Listening on all interfaces (0.0.0.0):' + RPC_PORT.toString().padEnd(25) + '║');
+  console.log('║   Accessible via:                                       ║');
+  console.log('║     - http://localhost:' + RPC_PORT.toString().padEnd(30) + '║');
+  console.log('║     - http://127.0.0.1:' + RPC_PORT.toString().padEnd(30) + '║');
+  console.log('║     - http://rpc.dig.local:' + RPC_PORT.toString().padEnd(25) + '║');
+  console.log('║                                                          ║');
+  console.log('║   JSON-RPC 2.0 Endpoint:                                ║');
+  console.log('║     POST http://rpc.dig.local:' + RPC_PORT.toString().padEnd(20) + '/rpc ║');
+  console.log('║                                                          ║');
+  console.log('║   Methods:                                               ║');
+  console.log('║     - getContent: Retrieve content by URN hash            ║');
+  console.log('║                                                          ║');
+  console.log('║   Note: Add "127.0.0.1 rpc.dig.local" to your hosts     ║');
+  console.log('║   file to enable rpc.dig.local domain access            ║');
+  console.log('╚══════════════════════════════════════════════════════════╝');
+  console.log('');
+  console.log('RPC server ready!');
+  console.log('Press Ctrl+C to stop the servers.');
 });
 
