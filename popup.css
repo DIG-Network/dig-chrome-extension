@@ -34,12 +34,16 @@ body {
   align-items: center;
   justify-content: center;
   filter: drop-shadow(0 0 8px rgba(255, 0, 255, 0.5));
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .logo img {
   height: auto;
   max-width: 100%;
+  max-height: 60px;
   display: block;
+  object-fit: contain;
 }
 
 .url-section {
@@ -274,5 +278,319 @@ body {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.6);
   line-height: 1.5;
+}
+
+.dig-local-section {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 0, 255, 0.2);
+}
+
+.dig-local-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.dig-local-label {
+  color: #E0E0E0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dig-local-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-indicator {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.status-indicator.resolved {
+  color: #4CAF50;
+  animation: pulse 2s infinite;
+}
+
+.status-indicator.not-resolved {
+  color: #f44336;
+}
+
+.status-indicator.warning {
+  color: #ff9800;
+}
+
+.status-indicator.checking {
+  color: #ff9800;
+  animation: pulse 1s infinite;
+}
+
+.retry-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: rgba(255, 0, 255, 0.2);
+  border: 1px solid rgba(255, 0, 255, 0.4);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-left: 4px;
+}
+
+.retry-button:hover {
+  background: rgba(255, 0, 255, 0.3);
+  border-color: #FF00FF;
+  color: #FFFFFF;
+  transform: rotate(90deg);
+}
+
+.retry-button:active {
+  transform: rotate(90deg) scale(0.95);
+}
+
+.retry-button svg {
+  width: 12px;
+  height: 12px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-text-small {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.dig-local-info {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dig-local-message {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.setup-button {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(255, 0, 255, 0.2);
+  border: 1px solid rgba(255, 0, 255, 0.4);
+  border-radius: 6px;
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 8px;
+}
+
+.setup-button:hover {
+  background: rgba(255, 0, 255, 0.3);
+  border-color: #FF00FF;
+}
+
+.instructions {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 0, 255, 0.2);
+}
+
+.os-selector {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+}
+
+.os-tab {
+  flex: 1;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 0, 255, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.os-tab:hover {
+  background: rgba(255, 0, 255, 0.1);
+  border-color: rgba(255, 0, 255, 0.4);
+}
+
+.os-tab.active {
+  background: rgba(255, 0, 255, 0.2);
+  border-color: #FF00FF;
+  color: #FFFFFF;
+}
+
+.os-instructions {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.6;
+}
+
+.os-instructions ol {
+  margin-left: 16px;
+  padding-left: 8px;
+}
+
+.os-instructions li {
+  margin-bottom: 8px;
+}
+
+.os-instructions ul {
+  margin-top: 4px;
+  margin-left: 20px;
+  list-style-type: disc;
+}
+
+.os-instructions code {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #FF00FF;
+}
+
+.code-block {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 8px;
+  border-radius: 4px;
+  border-left: 3px solid #FF00FF;
+  margin: 8px 0;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #FFFFFF;
+  overflow-x: auto;
+}
+
+.os-instructions kbd {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+}
+
+.os-instructions small {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+.search-engine-section {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 0, 255, 0.2);
+}
+
+.search-engine-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.search-engine-label {
+  color: #E0E0E0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.search-engine-toggle-container {
+  position: relative;
+  width: 52px;
+  height: 28px;
+}
+
+.search-engine-config {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.search-url-label {
+  display: block;
+  color: #E0E0E0;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.search-url-input-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.search-url-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 0, 255, 0.3);
+  border-radius: 6px;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  outline: none;
+  transition: all 0.3s ease;
+  min-width: 0;
+}
+
+.search-url-input:focus {
+  border-color: #FF00FF;
+  box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.search-engine-info-text {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: 'Courier New', monospace;
+  padding-left: 4px;
+}
+
+.search-engine-status {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.search-engine-status-text {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4;
+  margin-bottom: 8px;
 }
 

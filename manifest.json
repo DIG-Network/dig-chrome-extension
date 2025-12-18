@@ -3,13 +3,13 @@
   "name": "DIG Network Extension",
   "version": "1.0.0",
   "description": "Intercept and redirect dig:// protocol requests to localhost",
-  "permissions": [
-    "storage",
-    "webNavigation",
-    "tabs"
-  ],
   "host_permissions": [
-    "http://localhost/*"
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://dig.local/*",
+    "https://dig.local/*",
+    "http://*.dig.local/*",
+    "https://*.dig.local/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -37,9 +37,21 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["page-script.js", "logo.png"],
+      "resources": ["page-script.js", "logo.png", "dig-viewer.html", "dig-viewer.js"],
       "matches": ["<all_urls>"]
     }
-  ]
+  ],
+  "permissions": [
+    "storage",
+    "webNavigation",
+    "tabs",
+    "declarativeNetRequest",
+    "scripting",
+    "omnibox",
+    "search"
+  ],
+  "omnibox": {
+    "keyword": "dig"
+  }
 }
 

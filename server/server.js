@@ -9,8 +9,16 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 
+// Import centralized URN utilities
+const {
+  parseURN,
+  resolveHostToURN,
+  encodeStoreId,
+  decodeStoreId
+} = require('../dig-urn.js');
+
 const app = express();
-const PORT = 8080;
+const PORT = 80;
 
 // Enable CORS for all routes with explicit configuration
 app.use(cors({
@@ -65,8 +73,15 @@ app.get('/', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(testHtmlPath, (err) => {
       if (err) {
+        // Don't try to send error response if request was aborted or response already sent
+        if (err.code === 'ECONNABORTED' || res.headersSent) {
+          console.log('Request aborted or response already sent, skipping error response');
+          return;
+        }
         console.error('Error sending test.html:', err);
+        if (!res.headersSent) {
         res.status(500).json({ error: 'Failed to serve test.html', details: err.message });
+        }
       } else {
         console.log('Successfully sent test.html');
       }
@@ -90,29 +105,144 @@ app.get('/', (req, res) => {
   }
 });
 
-// Handle URN paths (urn:dig:chia:...)
-// Use a middleware function that matches any path starting with /urn:dig:chia:
+// Middleware to handle dig.local and localhost URL schemes (must come before URN processing)
 app.use((req, res, next) => {
-  // Check if the path starts with /urn:dig:chia:
-  if (req.path && req.path.startsWith('/urn:dig:chia:')) {
-    // Extract everything after /urn:dig:chia:.../
-    // req.path will be like '/urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/image1.png'
-    let requestedPath = req.path;
-    // Remove the URN prefix to get just the resource path
-    // Match: /urn:dig:chia:STORE_ID/path/to/resource
-    const urnMatch = requestedPath.match(/^\/urn:dig:chia:[^\/]+\/(.+)$/);
-    if (urnMatch) {
-      requestedPath = urnMatch[1]; // Extract the resource path after the URN
+  const host = req.get('host') || req.headers.host || '';
+  const hostname = host.split(':')[0]; // Remove port if present
+  const pathname = req.path;
+  
+  // Check if this is a DIG Network request (dig.local, localhost subdomain, or 127.0.0.1 subdomain)
+  const isDigRequest = hostname.includes('dig.local') || 
+                       (hostname.includes('localhost') && hostname !== 'localhost') ||
+                       (hostname.includes('127.0.0.1') && hostname !== '127.0.0.1');
+  
+  if (!isDigRequest) {
+    return next();
+  }
+  
+  console.log(`[${new Date().toISOString()}] DIG Network request: ${req.method} ${req.originalUrl} (Host: ${hostname})`);
+  
+  // Special case: If it's the base dig.local domain with root path, let it fall through to root route handler
+  if ((hostname === 'dig.local' || hostname === 'localhost' || hostname === '127.0.0.1') && pathname === '/') {
+    console.log('  Base domain root path, passing to root route handler');
+    return next();
+  }
+  
+  // 0. Handle query parameter format: dig.local?urn=<urn> -> redirect to subdomain format
+  // This is different from dig.local/<urn> which serves content directly
+  if (hostname === 'dig.local' && req.query && req.query.urn) {
+    const urnString = req.query.urn;
+    console.log(`  Query parameter format detected: urn=${urnString}`);
+    const parsed = parseURN(urnString);
+    if (parsed && parsed.storeId) {
+      try {
+        const encodedStoreId = encodeStoreId(parsed.storeId);
+        const resourceKey = parsed.resourceKey || '';
+        // Redirect to subdomain format: http://{encodedStoreId}.dig.local/{resourceKey}
+        const redirectUrl = `http://${encodedStoreId}.dig.local${PORT !== 80 ? ':' + PORT : ''}/${resourceKey}`;
+        console.log(`  Redirecting query format to subdomain: ${redirectUrl}`);
+        return res.redirect(302, redirectUrl);
+      } catch (e) {
+        console.error('Failed to encode store ID for redirect:', e);
+        return res.status(400).json({ error: 'Invalid store ID format' });
+      }
     } else {
-      // If no path after URN, it might be just the store ID
-      // Check if it ends with just the store ID
-      const storeIdMatch = requestedPath.match(/^\/urn:dig:chia:([^\/]+)$/);
-      if (storeIdMatch) {
-        requestedPath = 'index.html'; // Default to index.html for store root
-      } else if (requestedPath.startsWith('/')) {
-        requestedPath = requestedPath.substring(1);
+      console.warn('  Invalid URN in query parameter');
+      return res.status(400).json({ error: 'Invalid URN format in query parameter' });
+    }
+  }
+  
+  // 1. Handle path-based format: /{storeId}/{resourceKey} -> redirect to subdomain
+  // Only for dig.local (not localhost, as localhost subdomains might not resolve)
+  // For localhost/127.0.0.1, skip redirect and let URN resolution handle it directly
+  if (hostname === 'dig.local' && pathname.match(/^\/[a-f0-9]{64}(\/|$)/i)) {
+    const pathMatch = pathname.match(/^\/([a-f0-9]{64})(?:\/(.+))?$/i);
+    if (pathMatch) {
+      const storeId = pathMatch[1].toLowerCase();
+      const resourceKey = pathMatch[2] || '';
+      try {
+        const encodedStoreId = encodeStoreId(storeId);
+        // Use dig.local for redirect (not localhost)
+        const redirectUrl = `http://${encodedStoreId}.dig.local${PORT !== 80 ? ':' + PORT : ''}/${resourceKey}`;
+        console.log(`  Redirecting path-based to subdomain: ${redirectUrl}`);
+        return res.redirect(302, redirectUrl);
+      } catch (e) {
+        console.error('Failed to encode store ID for redirect:', e);
+        return res.status(400).json({ error: 'Invalid store ID format' });
       }
     }
+  }
+  
+  // 2. Handle path-based URN format: dig.local/urn:dig:chia:... -> redirect to subdomain format
+  // This is different from dig.local?urn=... which also redirects to subdomain
+  if (hostname === 'dig.local' && pathname.startsWith('/urn:dig:')) {
+    const urnString = pathname.substring(1); // Remove leading slash
+    const parsed = parseURN(urnString);
+    if (parsed) {
+      try {
+        const encodedStoreId = encodeStoreId(parsed.storeId);
+        const resourceKey = parsed.resourceKey || '';
+        
+        // Build subdomain URL based on whether roothash is present
+        let redirectUrl;
+        if (parsed.roothash) {
+          // Specific version: http://{encodedStoreId}.{encodedRootHash}.dig.local/{resourceKey}
+          const encodedRootHash = encodeStoreId(parsed.roothash);
+          redirectUrl = `http://${encodedStoreId}.${encodedRootHash}.dig.local${PORT !== 80 ? ':' + PORT : ''}/${resourceKey}`;
+        } else {
+          // Latest version: http://{encodedStoreId}.dig.local/{resourceKey}
+          redirectUrl = `http://${encodedStoreId}.dig.local${PORT !== 80 ? ':' + PORT : ''}/${resourceKey}`;
+        }
+        
+        console.log(`  Redirecting path-based URN to subdomain: ${redirectUrl}`);
+        return res.redirect(302, redirectUrl);
+      } catch (e) {
+        console.error('Failed to encode store ID for redirect:', e);
+        return res.status(400).json({ error: 'Invalid URN format' });
+      }
+    }
+  }
+  
+  // 2. Resolve hostname to URN
+  const urn = resolveHostToURN(hostname, pathname);
+  
+  if (urn) {
+    // Store URN in request for later use
+    req.digURN = urn;
+    req.digParsed = parseURN(urn);
+    console.log(`  Resolved to URN: ${urn}`);
+    if (req.digParsed) {
+      console.log(`  Parsed: chain=${req.digParsed.chain}, storeId=${req.digParsed.storeId.substring(0, 16)}..., roothash=${req.digParsed.roothash ? req.digParsed.roothash.substring(0, 16) + '...' : 'null'}, resourceKey=${req.digParsed.resourceKey || '(empty)'}`);
+    }
+  }
+  
+  next();
+});
+
+// Handle URN paths (urn:dig:chia:...) and dig.local subdomain requests
+app.use((req, res, next) => {
+  // Check if we have a URN from subdomain resolution or direct path
+  let urn = req.digURN;
+  let parsed = req.digParsed;
+  
+  // Also check if the path starts with /urn:dig:chia: (direct URN format)
+  if (!urn && req.path && req.path.startsWith('/urn:dig:')) {
+    urn = req.path.substring(1); // Remove leading slash
+    parsed = parseURN(urn);
+    req.digURN = urn;
+    req.digParsed = parsed;
+  }
+  
+  // Process if we have a URN
+  if (urn && parsed) {
+    // Get resource key from parsed URN
+    let requestedPath = parsed.resourceKey || '';
+    
+    // If no resource key, default to index.html
+    if (!requestedPath || requestedPath === '') {
+      requestedPath = 'index.html';
+    }
+    
     const ext = path.extname(requestedPath).toLowerCase();
   
   console.log(`[${new Date().toISOString()}] ${req.method} Request: ${req.originalUrl}`);
@@ -148,10 +278,17 @@ app.use((req, res, next) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.sendFile(exampleImagePath, (err) => {
           if (err) {
+            // Don't try to send error response if request was aborted or response already sent
+            if (err.code === 'ECONNABORTED' || res.headersSent) {
+              console.log('Request aborted or response already sent, skipping error response');
+              return;
+            }
             console.error('Error sending example_image.png:', err);
-            // Fallback to placeholder
+            // Fallback to placeholder only if headers haven't been sent
+            if (!res.headersSent) {
             res.setHeader('Content-Type', 'image/png');
             res.send(createPlaceholderImage());
+            }
           }
         });
       } else {
@@ -343,17 +480,29 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Start server - listen on all interfaces (0.0.0.0) to accept dig.local requests
+// When dig.local is mapped to 127.0.0.1 in hosts file, requests will come here
+app.listen(PORT, '0.0.0.0', () => {
   console.log('╔══════════════════════════════════════════════════════════╗');
-  console.log('║   DIG Network Test Server                               ║');
-  console.log('║   Listening on http://localhost:' + PORT.toString().padEnd(35) + '║');
+  console.log('║   DIG Network Content Server                            ║');
+  console.log('║   Listening on all interfaces (0.0.0.0):' + PORT.toString().padEnd(25) + '║');
+  console.log('║   Accessible via:                                       ║');
+  console.log('║     - http://localhost:' + PORT.toString().padEnd(30) + '║');
+  console.log('║     - http://127.0.0.1:' + PORT.toString().padEnd(30) + '║');
+  console.log('║     - http://dig.local:' + PORT.toString().padEnd(30) + '║');
   console.log('║                                                          ║');
-  console.log('║   This server serves test resources for the             ║');
-  console.log('║   DIG Network Browser Extension                           ║');
+  console.log('║   Supported URL Schemes:                                 ║');
+  console.log('║     1. Direct URN:                                       ║');
+  console.log('║        http://dig.local/urn:dig:chia:.../{resource}      ║');
+  console.log('║     2. Path-based (redirects to subdomain):              ║');
+  console.log('║        http://dig.local/{storeId}/{resource}             ║');
+  console.log('║     3. Subdomain (latest version):                        ║');
+  console.log('║        http://{encodedStoreId}.dig.local/{resource}     ║');
+  console.log('║     4. Subdomain (specific version):                      ║');
+  console.log('║        http://{storeId}.{rootHash}.dig.local/{resource}   ║');
   console.log('║                                                          ║');
-  console.log('║   All dig://test/* URLs will be redirected here         ║');
-  console.log('║   when the extension is active                          ║');
+  console.log('║   Note: Add "127.0.0.1 dig.local" to your hosts file    ║');
+  console.log('║   to enable dig.local domain access                     ║');
   console.log('╚══════════════════════════════════════════════════════════╝');
   console.log('');
   console.log('Ready to serve test resources!');

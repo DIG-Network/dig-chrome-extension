@@ -12,10 +12,13 @@ const EXTENSION_FILES = [
   'popup.html',
   'popup.css',
   'popup.js',
+  'dig-urn.js',
   'background.js',
   'middleware.js',
   'content.js',
-  'page-script.js'
+  'page-script.js',
+  'dig-viewer.html',
+  'dig-viewer.js'
 ];
 
 const OPTIONAL_FILES = [
@@ -197,6 +200,7 @@ function copyFiles() {
     fs.copyFileSync(logoSrc, logoDest);
     log(`✓ Copied: logo.png (to root)`, 'green');
   }
+  
   
   log('\n✓ All files copied to dist/', 'green');
 }

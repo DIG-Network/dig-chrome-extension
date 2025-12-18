@@ -46,12 +46,116 @@
           type="text" 
           id="serverHostInput" 
           class="server-input" 
-          placeholder="localhost:8080"
+          placeholder="localhost:80"
           autocomplete="off"
         />
         <button id="restoreDefaultButton" class="restore-button" title="Restore Default">↺</button>
       </div>
-      <p class="server-info-text" id="serverInfoText">Redirects to: http://localhost:8080</p>
+      <p class="server-info-text" id="serverInfoText">Redirects to: http://localhost:80</p>
+    </div>
+
+    <div class="dig-local-section">
+      <div class="dig-local-header">
+        <label class="dig-local-label">dig.local Status</label>
+        <div class="dig-local-status" id="digLocalStatus">
+          <span class="status-indicator" id="statusIndicator">●</span>
+          <span class="status-text-small" id="digLocalStatusText">Checking...</span>
+          <button class="retry-button" id="retryButton" title="Retry DNS check" style="display: none;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.48L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="dig-local-info" id="digLocalInfo" style="display: none;">
+        <p class="dig-local-message" id="digLocalMessage"></p>
+        <div class="hosts-setup" id="hostsSetup" style="display: none;">
+          <button class="setup-button" id="showInstructionsButton">Show Setup Instructions</button>
+          <div class="instructions" id="instructions" style="display: none;">
+            <div class="os-selector">
+              <button class="os-tab active" data-os="windows">Windows</button>
+              <button class="os-tab" data-os="macos">macOS</button>
+              <button class="os-tab" data-os="linux">Linux</button>
+            </div>
+            <div class="os-instructions" id="windowsInstructions">
+              <ol>
+                <li>Open Notepad as Administrator:
+                  <ul>
+                    <li><strong>Method 1 (Recommended):</strong>
+                      <ul>
+                        <li>Press <kbd>Win</kbd> key and type "notepad"</li>
+                        <li>Right-click on "Notepad" in the search results</li>
+                        <li>Select "Run as administrator"</li>
+                        <li>Click "Yes" when prompted by User Account Control</li>
+                      </ul>
+                    </li>
+                    <li><strong>Method 2:</strong>
+                      <ul>
+                        <li>Press <kbd>Win + X</kbd> and select "Windows PowerShell (Admin)" or "Terminal (Admin)"</li>
+                        <li>Type: <code>notepad C:\Windows\System32\drivers\etc\hosts</code></li>
+                        <li>Press <kbd>Enter</kbd> and click "Yes" when prompted</li>
+                      </ul>
+                    </li>
+                  </ul>
+                </li>
+                <li>In Notepad, open the hosts file:
+                  <ul>
+                    <li>Click <strong>File</strong> → <strong>Open</strong> (or press <kbd>Ctrl+O</kbd>)</li>
+                    <li>Navigate to: <code>C:\Windows\System32\drivers\etc\</code></li>
+                    <li>Change the file filter from "Text Documents (*.txt)" to <strong>"All Files (*.*)"</strong></li>
+                    <li>Select the file named <code>hosts</code> (it has no extension)</li>
+                    <li>Click <strong>Open</strong></li>
+                  </ul>
+                </li>
+                <li>Add this line at the end of the file:
+                  <div class="code-block">127.0.0.1    dig.local</div>
+                </li>
+                <li>Save the file:
+                  <ul>
+                    <li>Press <kbd>Ctrl+S</kbd> or click <strong>File</strong> → <strong>Save</strong></li>
+                    <li>Close Notepad</li>
+                  </ul>
+                </li>
+                <li>Flush DNS cache (open PowerShell or Command Prompt as Admin):
+                  <div class="code-block">ipconfig /flushdns</div>
+                  <small>Or restart your browser</small>
+                </li>
+              </ol>
+            </div>
+            <div class="os-instructions" id="macosInstructions" style="display: none;">
+              <ol>
+                <li>Open Terminal</li>
+                <li>Edit the hosts file:
+                  <div class="code-block">sudo nano /etc/hosts</div>
+                </li>
+                <li>Add this line at the end of the file:
+                  <div class="code-block">127.0.0.1    dig.local</div>
+                </li>
+                <li>Save: Press <kbd>Ctrl+O</kbd>, then <kbd>Enter</kbd>, then <kbd>Ctrl+X</kbd></li>
+                <li>Flush DNS cache:
+                  <div class="code-block">sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder</div>
+                </li>
+              </ol>
+            </div>
+            <div class="os-instructions" id="linuxInstructions" style="display: none;">
+              <ol>
+                <li>Open Terminal</li>
+                <li>Edit the hosts file:
+                  <div class="code-block">sudo nano /etc/hosts</div>
+                  <small>Or use your preferred editor (vim, gedit, etc.)</small>
+                </li>
+                <li>Add this line at the end of the file:
+                  <div class="code-block">127.0.0.1    dig.local</div>
+                </li>
+                <li>Save: Press <kbd>Ctrl+O</kbd>, then <kbd>Enter</kbd>, then <kbd>Ctrl+X</kbd></li>
+                <li>Flush DNS cache (if using systemd-resolved):
+                  <div class="code-block">sudo systemd-resolve --flush-caches</div>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="info-section">

@@ -8,7 +8,7 @@
   console.log('DIG Extension: Page script loaded at', new Date().toISOString());
   
   // Cache for RPC host configuration
-  let cachedRpcHost = 'localhost:8080';
+  let cachedRpcHost = 'localhost:80';
   
   // Get RPC host from storage via message to background script
   function updateRpcHostCache() {
@@ -16,16 +16,17 @@
     // For now, we'll use a default and let the content script handle updates
     // The content script will inject the current RPC host if needed
     try {
-      // Try to get from window (injected by content script)
-      if (window.__DIG_RPC_HOST__) {
-        cachedRpcHost = window.__DIG_RPC_HOST__;
-      }
-      // Also try to get from data attribute (CSP-safe fallback)
+      // Prioritize data attribute (most CSP-safe)
       if (document.documentElement) {
         const dataHost = document.documentElement.getAttribute('data-dig-rpc-host');
         if (dataHost) {
           cachedRpcHost = dataHost;
+          return; // Data attribute takes precedence
         }
+      }
+      // Fallback to window property (may be blocked by CSP)
+      if (window.__DIG_RPC_HOST__) {
+        cachedRpcHost = window.__DIG_RPC_HOST__;
       }
     } catch (e) {
       // Ignore
@@ -35,12 +36,27 @@
   // Initialize cache
   updateRpcHostCache();
   
-  // Listen for updates from content script
+  // Listen for updates from content script via custom event
   window.addEventListener('dig-rpc-host-updated', (event) => {
     if (event.detail && event.detail.rpcHost) {
       cachedRpcHost = event.detail.rpcHost;
     }
   });
+  
+  // Also listen for postMessage (CSP-safe alternative)
+  window.addEventListener('message', (event) => {
+    // Only accept messages from same origin or extension context
+    if (event.data && event.data.type === 'dig-rpc-host-updated' && event.data.rpcHost) {
+      cachedRpcHost = event.data.rpcHost;
+      // Also update from data attribute if available
+      updateRpcHostCache();
+    }
+  });
+  
+  // Periodically check data attribute for updates (fallback)
+  setInterval(() => {
+    updateRpcHostCache();
+  }, 1000);
   
   // Suppress console errors for dig:// scheme errors
   const originalConsoleError = console.error;
@@ -95,8 +111,30 @@
     if (typeof url === 'string' && url.startsWith('dig://')) {
       const urlPath = url.replace(/^dig:\/\//, '');
       
-      // Use cached RPC host
-      let serverHost = cachedRpcHost.trim();
+      // Detect current page's domain to avoid mixed content errors
+      // If we're on dig.local, use dig.local; if on localhost, use localhost
+      let serverHost = 'dig.local:80';
+      
+      try {
+        const currentHost = window.location.hostname;
+        if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
+          // We're on localhost, use localhost for converted URLs
+          serverHost = `${currentHost}:${window.location.port || '80'}`;
+        } else if (currentHost === 'dig.local' || currentHost.endsWith('.dig.local')) {
+          // We're on dig.local, use dig.local for converted URLs
+          serverHost = 'dig.local:80';
+        } else {
+          // Default to dig.local, but check if explicitly configured to use localhost
+          if (cachedRpcHost && cachedRpcHost.includes('localhost')) {
+            serverHost = cachedRpcHost.trim();
+          }
+        }
+      } catch (e) {
+        // If we can't detect the current host, default to dig.local
+        if (cachedRpcHost && cachedRpcHost.includes('localhost')) {
+          serverHost = cachedRpcHost.trim();
+        }
+      }
       
       // If it doesn't have a protocol, add http://
       if (!serverHost.includes('://')) {
@@ -269,6 +307,7 @@
   function processExistingElements() {
     // Process all elements, not just specific tags
     const allElements = document.querySelectorAll('*');
+    let processedCount = 0;
     allElements.forEach((element) => {
       // Skip <a> tags - we intercept clicks instead of rewriting href
       if (element.tagName === 'A') {
