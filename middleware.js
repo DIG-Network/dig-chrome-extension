@@ -2,7 +2,7 @@
 // Implements all fallback strategies in priority order
 
 // Cache for RPC host configuration
-let cachedRpcHost = 'localhost:8080';
+let cachedRpcHost = 'localhost:80';
 
 // Get RPC host from storage (async)
 async function updateRpcHostCache() {
@@ -10,14 +10,14 @@ async function updateRpcHostCache() {
     if (typeof chrome !== 'undefined' && chrome.storage) {
       const result = await chrome.storage.local.get(['server.host', 'server.url', 'server.port']);
       
-      let newRpcHost = 'localhost:8080';
+      let newRpcHost = 'localhost:80';
       
       if (result['server.host']) {
         newRpcHost = result['server.host'];
       } else if (result['server.url'] || result['server.port']) {
         // Fallback to old format
         const url = result['server.url'] || 'localhost';
-        const port = result['server.port'] || 8080;
+        const port = result['server.port'] || 80;
         newRpcHost = `${url}:${port}`;
       }
       
@@ -392,7 +392,7 @@ class DigResourceLoader {
       
       // Always read current cachedRpcHost value (not from closure)
       // This ensures we always get the latest value even after updates
-      const rpcHost = (typeof cachedRpcHost !== 'undefined' && cachedRpcHost) ? cachedRpcHost : 'localhost:8080';
+      const rpcHost = (typeof cachedRpcHost !== 'undefined' && cachedRpcHost) ? cachedRpcHost : 'localhost:80';
       let serverHost = String(rpcHost).trim();
       
       // If it doesn't have a protocol, add http://

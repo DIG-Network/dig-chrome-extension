@@ -23,19 +23,44 @@
 // We use it from the shared scope
 
 // Inject RPC host into page context for page-script.js
+// Uses CSP-safe data attribute instead of inline script
 function injectRpcHostToPage() {
   try {
     // Use cachedRpcHost from middleware.js scope - always read current value
-    const rpcHost = typeof cachedRpcHost !== 'undefined' ? cachedRpcHost : 'localhost:8080';
-    const script = document.createElement('script');
-    script.textContent = `
-      window.__DIG_RPC_HOST__ = ${JSON.stringify(rpcHost)};
+    const rpcHost = typeof cachedRpcHost !== 'undefined' ? cachedRpcHost : 'localhost:80';
+    
+    // Set data attribute on document element (CSP-safe)
+    if (document.documentElement) {
+      document.documentElement.setAttribute('data-dig-rpc-host', rpcHost);
+    }
+    
+    // Also try to set window property if possible (may fail due to CSP, but try anyway)
+    // Use Object.defineProperty to avoid CSP issues with direct assignment
+    try {
+      Object.defineProperty(window, '__DIG_RPC_HOST__', {
+        value: rpcHost,
+        writable: true,
+        configurable: true
+      });
+    } catch (e) {
+      // Ignore if we can't set window property (CSP restriction)
+    }
+    
+    // Dispatch event using postMessage (CSP-safe)
+    // The page script listens for this event
+    window.postMessage({
+      type: 'dig-rpc-host-updated',
+      rpcHost: rpcHost
+    }, '*');
+    
+    // Also dispatch a custom event if possible (may be blocked by CSP, but try)
+    try {
       window.dispatchEvent(new CustomEvent('dig-rpc-host-updated', {
-        detail: { rpcHost: ${JSON.stringify(rpcHost)} }
+        detail: { rpcHost: rpcHost }
       }));
-    `;
-    (document.head || document.documentElement).appendChild(script);
-    script.remove();
+    } catch (e) {
+      // Ignore if custom events are blocked
+    }
   } catch (error) {
     // Ignore errors
   }
@@ -76,10 +101,32 @@ function convertDigUrl(url) {
   if (typeof url === 'string' && url.startsWith('dig://')) {
     const urlPath = url.replace(/^dig:\/\//, '');
     
-    // Always read current cachedRpcHost value from middleware.js scope (not closure)
-    // This ensures we always get the latest value even after updates
-    const rpcHost = (typeof cachedRpcHost !== 'undefined' && cachedRpcHost) ? cachedRpcHost : 'localhost:8080';
-    let serverHost = String(rpcHost).trim();
+    // Detect current page's domain to avoid mixed content errors
+    // If we're on dig.local, use dig.local; if on localhost, use localhost
+    let serverHost = 'dig.local:80';
+    
+    try {
+      const currentHost = window.location.hostname;
+      if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
+        // We're on localhost, use localhost for converted URLs
+        serverHost = `${currentHost}:${window.location.port || '80'}`;
+      } else if (currentHost === 'dig.local' || currentHost.endsWith('.dig.local')) {
+        // We're on dig.local, use dig.local for converted URLs
+        serverHost = 'dig.local:80';
+      } else {
+        // Default to dig.local, but check if explicitly configured to use localhost
+        const rpcHost = (typeof cachedRpcHost !== 'undefined' && cachedRpcHost) ? cachedRpcHost : null;
+        if (rpcHost && rpcHost.includes('localhost')) {
+          serverHost = String(rpcHost).trim();
+        }
+      }
+    } catch (e) {
+      // If we can't detect the current host, default to dig.local
+      const rpcHost = (typeof cachedRpcHost !== 'undefined' && cachedRpcHost) ? cachedRpcHost : null;
+      if (rpcHost && rpcHost.includes('localhost')) {
+        serverHost = String(rpcHost).trim();
+      }
+    }
     
     // If it doesn't have a protocol, add http://
     if (!serverHost.includes('://')) {
