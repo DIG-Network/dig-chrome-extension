@@ -19,6 +19,102 @@
   };
 })();
 
+// Early detection: Check if we're on a Google search page with dig:// in URL
+// This runs at document_start to catch it before Google's scripts load
+(function() {
+  'use strict';
+  
+  // Only run on main frame
+  if (window.top !== window.self) {
+    return;
+  }
+  
+  // Check current URL for dig:// in search query
+  try {
+    const currentUrl = window.location.href;
+    const searchEngines = ['google.com/search', 'www.google.com/search', 'bing.com/search', 'duckduckgo.com', 'yahoo.com/search', 'search.yahoo.com'];
+    const isSearchPage = searchEngines.some(engine => currentUrl.includes(engine));
+    
+    if (isSearchPage) {
+      const urlObj = new URL(currentUrl);
+      const queryParams = ['q', 'query', 'text', 'p', 'wd'];
+      let query = null;
+      
+      for (const param of queryParams) {
+        query = urlObj.searchParams.get(param);
+        if (query) break;
+      }
+      
+      if (query) {
+        let digUrl = null;
+        
+        // Try multiple decoding passes (Google may double-encode)
+        let decodedQuery = query;
+        for (let i = 0; i < 3; i++) {
+          // First try direct match
+          const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+          if (digMatch) {
+            digUrl = digMatch[0];
+            break;
+          }
+          
+          // Try URL-decoding
+          try {
+            const nextDecoded = decodeURIComponent(decodedQuery);
+            if (nextDecoded === decodedQuery) {
+              // No more decoding possible
+              break;
+            }
+            decodedQuery = nextDecoded;
+          } catch (e) {
+            // Already decoded or invalid encoding
+            break;
+          }
+        }
+        
+        // Final check on fully decoded query
+        if (!digUrl) {
+          const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+          if (finalMatch) {
+            digUrl = finalMatch[0];
+          }
+        }
+        
+        if (digUrl) {
+          console.log('DIG Extension: Content script detected dig:// in search, redirecting:', digUrl);
+          // Request background script to redirect immediately
+          // Use setTimeout(0) to ensure this runs after any pending operations
+          setTimeout(() => {
+            chrome.runtime.sendMessage({
+              action: 'navigateToDigUrl',
+              url: digUrl
+            }, (response) => {
+              if (chrome.runtime.lastError) {
+                // Ignore errors - navigation might have already happened
+                if (!chrome.runtime.lastError.message.includes('message port closed')) {
+                  console.error('DIG Extension: Error requesting redirect:', chrome.runtime.lastError);
+                }
+              }
+            });
+          }, 0);
+          
+          // Also try to stop page loading immediately
+          try {
+            if (document.readyState === 'loading') {
+              // Stop any pending navigation
+              window.stop();
+            }
+          } catch (e) {
+            // Ignore - might not be available in all contexts
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore errors in early detection
+  }
+})();
+
 // Note: cachedRpcHost is declared in middleware.js (loaded before this script)
 // We use it from the shared scope
 
@@ -94,49 +190,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
-// Convert dig:// URL to configured RPC host URL
-// Uses cachedRpcHost from middleware.js (loaded before this script)
-// Always reads the current value, never captures in closure
+// Convert dig:// URL - ALL dig:// URLs now use RPC via background script
+// This function returns a placeholder that will be replaced by proxyResource
+// For cases where proxy isn't used, trigger async proxy via background script
 function convertDigUrl(url) {
   if (typeof url === 'string' && url.startsWith('dig://')) {
-    const urlPath = url.replace(/^dig:\/\//, '');
-    
-    // Detect current page's domain to avoid mixed content errors
-    // If we're on dig.local, use dig.local; if on localhost, use localhost
-    let serverHost = 'dig.local:80';
-    
-    try {
-      const currentHost = window.location.hostname;
-      if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
-        // We're on localhost, use localhost for converted URLs
-        serverHost = `${currentHost}:${window.location.port || '80'}`;
-      } else if (currentHost === 'dig.local' || currentHost.endsWith('.dig.local')) {
-        // We're on dig.local, use dig.local for converted URLs
-        serverHost = 'dig.local:80';
-      } else {
-        // Default to dig.local, but check if explicitly configured to use localhost
-        const rpcHost = (typeof cachedRpcHost !== 'undefined' && cachedRpcHost) ? cachedRpcHost : null;
-        if (rpcHost && rpcHost.includes('localhost')) {
-          serverHost = String(rpcHost).trim();
-        }
-      }
-    } catch (e) {
-      // If we can't detect the current host, default to dig.local
-      const rpcHost = (typeof cachedRpcHost !== 'undefined' && cachedRpcHost) ? cachedRpcHost : null;
-      if (rpcHost && rpcHost.includes('localhost')) {
-        serverHost = String(rpcHost).trim();
-      }
-    }
-    
-    // If it doesn't have a protocol, add http://
-    if (!serverHost.includes('://')) {
-      serverHost = `http://${serverHost}`;
-    }
-    
-    // Remove trailing slash
-    serverHost = serverHost.replace(/\/+$/, '');
-    
-    return `${serverHost}/${urlPath}`;
+    // Return a placeholder data URL - actual fetching will be done via proxyResource
+    // This prevents browser errors while proxy loads content via RPC
+    // The proxyResource function will replace this with the actual data URL from RPC
+    return `data:application/octet-stream;base64,`; // Empty placeholder
   }
   return url;
 }

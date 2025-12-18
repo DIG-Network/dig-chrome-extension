@@ -384,26 +384,14 @@ class DigResourceLoader {
     }
   }
 
-  // Convert dig:// URL to configured RPC host URL
-  // Always reads current cachedRpcHost value (not closure)
+  // Convert dig:// URL - ALL dig:// URLs now use RPC via background script
+  // This function returns a placeholder that will be replaced by proxyResource
   convertDigUrl(url) {
     if (typeof url === 'string' && url.startsWith('dig://')) {
-      const urlPath = url.replace(/^dig:\/\//, '');
-      
-      // Always read current cachedRpcHost value (not from closure)
-      // This ensures we always get the latest value even after updates
-      const rpcHost = (typeof cachedRpcHost !== 'undefined' && cachedRpcHost) ? cachedRpcHost : 'localhost:80';
-      let serverHost = String(rpcHost).trim();
-      
-      // If it doesn't have a protocol, add http://
-      if (!serverHost.includes('://')) {
-        serverHost = `http://${serverHost}`;
-      }
-      
-      // Remove trailing slash
-      serverHost = serverHost.replace(/\/+$/, '');
-      
-      return `${serverHost}/${urlPath}`;
+      // Return a placeholder data URL that indicates RPC should be used
+      // The actual fetching will be done via proxyResource or background script
+      // This placeholder prevents browser errors while proxy loads
+      return `data:application/octet-stream;base64,`; // Empty placeholder, will be replaced by proxy
     }
     return url;
   }

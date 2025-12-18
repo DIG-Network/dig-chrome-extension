@@ -1,4 +1,4 @@
-// DIG Viewer script - requests navigation to dig.local subdomain URL
+// DIG Viewer script - fetches content via RPC and embeds it
 // Wait for DOM to be ready
 (function() {
   'use strict';
@@ -21,49 +21,75 @@
 
     async function loadContent() {
       try {
-        loading.textContent = 'Loading content...';
-        
-        // Request background script to navigate to server URL
-        if (urn) {
-          // Construct dig:// URL from URN
-          const digUrl = urn.startsWith('dig://') ? urn : `dig://${urn}`;
-          
-          console.log('DIG Viewer: Requesting background script to navigate to:', digUrl);
-          
-          // Request background script to convert dig:// URL to server URL and navigate
-          // The background script will convert to subdomain format (e.g., <encodedStoreId>.dig.local/path)
-          chrome.runtime.sendMessage({
-            action: 'navigateToDigUrl',
-            url: digUrl
-          }, (response) => {
-            // This callback may not execute if navigation happens quickly
-            if (chrome.runtime.lastError) {
-              const errorMsg = chrome.runtime.lastError.message;
-              if (errorMsg && errorMsg.includes('message port closed')) {
-                // This is expected - navigation closed the port
-                console.log('DIG Viewer: Navigation initiated (port closed as expected)');
-              } else {
-                // Real error
-                console.error('DIG Viewer: Error requesting navigation:', chrome.runtime.lastError);
-                loading.textContent = 'Error: ' + chrome.runtime.lastError.message;
-                loading.style.color = '#f00';
-              }
-            } else if (response && response.error) {
-              console.error('DIG Viewer: Error:', response.error);
-              loading.textContent = 'Error: ' + response.error;
-              loading.style.color = '#f00';
-            } else {
-              console.log('DIG Viewer: Request sent successfully');
-            }
-          });
-          
-          // Show loading message - navigation will happen from background script
-          loading.textContent = 'Navigating to content...';
-          return; // Don't continue with the rest of the function
+        if (!urn) {
+          throw new Error('No URN provided');
         }
         
-        // If no URN provided, show error
-        throw new Error('No URN provided');
+        loading.textContent = 'Loading content via RPC...';
+        
+        // Construct dig:// URL from URN
+        const digUrl = urn.startsWith('dig://') ? urn : `dig://${urn}`;
+        
+        console.log('DIG Viewer: Requesting content via RPC for:', digUrl);
+        
+        // Request background script to fetch content via RPC
+        chrome.runtime.sendMessage({
+          action: 'proxyRequest',
+          url: digUrl
+        }, async (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('DIG Viewer: Error requesting content:', chrome.runtime.lastError);
+            loading.textContent = 'Error: ' + chrome.runtime.lastError.message;
+            loading.style.color = '#f00';
+            return;
+          }
+          
+          if (response && response.error) {
+            console.error('DIG Viewer: RPC error:', response.error);
+            loading.textContent = 'Error: ' + response.error;
+            loading.style.color = '#f00';
+            return;
+          }
+          
+          if (!response || !response.success || !response.data) {
+            console.error('DIG Viewer: Invalid response:', response);
+            loading.textContent = 'Error: Invalid response from RPC';
+            loading.style.color = '#f00';
+            return;
+          }
+          
+          // response.data is a data URL from RPC
+          const dataUrl = response.data;
+          const contentType = response.contentType || 'text/html';
+          
+          console.log('DIG Viewer: Received data URL, contentType:', contentType);
+          
+          // Hide loading indicator
+          loading.style.display = 'none';
+          
+          // Create iframe to display the content
+          const iframe = document.createElement('iframe');
+          iframe.src = dataUrl;
+          iframe.style.width = '100%';
+          iframe.style.height = '100vh';
+          iframe.style.border = 'none';
+          
+          // Handle iframe load
+          iframe.onload = () => {
+            console.log('DIG Viewer: Content loaded in iframe');
+          };
+          
+          iframe.onerror = (error) => {
+            console.error('DIG Viewer: Error loading iframe:', error);
+            loading.style.display = 'block';
+            loading.textContent = 'Error loading content';
+            loading.style.color = '#f00';
+          };
+          
+          // Replace body content with iframe
+          document.body.innerHTML = '';
+          document.body.appendChild(iframe);
+        });
       } catch (e) {
         console.error('DIG Viewer: Error loading content:', e);
         loading.textContent = 'Error: ' + e.message;

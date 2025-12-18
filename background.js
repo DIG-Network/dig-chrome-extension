@@ -143,41 +143,45 @@ async function fetchContentViaRPC(urn) {
   try {
     // Remove dig:// prefix if present
     let urnString = urn.replace(/^dig:\/\//, '');
-    const parsed = DigURN.parseURN(urnString);
+    const parsed = parseURN(urnString);
     if (!parsed) {
       throw new Error('Invalid URN format');
     }
     
-    // Hash the URN with SHA256 for zero-knowledge RPC call
     // Use the full URN string (with urn:dig: prefix)
     const fullURN = urnString.startsWith('urn:dig:') ? urnString : `urn:dig:chia:${parsed.storeId}${parsed.roothash ? ':' + parsed.roothash : ''}${parsed.resourceKey ? '/' + parsed.resourceKey : ''}`;
-    const encoder = new TextEncoder();
-    const data = encoder.encode(fullURN);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashedURN = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     
-    // Get RPC server config
-    const serverConfig = await getServerConfig();
-    const rpcUrl = `http://${serverConfig.url}:${DIG_RPC_PORT}`;
+    // Use rpc.dig.local or localhost for RPC server
+    // Try localhost first (for testing), can be changed to rpc.dig.local if DNS is configured
+    const rpcHost = 'localhost'; // Change to 'rpc.dig.local' if DNS is configured
+    const rpcUrl = `http://${rpcHost}:${DIG_RPC_PORT}/rpc`;
     
-    // Make JSON-RPC call
+    // Make JSON-RPC call with raw URN (no hashing, no encryption)
     const rpcRequest = {
       jsonrpc: '2.0',
-      method: 'get_content',
+      method: 'getContent',
       params: {
-        hashed_urn: hashedURN
+        urn: fullURN
       },
       id: 1
     };
     
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(rpcRequest)
-    });
+    console.log('DIG Extension: Making RPC call to:', rpcUrl, 'for URN:', fullURN.substring(0, 50) + '...');
+    
+    let response;
+    try {
+      response = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(rpcRequest)
+      });
+    } catch (fetchError) {
+      // Network error - RPC server might not be running
+      console.error('DIG Extension: RPC fetch error (server might not be running):', fetchError);
+      throw new Error(`RPC server not available: ${fetchError.message}. Make sure the RPC server is running on ${rpcUrl}`);
+    }
     
     if (!response.ok) {
       throw new Error(`RPC call failed: ${response.status} ${response.statusText}`);
@@ -189,17 +193,17 @@ async function fetchContentViaRPC(urn) {
       throw new Error(`RPC error: ${rpcResponse.error.message || JSON.stringify(rpcResponse.error)}`);
     }
     
-    // Get encrypted blob
-    const encryptedBlob = rpcResponse.result.encrypted_blob;
+    // Get data URL directly from response (no encryption/decryption needed)
+    const dataUrl = rpcResponse.result.dataUrl;
     
-    // TODO: Decrypt the blob using encryption key derived from URN
-    // For now, we'll return the encrypted blob and handle decryption later
-    // The decryption key should be derived from the URN
+    if (!dataUrl) {
+      throw new Error('RPC response missing dataUrl');
+    }
     
     return {
-      encryptedBlob: encryptedBlob,
+      dataUrl: dataUrl,
       urn: urn,
-      needsDecryption: true
+      fullURN: fullURN
     };
   } catch (error) {
     console.error('DIG Extension: RPC fetch failed:', error);
@@ -256,71 +260,16 @@ async function getServerConfig() {
   };
 }
 
-// Convert dig:// URL to content server URL or extension resource
-// ALL dig:// requests use content server URL conversion with URN handling
+// Convert dig:// URL - ALL dig:// URLs now use RPC
+// This function is kept for compatibility but all dig:// URLs should go through RPC
 async function convertDigUrl(url) {
   if (typeof url !== 'string' || !url.startsWith('dig://')) {
     return url;
   }
   
-  const urlPath = url.replace(/^dig:\/\//, '');
-  
-  // ALL dig:// requests: Try to parse as URN and convert to content server URL
-  // This handles: dig://urn:dig:chia:... and dig://test/... (legacy)
-  const contentServerUrl = await urnToContentServerUrl(url);
-  if (contentServerUrl) {
-    return contentServerUrl;
-  }
-  
-  // If not a valid URN, try to construct one from the path
-  // Handle legacy dig://test/* format by treating it as a test URN
-  if (urlPath.startsWith('test/') || urlPath.startsWith('test')) {
-    // Legacy format - redirect to configured server
-    const result = await chrome.storage.local.get(['server.host', 'server.url', 'server.port']);
-    let serverHost = result['server.host'] || 'localhost:80';
-    
-    // Fallback to old format for backward compatibility
-    if (!result['server.host'] && (result['server.url'] || result['server.port'])) {
-      const url = result['server.url'] || 'localhost';
-      const port = result['server.port'] || 80;
-      serverHost = `${url}:${port}`;
-    }
-    
-    // Use the RPC host as-is - don't assume protocol or port
-    // If it doesn't have a protocol, add http://
-    let testServerUrl = serverHost.trim();
-    if (!testServerUrl.includes('://')) {
-      testServerUrl = `http://${testServerUrl}`;
-    }
-    
-    // Remove trailing slash
-    testServerUrl = testServerUrl.replace(/\/+$/, '');
-    
-    // Remove 'test' prefix from path
-    const cleanPath = urlPath.replace(/^test\/?/, '');
-    
-    // Append the path
-    return `${testServerUrl}/${cleanPath}`;
-  }
-  
-  // Final fallback: treat as direct path to configured server
-  const result = await chrome.storage.local.get(['server.host', 'server.url', 'server.port']);
-  let serverHost = result['server.host'] || 'localhost:80';
-  
-  if (!result['server.host'] && (result['server.url'] || result['server.port'])) {
-    const url = result['server.url'] || 'localhost';
-    const port = result['server.port'] || 80;
-    serverHost = `${url}:${port}`;
-  }
-  
-  let fallbackServerUrl = serverHost.trim();
-  if (!fallbackServerUrl.includes('://')) {
-    fallbackServerUrl = `http://${fallbackServerUrl}`;
-  }
-  
-  fallbackServerUrl = fallbackServerUrl.replace(/\/+$/, '');
-  
-  return `${fallbackServerUrl}/${urlPath}`;
+  // ALL dig:// URLs use RPC - return marker to indicate RPC should be used
+  // The actual fetching will be done via fetchContentViaRPC
+  return `rpc://${url}`;
 }
 
 // Rule ID for dig.local redirect (must be unique and constant)
@@ -410,57 +359,26 @@ async function isDigLocalResolvable() {
   }
 }
 
-// Update declarativeNetRequest rules to redirect dig.local to content server
+// Disabled: No subdomain redirection - dig:// URLs go directly to RPC
 async function updateDigLocalRedirectRules() {
   try {
-    const result = await chrome.storage.local.get(['extensionEnabled']);
-    const isEnabled = result.extensionEnabled !== false; // Default to true
-    
-    // Get all existing dynamic rules to check if our rule exists
+    // Remove any existing dig.local redirect rules
     const existingRules = await chrome.declarativeNetRequest.getDynamicRules();
     const ruleExists = existingRules.some(rule => rule.id === DIG_LOCAL_RULE_ID);
     
-    // Remove old rule if it exists
     if (ruleExists) {
       try {
         await chrome.declarativeNetRequest.updateDynamicRules({
           removeRuleIds: [DIG_LOCAL_RULE_ID]
         });
-        console.log('DIG Extension: Removed old dig.local redirect rule');
+        console.log('DIG Extension: Removed dig.local redirect rule (no subdomain redirection)');
       } catch (e) {
         console.warn('DIG Extension: Error removing old rule:', e);
       }
     }
     
-    if (!isEnabled) {
-      // Extension disabled - rules already removed above
-      return;
-    }
-    
-    // Always redirect to content server (localhost:80 or dig.local:80)
-    const serverConfig = await getServerConfig();
-    const resolvable = await isDigLocalResolvable();
-    const host = resolvable ? 'dig.local' : 'localhost';
-    const redirectUrl = `http://${host}:${serverConfig.port}`;
-    console.log(`DIG Extension: dig.local will redirect to content server: ${redirectUrl}`);
-    
-    // Create redirect rule for dig.local (including subdomains)
-    // Note: declarativeNetRequest doesn't support wildcard subdomains directly
-    // We'll handle subdomains via webNavigation listeners instead
-    const rule = {
-      id: DIG_LOCAL_RULE_ID,
-      priority: 1,
-      action: {
-        type: 'redirect',
-        redirect: {
-          regexSubstitution: redirectUrl + '\\1'
-        }
-      },
-      condition: {
-        regexFilter: '^https?://dig\\.local(.*)$',
-        resourceTypes: ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket', 'webtransport', 'webbundle', 'other']
-      }
-    };
+    // No new rules - all dig:// URLs go directly to RPC
+    return;
     
     // Add the new rule (only after ensuring old one is removed)
     try {
@@ -567,15 +485,14 @@ async function preloadResources(digUrls) {
         return { url: digUrl, cached: true, data: resourceCache.get(digUrl) };
       }
       
-      const serverUrl = await convertDigUrl(digUrl);
-      
+      // Use RPC to get data URL
       try {
-        // Just store the server URL, don't fetch and convert to data URL
-        const cachedData = { serverUrl: serverUrl, url: serverUrl };
+        const rpcResult = await fetchContentViaRPC(digUrl);
+        const cachedData = { dataUrl: rpcResult.dataUrl, url: rpcResult.dataUrl };
         resourceCache.set(digUrl, cachedData);
         return { url: digUrl, cached: false, data: cachedData };
       } catch (error) {
-        console.error(`Failed to preload ${digUrl}:`, error);
+        console.error(`Failed to preload ${digUrl} via RPC:`, error);
         return { url: digUrl, error: error.message };
       }
     })
@@ -635,13 +552,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.action === 'convertDigUrl') {
-    // Convert dig:// URL to server URL for viewer
+    // Convert dig:// URL to data URL via RPC
     (async () => {
       try {
-        const serverUrl = await convertDigUrl(message.url);
-        sendResponse({ url: serverUrl });
+        const digUrl = message.url;
+        if (!digUrl || !digUrl.startsWith('dig://')) {
+          sendResponse({ error: 'Invalid dig:// URL' });
+          return;
+        }
+        
+        // Use RPC to get data URL
+        const rpcResult = await fetchContentViaRPC(digUrl);
+        sendResponse({ url: rpcResult.dataUrl, dataUrl: rpcResult.dataUrl });
       } catch (error) {
-        console.error('DIG Extension: Error converting URL:', error);
+        console.error('DIG Extension: Error converting URL via RPC:', error);
         sendResponse({ error: error.message });
       }
     })();
@@ -673,21 +597,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.log('DIG Extension: navigateToDigUrl requested for:', digUrl);
         console.log('DIG Extension: Tab ID:', tabId);
         
-        // Convert dig:// URL to server URL (subdomain format like <encodedStoreId>.dig.local/path)
-        const serverUrl = await convertDigUrl(digUrl);
-        console.log('DIG Extension: Converted to server URL:', serverUrl);
-        console.log('DIG Extension: Navigating tab', tabId, 'to server URL');
+        // Redirect to dig-viewer.html (not data URL)
+        await handleDigUrlNavigation(tabId, digUrl);
         
-        // Navigate the tab to the server URL
-        await chrome.tabs.update(tabId, {
-          url: serverUrl
-        });
-        
-        console.log('DIG Extension: Successfully navigated tab to server URL');
+        console.log('DIG Extension: Successfully redirected to viewer');
         
         // Try to send response (may fail if navigation closed port)
         try {
-          sendResponse({ success: true, url: serverUrl });
+          const urn = digUrl.replace(/^dig:\/\//, '');
+          const viewerUrl = chrome.runtime.getURL(`dig-viewer.html?urn=${encodeURIComponent(urn)}`);
+          sendResponse({ success: true, url: viewerUrl });
         } catch (e) {
           // Port may be closed due to navigation - this is expected
           console.log('DIG Extension: Response not sent (port closed by navigation, expected)');
@@ -749,20 +668,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const handleGetDataUrl = async () => {
       try {
         const digUrl = message.url;
-        console.log('DIG Extension: getDataUrl requested (returning server URL):', digUrl);
+        console.log('DIG Extension: getDataUrl requested (returning data URL from RPC):', digUrl);
         
-        // Convert dig:// URL to server URL (subdomain format)
-        const serverUrl = await convertDigUrl(digUrl);
-        console.log('DIG Extension: Converted to server URL:', serverUrl);
+        // Use RPC to get data URL
+        const rpcResult = await fetchContentViaRPC(digUrl);
+        const dataUrl = rpcResult.dataUrl;
+        console.log('DIG Extension: Got data URL from RPC');
         
-        // Return server URL instead of data URL
+        // Return data URL
         try {
-          sendResponse({ serverUrl: serverUrl, url: serverUrl });
+          sendResponse({ dataUrl: dataUrl, url: dataUrl });
         } catch (e) {
           console.error('DIG Extension: Failed to send response (port may be closed):', e);
         }
       } catch (error) {
-        console.error('DIG Extension: Error getting server URL:', error);
+        console.error('DIG Extension: Error getting data URL from RPC:', error);
         try {
           sendResponse({ error: error.message });
         } catch (e) {
@@ -879,7 +799,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   if (message.action === 'proxyRequest') {
     // Proxy a dig:// request through the background service worker
-    // Acts as content server: converts URNs to content server URLs and fetches as blob
+    // PRIMARY: Use RPC to fetch content
+    // FALLBACK: Use content server for legacy/test URLs
     const digUrl = message.url;
     if (!digUrl || !digUrl.startsWith('dig://')) {
       sendResponse({ error: 'Invalid dig:// URL' });
@@ -898,116 +819,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false;
     }
     
-    // Convert to content server URL and fetch
+    // Fetch via RPC or content server
     (async () => {
       try {
-        // Try to convert URN to content server URL
-        const contentServerUrl = await urnToContentServerUrl(digUrl);
-        let serverUrl = contentServerUrl;
+        // Parse URN to determine if we should use RPC
+        const urnString = digUrl.replace(/^dig:\/\//, '');
+        const parsed = parseURN(urnString);
         
-        // If not a valid URN, fall back to old conversion method
-        if (!serverUrl) {
-          serverUrl = await convertDigUrl(digUrl);
-        }
-        
-        console.log('DIG Extension: Fetching via content server:', serverUrl);
-        
-        // Fetch the data from content server
-        const response = await fetch(serverUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': '*/*'
-          }
-        });
-        
-        // Check HTTP status code - reject error responses
-        if (!response.ok) {
-          // If content server fails, try RPC directly as fallback (for URNs)
-          const parsed = parseURN(digUrl);
-          if (parsed) {
-            console.log('DIG Extension: Content server failed, trying RPC directly');
-            try {
-              const rpcResult = await fetchContentViaRPC(digUrl);
-              // TODO: Decrypt rpcResult.encryptedBlob
-              // For now, return error and let user know RPC needs decryption
-              sendResponse({ 
-                error: 'Content server unavailable. RPC response requires decryption (not yet implemented).',
-                statusCode: response.status,
-                success: false,
-                rpcAvailable: true
-              });
-              return;
-            } catch (rpcError) {
-              console.error('DIG Extension: RPC fallback also failed:', rpcError);
-            }
-          }
+        if (parsed) {
+          // Valid URN - use RPC
+          console.log('DIG Extension: Fetching via RPC for URN:', urnString.substring(0, 50) + '...');
+          const rpcResult = await fetchContentViaRPC(digUrl);
           
-          const statusText = response.statusText || 'Unknown Error';
-          const statusCode = response.status;
+          // RPC returns data URL directly
+          const dataUrl = rpcResult.dataUrl;
           
-          // Try to get error message from JSON response if available
-          let errorMessage = `HTTP ${statusCode} ${statusText}`;
-          try {
-            const contentType = response.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-              const errorData = await response.json();
-              if (errorData.error || errorData.message) {
-                errorMessage = errorData.error || errorData.message;
-              }
-            }
-          } catch (e) {
-            // Ignore JSON parse errors, use default message
-          }
+          // Extract content type from data URL
+          const contentTypeMatch = dataUrl.match(/^data:([^;]+)/);
+          const contentType = contentTypeMatch ? contentTypeMatch[1] : 'application/octet-stream';
           
-          sendResponse({ 
-            error: errorMessage,
-            statusCode: statusCode,
-            success: false
+          // Cache the result
+          resourceCache.set(digUrl, { data: dataUrl, contentType });
+          
+          sendResponse({
+            success: true,
+            data: dataUrl,
+            contentType: contentType,
+            cached: false
           });
           return;
         }
         
-        // Get content type from response or infer from resource key
-        let contentType = response.headers.get('content-type');
-        if (!contentType || contentType === 'application/octet-stream') {
-          // Infer MIME type from resource key
-          const parsed = parseURN(digUrl);
-          if (parsed && parsed.resourceKey) {
-            const ext = parsed.resourceKey.split('.').pop().toLowerCase();
-            const mimeTypes = {
-              'html': 'text/html',
-              'css': 'text/css',
-              'js': 'application/javascript',
-              'json': 'application/json',
-              'png': 'image/png',
-              'jpg': 'image/jpeg',
-              'jpeg': 'image/jpeg',
-              'gif': 'image/gif',
-              'webp': 'image/webp',
-              'svg': 'image/svg+xml',
-              'ico': 'image/x-icon',
-              'woff': 'font/woff',
-              'woff2': 'font/woff2',
-              'ttf': 'font/ttf',
-              'otf': 'font/otf'
-            };
-            contentType = mimeTypes[ext] || 'application/octet-stream';
-          } else {
-            contentType = 'application/octet-stream';
-          }
+        // Not a valid URN - still try RPC (RPC server will return decoy or error)
+        console.log('DIG Extension: Invalid URN format, trying RPC anyway:', digUrl);
+        try {
+          const rpcResult = await fetchContentViaRPC(digUrl);
+          const dataUrl = rpcResult.dataUrl;
+          const contentTypeMatch = dataUrl.match(/^data:([^;]+)/);
+          const contentType = contentTypeMatch ? contentTypeMatch[1] : 'application/octet-stream';
+          
+          resourceCache.set(digUrl, { data: dataUrl, contentType });
+          
+          sendResponse({
+            success: true,
+            data: dataUrl,
+            contentType: contentType,
+            cached: false
+          });
+          return;
+        } catch (rpcError) {
+          console.error('DIG Extension: RPC failed for invalid URN:', rpcError);
+          sendResponse({
+            error: `Invalid URN format: ${rpcError.message}`,
+            success: false
+          });
+          return;
         }
-        
-        // serverUrl is already set above (either from contentServerUrl or convertDigUrl fallback)
-        // Cache the server URL
-        resourceCache.set(digUrl, { serverUrl: serverUrl, url: serverUrl, contentType });
-        
-        sendResponse({
-          success: true,
-          serverUrl: serverUrl,
-          url: serverUrl,
-          contentType: contentType,
-          cached: false
-        });
       } catch (error) {
         console.error('DIG Extension: Proxy request failed:', error);
         sendResponse({ error: error.message });
@@ -1050,61 +917,8 @@ function isDigLocalUrl(url) {
 }
 
 // Resolve dig.local subdomain URL back to URN
-function resolveSubdomainToURN(url) {
-  try {
-    const urlObj = new URL(url);
-    const hostname = urlObj.hostname;
-    const path = urlObj.pathname;
-    
-    // Check if it's a dig.local subdomain
-    if (!hostname.endsWith('.dig.local') && hostname !== 'dig.local') {
-      return null;
-    }
-    
-    // Remove .dig.local suffix
-    const subdomainPart = hostname.replace(/\.dig\.local$/, '');
-    
-    // Handle direct URN format: http://dig.local/urn:dig:...
-    if (hostname === 'dig.local' && path.startsWith('/urn:dig:')) {
-      return path.substring(1); // Remove leading slash
-    }
-    
-    // Handle path-based format: http://dig.local/{storeId}/{resourceKey}
-    // This should redirect to subdomain format, but we can handle it here too
-    if (hostname === 'dig.local') {
-      const pathMatch = path.match(/^\/([a-f0-9]{64})(?:\/(.+))?$/i);
-      if (pathMatch) {
-        const storeId = pathMatch[1].toLowerCase();
-        const resourceKey = pathMatch[2] || '';
-        return `urn:dig:chia:${storeId}${resourceKey ? '/' + resourceKey : ''}`;
-      }
-    }
-    
-    // Handle subdomain format
-    const subdomains = subdomainPart.split('.');
-    
-    if (subdomains.length === 1) {
-      // Latest version: {encodedStoreId}.dig.local/{resourceKey}
-      const encodedStoreId = subdomains[0];
-      const storeId = decodeStoreId(encodedStoreId);
-      const resourceKey = path === '/' ? '' : path.substring(1); // Remove leading slash
-      return `urn:dig:chia:${storeId}${resourceKey ? '/' + resourceKey : ''}`;
-    } else if (subdomains.length === 2) {
-      // Specific version: {encodedStoreId}.{encodedRootHash}.dig.local/{resourceKey}
-      const encodedStoreId = subdomains[0];
-      const encodedRootHash = subdomains[1];
-      const storeId = decodeStoreId(encodedStoreId);
-      const rootHash = decodeStoreId(encodedRootHash);
-      const resourceKey = path === '/' ? '' : path.substring(1); // Remove leading slash
-      return `urn:dig:chia:${storeId}:${rootHash}${resourceKey ? '/' + resourceKey : ''}`;
-    }
-    
-    return null;
-  } catch (e) {
-    console.error('DIG Extension: Failed to resolve subdomain to URN:', e);
-    return null;
-  }
-}
+// Removed: No subdomain redirection - dig:// URLs go directly to RPC
+// function resolveSubdomainToURN(url) { ... }
 
 // Handle dig:// URL navigation by fetching content and streaming as data URL
 // while keeping dig:// in the address bar
@@ -1153,23 +967,47 @@ async function handleDigUrlNavigation(tabId, digUrl) {
   }
   
   try {
-    // Convert dig:// URL to server URL (subdomain format)
-    const serverUrl = await convertDigUrl(digUrl);
-    console.log('DIG Extension: Converted to server URL:', serverUrl);
+    // Extract URN from dig:// URL (remove dig:// prefix)
+    const urn = digUrl.replace(/^dig:\/\//, '');
     
-    // Navigate directly to the server URL
+    // Redirect to dig-viewer.html with URN parameter
+    // The viewer will fetch content via RPC and embed it
+    const viewerUrl = chrome.runtime.getURL(`dig-viewer.html?urn=${encodeURIComponent(urn)}`);
+    
+    console.log('DIG Extension: Redirecting to viewer:', viewerUrl);
+    
+    // Navigate to viewer page
     await chrome.tabs.update(tabId, {
-      url: serverUrl
+      url: viewerUrl
     });
     
-    console.log('DIG Extension: Successfully navigated to server URL');
+    console.log('DIG Extension: Successfully redirected to viewer');
   } catch (error) {
     console.error('DIG Extension: Error in handleDigUrlNavigation:', error);
-    throw error;
+    // Show error page
+    const errorPage = `data:text/html;charset=utf-8,${encodeURIComponent(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DIG Network Error</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #1a0a2e; color: white; }
+    .error { color: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <h1 class="error">Failed to load DIG content</h1>
+  <p>URL: ${digUrl}</p>
+  <p>Error: ${error.message}</p>
+</body>
+</html>
+    `)}`;
+    await chrome.tabs.update(tabId, { url: errorPage });
   }
 }
 
-// Helper function to convert dig:// URL to configured server and redirect tab
+// Helper function to convert dig:// URL and redirect to viewer
+// This is now just a wrapper around handleDigUrlNavigation
 async function redirectDigUrlToLocalhost(tabId, digUrl) {
   if (!digUrl || !digUrl.startsWith('dig://')) {
     return false;
@@ -1185,98 +1023,22 @@ async function redirectDigUrlToLocalhost(tabId, digUrl) {
     return false;
   }
   
-  // Try to use handleDigUrlNavigation first (loads as data URL and tries to keep dig:// in URL bar)
-  // Fall back to server redirect if that fails
+  // Use handleDigUrlNavigation which redirects to dig-viewer.html
   try {
     await handleDigUrlNavigation(tabId, digUrl);
-    console.log('DIG Extension: Successfully loaded via handleDigUrlNavigation');
+    console.log('DIG Extension: Successfully redirected to viewer');
     return true;
   } catch (error) {
-    console.log('DIG Extension: handleDigUrlNavigation failed, falling back to server redirect:', error);
-    // Fallback to server URL redirect
-    const serverUrl = await convertDigUrl(digUrl);
-    console.log('DIG Extension: Converted URL:', digUrl, '->', serverUrl);
-    
-    try {
-      // Redirect to configured server
-      await chrome.tabs.update(tabId, {
-        url: serverUrl
-      });
-      console.log('DIG Extension: Successfully redirected tab to:', serverUrl);
-      return true;
-    } catch (error) {
-      console.error('DIG Extension: Failed to redirect tab:', error);
-      return false;
-    }
+    console.error('DIG Extension: Failed to redirect to viewer:', error);
+    return false;
   }
 }
 
 // Helper function to redirect dig.local to content server
+// Disabled: No subdomain redirection - dig:// URLs go directly to RPC
 async function redirectDigLocalToExtension(tabId, digLocalUrl) {
-  if (!digLocalUrl || !isDigLocalUrl(digLocalUrl)) {
-    return false;
-  }
-  
-  const result = await chrome.storage.local.get(['extensionEnabled']);
-  const isEnabled = result.extensionEnabled !== false; // Default to true
-  
-  if (!isEnabled) {
-    return false;
-  }
-  
-  try {
-    // Ensure URL has a protocol
-    let normalizedUrl = digLocalUrl;
-    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
-      normalizedUrl = 'http://' + normalizedUrl;
-    }
-    
-    // Parse the dig.local URL to get the path
-    const urlObj = new URL(normalizedUrl);
-    let path = urlObj.pathname + urlObj.search + urlObj.hash;
-    
-    // If path is empty or just "/", use root path
-    if (!path || path === '/') {
-      path = '/';
-    } else if (!path.startsWith('/')) {
-      path = '/' + path;
-    }
-    
-    // Always redirect to content server (localhost or dig.local based on resolvability)
-    const serverConfig = await getServerConfig();
-    const resolvable = await isDigLocalResolvable();
-    const host = resolvable ? 'dig.local' : 'localhost';
-    const port = serverConfig.port || 80;
-    
-    // Construct the target server URL
-    const serverUrl = port === 80 
-      ? `http://${host}${path}`
-      : `http://${host}:${port}${path}`;
-    
-    // Check if we're already at the target URL to avoid redirect loops
-    // Compare normalized URLs (ignore port if it's 80)
-    const currentUrlObj = new URL(normalizedUrl);
-    const currentHost = currentUrlObj.hostname;
-    const currentPort = currentUrlObj.port || '80';
-    const currentPath = currentUrlObj.pathname + currentUrlObj.search + currentUrlObj.hash;
-    
-    // If we're already pointing to the target host and path, don't redirect
-    if ((currentHost === host || (currentHost === 'dig.local' && host === 'dig.local')) && 
-        currentPath === path &&
-        (currentPort === port.toString() || (currentPort === '80' && port === 80) || (currentPort === '' && port === 80))) {
-      console.log('DIG Extension: Already at target URL, skipping redirect to avoid loop:', normalizedUrl);
-      return false;
-    }
-    
-    await chrome.tabs.update(tabId, {
-      url: serverUrl
-    });
-    console.log('DIG Extension: Redirecting dig.local to content server:', serverUrl);
-    return true;
-  } catch (error) {
-    console.error('DIG Extension: Failed to redirect dig.local:', error);
-    return false;
-  }
+  // No-op: All dig:// URLs should go directly to RPC, no subdomain conversion
+  return false;
 }
 
 // Handle navigation to dig:// URLs via webNavigation (for in-page navigation and address bar)
@@ -1314,9 +1076,25 @@ chrome.webNavigation.onBeforeNavigate.addListener(
           await handleDigUrlNavigation(details.tabId, details.url);
         } catch (error) {
           console.error('DIG Extension: Error handling dig:// navigation:', error);
-          // Fallback to redirect if streaming fails
-          const fallbackServerUrl = await convertDigUrl(details.url);
-          await chrome.tabs.update(details.tabId, { url: fallbackServerUrl });
+          // Show error page if RPC fails
+          const errorPage = `data:text/html;charset=utf-8,${encodeURIComponent(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DIG Network Error</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #1a0a2e; color: white; }
+    .error { color: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <h1 class="error">Failed to load DIG content</h1>
+  <p>URL: ${details.url}</p>
+  <p>Error: ${error.message}</p>
+</body>
+</html>
+          `)}`;
+          await chrome.tabs.update(details.tabId, { url: errorPage });
         }
       } else {
         console.log('DIG Extension: Extension is disabled, not redirecting');
@@ -1325,9 +1103,12 @@ chrome.webNavigation.onBeforeNavigate.addListener(
     }
     
     // Also check for Google search pages with dig:// in query (catch before page loads)
-    // IMPORTANT: Skip if we're already navigating to a data URL or dig.local to prevent loops
-    if (details.url && details.frameId === 0 && !details.url.startsWith('data:') && !isDigLocalUrl(details.url)) {
-      const searchEngines = ['google.com/search', 'bing.com/search', 'duckduckgo.com'];
+    // IMPORTANT: Skip if we're already navigating to a data URL, dig.local, or viewer to prevent loops
+    if (details.url && details.frameId === 0 && 
+        !details.url.startsWith('data:') && 
+        !isDigLocalUrl(details.url) &&
+        !details.url.includes('dig-viewer.html')) {
+      const searchEngines = ['google.com/search', 'www.google.com/search', 'bing.com/search', 'duckduckgo.com', 'yahoo.com/search', 'search.yahoo.com'];
       const isSearchPage = searchEngines.some(engine => details.url.includes(engine));
       
       if (isSearchPage) {
@@ -1343,18 +1124,36 @@ chrome.webNavigation.onBeforeNavigate.addListener(
           
           if (query) {
             let digUrl = null;
-            const digMatch = query.match(/dig:\/\/[^\s"']+/);
-            if (digMatch) {
-              digUrl = digMatch[0];
-            } else {
+            
+            // Try multiple decoding passes (Google may double-encode)
+            let decodedQuery = query;
+            for (let i = 0; i < 3; i++) {
+              // First try direct match
+              const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+              if (digMatch) {
+                digUrl = digMatch[0];
+                break;
+              }
+              
+              // Try URL-decoding
               try {
-                const decodedQuery = decodeURIComponent(query);
-                const decodedMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
-                if (decodedMatch) {
-                  digUrl = decodedMatch[0];
+                const nextDecoded = decodeURIComponent(decodedQuery);
+                if (nextDecoded === decodedQuery) {
+                  // No more decoding possible
+                  break;
                 }
+                decodedQuery = nextDecoded;
               } catch (e) {
-                // Already decoded
+                // Already decoded or invalid encoding
+                break;
+              }
+            }
+            
+            // Final check on fully decoded query
+            if (!digUrl) {
+              const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+              if (finalMatch) {
+                digUrl = finalMatch[0];
               }
             }
             
@@ -1439,9 +1238,12 @@ chrome.webNavigation.onCommitted.addListener(
     }
     
     // Aggressively catch Google search pages with dig:// in query and redirect immediately
-    // This replaces the Google search page with the dig:// content as a data URL
-    // IMPORTANT: Skip if we're already on a data URL or dig.local to prevent loops
-    if (details.url && details.frameId === 0 && !details.url.startsWith('data:') && !isDigLocalUrl(details.url)) {
+    // This replaces the Google search page with the dig-viewer.html
+    // IMPORTANT: Skip if we're already on a data URL, dig.local, or viewer to prevent loops
+    if (details.url && details.frameId === 0 && 
+        !details.url.startsWith('data:') && 
+        !isDigLocalUrl(details.url) &&
+        !details.url.includes('dig-viewer.html')) {
       const searchEngines = ['google.com/search', 'bing.com/search', 'duckduckgo.com', 'yahoo.com/search', 'search.yahoo.com'];
       const isSearchPage = searchEngines.some(engine => details.url.includes(engine));
       
@@ -1461,20 +1263,35 @@ chrome.webNavigation.onCommitted.addListener(
             // Try to find dig:// URL in the query (might be URL-encoded or plain)
             let digUrl = null;
             
-            // First try direct match (already decoded by searchParams.get)
-            const digMatch = query.match(/dig:\/\/[^\s"']+/);
-            if (digMatch) {
-              digUrl = digMatch[0];
-            } else {
-              // Try URL-decoding the entire query in case it's double-encoded
+            // Try multiple decoding passes (Google may double-encode)
+            let decodedQuery = query;
+            for (let i = 0; i < 3; i++) {
+              // First try direct match
+              const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+              if (digMatch) {
+                digUrl = digMatch[0];
+                break;
+              }
+              
+              // Try URL-decoding
               try {
-                const decodedQuery = decodeURIComponent(query);
-                const decodedMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
-                if (decodedMatch) {
-                  digUrl = decodedMatch[0];
+                const nextDecoded = decodeURIComponent(decodedQuery);
+                if (nextDecoded === decodedQuery) {
+                  // No more decoding possible
+                  break;
                 }
+                decodedQuery = nextDecoded;
               } catch (e) {
                 // Already decoded or invalid encoding
+                break;
+              }
+            }
+            
+            // Final check on fully decoded query
+            if (!digUrl) {
+              const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+              if (finalMatch) {
+                digUrl = finalMatch[0];
               }
             }
             
@@ -1487,16 +1304,14 @@ chrome.webNavigation.onCommitted.addListener(
                 return;
               }
               
-              console.log('DIG Extension: onCommitted detected dig:// in search query, redirecting to dig.local:', digUrl);
-              // Use handleDigUrlNavigation to convert to dig.local URL
+              console.log('DIG Extension: onCommitted detected dig:// in search query, redirecting to viewer:', digUrl);
+              // Use handleDigUrlNavigation to redirect to dig-viewer.html
               try {
                 await handleDigUrlNavigation(details.tabId, digUrl);
-                console.log('DIG Extension: Successfully redirected to dig.local');
+                console.log('DIG Extension: Successfully redirected from Google search to viewer');
                 return; // Exit early to prevent further processing
               } catch (error) {
                 console.error('DIG Extension: Error in onCommitted handleDigUrlNavigation:', error);
-                // Fallback to server redirect if navigation fails
-                await redirectDigUrlToLocalhost(details.tabId, digUrl);
                 return;
               }
             }
@@ -1535,7 +1350,7 @@ chrome.tabs.onUpdated.addListener(
     if (changeInfo.url) {
       // URL changed - check if it's dig:// (catches address bar navigation)
       if (tab.url && tab.url.startsWith('dig://') && !isLocalhostUrl(tab.url)) {
-        await redirectDigUrlToLocalhost(tabId, tab.url);
+        await handleDigUrlNavigation(tabId, tab.url);
         return;
       }
       
@@ -1550,7 +1365,7 @@ chrome.tabs.onUpdated.addListener(
     // This is important for address bar navigation
     if (changeInfo.status === 'loading') {
       if (tab.url && tab.url.startsWith('dig://') && !isLocalhostUrl(tab.url)) {
-        await redirectDigUrlToLocalhost(tabId, tab.url);
+        await handleDigUrlNavigation(tabId, tab.url);
         return;
       }
       
@@ -1561,20 +1376,63 @@ chrome.tabs.onUpdated.addListener(
       }
       
       // Also check if it's a search page with dig:// in URL (very early catch)
-      if (tab.url) {
-        const searchEngines = ['google.com/search', 'bing.com/search', 'duckduckgo.com'];
+      if (tab.url && !tab.url.includes('dig-viewer.html')) {
+        const searchEngines = ['google.com/search', 'bing.com/search', 'duckduckgo.com', 'yahoo.com/search', 'search.yahoo.com'];
         const isSearchPage = searchEngines.some(engine => tab.url.includes(engine));
         if (isSearchPage) {
           try {
             const urlObj = new URL(tab.url);
-            const query = urlObj.searchParams.get('q') || urlObj.searchParams.get('query');
+            const queryParams = ['q', 'query', 'text', 'p', 'wd'];
+            let query = null;
+            
+            for (const param of queryParams) {
+              query = urlObj.searchParams.get(param);
+              if (query) break;
+            }
+            
             if (query) {
-              const digMatch = query.match(/dig:\/\/[^\s"']+/);
-              if (digMatch) {
-                const digUrl = digMatch[0];
-                console.log('DIG Extension: Early detection of dig:// in search, redirecting:', digUrl);
-                await redirectDigUrlToLocalhost(tabId, digUrl);
-                return;
+              let digUrl = null;
+              
+              // Try multiple decoding passes (Google may double-encode)
+              let decodedQuery = query;
+              for (let i = 0; i < 3; i++) {
+                // First try direct match
+                const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+                if (digMatch) {
+                  digUrl = digMatch[0];
+                  break;
+                }
+                
+                // Try URL-decoding
+                try {
+                  const nextDecoded = decodeURIComponent(decodedQuery);
+                  if (nextDecoded === decodedQuery) {
+                    // No more decoding possible
+                    break;
+                  }
+                  decodedQuery = nextDecoded;
+                } catch (e) {
+                  // Already decoded or invalid encoding
+                  break;
+                }
+              }
+              
+              // Final check on fully decoded query
+              if (!digUrl) {
+                const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+                if (finalMatch) {
+                  digUrl = finalMatch[0];
+                }
+              }
+              
+              if (digUrl) {
+                console.log('DIG Extension: Early detection of dig:// in search (tabs.onUpdated), redirecting to viewer:', digUrl);
+                try {
+                  await handleDigUrlNavigation(tabId, digUrl);
+                  return;
+                } catch (error) {
+                  console.error('DIG Extension: Error redirecting from search:', error);
+                }
               }
             }
           } catch (e) {
@@ -1587,8 +1445,74 @@ chrome.tabs.onUpdated.addListener(
     // Check when tab becomes complete (fallback for any missed cases)
     if (changeInfo.status === 'complete') {
       if (tab.url && tab.url.startsWith('dig://') && !isLocalhostUrl(tab.url)) {
-        await redirectDigUrlToLocalhost(tabId, tab.url);
+        await handleDigUrlNavigation(tabId, tab.url);
         return;
+      }
+      
+      // Also check for Google search pages when tab completes (final fallback)
+      if (tab.url && !tab.url.includes('dig-viewer.html') && !tab.url.startsWith('data:')) {
+        const searchEngines = ['google.com/search', 'bing.com/search', 'duckduckgo.com', 'yahoo.com/search', 'search.yahoo.com'];
+        const isSearchPage = searchEngines.some(engine => tab.url.includes(engine));
+        if (isSearchPage) {
+          try {
+            const urlObj = new URL(tab.url);
+            const queryParams = ['q', 'query', 'text', 'p', 'wd'];
+            let query = null;
+            
+            for (const param of queryParams) {
+              query = urlObj.searchParams.get(param);
+              if (query) break;
+            }
+            
+            if (query) {
+              let digUrl = null;
+              
+              // Try multiple decoding passes (Google may double-encode)
+              let decodedQuery = query;
+              for (let i = 0; i < 3; i++) {
+                // First try direct match
+                const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+                if (digMatch) {
+                  digUrl = digMatch[0];
+                  break;
+                }
+                
+                // Try URL-decoding
+                try {
+                  const nextDecoded = decodeURIComponent(decodedQuery);
+                  if (nextDecoded === decodedQuery) {
+                    // No more decoding possible
+                    break;
+                  }
+                  decodedQuery = nextDecoded;
+                } catch (e) {
+                  // Already decoded or invalid encoding
+                  break;
+                }
+              }
+              
+              // Final check on fully decoded query
+              if (!digUrl) {
+                const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+                if (finalMatch) {
+                  digUrl = finalMatch[0];
+                }
+              }
+              
+              if (digUrl) {
+                console.log('DIG Extension: Final fallback - detected dig:// in completed search page, redirecting to viewer:', digUrl);
+                try {
+                  await handleDigUrlNavigation(tabId, digUrl);
+                  return;
+                } catch (error) {
+                  console.error('DIG Extension: Error in final fallback redirect:', error);
+                }
+              }
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+        }
       }
       
       // Check if it's dig.local
@@ -1912,9 +1836,32 @@ chrome.omnibox.onInputEntered.addListener(
           await redirectDigUrlToLocalhost(tabs[0].id, digUrl);
         }
       } else {
-        // Open in new tab
-        const serverUrl = await convertDigUrl(digUrl);
-        await chrome.tabs.create({ url: serverUrl });
+        // Open in new tab - use RPC to get data URL
+        try {
+          const rpcResult = await fetchContentViaRPC(digUrl);
+          await chrome.tabs.create({ url: rpcResult.dataUrl });
+        } catch (error) {
+          console.error('DIG Extension: RPC failed for new tab:', error);
+          // Fallback: show error page
+          const errorPage = `data:text/html;charset=utf-8,${encodeURIComponent(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DIG Network Error</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #1a0a2e; color: white; }
+    .error { color: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <h1 class="error">Failed to load DIG content</h1>
+  <p>URL: ${digUrl}</p>
+  <p>Error: ${error.message}</p>
+</body>
+</html>
+          `)}`;
+          await chrome.tabs.create({ url: errorPage });
+        }
       }
     } else {
       // Handle as search query - use custom search engine if enabled
