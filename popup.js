@@ -1,6 +1,9 @@
 // Default server configuration
 const DEFAULT_SERVER_HOST = 'localhost:80';
 
+// Default DIG RPC endpoint (real rpc.dig.net)
+const DEFAULT_DIG_RPC_ENDPOINT = 'https://rpc.dig.net/';
+
 // Parse RPC host into URL and port
 function parseServerHost(host) {
   if (!host || !host.trim()) {
@@ -85,6 +88,9 @@ async function initPopup() {
   const serverHostInput = document.getElementById('serverHostInput');
   const restoreDefaultButton = document.getElementById('restoreDefaultButton');
   const serverInfoText = document.getElementById('serverInfoText');
+  const digRpcEndpointInput = document.getElementById('digRpcEndpointInput');
+  const restoreRpcDefaultButton = document.getElementById('restoreRpcDefaultButton');
+  const digRpcEndpointInfoText = document.getElementById('digRpcEndpointInfoText');
   
   // Check if all required elements exist
   if (!toggle || !statusText) {
@@ -95,12 +101,15 @@ async function initPopup() {
   // Load saved state (default to enabled)
   const result = await chrome.storage.local.get(['extensionEnabled']);
   const isEnabled = result.extensionEnabled !== false; // Default to true
-  
+
   toggle.checked = isEnabled;
   updateStatusText(isEnabled);
-  
+
   // Load server configuration
   await loadServerConfig();
+
+  // Load DIG RPC endpoint configuration
+  await loadDigRpcEndpointConfig();
   
   // Check dig.local resolvability
   await checkDigLocalResolvability();
@@ -160,6 +169,34 @@ async function initPopup() {
   if (restoreDefaultButton) {
     restoreDefaultButton.addEventListener('click', async () => {
       await restoreDefaultServerConfig();
+    });
+  }
+
+  // Handle DIG RPC endpoint input changes
+  if (digRpcEndpointInput) {
+    let rpcSaveTimeout = null;
+    digRpcEndpointInput.addEventListener('input', () => {
+      if (rpcSaveTimeout) clearTimeout(rpcSaveTimeout);
+      rpcSaveTimeout = setTimeout(() => saveDigRpcEndpointConfig(), 300);
+    });
+    digRpcEndpointInput.addEventListener('blur', () => {
+      if (rpcSaveTimeout) clearTimeout(rpcSaveTimeout);
+      saveDigRpcEndpointConfig();
+    });
+    digRpcEndpointInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        if (rpcSaveTimeout) clearTimeout(rpcSaveTimeout);
+        saveDigRpcEndpointConfig();
+        digRpcEndpointInput.blur();
+      }
+    });
+  }
+
+  // Handle restore RPC default button
+  if (restoreRpcDefaultButton) {
+    restoreRpcDefaultButton.addEventListener('click', async () => {
+      if (digRpcEndpointInput) digRpcEndpointInput.value = DEFAULT_DIG_RPC_ENDPOINT;
+      await saveDigRpcEndpointConfig();
     });
   }
   
@@ -245,6 +282,27 @@ async function initPopup() {
     }
     serverUrl = serverUrl.replace(/\/$/, '');
     serverInfoText.textContent = `Redirects to: ${serverUrl}:${config.port}`;
+  }
+
+  async function loadDigRpcEndpointConfig() {
+    if (!digRpcEndpointInput) return;
+    const { digRpcEndpoint } = await chrome.storage.local.get('digRpcEndpoint');
+    const endpoint = digRpcEndpoint || DEFAULT_DIG_RPC_ENDPOINT;
+    digRpcEndpointInput.value = endpoint;
+    if (digRpcEndpointInfoText) {
+      digRpcEndpointInfoText.textContent = `Content fetched from: ${endpoint}`;
+    }
+  }
+
+  async function saveDigRpcEndpointConfig() {
+    if (!digRpcEndpointInput) return;
+    const raw = digRpcEndpointInput.value.trim();
+    // Ensure trailing slash for consistency
+    const endpoint = raw ? (raw.endsWith('/') ? raw : raw + '/') : DEFAULT_DIG_RPC_ENDPOINT;
+    await chrome.storage.local.set({ digRpcEndpoint: endpoint });
+    if (digRpcEndpointInfoText) {
+      digRpcEndpointInfoText.textContent = `Content fetched from: ${endpoint}`;
+    }
   }
   
   // Check if dig.local is resolvable

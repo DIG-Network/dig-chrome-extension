@@ -9,10 +9,16 @@
     "http://dig.local/*",
     "https://dig.local/*",
     "http://*.dig.local/*",
-    "https://*.dig.local/*"
+    "https://*.dig.local/*",
+    "https://rpc.dig.net/*",
+    "https://*.dig.net/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "content_scripts": [
     {
@@ -37,7 +43,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["page-script.js", "logo.png", "dig-viewer.html", "dig-viewer.js"],
+      "resources": ["page-script.js", "logo.png", "dig-viewer.html", "dig-viewer.js", "dig_client.js", "dig_client_bg.wasm"],
       "matches": ["<all_urls>"]
     }
   ],

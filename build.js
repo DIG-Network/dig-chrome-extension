@@ -18,7 +18,10 @@ const EXTENSION_FILES = [
   'content.js',
   'page-script.js',
   'dig-viewer.html',
-  'dig-viewer.js'
+  'dig-viewer.js',
+  // dig-client WASM (ES module + binary) — required for client-side decryption in the module SW
+  'dig_client.js',
+  'dig_client_bg.wasm',
 ];
 
 const OPTIONAL_FILES = [
