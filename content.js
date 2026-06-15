@@ -205,9 +205,11 @@ function convertDigUrl(url) {
 
 // Inject loading spinner for dig:// resources
 function injectLoadingSpinner(element, digUrl) {
-  // Skip if spinner already exists
+  // Skip if spinner already exists, but still return removal function
   if (element.dataset.digSpinnerInjected) {
-    return;
+    return () => {
+      removeLoadingSpinner(element);
+    };
   }
   
   // Mark that spinner is injected
@@ -455,49 +457,131 @@ function processElementSync(element) {
     // Only process if element has dig:// URLs - skip everything else
     let hasDigUrl = false;
     
-    // Handle img src and srcset - convert URL immediately for synchronous processing
-    // Proxy can happen asynchronously but we need to convert the URL first to prevent browser errors
+    // Handle img src and srcset - proxy via RPC immediately
     if (element.tagName === 'IMG') {
       // Check attribute first (more reliable at document_start)
       const srcAttr = element.getAttribute('src');
       if (srcAttr && srcAttr.startsWith('dig://')) {
         hasDigUrl = true;
         // Inject spinner immediately
-        injectLoadingSpinner(element, srcAttr);
-        // Convert URL immediately to prevent browser from trying to load dig:// directly
-        const convertedUrl = convertDigUrl(srcAttr);
-        element.setAttribute('src', convertedUrl);
-        // Also try to proxy asynchronously for better performance (but URL is already converted)
-        proxyResource(element, 'src', srcAttr).catch(() => {
-          // Remove spinner on error
-          removeLoadingSpinner(element);
-          // URL already converted, so this is just a no-op
+        const removeSpinner = injectLoadingSpinner(element, srcAttr);
+        // Proxy via RPC - don't set placeholder URL
+        proxyResource(element, 'src', srcAttr).then(() => {
+          removeSpinner();
+        }).catch((error) => {
+          console.warn('DIG Extension: Image proxy failed:', error);
+          removeSpinner();
+          // On error, set placeholder to prevent browser errors
+          element.setAttribute('src', convertDigUrl(srcAttr));
         });
       }
       // Also check property as fallback
       if (element.src && typeof element.src === 'string' && element.src.startsWith('dig://')) {
         hasDigUrl = true;
         // Inject spinner immediately
-        injectLoadingSpinner(element, element.src);
-        const convertedUrl = convertDigUrl(element.src);
-        element.src = convertedUrl;
-        // Also try to proxy asynchronously
-        proxyResource(element, 'src', element.src).catch(() => {
-          // Remove spinner on error
-          removeLoadingSpinner(element);
-          // URL already converted
+        const removeSpinner = injectLoadingSpinner(element, element.src);
+        // Proxy via RPC - don't set placeholder URL
+        proxyResource(element, 'src', element.src).then(() => {
+          removeSpinner();
+        }).catch((error) => {
+          console.warn('DIG Extension: Image proxy failed:', error);
+          removeSpinner();
+          // On error, set placeholder
+          element.src = convertDigUrl(element.src);
         });
       }
-      // Handle srcset - convert URLs in srcset
+      // Handle srcset - proxy each dig:// URL via RPC
       const srcsetAttr = element.getAttribute('srcset');
       if (srcsetAttr && srcsetAttr.includes('dig://')) {
         hasDigUrl = true;
-        // For srcset, we need to convert since we can't proxy multiple URLs easily
-        element.setAttribute('srcset', srcsetAttr.replace(/dig:\/\/[^\s,]+/g, (match) => convertDigUrl(match)));
+        // Parse srcset and proxy each dig:// URL individually
+        const srcsetParts = srcsetAttr.split(',');
+        const proxiedParts = [];
+        const proxyPromises = [];
+        
+        srcsetParts.forEach((part, index) => {
+          const trimmed = part.trim();
+          const digMatch = trimmed.match(/^(dig:\/\/[^\s]+)(\s+.+)?$/);
+          if (digMatch) {
+            const digUrl = digMatch[1];
+            const descriptor = digMatch[2] || '';
+            // Proxy this URL via RPC
+            const proxyPromise = (async () => {
+              try {
+                const result = await digResourceLoader.loadResource(element, 'srcset', digUrl, 10);
+                if (result.strategy === 'proxy' || result.strategy === 'proxy-retry') {
+                  // result.data is the proxyResponse: { success: true, data: dataUrl, ... }
+                  // So result.data.data is the dataUrl
+                  const dataUrl = result.data.data;
+                  proxiedParts[index] = dataUrl + descriptor;
+                } else {
+                  // Fallback to original
+                  proxiedParts[index] = trimmed;
+                }
+              } catch (error) {
+                console.warn('DIG Extension: Failed to proxy srcset URL:', digUrl, error);
+                // On error, keep original
+                proxiedParts[index] = trimmed;
+              }
+            })();
+            proxyPromises.push(proxyPromise);
+            // Initially keep original to prevent errors
+            proxiedParts[index] = trimmed;
+          } else {
+            proxiedParts[index] = trimmed;
+          }
+        });
+        
+        // Update srcset once all proxies complete
+        if (proxyPromises.length > 0) {
+          Promise.all(proxyPromises).then(() => {
+            element.setAttribute('srcset', proxiedParts.join(', '));
+          }).catch((error) => {
+            console.error('DIG Extension: Error updating srcset:', error);
+          });
+        }
       }
       if (element.srcset && element.srcset.includes('dig://')) {
         hasDigUrl = true;
-        element.srcset = element.srcset.replace(/dig:\/\/[^\s,]+/g, (match) => convertDigUrl(match));
+        // Same handling for element.srcset property
+        const srcsetParts = element.srcset.split(',');
+        const proxiedParts = [];
+        const proxyPromises = [];
+        
+        srcsetParts.forEach((part, index) => {
+          const trimmed = part.trim();
+          const digMatch = trimmed.match(/^(dig:\/\/[^\s]+)(\s+.+)?$/);
+          if (digMatch) {
+            const digUrl = digMatch[1];
+            const descriptor = digMatch[2] || '';
+            const proxyPromise = (async () => {
+              try {
+                const result = await digResourceLoader.loadResource(element, 'srcset', digUrl, 10);
+                if (result.strategy === 'proxy' || result.strategy === 'proxy-retry') {
+                  const dataUrl = result.data.data;
+                  proxiedParts[index] = dataUrl + descriptor;
+                } else {
+                  proxiedParts[index] = trimmed;
+                }
+              } catch (error) {
+                console.warn('DIG Extension: Failed to proxy srcset URL:', digUrl, error);
+                proxiedParts[index] = trimmed;
+              }
+            })();
+            proxyPromises.push(proxyPromise);
+            proxiedParts[index] = trimmed;
+          } else {
+            proxiedParts[index] = trimmed;
+          }
+        });
+        
+        if (proxyPromises.length > 0) {
+          Promise.all(proxyPromises).then(() => {
+            element.srcset = proxiedParts.join(', ');
+          }).catch((error) => {
+            console.error('DIG Extension: Error updating srcset:', error);
+          });
+        }
       }
     }
     
@@ -516,9 +600,43 @@ function processElementSync(element) {
         digResourceLoader.registerErrorHandler(element, element.src);
         digResourceLoader.registerLoadHandler(element, element.src);
       }
-      // srcset - convert since we can't easily proxy multiple URLs
-      if (element.srcset) {
-        element.srcset = element.srcset.replace(/dig:\/\/[^\s,]+/g, (match) => convertDigUrl(match));
+      // srcset - proxy each dig:// URL via RPC
+      if (element.srcset && element.srcset.includes('dig://')) {
+        const srcsetParts = element.srcset.split(',');
+        const proxiedParts = [];
+        const proxyPromises = [];
+        
+        srcsetParts.forEach((part, index) => {
+          const trimmed = part.trim();
+          const digMatch = trimmed.match(/^(dig:\/\/[^\s]+)(\s+.+)?$/);
+          if (digMatch) {
+            const digUrl = digMatch[1];
+            const descriptor = digMatch[2] || '';
+            const proxyPromise = (async () => {
+              try {
+                const result = await digResourceLoader.loadResource(element, 'srcset', digUrl, 10);
+                if (result.strategy === 'proxy' || result.strategy === 'proxy-retry') {
+                  // result.data.data is the data URL from RPC
+                  proxiedParts[index] = result.data.data + descriptor;
+                } else {
+                  proxiedParts[index] = trimmed;
+                }
+              } catch (error) {
+                proxiedParts[index] = trimmed;
+              }
+            })();
+            proxyPromises.push(proxyPromise);
+            proxiedParts[index] = trimmed;
+          } else {
+            proxiedParts[index] = trimmed;
+          }
+        });
+        
+        if (proxyPromises.length > 0) {
+          Promise.all(proxyPromises).then(() => {
+            element.srcset = proxiedParts.join(', ');
+          });
+        }
       }
     }
     
@@ -604,34 +722,35 @@ function processElementSync(element) {
       }
     }
     
-    // Handle video/audio sources - convert URL immediately, then proxy asynchronously
+    // Handle video/audio sources - proxy via RPC immediately
     if (element.tagName === 'VIDEO' || element.tagName === 'AUDIO') {
       const srcAttr = element.getAttribute('src');
       if (srcAttr && srcAttr.startsWith('dig://')) {
         hasDigUrl = true;
         // Inject spinner immediately
-        injectLoadingSpinner(element, srcAttr);
-        // Convert URL immediately to prevent browser errors
-        const convertedUrl = convertDigUrl(srcAttr);
-        element.setAttribute('src', convertedUrl);
-        // Also try to proxy asynchronously
-        proxyResource(element, 'src', srcAttr).catch(() => {
-          // Remove spinner on error
-          removeLoadingSpinner(element);
-          // URL already converted
+        const removeSpinner = injectLoadingSpinner(element, srcAttr);
+        // Proxy via RPC - don't set placeholder URL
+        proxyResource(element, 'src', srcAttr).then(() => {
+          removeSpinner();
+        }).catch((error) => {
+          console.warn('DIG Extension: Video/audio proxy failed:', error);
+          removeSpinner();
+          // On error, try to set a placeholder to prevent browser errors
+          element.setAttribute('src', convertDigUrl(srcAttr));
         });
       }
       if (element.src && typeof element.src === 'string' && element.src.startsWith('dig://')) {
         hasDigUrl = true;
         // Inject spinner immediately
-        injectLoadingSpinner(element, element.src);
-        const convertedUrl = convertDigUrl(element.src);
-        element.src = convertedUrl;
-        // Also try to proxy asynchronously
-        proxyResource(element, 'src', element.src).catch(() => {
-          // Remove spinner on error
-          removeLoadingSpinner(element);
-          // URL already converted
+        const removeSpinner = injectLoadingSpinner(element, element.src);
+        // Proxy via RPC - don't set placeholder URL
+        proxyResource(element, 'src', element.src).then(() => {
+          removeSpinner();
+        }).catch((error) => {
+          console.warn('DIG Extension: Video/audio proxy failed:', error);
+          removeSpinner();
+          // On error, try to set a placeholder
+          element.src = convertDigUrl(element.src);
         });
       }
     }
@@ -1963,6 +2082,39 @@ function checkForMissedResources() {
         processElement(event.detail.element);
       }
     }
+  });
+
+  // Bridge: relay page-context dig:// proxy requests to background SW (which has WASM/RPC access)
+  // page-script.js posts { type: 'DIG_PROXY_REQUEST', id, url } and awaits
+  // { type: 'DIG_PROXY_RESPONSE', id, dataUrl, contentType } back.
+  window.addEventListener('message', (event) => {
+    if (!event.data || event.data.type !== 'DIG_PROXY_REQUEST') return;
+    const { id, url } = event.data;
+    if (!id || !url) return;
+    chrome.runtime.sendMessage({ action: 'proxyRequest', url }, (proxyResponse) => {
+      if (chrome.runtime.lastError) {
+        window.postMessage({
+          type: 'DIG_PROXY_RESPONSE',
+          id,
+          error: chrome.runtime.lastError.message,
+        }, '*');
+        return;
+      }
+      if (!proxyResponse || proxyResponse.error) {
+        window.postMessage({
+          type: 'DIG_PROXY_RESPONSE',
+          id,
+          error: (proxyResponse && proxyResponse.error) || 'proxy failed',
+        }, '*');
+        return;
+      }
+      window.postMessage({
+        type: 'DIG_PROXY_RESPONSE',
+        id,
+        dataUrl: proxyResponse.data,
+        contentType: proxyResponse.contentType,
+      }, '*');
+    });
   });
   
   // Start observing DOM changes

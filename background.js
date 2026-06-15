@@ -261,19 +261,28 @@ function decodeStoreId(encoded) {
   return intToHex(int, 64);
 }
 
-// Parse URN: urn:dig:{chain}:{storeId}:{roothash}/{resourceKey}
+// Parse URN: urn:dig:{chain}:{storeId}:{roothash}/{resourceKey}[?salt=<hex>]
 function parseURN(urn) {
   // Remove dig:// prefix if present
   let urnString = urn.replace(/^dig:\/\//, '');
-  
+
   // Remove urn:dig: prefix if present
   urnString = urnString.replace(/^urn:dig:/i, '');
-  
+
+  // Extract optional ?salt=<hex> query parameter before parsing the path
+  let salt = null;
+  const saltMatch = urnString.match(/[?&]salt=([0-9a-f]+)/i);
+  if (saltMatch) {
+    salt = saltMatch[1].toLowerCase();
+    // Strip the query string so the URN path regex matches cleanly
+    urnString = urnString.replace(/\?.*$/, '');
+  }
+
   // Parse components
   // Format: {chain}:{storeId}:{roothash}/{resourceKey}
   // or: {chain}:{storeId}/{resourceKey} (no roothash)
   const match = urnString.match(/^([^:]+):([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
-  
+
   if (!match) {
     // Try without chain prefix (assume chia)
     const simpleMatch = urnString.match(/^([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
@@ -282,17 +291,19 @@ function parseURN(urn) {
         chain: 'chia',
         storeId: simpleMatch[1].toLowerCase(),
         roothash: simpleMatch[2] ? simpleMatch[2].toLowerCase() : null,
-        resourceKey: simpleMatch[3] || ''
+        resourceKey: simpleMatch[3] || '',
+        salt,
       };
     }
     return null;
   }
-  
+
   return {
     chain: match[1].toLowerCase(),
     storeId: match[2].toLowerCase(),
     roothash: match[3] ? match[3].toLowerCase() : null,
-    resourceKey: match[4] || ''
+    resourceKey: match[4] || '',
+    salt,
   };
 }
 
@@ -345,8 +356,8 @@ async function fetchContentViaRPC(urn) {
     const storeId     = parsed.storeId;
     const root        = parsed.roothash || 'latest';
     const resourceKey = parsed.resourceKey || 'index.html';
-    // salt: parseURN doesn't extract query params; kept as null (deriveKey accepts null)
-    const salt = null;
+    // salt: extracted from ?salt=<hex> by parseURN; undefined means public store
+    const salt        = parsed.salt || undefined;
 
     console.log('DIG Extension: fetchContentViaRPC — real rpc.dig.net protocol for:', fullURN.substring(0, 60) + '...');
 
@@ -370,7 +381,7 @@ async function fetchContentViaRPC(urn) {
       verified = false;
     }
 
-    // 6. Derive per-resource AES-256 key
+    // 6. Derive per-resource AES-256 key (salt is the private-store hex salt, or undefined)
     const keyHex = dig.deriveKey(storeId, resourceKey, salt || null);
 
     // 7. Decrypt (GCM-SIV tag failure = decoy or wrong key → throw, caller shows error)
@@ -669,17 +680,19 @@ const resourceCache = new Map();
 // Pre-load dig:// resources when page loads
 // Now just stores server URLs instead of data URLs
 async function preloadResources(digUrls) {
+  const endpoint = await getRpcEndpoint();
   const results = await Promise.allSettled(
     digUrls.map(async (digUrl) => {
-      if (resourceCache.has(digUrl)) {
-        return { url: digUrl, cached: true, data: resourceCache.get(digUrl) };
+      const cacheKey = endpoint + '|' + digUrl;
+      if (resourceCache.has(cacheKey)) {
+        return { url: digUrl, cached: true, data: resourceCache.get(cacheKey) };
       }
-      
+
       // Use RPC to get data URL
       try {
         const rpcResult = await fetchContentViaRPC(digUrl);
         const cachedData = { dataUrl: rpcResult.dataUrl, url: rpcResult.dataUrl };
-        resourceCache.set(digUrl, cachedData);
+        resourceCache.set(cacheKey, cachedData);
         return { url: digUrl, cached: false, data: cachedData };
       } catch (error) {
         console.error(`Failed to preload ${digUrl} via RPC:`, error);
@@ -997,39 +1010,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false;
     }
     
-    // Check cache first
-    if (resourceCache.has(digUrl)) {
-      const cached = resourceCache.get(digUrl);
-      sendResponse({
-        success: true,
-        data: cached.data,
-        contentType: cached.contentType,
-        cached: true
-      });
-      return false;
-    }
-    
+    // Check cache first — keyed by endpoint+url so a config change yields fresh content
+    const cacheKeyP = getRpcEndpoint().then(ep => ep + '|' + digUrl);
+    const checkAndRespond = async () => {
+      const cacheKey = await cacheKeyP;
+      if (resourceCache.has(cacheKey)) {
+        const cached = resourceCache.get(cacheKey);
+        sendResponse({
+          success: true,
+          data: cached.data,
+          contentType: cached.contentType,
+          cached: true
+        });
+        return true; // handled
+      }
+      return false; // not in cache
+    };
+
     // Fetch via RPC or content server
     (async () => {
+      if (await checkAndRespond()) return;
+      const cacheKey = await cacheKeyP;
       try {
         // Parse URN to determine if we should use RPC
         const urnString = digUrl.replace(/^dig:\/\//, '');
         const parsed = parseURN(urnString);
-        
+
         if (parsed) {
           // Valid URN - use RPC
           console.log('DIG Extension: Fetching via RPC for URN:', urnString.substring(0, 50) + '...');
           const rpcResult = await fetchContentViaRPC(digUrl);
-          
+
           // RPC returns data URL directly
           const dataUrl = rpcResult.dataUrl;
-          
+
           // Extract content type from data URL
           const contentTypeMatch = dataUrl.match(/^data:([^;]+)/);
           const contentType = contentTypeMatch ? contentTypeMatch[1] : 'application/octet-stream';
-          
-          // Cache the result
-          resourceCache.set(digUrl, { data: dataUrl, contentType });
+
+          // Cache the result keyed by endpoint+url
+          resourceCache.set(cacheKey, { data: dataUrl, contentType });
           
           sendResponse({
             success: true,
@@ -1047,8 +1067,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const dataUrl = rpcResult.dataUrl;
           const contentTypeMatch = dataUrl.match(/^data:([^;]+)/);
           const contentType = contentTypeMatch ? contentTypeMatch[1] : 'application/octet-stream';
-          
-          resourceCache.set(digUrl, { data: dataUrl, contentType });
+
+          resourceCache.set(cacheKey, { data: dataUrl, contentType });
           
           sendResponse({
             success: true,
