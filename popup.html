@@ -42,16 +42,31 @@
     <div class="server-config-section">
       <label for="serverHostInput" class="server-label">RPC Host</label>
       <div class="server-input-container">
-        <input 
-          type="text" 
-          id="serverHostInput" 
-          class="server-input" 
+        <input
+          type="text"
+          id="serverHostInput"
+          class="server-input"
           placeholder="localhost:80"
           autocomplete="off"
         />
         <button id="restoreDefaultButton" class="restore-button" title="Restore Default">↺</button>
       </div>
       <p class="server-info-text" id="serverInfoText">Redirects to: http://localhost:80</p>
+    </div>
+
+    <div class="server-config-section">
+      <label for="digRpcEndpointInput" class="server-label">DIG RPC Endpoint</label>
+      <div class="server-input-container">
+        <input
+          type="text"
+          id="digRpcEndpointInput"
+          class="server-input"
+          placeholder="https://rpc.dig.net/"
+          autocomplete="off"
+        />
+        <button id="restoreRpcDefaultButton" class="restore-button" title="Restore Default">↺</button>
+      </div>
+      <p class="server-info-text" id="digRpcEndpointInfoText">Content fetched from: https://rpc.dig.net/</p>
     </div>
 
     <div class="dig-local-section">

@@ -1,7 +1,194 @@
-// Load URN utilities module first
-importScripts('dig-urn.js');
+// ES module service worker — background.js is loaded with "type": "module" in manifest.json.
+// importScripts() is NOT available in module workers; all URN helpers are inlined below.
 
-// Default server configuration
+// ---- WASM glue import (module SW only) ----------------------------------------
+// dig_client.js is a wasm-bindgen ES module (uses import.meta.url).
+// It CANNOT be loaded via importScripts(). The manifest MUST declare
+// "background": { "service_worker": "background.js", "type": "module" }.
+import initDigClient, {
+  retrievalKey,
+  deriveKey,
+  verifyInclusion,
+  decryptChunk,
+  install_global,
+} from './dig_client.js';
+
+// SRI for the read-crypto WASM (same artifact + digest as hub.dig.net sw.js and apps/web/lib/dig-client.js).
+// Fail closed: a mismatch (tampered/wrong artifact) refuses to run unverified crypto.
+const DIG_CLIENT_WASM_SHA256 = "ff486be806f908a2a90780e499a04dbd34e10e3b97be0470cb9ee841a1e49e77";
+
+// Memoised WASM init promise — initialises once across the SW lifetime.
+let _digReady = null;
+
+/**
+ * Ensure the dig-client WASM is loaded and SRI-verified, then return the
+ * named crypto functions.  Safe to call concurrently; only runs init once.
+ */
+async function ensureDig() {
+  if (!_digReady) {
+    _digReady = (async () => {
+      const res = await fetch(chrome.runtime.getURL('dig_client_bg.wasm'));
+      if (!res.ok) throw new Error(`dig-client wasm fetch failed (${res.status})`);
+      const bytes = await res.arrayBuffer();
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+      const hex = [...digest].map((b) => b.toString(16).padStart(2, '0')).join('');
+      if (hex !== DIG_CLIENT_WASM_SHA256) {
+        throw new Error('dig-client wasm integrity check failed — refusing to run unverified crypto');
+      }
+      await initDigClient({ module_or_path: bytes });
+      if (typeof install_global === 'function') install_global();
+    })();
+  }
+  await _digReady;
+  return { retrievalKey, deriveKey, verifyInclusion, decryptChunk };
+}
+
+// ---- RPC endpoint (defaults to rpc.dig.net, configurable via storage) ----------
+const DEFAULT_RPC_ENDPOINT = 'https://rpc.dig.net/';
+
+async function getRpcEndpoint() {
+  try {
+    const { digRpcEndpoint } = await chrome.storage.local.get('digRpcEndpoint');
+    return digRpcEndpoint || DEFAULT_RPC_ENDPOINT;
+  } catch {
+    return DEFAULT_RPC_ENDPOINT;
+  }
+}
+
+// ---- dig.getContent read helpers (ported from hub.dig.net services/resolver/assets/sw.js) --
+
+/** Decode standard-base64 string to Uint8Array. */
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Encode a Uint8Array to base64 in chunks to avoid call-stack overflow on large buffers. */
+function bytesToB64(bytes) {
+  let out = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    out += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(out);
+}
+
+/** Infer a MIME type from a file extension (resource key). */
+function ctForPath(resourceKey) {
+  const ext = (resourceKey.split('.').pop() || '').toLowerCase();
+  return ({
+    html: 'text/html; charset=utf-8',
+    htm:  'text/html; charset=utf-8',
+    js:   'text/javascript; charset=utf-8',
+    mjs:  'text/javascript; charset=utf-8',
+    css:  'text/css; charset=utf-8',
+    json: 'application/json',
+    png:  'image/png',
+    jpg:  'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif:  'image/gif',
+    svg:  'image/svg+xml',
+    webp: 'image/webp',
+    ico:  'image/x-icon',
+    woff: 'font/woff',
+    woff2:'font/woff2',
+    txt:  'text/plain',
+    pdf:  'application/pdf',
+    mp4:  'video/mp4',
+    webm: 'video/webm',
+    wasm: 'application/wasm',
+    xml:  'application/xml',
+    md:   'text/markdown',
+  }[ext] || 'application/octet-stream');
+}
+
+/** One JSON-RPC 2.0 POST.  Throws on transport error or RPC-level error. */
+async function rpcCall(endpoint, method, params) {
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    });
+  } catch (e) {
+    throw new Error('Could not reach the content network. Check your connection.');
+  }
+  if (!res.ok) throw new Error('dig RPC HTTP error ' + res.status);
+  const j = await res.json();
+  if (j && j.error) throw new Error('dig RPC ' + method + ': ' + (j.error.message || 'error'));
+  return j ? j.result : null;
+}
+
+// RPC back-end caps each window at 3 MiB; loop until `complete`.
+const RPC_CHUNK = 3 * 1024 * 1024;
+
+/**
+ * Fetch the full ciphertext for a resource from the RPC, reassembling 3-MiB
+ * windows.  Mirrors fetchVerifiedCiphertext() in apps/web/lib/dig-client.js.
+ * Returns { ciphertext: Uint8Array, proof: string, chunkLens: number[]|null }.
+ */
+async function fetchVerified(endpoint, storeId, rk, root) {
+  let offset = 0;
+  let total = null;
+  let buf = null;
+  let proof = '';
+  let chunkLens = null;
+
+  for (;;) {
+    const r = await rpcCall(endpoint, 'dig.getContent', {
+      store_id: storeId,
+      root,
+      retrieval_key: rk,
+      offset,
+      length: RPC_CHUNK,
+    });
+    if (!r) throw new Error('dig RPC returned no data');
+    if (total === null) {
+      total = r.total_length >>> 0;
+      buf = new Uint8Array(total);
+    }
+    if (chunkLens === null && Array.isArray(r.chunk_lens)) {
+      chunkLens = r.chunk_lens.map((n) => n >>> 0);
+    }
+    const chunk = b64ToBytes(r.ciphertext || '');
+    const at = r.offset >>> 0;
+    buf.set(chunk.subarray(0, Math.max(0, Math.min(chunk.length, total - at))), at);
+    if (r.inclusion_proof) proof = r.inclusion_proof;
+    if (r.complete || r.next_offset == null) break;
+    offset = r.next_offset >>> 0;
+  }
+  return { ciphertext: buf, proof, chunkLens };
+}
+
+/**
+ * Decrypt multi-chunk ciphertext.  Mirrors decryptResourceChunks() in
+ * apps/web/lib/dig-client.js.  `chunkLens` are the per-chunk CIPHERTEXT byte
+ * lengths (may be null/empty for a single-chunk resource).
+ */
+function decryptChunks(dig, keyHex, ciphertext, chunkLens) {
+  const lens = chunkLens && chunkLens.length ? chunkLens : [ciphertext.length];
+  if (lens.length === 1) return dig.decryptChunk(keyHex, ciphertext); // fast path
+  const lensSum = lens.reduce((a, n) => a + n, 0);
+  if (lensSum !== ciphertext.length) {
+    throw new Error('served ciphertext length does not match chunk lengths');
+  }
+  const parts = [];
+  let p = 0;
+  for (const len of lens) {
+    parts.push(dig.decryptChunk(keyHex, ciphertext.subarray(p, p + len)));
+    p += len;
+  }
+  const total = parts.reduce((a, x) => a + x.length, 0);
+  const out = new Uint8Array(total);
+  let q = 0;
+  for (const part of parts) { out.set(part, q); q += part.length; }
+  return out;
+}
+
+// ---- Default server configuration
 const DEFAULT_SERVER_URL = 'localhost';
 const DEFAULT_SERVER_PORT = 80;
 const DEFAULT_SERVER_HOST = 'localhost:80';
@@ -138,75 +325,78 @@ async function urnToContentServerUrl(urn) {
   return url;
 }
 
-// Make RPC call to DIG Node to get content
+// Fetch DIG content via the REAL rpc.dig.net JSON-RPC protocol.
+// Performs: retrievalKey → chunked dig.getContent → verifyInclusion → deriveKey → decryptChunks.
+// Returns { dataUrl, contentType, urn, fullURN, verified } — callers read .dataUrl unchanged.
 async function fetchContentViaRPC(urn) {
   try {
-    // Remove dig:// prefix if present
+    // Normalise: strip dig:// prefix if present
     let urnString = urn.replace(/^dig:\/\//, '');
     const parsed = parseURN(urnString);
     if (!parsed) {
       throw new Error('Invalid URN format');
     }
-    
-    // Use the full URN string (with urn:dig: prefix)
-    const fullURN = urnString.startsWith('urn:dig:') ? urnString : `urn:dig:chia:${parsed.storeId}${parsed.roothash ? ':' + parsed.roothash : ''}${parsed.resourceKey ? '/' + parsed.resourceKey : ''}`;
-    
-    // Use rpc.dig.local or localhost for RPC server
-    // Try localhost first (for testing), can be changed to rpc.dig.local if DNS is configured
-    const rpcHost = 'localhost'; // Change to 'rpc.dig.local' if DNS is configured
-    const rpcUrl = `http://${rpcHost}:${DIG_RPC_PORT}/rpc`;
-    
-    // Make JSON-RPC call with raw URN (no hashing, no encryption)
-    const rpcRequest = {
-      jsonrpc: '2.0',
-      method: 'getContent',
-      params: {
-        urn: fullURN
-      },
-      id: 1
-    };
-    
-    console.log('DIG Extension: Making RPC call to:', rpcUrl, 'for URN:', fullURN.substring(0, 50) + '...');
-    
-    let response;
+
+    // Reconstruct the canonical full URN for logging / return value
+    const fullURN = urnString.startsWith('urn:dig:')
+      ? urnString
+      : `urn:dig:chia:${parsed.storeId}${parsed.roothash ? ':' + parsed.roothash : ''}${parsed.resourceKey ? '/' + parsed.resourceKey : ''}`;
+
+    const storeId     = parsed.storeId;
+    const root        = parsed.roothash || 'latest';
+    const resourceKey = parsed.resourceKey || 'index.html';
+    // salt: parseURN doesn't extract query params; kept as null (deriveKey accepts null)
+    const salt = null;
+
+    console.log('DIG Extension: fetchContentViaRPC — real rpc.dig.net protocol for:', fullURN.substring(0, 60) + '...');
+
+    // 1. Ensure WASM is loaded (SRI-verified, once)
+    const dig = await ensureDig();
+
+    // 2. Resolve RPC endpoint (default: rpc.dig.net)
+    const endpoint = await getRpcEndpoint();
+
+    // 3. Compute retrieval key = SHA-256(canonical rootless URN), hex
+    const rk = dig.retrievalKey(storeId, resourceKey);
+
+    // 4. Fetch ciphertext (chunked, up to 3 MiB windows)
+    const { ciphertext, proof, chunkLens } = await fetchVerified(endpoint, storeId, rk, root);
+
+    // 5. Verify merkle inclusion proof (non-throwing; decoys return false)
+    let verified = false;
     try {
-      response = await fetch(rpcUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(rpcRequest)
-      });
-    } catch (fetchError) {
-      // Network error - RPC server might not be running
-      console.error('DIG Extension: RPC fetch error (server might not be running):', fetchError);
-      throw new Error(`RPC server not available: ${fetchError.message}. Make sure the RPC server is running on ${rpcUrl}`);
+      verified = !!dig.verifyInclusion(ciphertext, proof, root);
+    } catch {
+      verified = false;
     }
-    
-    if (!response.ok) {
-      throw new Error(`RPC call failed: ${response.status} ${response.statusText}`);
+
+    // 6. Derive per-resource AES-256 key
+    const keyHex = dig.deriveKey(storeId, resourceKey, salt || null);
+
+    // 7. Decrypt (GCM-SIV tag failure = decoy or wrong key → throw, caller shows error)
+    let bytes;
+    try {
+      bytes = decryptChunks(dig, keyHex, ciphertext, chunkLens);
+    } catch {
+      throw new Error('decrypt failed (decoy or wrong key)');
     }
-    
-    const rpcResponse = await response.json();
-    
-    if (rpcResponse.error) {
-      throw new Error(`RPC error: ${rpcResponse.error.message || JSON.stringify(rpcResponse.error)}`);
-    }
-    
-    // Get data URL directly from response (no encryption/decryption needed)
-    const dataUrl = rpcResponse.result.dataUrl;
-    
-    if (!dataUrl) {
-      throw new Error('RPC response missing dataUrl');
-    }
-    
+
+    // 8. Encode to data URL (chunked btoa to avoid call-stack overflow on large buffers)
+    const contentType = ctForPath(resourceKey);
+    const b64 = bytesToB64(bytes);
+    const dataUrl = `data:${contentType};base64,${b64}`;
+
+    console.log('DIG Extension: fetchContentViaRPC success, verified:', verified, 'size:', bytes.length);
+
     return {
-      dataUrl: dataUrl,
-      urn: urn,
-      fullURN: fullURN
+      dataUrl,
+      contentType,
+      urn,
+      fullURN,
+      verified,
     };
   } catch (error) {
-    console.error('DIG Extension: RPC fetch failed:', error);
+    console.error('DIG Extension: fetchContentViaRPC failed:', error);
     throw error;
   }
 }
