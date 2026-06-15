@@ -188,15 +188,10 @@ function decryptChunks(dig, keyHex, ciphertext, chunkLens) {
   return out;
 }
 
-// ---- Default server configuration
-const DEFAULT_SERVER_URL = 'localhost';
-const DEFAULT_SERVER_PORT = 80;
-const DEFAULT_SERVER_HOST = 'localhost:80';
-
-// DIG Content Server configuration
-const DIG_RPC_PORT = 3141; // DIG Node RPC port
-const DIG_CONTENT_SERVER_HOST = 'dig.local'; // Content server hostname
-const DIG_CONTENT_SERVER_PORT = 80; // Content server port (default HTTP)
+// ---- Legacy server config constants (kept for updateServerConfig message backward compat)
+const DEFAULT_SERVER_URL = 'rpc.dig.net';
+const DEFAULT_SERVER_PORT = 443;
+const DEFAULT_SERVER_HOST = 'rpc.dig.net';
 
 // Base36 encoding/decoding for store IDs (64 hex chars -> max 50 base36 chars)
 // Uses BigInt for handling large numbers (256-bit store IDs)
@@ -305,35 +300,6 @@ function parseURN(urn) {
     resourceKey: match[4] || '',
     salt,
   };
-}
-
-// Convert URN to content server URL
-async function urnToContentServerUrl(urn) {
-  const parsed = parseURN(urn);
-  if (!parsed) {
-    // If not a valid URN, return as-is (fallback to old behavior)
-    return null;
-  }
-  
-  // Check if dig.local is resolvable
-  const resolvable = await isDigLocalResolvable();
-  const host = resolvable ? DIG_CONTENT_SERVER_HOST : 'localhost';
-  const port = resolvable ? DIG_CONTENT_SERVER_PORT : await getServerConfig().then(c => c.port);
-  
-  // Build the full URN string for the path
-  let urnString = `urn:dig:${parsed.chain}:${parsed.storeId}`;
-  if (parsed.roothash) {
-    urnString += `:${parsed.roothash}`;
-  }
-  if (parsed.resourceKey) {
-    urnString += `/${parsed.resourceKey}`;
-  }
-  
-  // Use path-based format: http://dig.local/urn:dig:chia:...
-  // The server will redirect to subdomain format if dig.local is used
-  const url = `http://${host}${port !== 80 ? ':' + port : ''}/${urnString}`;
-  
-  return url;
 }
 
 // Fetch DIG content via the REAL rpc.dig.net JSON-RPC protocol.
@@ -482,136 +448,29 @@ const DIG_LOCAL_RULE_ID = 1;
 const processedUrls = new Map();
 const PROCESSED_URL_TTL = 5000; // 5 seconds - URLs expire after this time
 
-// Check if dig.local is resolvable (DNS check)
+// isDigLocalResolvable removed: all content is served via rpc.dig.net RPC POST.
+// No localhost/dig.local GET probing needed.
+
+// Stub retained only so any surviving reference doesn't crash — always returns false.
+// (All call-sites that acted on a true result have been removed.)
 async function isDigLocalResolvable() {
-  try {
-    // First, check if any tab is currently on dig.local - if so, it's definitely resolvable
-    try {
-      const tabs = await chrome.tabs.query({ url: 'http://dig.local/*' });
-      if (tabs && tabs.length > 0) {
-        console.log('DIG Extension: dig.local is resolvable (tab found on dig.local)');
-        return true;
-      }
-    } catch (e) {
-      // Ignore tab query errors
-      console.log('DIG Extension: Tab query error (ignored):', e);
-    }
-    
-    // Try to fetch from dig.local with a shorter timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500);
-    
-    try {
-      // Use GET with no-cors mode
-      // Even if we can't read the response, if the request completes, DNS resolved
-      const response = await fetch('http://dig.local/', {
-        method: 'GET',
-        signal: controller.signal,
-        mode: 'no-cors',
-        cache: 'no-store'
-      });
-      clearTimeout(timeoutId);
-      console.log('DIG Extension: dig.local is resolvable (fetch succeeded)');
-      return true; // DNS resolved (even if server is down)
-    } catch (error) {
-      clearTimeout(timeoutId);
-      
-      // Check if it's a DNS/network error
-      const errorMessage = error.message || error.toString() || '';
-      const errorName = error.name || '';
-      
-      console.log('DIG Extension: Fetch error:', errorName, errorMessage);
-      
-      if (errorName === 'AbortError') {
-        // Timeout - try a simpler check
-        console.log('DIG Extension: dig.local check timed out, trying alternative method');
-        try {
-          // Try creating a URL object - if it works, the domain format is valid
-          const testUrl = new URL('http://dig.local/');
-          // If we get here, the URL is valid - assume it might be resolvable
-          console.log('DIG Extension: URL format is valid, assuming resolvable');
-          return true;
-        } catch (urlError) {
-          console.log('DIG Extension: URL format invalid');
-          return false;
-        }
-      }
-      
-      if (errorMessage.includes('Failed to fetch') || 
-          errorMessage.includes('ERR_NAME_NOT_RESOLVED') ||
-          errorMessage.includes('network') ||
-          errorMessage.includes('DNS') ||
-          errorMessage.includes('ERR_CONNECTION_REFUSED') === false) {
-        // ERR_CONNECTION_REFUSED means DNS resolved but server not running - still resolvable
-        if (errorMessage.includes('ERR_CONNECTION_REFUSED')) {
-          console.log('DIG Extension: dig.local is resolvable (connection refused = DNS works)');
-          return true;
-        }
-        console.log('DIG Extension: dig.local is not resolvable (DNS error)');
-        return false; // DNS doesn't resolve
-      }
-      
-      // Some other error - might be resolvable but server down or CORS issue
-      console.log('DIG Extension: dig.local might be resolvable (non-DNS error):', errorMessage);
-      return true; // Assume resolvable if we got past DNS
-    }
-  } catch (error) {
-    console.error('DIG Extension: Error checking dig.local resolvability:', error);
-    // On error, assume not resolvable to be safe
-    return false;
-  }
+  return false;
 }
 
-// Disabled: No subdomain redirection - dig:// URLs go directly to RPC
-async function updateDigLocalRedirectRules() {
+// One-shot cleanup: remove any stale dig.local declarativeNetRequest rules left from
+// previous extension versions. No new rules are added — all content goes via RPC POST.
+async function removeStaleRedirectRules() {
   try {
-    // Remove any existing dig.local redirect rules
     const existingRules = await chrome.declarativeNetRequest.getDynamicRules();
     const ruleExists = existingRules.some(rule => rule.id === DIG_LOCAL_RULE_ID);
-    
     if (ruleExists) {
-      try {
-        await chrome.declarativeNetRequest.updateDynamicRules({
-          removeRuleIds: [DIG_LOCAL_RULE_ID]
-        });
-        console.log('DIG Extension: Removed dig.local redirect rule (no subdomain redirection)');
-      } catch (e) {
-        console.warn('DIG Extension: Error removing old rule:', e);
-      }
-    }
-    
-    // No new rules - all dig:// URLs go directly to RPC
-    return;
-    
-    // Add the new rule (only after ensuring old one is removed)
-    try {
       await chrome.declarativeNetRequest.updateDynamicRules({
-        addRules: [rule]
+        removeRuleIds: [DIG_LOCAL_RULE_ID]
       });
-      console.log('DIG Extension: Updated dig.local redirect rule to:', redirectUrl);
-    } catch (e) {
-      // If add fails, try removing all rules and adding again
-      if (e.message && e.message.includes('unique ID')) {
-        console.warn('DIG Extension: Rule ID conflict, cleaning up and retrying...');
-        // Get all rules and remove any with our ID
-        const allRules = await chrome.declarativeNetRequest.getDynamicRules();
-        const conflictingRuleIds = allRules.filter(r => r.id === DIG_LOCAL_RULE_ID).map(r => r.id);
-        if (conflictingRuleIds.length > 0) {
-          await chrome.declarativeNetRequest.updateDynamicRules({
-            removeRuleIds: conflictingRuleIds
-          });
-        }
-        // Now try adding again
-        await chrome.declarativeNetRequest.updateDynamicRules({
-          addRules: [rule]
-        });
-        console.log('DIG Extension: Successfully added dig.local redirect rule after cleanup');
-      } else {
-        throw e;
-      }
+      console.log('DIG Extension: Removed stale dig.local redirect rule');
     }
   } catch (error) {
-    console.error('DIG Extension: Failed to update dig.local redirect rules:', error);
+    console.warn('DIG Extension: Could not clean up old redirect rules:', error);
   }
 }
 
@@ -622,10 +481,10 @@ chrome.runtime.onInstalled.addListener(async () => {
     // Default to enabled
     await chrome.storage.local.set({ extensionEnabled: true });
   }
-  
-  // Set up dig.local redirect rules
-  await updateDigLocalRedirectRules();
-  
+
+  // Clean up any stale dig.local redirect rules from previous versions
+  await removeStaleRedirectRules();
+
   // Check for any existing tabs with dig:// URLs (in case extension loaded after tab was opened)
   checkExistingDigTabs();
 });
@@ -658,23 +517,9 @@ setInterval(() => {
 // Also check on startup (not just on install)
 chrome.runtime.onStartup.addListener(() => {
   checkExistingDigTabs();
-  updateDigLocalRedirectRules();
+  // Clean up any stale redirect rules that survived an update
+  removeStaleRedirectRules();
 });
-
-// Listen for storage changes to update rules when extension is toggled or server config changes
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local') {
-    if (changes.extensionEnabled || changes['server.host'] || changes['server.url'] || changes['server.port']) {
-      updateDigLocalRedirectRules();
-    }
-  }
-});
-
-// Periodically check if dig.local resolvability has changed and update rules
-// This handles cases where user adds hosts file entry after extension is loaded
-setInterval(async () => {
-  await updateDigLocalRedirectRules();
-}, 30000); // Check every 30 seconds
 
 // Cache for pre-loaded resources
 const resourceCache = new Map();
@@ -714,47 +559,20 @@ const successReports = [];
 // Listen for messages from content script to proxy requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'toggleExtension') {
-    // State is updated in popup.js, we just need to handle navigation
+    // State is updated in popup.js; no redirect rules to update (all content via RPC)
     console.log('Extension toggled:', message.enabled);
-    // Update dig.local redirect rules based on new state
-    updateDigLocalRedirectRules();
     return false; // Not async
   }
-  
+
   if (message.action === 'checkDigLocalDNS') {
-    // Check if dig.local is resolvable
-    // IMPORTANT: Must return true immediately to keep channel open, then call sendResponse in async
-    const handleCheckDNS = async () => {
-      try {
-        const resolvable = await isDigLocalResolvable();
-        console.log('DIG Extension: checkDigLocalDNS result:', resolvable);
-        
-        try {
-          sendResponse({ resolvable });
-          console.log('DIG Extension: DNS check response sent successfully:', resolvable);
-        } catch (e) {
-          console.error('DIG Extension: Failed to send DNS check response (port may be closed):', e);
-        }
-        
-        // Update redirect rules when DNS status changes (don't wait for this)
-        updateDigLocalRedirectRules().catch(err => {
-          console.error('DIG Extension: Error updating redirect rules:', err);
-        });
-      } catch (error) {
-        console.error('DIG Extension: Error in checkDigLocalDNS:', error);
-        try {
-          sendResponse({ resolvable: false, error: error.message });
-        } catch (e) {
-          console.error('DIG Extension: Failed to send error response (port closed):', e);
-        }
-      }
-    };
-    
-    // Start async handler immediately
-    handleCheckDNS();
-    
-    // Return true to keep channel open for async response
-    return true;
+    // dig.local DNS probing removed — content is served via rpc.dig.net RPC POST.
+    // Always report not-resolvable so callers fall through to the RPC path.
+    try {
+      sendResponse({ resolvable: false });
+    } catch (e) {
+      // port already closed
+    }
+    return false;
   }
   
   if (message.action === 'convertDigUrl') {
@@ -927,10 +745,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Clear resource cache so new requests use new config
       resourceCache.clear();
       console.log('DIG Extension: Resource cache cleared, RPC host updated to:', storageData['server.host']);
-      
-      // Update dig.local redirect rules with new server config
-      updateDigLocalRedirectRules();
-      
+
       // Notify all tabs to update their RPC host cache
       chrome.tabs.query({}, (tabs) => {
         tabs.forEach(tab => {
@@ -1967,8 +1782,8 @@ setInterval(async () => {
                   continue;
                 }
                 
-                console.log('DIG Extension: Interval check detected dig:// URL in search query, redirecting to dig.local:', digUrl);
-                // Use handleDigUrlNavigation to convert to dig.local URL
+                console.log('DIG Extension: Interval check detected dig:// URL in search query, redirecting to viewer:', digUrl);
+                // Use handleDigUrlNavigation to route to dig-viewer.html → RPC
                 try {
                   await handleDigUrlNavigation(tab.id, digUrl);
                   console.log('DIG Extension: Successfully replaced search page with dig:// content');
@@ -2170,7 +1985,7 @@ const DEFAULT_SEARCH_ENGINE = {
   name: 'DIG Network Search',
   keyword: 'dig',
   faviconUrl: chrome.runtime.getURL('src/favicon.png'),
-  searchUrl: 'http://dig.local?urn=%s' // Default to dig.local with URN parameter
+  searchUrl: 'https://rpc.dig.net/?urn=%s' // Default to rpc.dig.net
 };
 
 // Get custom search URL from storage or use default
