@@ -9,7 +9,48 @@
   
   // Cache for RPC host configuration
   let cachedRpcHost = 'localhost:80';
-  
+
+  // Capture the real postMessage BEFORE our later override replaces it.
+  // digProxyFetch must use this so the dig:// URL in the request payload is
+  // not mangled by the postMessage override that converts dig:// string values.
+  const _origPostMessage = window.postMessage.bind(window);
+
+  // Pending proxy requests keyed by id → { resolve, reject, timer }
+  const _digProxyPending = new Map();
+
+  // Listen for DIG_PROXY_RESPONSE from the content-script bridge.
+  // We register this listener once at page-script load time.
+  window.addEventListener('message', (event) => {
+    if (!event.data || event.data.type !== 'DIG_PROXY_RESPONSE') return;
+    const { id, dataUrl, contentType, error } = event.data;
+    const pending = _digProxyPending.get(id);
+    if (!pending) return;
+    _digProxyPending.delete(id);
+    clearTimeout(pending.timer);
+    if (error) {
+      pending.reject(new Error('DIG proxy: ' + error));
+    } else {
+      pending.resolve({ dataUrl, contentType });
+    }
+  });
+
+  /**
+   * Ask the content-script bridge (→ background SW → rpc.dig.net) to fetch a
+   * dig:// URL and return { dataUrl, contentType }.  Rejects on error or timeout.
+   */
+  function digProxyFetch(url) {
+    return new Promise((resolve, reject) => {
+      const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const timer = setTimeout(() => {
+        _digProxyPending.delete(id);
+        reject(new Error('DIG proxy timeout for ' + url));
+      }, 30000);
+      _digProxyPending.set(id, { resolve, reject, timer });
+      // Use the pre-override postMessage so the url field is not rewritten
+      _origPostMessage({ type: 'DIG_PROXY_REQUEST', id, url }, '*');
+    });
+  }
+
   // Get RPC host from storage via message to background script
   function updateRpcHostCache() {
     // Page scripts can't directly access chrome.storage, so we'll use a message
@@ -672,29 +713,39 @@
     // If we can't override assign, that's okay - href setter should handle it
   }
   
-  // Intercept fetch API in page context
+  // Intercept fetch API in page context — route dig:// through the content-script bridge
   const originalFetch = window.fetch;
   window.fetch = async function(...args) {
     let url = args[0];
     let isDigUrl = false;
-    
+
     if (typeof url === 'string' && url.startsWith('dig://')) {
       isDigUrl = true;
     } else if (url instanceof Request && url.url.startsWith('dig://')) {
       isDigUrl = true;
       url = url.url;
     }
-    
+
     if (isDigUrl) {
-      // Convert to localhost URL
-      const localhostUrl = convertDigUrl(url);
-      if (typeof args[0] === 'string') {
-        args[0] = localhostUrl;
-      } else if (args[0] instanceof Request) {
-        args[0] = new Request(localhostUrl, args[0]);
+      // Route through content-script → background → rpc.dig.net to get real decrypted bytes
+      try {
+        const { dataUrl, contentType } = await digProxyFetch(url);
+        // data: URLs are fetchable in-page — fetch it to get a proper Response
+        const dataResponse = await originalFetch.call(this, dataUrl);
+        // Re-wrap with the correct Content-Type header
+        const blob = await dataResponse.blob();
+        return new Response(blob, {
+          status: 200,
+          statusText: 'OK',
+          headers: { 'Content-Type': contentType || 'application/octet-stream' },
+        });
+      } catch (proxyErr) {
+        console.warn('DIG Extension (page): fetch proxy failed for', url, proxyErr);
+        // Reject — do NOT silently return empty content
+        throw proxyErr;
       }
     }
-    
+
     return originalFetch.apply(this, args);
   };
   
@@ -1079,18 +1130,22 @@
     };
   }
   
-  // Intercept WebAssembly streaming compilation
+  // Intercept WebAssembly streaming compilation — route dig:// via bridge
   if (window.WebAssembly && WebAssembly.compileStreaming) {
     const originalCompileStreaming = WebAssembly.compileStreaming;
     WebAssembly.compileStreaming = async function(source) {
-      // If source is a dig:// URL, convert it
       if (typeof source === 'string' && source.startsWith('dig://')) {
-        source = fetch(convertDigUrl(source));
+        try {
+          const { dataUrl } = await digProxyFetch(source);
+          source = originalFetch.call(window, dataUrl);
+        } catch (err) {
+          console.warn('DIG Extension (page): WebAssembly.compileStreaming proxy failed for', source, err);
+          throw err;
+        }
       } else if (source && typeof source.then === 'function') {
-        // If it's a Promise, we need to intercept the URL inside
         source = source.then(response => {
           if (response.url && response.url.startsWith('dig://')) {
-            return fetch(convertDigUrl(response.url));
+            return digProxyFetch(response.url).then(({ dataUrl }) => originalFetch.call(window, dataUrl));
           }
           return response;
         });
@@ -1098,23 +1153,38 @@
       return originalCompileStreaming.call(this, source);
     };
   }
-  
+
+  // Second instantiateStreaming guard — already overridden above in the main WebAssembly block;
+  // this guard is a no-op if the override already ran (WebAssembly.instantiateStreaming is the
+  // version we installed), but kept for safety in case browser resets it between blocks.
   if (window.WebAssembly && WebAssembly.instantiateStreaming) {
-    // Already handled above, but ensure it's comprehensive
-    const originalInstantiateStreaming = WebAssembly.instantiateStreaming;
-    WebAssembly.instantiateStreaming = async function(source, importObject) {
-      if (typeof source === 'string' && source.startsWith('dig://')) {
-        source = fetch(convertDigUrl(source));
-      } else if (source && typeof source.then === 'function') {
-        source = source.then(response => {
-          if (response.url && response.url.startsWith('dig://')) {
-            return fetch(convertDigUrl(response.url));
+    const _is = WebAssembly.instantiateStreaming;
+    // Only re-wrap if it hasn't already been wrapped (check by name or sentinel)
+    if (!_is._digWrapped) {
+      const originalIS2 = _is;
+      WebAssembly.instantiateStreaming = async function(source, importObject) {
+        if (typeof source === 'string' && source.startsWith('dig://')) {
+          try {
+            const { dataUrl } = await digProxyFetch(source);
+            const resp = await originalFetch.call(window, dataUrl);
+            const buf = await resp.arrayBuffer();
+            return WebAssembly.instantiate(buf, importObject);
+          } catch (err) {
+            console.warn('DIG Extension (page): WebAssembly.instantiateStreaming proxy failed for', source, err);
+            throw err;
           }
-          return response;
-        });
-      }
-      return originalInstantiateStreaming.call(this, source, importObject);
-    };
+        } else if (source && typeof source.then === 'function') {
+          source = source.then(response => {
+            if (response.url && response.url.startsWith('dig://')) {
+              return digProxyFetch(response.url).then(({ dataUrl }) => originalFetch.call(window, dataUrl));
+            }
+            return response;
+          });
+        }
+        return originalIS2.call(this, source, importObject);
+      };
+      WebAssembly.instantiateStreaming._digWrapped = true;
+    }
   }
   
   // Intercept XMLHttpRequest in page context
@@ -1142,13 +1212,39 @@
   };
   
   // Intercept Worker constructor in page context
-  // Web Workers can only load from same origin, blob URLs, or data URLs
-  // So we must convert dig:// URLs to localhost before Worker construction
+  // Workers cannot load data: URLs directly, but blob: URLs work fine.
+  // We fetch the script via the bridge then construct a blob: URL.
   const originalWorker = window.Worker;
   window.Worker = function(scriptURL, options) {
-    // Convert dig:// URL to localhost before creating Worker
     if (typeof scriptURL === 'string' && scriptURL.startsWith('dig://')) {
-      scriptURL = convertDigUrl(scriptURL);
+      // Return a synchronous-looking Worker by constructing a stub that
+      // will load the real script once the proxy resolves.
+      // Strategy: create a blob: URL asynchronously and forward all events.
+      const digUrl = scriptURL;
+      // Create a placeholder worker from an empty blob (will be replaced)
+      // Instead, use a relay-worker pattern via a tiny inline blob worker:
+      const relayBlob = new Blob([`
+        self.onmessage = function(e) {
+          if (e.data && e.data.__DIG_WORKER_SCRIPT__) {
+            // Evaluate the real script source in this worker context
+            try { eval(e.data.__DIG_WORKER_SCRIPT__); } catch(ex) { console.error('DIG worker eval failed', ex); }
+          } else {
+            // Forward to actual handler once script is loaded (handled above)
+          }
+        };
+      `], { type: 'text/javascript' });
+      const relayBlobUrl = URL.createObjectURL(relayBlob);
+      const worker = new originalWorker(relayBlobUrl, options);
+      URL.revokeObjectURL(relayBlobUrl);
+      // Asynchronously fetch the real script and send it into the worker
+      digProxyFetch(digUrl).then(({ dataUrl }) => {
+        return originalFetch.call(window, dataUrl).then(r => r.text());
+      }).then(scriptText => {
+        worker.postMessage({ __DIG_WORKER_SCRIPT__: scriptText });
+      }).catch(err => {
+        console.warn('DIG Extension (page): Worker proxy failed for', digUrl, err);
+      });
+      return worker;
     }
     return new originalWorker(scriptURL, options);
   };
@@ -1175,60 +1271,84 @@
     const originalInstantiate = WebAssembly.instantiate;
     if (originalInstantiate) {
       WebAssembly.instantiate = async function(bufferSource, importObject) {
-        // If bufferSource is a dig:// URL, fetch it first
+        // If bufferSource is a dig:// URL, fetch bytes via bridge
         if (typeof bufferSource === 'string' && bufferSource.startsWith('dig://')) {
-          const localhostUrl = convertDigUrl(bufferSource);
-          const response = await fetch(localhostUrl);
-          bufferSource = await response.arrayBuffer();
+          try {
+            const { dataUrl } = await digProxyFetch(bufferSource);
+            const resp = await originalFetch.call(window, dataUrl);
+            bufferSource = await resp.arrayBuffer();
+          } catch (err) {
+            console.warn('DIG Extension (page): WebAssembly.instantiate proxy failed for', bufferSource, err);
+            throw err;
+          }
         }
         return originalInstantiate.call(this, bufferSource, importObject);
       };
     }
-    
+
     const originalInstantiateStreaming = WebAssembly.instantiateStreaming;
     if (originalInstantiateStreaming) {
       WebAssembly.instantiateStreaming = async function(source, importObject) {
-        // If source is a dig:// URL, convert it
+        // If source is a dig:// URL, fetch bytes via bridge and pass as ArrayBuffer
         if (typeof source === 'string' && source.startsWith('dig://')) {
-          source = fetch(convertDigUrl(source));
+          try {
+            const { dataUrl } = await digProxyFetch(source);
+            const resp = await originalFetch.call(window, dataUrl);
+            const buf = await resp.arrayBuffer();
+            // Fall through to WebAssembly.instantiate (not streaming) with real bytes
+            return WebAssembly.instantiate(buf, importObject);
+          } catch (err) {
+            console.warn('DIG Extension (page): WebAssembly.instantiateStreaming proxy failed for', source, err);
+            throw err;
+          }
         } else if (source && typeof source.then === 'function') {
-          // If it's a Promise, we need to intercept the URL inside
           source = source.then(response => {
             if (response.url && response.url.startsWith('dig://')) {
-              return fetch(convertDigUrl(response.url));
+              return digProxyFetch(response.url).then(({ dataUrl }) => originalFetch.call(window, dataUrl));
             }
             return response;
           });
         }
         return originalInstantiateStreaming.call(this, source, importObject);
       };
+      WebAssembly.instantiateStreaming._digWrapped = true;
     }
   }
-  
+
   // Intercept Web Audio API - AudioContext.decodeAudioData
   if (window.AudioContext || window.webkitAudioContext) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     const originalDecodeAudioData = AudioContextClass.prototype.decodeAudioData;
     if (originalDecodeAudioData) {
       AudioContextClass.prototype.decodeAudioData = async function(audioData) {
-        // If audioData is a dig:// URL string, fetch it first
+        // If audioData is a dig:// URL string, fetch bytes via bridge
         if (typeof audioData === 'string' && audioData.startsWith('dig://')) {
-          const localhostUrl = convertDigUrl(audioData);
-          const response = await fetch(localhostUrl);
-          audioData = await response.arrayBuffer();
+          try {
+            const { dataUrl } = await digProxyFetch(audioData);
+            const response = await originalFetch.call(window, dataUrl);
+            audioData = await response.arrayBuffer();
+          } catch (err) {
+            console.warn('DIG Extension (page): decodeAudioData proxy failed for', audioData, err);
+            throw err;
+          }
         }
         return originalDecodeAudioData.call(this, audioData);
       };
     }
   }
-  
+
   // Intercept EventSource (Server-Sent Events) constructor
+  // EventSource requires a real HTTP URL; dig:// SSE is not a realistic use-case but
+  // we warn clearly rather than silently yielding an empty/broken stream.
   if (window.EventSource) {
     const originalEventSource = window.EventSource;
     window.EventSource = function(url, eventSourceInitDict) {
-      // Convert dig:// URL to localhost
       if (typeof url === 'string' && url.startsWith('dig://')) {
-        url = convertDigUrl(url);
+        console.warn(
+          'DIG Extension (page): EventSource with dig:// URL is not supported ' +
+          '(SSE requires a live HTTP endpoint). URL:', url
+        );
+        // Fall through — browser will throw ERR_UNKNOWN_URL_SCHEME which is the correct signal
       }
       return new originalEventSource(url, eventSourceInitDict);
     };
