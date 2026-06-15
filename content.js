@@ -2088,9 +2088,11 @@ function checkForMissedResources() {
   // page-script.js posts { type: 'DIG_PROXY_REQUEST', id, url } and awaits
   // { type: 'DIG_PROXY_RESPONSE', id, dataUrl, contentType } back.
   window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
     if (!event.data || event.data.type !== 'DIG_PROXY_REQUEST') return;
     const { id, url } = event.data;
     if (!id || !url) return;
+    if (typeof url !== 'string' || !url.startsWith('dig://')) return;
     chrome.runtime.sendMessage({ action: 'proxyRequest', url }, (proxyResponse) => {
       if (chrome.runtime.lastError) {
         window.postMessage({

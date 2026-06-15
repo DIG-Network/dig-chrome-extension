@@ -274,9 +274,9 @@ function parseURN(urn) {
   const saltMatch = urnString.match(/[?&]salt=([0-9a-f]+)/i);
   if (saltMatch) {
     salt = saltMatch[1].toLowerCase();
-    // Strip the query string so the URN path regex matches cleanly
-    urnString = urnString.replace(/\?.*$/, '');
   }
+  // Strip salt param (handles ?salt=… or &salt=…) then strip any remaining query string
+  urnString = urnString.replace(/[?&]salt=[0-9a-f]+/i, '').replace(/\?.*$/, '');
 
   // Parse components
   // Format: {chain}:{storeId}:{roothash}/{resourceKey}
@@ -339,7 +339,9 @@ async function urnToContentServerUrl(urn) {
 // Fetch DIG content via the REAL rpc.dig.net JSON-RPC protocol.
 // Performs: retrievalKey → chunked dig.getContent → verifyInclusion → deriveKey → decryptChunks.
 // Returns { dataUrl, contentType, urn, fullURN, verified } — callers read .dataUrl unchanged.
-async function fetchContentViaRPC(urn) {
+// Optional `endpoint` parameter allows the caller to pass a pre-resolved endpoint to avoid
+// a second getRpcEndpoint() call (prevents TOCTOU disagreement if the user changes the setting).
+async function fetchContentViaRPC(urn, endpoint) {
   try {
     // Normalise: strip dig:// prefix if present
     let urnString = urn.replace(/^dig:\/\//, '');
@@ -356,22 +358,22 @@ async function fetchContentViaRPC(urn) {
     const storeId     = parsed.storeId;
     const root        = parsed.roothash || 'latest';
     const resourceKey = parsed.resourceKey || 'index.html';
-    // salt: extracted from ?salt=<hex> by parseURN; undefined means public store
-    const salt        = parsed.salt || undefined;
+    // salt: extracted from ?salt=<hex> by parseURN; null means public store
+    const salt        = parsed.salt ?? null;
 
     console.log('DIG Extension: fetchContentViaRPC — real rpc.dig.net protocol for:', fullURN.substring(0, 60) + '...');
 
     // 1. Ensure WASM is loaded (SRI-verified, once)
     const dig = await ensureDig();
 
-    // 2. Resolve RPC endpoint (default: rpc.dig.net)
-    const endpoint = await getRpcEndpoint();
+    // 2. Resolve RPC endpoint (use caller-supplied endpoint to avoid double-resolution TOCTOU)
+    const ep = endpoint || (await getRpcEndpoint());
 
     // 3. Compute retrieval key = SHA-256(canonical rootless URN), hex
     const rk = dig.retrievalKey(storeId, resourceKey);
 
     // 4. Fetch ciphertext (chunked, up to 3 MiB windows)
-    const { ciphertext, proof, chunkLens } = await fetchVerified(endpoint, storeId, rk, root);
+    const { ciphertext, proof, chunkLens } = await fetchVerified(ep, storeId, rk, root);
 
     // 5. Verify merkle inclusion proof (non-throwing; decoys return false)
     let verified = false;
@@ -381,8 +383,8 @@ async function fetchContentViaRPC(urn) {
       verified = false;
     }
 
-    // 6. Derive per-resource AES-256 key (salt is the private-store hex salt, or undefined)
-    const keyHex = dig.deriveKey(storeId, resourceKey, salt || null);
+    // 6. Derive per-resource AES-256 key (salt is the private-store hex salt, or null)
+    const keyHex = dig.deriveKey(storeId, resourceKey, salt);
 
     // 7. Decrypt (GCM-SIV tag failure = decoy or wrong key → throw, caller shows error)
     let bytes;
@@ -688,9 +690,10 @@ async function preloadResources(digUrls) {
         return { url: digUrl, cached: true, data: resourceCache.get(cacheKey) };
       }
 
-      // Use RPC to get data URL
+      // Use RPC to get data URL — pass the already-resolved endpoint so the cache
+      // key and the fetch agree on the same endpoint (no TOCTOU race).
       try {
-        const rpcResult = await fetchContentViaRPC(digUrl);
+        const rpcResult = await fetchContentViaRPC(digUrl, endpoint);
         const cachedData = { dataUrl: rpcResult.dataUrl, url: rpcResult.dataUrl };
         resourceCache.set(cacheKey, cachedData);
         return { url: digUrl, cached: false, data: cachedData };
@@ -1010,8 +1013,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false;
     }
     
-    // Check cache first — keyed by endpoint+url so a config change yields fresh content
-    const cacheKeyP = getRpcEndpoint().then(ep => ep + '|' + digUrl);
+    // Resolve the endpoint ONCE so the cache key and the fetch agree on the same
+    // value even if the user changes the setting mid-request (TOCTOU fix).
+    const endpointP = getRpcEndpoint();
+    const cacheKeyP = endpointP.then(ep => ep + '|' + digUrl);
     const checkAndRespond = async () => {
       const cacheKey = await cacheKeyP;
       if (resourceCache.has(cacheKey)) {
@@ -1030,16 +1035,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Fetch via RPC or content server
     (async () => {
       if (await checkAndRespond()) return;
-      const cacheKey = await cacheKeyP;
+      const endpoint = await endpointP;
+      const cacheKey = endpoint + '|' + digUrl;
       try {
         // Parse URN to determine if we should use RPC
         const urnString = digUrl.replace(/^dig:\/\//, '');
         const parsed = parseURN(urnString);
 
         if (parsed) {
-          // Valid URN - use RPC
+          // Valid URN - use RPC (pass resolved endpoint to avoid second resolution)
           console.log('DIG Extension: Fetching via RPC for URN:', urnString.substring(0, 50) + '...');
-          const rpcResult = await fetchContentViaRPC(digUrl);
+          const rpcResult = await fetchContentViaRPC(digUrl, endpoint);
 
           // RPC returns data URL directly
           const dataUrl = rpcResult.dataUrl;
@@ -1050,7 +1056,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           // Cache the result keyed by endpoint+url
           resourceCache.set(cacheKey, { data: dataUrl, contentType });
-          
+
           sendResponse({
             success: true,
             data: dataUrl,
@@ -1059,11 +1065,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
           return;
         }
-        
+
         // Not a valid URN - still try RPC (RPC server will return decoy or error)
         console.log('DIG Extension: Invalid URN format, trying RPC anyway:', digUrl);
         try {
-          const rpcResult = await fetchContentViaRPC(digUrl);
+          const rpcResult = await fetchContentViaRPC(digUrl, endpoint);
           const dataUrl = rpcResult.dataUrl;
           const contentTypeMatch = dataUrl.match(/^data:([^;]+)/);
           const contentType = contentTypeMatch ? contentTypeMatch[1] : 'application/octet-stream';
