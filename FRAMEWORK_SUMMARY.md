@@ -166,3 +166,4 @@ const result = await framework.processUrl('dig://example.com/resource');
 
 **This is now the most advanced, optimized, and professional dig:// protocol handler browser extension possible.**
 
+

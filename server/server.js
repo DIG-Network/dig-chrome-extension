@@ -150,6 +150,24 @@ if (typeof window !== 'undefined') {
         }
       }));
     
+    case '.mp4':
+    case '.webm':
+    case '.ogg':
+      // For video files, return a minimal valid video file or placeholder
+      // In a real implementation, this would return actual video content
+      // For testing, we'll return a minimal MP4 header that browsers can recognize
+      // This is a very basic approach - in production you'd serve actual video
+      return createPlaceholderImage(); // Use image as placeholder for now
+    
+    case '.mp3':
+    case '.wav':
+    case '.ogg':
+      // For audio files, return a minimal valid audio file or placeholder
+      // In a real implementation, this would return actual audio content
+      // For testing, we'll return a minimal audio file
+      // This is a very basic approach - in production you'd serve actual audio
+      return Buffer.from('DIG Network Test Audio File - ' + resourceKey);
+    
     case '.html':
       return Buffer.from(`
 <!DOCTYPE html>

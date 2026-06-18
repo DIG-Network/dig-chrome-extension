@@ -235,3 +235,4 @@ The extension is designed to support:
 
 **This extension provides the most comprehensive `dig://` protocol support possible in a browser extension, covering virtually every way a URL can be used in modern web development.**
 
+
