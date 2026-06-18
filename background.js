@@ -13,6 +13,10 @@ import initDigClient, {
   install_global,
 } from './dig_client.js';
 
+// Shared URN parser — single source of truth in dig-urn.mjs (ES module).
+// background.js previously inlined a divergent copy; it now imports the one parser.
+import { parseURN } from './dig-urn.mjs';
+
 // SRI for the read-crypto WASM (same artifact + digest as hub.dig.net sw.js and apps/web/lib/dig-client.js).
 // Fail closed: a mismatch (tampered/wrong artifact) refuses to run unverified crypto.
 const DIG_CLIENT_WASM_SHA256 = "ff486be806f908a2a90780e499a04dbd34e10e3b97be0470cb9ee841a1e49e77";
@@ -193,114 +197,10 @@ const DEFAULT_SERVER_URL = 'rpc.dig.net';
 const DEFAULT_SERVER_PORT = 443;
 const DEFAULT_SERVER_HOST = 'rpc.dig.net';
 
-// Base36 encoding/decoding for store IDs (64 hex chars -> max 50 base36 chars)
-// Uses BigInt for handling large numbers (256-bit store IDs)
-function hexToInt(hex) {
-  try {
-    return BigInt('0x' + hex);
-  } catch (e) {
-    throw new Error(`Invalid hex string: ${hex}`);
-  }
-}
-
-function intToBase36(bigInt) {
-  if (bigInt === 0n) return '0';
-  let result = '';
-  const base = 36n;
-  while (bigInt > 0n) {
-    const remainder = Number(bigInt % base);
-    const char = remainder < 10 
-      ? remainder.toString()
-      : String.fromCharCode(97 + remainder - 10); // 'a' = 97
-    result = char + result;
-    bigInt = bigInt / base;
-  }
-  return result;
-}
-
-function base36ToInt(base36) {
-  let result = 0n;
-  const base = 36n;
-  for (let i = 0; i < base36.length; i++) {
-    const char = base36[i].toLowerCase();
-    let digit;
-    if (char >= '0' && char <= '9') {
-      digit = BigInt(parseInt(char, 10));
-    } else if (char >= 'a' && char <= 'z') {
-      digit = BigInt(char.charCodeAt(0) - 97 + 10);
-    } else {
-      throw new Error(`Invalid base36 character: ${char}`);
-    }
-    result = result * base + digit;
-  }
-  return result;
-}
-
-function intToHex(bigInt, length = 64) {
-  let hex = bigInt.toString(16);
-  return hex.padStart(length, '0');
-}
-
-// Encode store ID (64 hex chars) to base36 (max 50 chars)
-function encodeStoreId(storeId) {
-  if (!/^[a-f0-9]{64}$/i.test(storeId)) {
-    throw new Error('Invalid store ID format');
-  }
-  const int = hexToInt(storeId);
-  return intToBase36(int);
-}
-
-// Decode base36 to store ID (64 hex chars)
-function decodeStoreId(encoded) {
-  const int = base36ToInt(encoded);
-  return intToHex(int, 64);
-}
-
-// Parse URN: urn:dig:{chain}:{storeId}:{roothash}/{resourceKey}[?salt=<hex>]
-function parseURN(urn) {
-  // Remove dig:// prefix if present
-  let urnString = urn.replace(/^dig:\/\//, '');
-
-  // Remove urn:dig: prefix if present
-  urnString = urnString.replace(/^urn:dig:/i, '');
-
-  // Extract optional ?salt=<hex> query parameter before parsing the path
-  let salt = null;
-  const saltMatch = urnString.match(/[?&]salt=([0-9a-f]+)/i);
-  if (saltMatch) {
-    salt = saltMatch[1].toLowerCase();
-  }
-  // Strip salt param (handles ?salt=… or &salt=…) then strip any remaining query string
-  urnString = urnString.replace(/[?&]salt=[0-9a-f]+/i, '').replace(/\?.*$/, '');
-
-  // Parse components
-  // Format: {chain}:{storeId}:{roothash}/{resourceKey}
-  // or: {chain}:{storeId}/{resourceKey} (no roothash)
-  const match = urnString.match(/^([^:]+):([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
-
-  if (!match) {
-    // Try without chain prefix (assume chia)
-    const simpleMatch = urnString.match(/^([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
-    if (simpleMatch) {
-      return {
-        chain: 'chia',
-        storeId: simpleMatch[1].toLowerCase(),
-        roothash: simpleMatch[2] ? simpleMatch[2].toLowerCase() : null,
-        resourceKey: simpleMatch[3] || '',
-        salt,
-      };
-    }
-    return null;
-  }
-
-  return {
-    chain: match[1].toLowerCase(),
-    storeId: match[2].toLowerCase(),
-    roothash: match[3] ? match[3].toLowerCase() : null,
-    resourceKey: match[4] || '',
-    salt,
-  };
-}
+// URN parsing + base36 store-id helpers live in the shared dig-urn.mjs ES module
+// (imported at the top of this file). They used to be inlined here as a second
+// divergent copy; that copy has been removed so there is one parseURN for the
+// whole extension.
 
 // Fetch DIG content via the REAL rpc.dig.net JSON-RPC protocol.
 // Performs: retrievalKey → chunked dig.getContent → verifyInclusion → deriveKey → decryptChunks.

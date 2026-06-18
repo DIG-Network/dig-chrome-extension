@@ -12,7 +12,7 @@ const EXTENSION_FILES = [
   'popup.html',
   'popup.css',
   'popup.js',
-  'dig-urn.js',
+  'dig-urn.mjs',
   'background.js',
   'middleware.js',
   'content.js',
@@ -83,25 +83,6 @@ function validateExtension() {
   }
   
   return allValid; // Icons are optional, don't fail build if missing
-}
-
-function copyDirectoryRecursive(src, dest) {
-  if (!fs.existsSync(dest)) {
-    fs.mkdirSync(dest, { recursive: true });
-  }
-  
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-  
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    
-    if (entry.isDirectory()) {
-      copyDirectoryRecursive(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
 }
 
 function createDistDirectory() {
@@ -179,19 +160,9 @@ function copyFiles() {
     } else {
       log(`⚠️  Logo not found: ${logoSrc}`, 'yellow');
     }
-    
-    // Copy other files from src/ if needed (config, core, utils directories)
-    // These are for framework but may not be needed in dist if not bundled
-    const srcSubdirs = ['config', 'core', 'utils'];
-    srcSubdirs.forEach(subdir => {
-      const srcSubdirPath = path.join(srcDir, subdir);
-      const distSubdirPath = path.join(distSrcDir, subdir);
-      if (fs.existsSync(srcSubdirPath)) {
-        // Copy directory recursively
-        copyDirectoryRecursive(srcSubdirPath, distSubdirPath);
-        log(`✓ Copied: src/${subdir}/`, 'green');
-      }
-    });
+    // src/ only holds the favicon and logo assets above. (The old src/config,
+    // src/core, src/utils "Framework" subsystem was unused by the shipping path
+    // — manifest → background.js → dig_client.js WASM → rpc.dig.net — and was removed.)
   } else {
     log(`⚠️  Source directory not found: ${srcDir}`, 'yellow');
   }

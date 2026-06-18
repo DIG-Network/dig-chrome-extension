@@ -74,26 +74,46 @@ function decodeStoreId(encoded) {
 }
 
 /**
- * Parse URN: urn:dig:{chain}:{storeId}:{roothash}/{resourceKey}
- * @param {string} urnString - URN string (with or without urn:dig: prefix)
- * @returns {Object|null} Parsed URN object or null if invalid
+ * Parse URN: urn:dig:{chain}:{storeId}:{roothash}/{resourceKey}[?salt=<hex>]
+ *
+ * Single shared parser for every consumer in the extension — the Node test server
+ * (server.js, CommonJS require) and the module service worker (background.js, ESM
+ * import). It accepts the union of inputs those callers pass: a `dig://` scheme
+ * prefix, leading slashes, the `urn:dig:` prefix, and an optional `?salt=<hex>`
+ * private-store query param. `salt` is always present in the result (null = public
+ * store) so background.js's `parsed.salt ?? null` read is satisfied.
+ *
+ * @param {string} urnString - URN string (with or without `dig://` / `urn:dig:` prefix)
+ * @returns {Object|null} `{ chain, storeId, roothash, resourceKey, salt }` or null if invalid
  */
 function parseURN(urnString) {
   if (!urnString || typeof urnString !== 'string') {
     return null;
   }
-  
-  // Remove leading slash if present
+
+  // Remove dig:// scheme prefix if present (callers may pass the raw dig:// URL)
+  urnString = urnString.replace(/^dig:\/\//i, '');
+
+  // Remove leading slash(es) if present (path-style callers)
   urnString = urnString.replace(/^\/+/, '');
-  
+
   // Remove urn:dig: prefix if present
   urnString = urnString.replace(/^urn:dig:/i, '');
-  
+
+  // Extract optional ?salt=<hex> query parameter before parsing the path
+  let salt = null;
+  const saltMatch = urnString.match(/[?&]salt=([0-9a-f]+)/i);
+  if (saltMatch) {
+    salt = saltMatch[1].toLowerCase();
+  }
+  // Strip salt param (handles ?salt=… or &salt=…) then strip any remaining query string
+  urnString = urnString.replace(/[?&]salt=[0-9a-f]+/i, '').replace(/\?.*$/, '');
+
   // Parse components
   // Format: {chain}:{storeId}:{roothash}/{resourceKey}
   // or: {chain}:{storeId}/{resourceKey} (no roothash)
   const match = urnString.match(/^([^:]+):([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
-  
+
   if (!match) {
     // Try without chain prefix (assume chia)
     const simpleMatch = urnString.match(/^([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
@@ -102,17 +122,19 @@ function parseURN(urnString) {
         chain: 'chia',
         storeId: simpleMatch[1].toLowerCase(),
         roothash: simpleMatch[2] ? simpleMatch[2].toLowerCase() : null,
-        resourceKey: simpleMatch[3] || ''
+        resourceKey: simpleMatch[3] || '',
+        salt,
       };
     }
     return null;
   }
-  
+
   return {
     chain: match[1].toLowerCase(),
     storeId: match[2].toLowerCase(),
     roothash: match[3] ? match[3].toLowerCase() : null,
-    resourceKey: match[4] || ''
+    resourceKey: match[4] || '',
+    salt,
   };
 }
 
@@ -229,35 +251,20 @@ function urnToContentServerUrl(urn, options = {}) {
   return url;
 }
 
-// Export for Node.js (server)
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    parseURN,
-    resolveHostToURN,
-    encodeStoreId,
-    decodeStoreId,
-    urnToContentServerUrl,
-    hexToInt,
-    intToBase36,
-    base36ToInt,
-    intToHex
-  };
-}
-
-// Export for browser/extension (background.js)
-if (typeof window !== 'undefined' || typeof self !== 'undefined') {
-  // For service workers, use self
-  const global = typeof self !== 'undefined' ? self : window;
-  global.DigURN = {
-    parseURN,
-    resolveHostToURN,
-    encodeStoreId,
-    decodeStoreId,
-    urnToContentServerUrl,
-    hexToInt,
-    intToBase36,
-    base36ToInt,
-    intToHex
-  };
-}
+// Single source of truth. This file is an ES module: the shipping module service
+// worker (background.js, manifest `"type": "module"`) imports these named exports
+// directly. Node-side dev consumers (server/server.js, tests/) load it via dynamic
+// `import()` since they run as CommonJS. There is no longer a second inlined copy
+// of parseURN / the base36 helpers anywhere in the extension.
+export {
+  parseURN,
+  resolveHostToURN,
+  encodeStoreId,
+  decodeStoreId,
+  urnToContentServerUrl,
+  hexToInt,
+  intToBase36,
+  base36ToInt,
+  intToHex,
+};
 

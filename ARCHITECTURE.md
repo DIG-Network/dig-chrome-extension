@@ -1,235 +1,84 @@
-# DIG Protocol Handler - Architecture
+# DIG Network Extension — Architecture
 
-## Overview
+A Chromium Manifest V3 extension that intercepts `dig://` URIs and resolves DIG
+content via `rpc.dig.net`, performing Merkle inclusion verification and
+AES-256-GCM-SIV decryption **client-side** using the `dig_client` WASM module
+(the same SRI-pinned artifact the hub and digstore use).
 
-This is the most advanced `dig://` protocol handler browser extension, built with a professional framework architecture that prevents short-circuiting, infinite loops, and circular dependencies.
-
-## Architecture Principles
-
-### 1. Framework-Based Design
-- **Core Framework**: Central orchestration layer
-- **Interceptor Registry**: Manages all URL interceptors
-- **State Manager**: Centralized configuration and state
-- **Event Bus**: Decoupled event system
-- **Safety Guard**: Prevents infinite loops and recursion
-
-### 2. Safety Mechanisms
-
-#### Short-Circuit Prevention
-- **Processing Tracking**: Tracks URLs currently being processed
-- **Stack Depth Monitoring**: Prevents deep recursion
-- **Call Count Limits**: Limits processing attempts per URL
-- **Timeout Protection**: Prevents hanging processes
-
-#### Circular Dependency Prevention
-- **Dependency Graph**: Tracks interceptor dependencies
-- **Cycle Detection**: Detects circular dependencies at registration
-- **Stack Tracking**: Monitors interceptor call stack
-
-### 3. Modular Structure
+## The shipping read path
 
 ```
-src/
-├── core/                    # Core framework
-│   ├── Framework.js         # Main framework orchestrator
-│   ├── InterceptorRegistry.js  # Interceptor management
-│   ├── StateManager.js      # State and configuration
-│   └── EventBus.js          # Event system
-├── utils/                   # Utilities
-│   ├── SafetyGuard.js       # Safety mechanisms
-│   └── Logger.js            # Logging system
-├── interceptors/            # URL interceptors
-│   ├── HTMLInterceptor.js
-│   ├── CSSInterceptor.js
-│   ├── JSAPIInterceptor.js
-│   └── NavigationInterceptor.js
-└── config/                  # Configuration
-    └── default.js           # Default settings
+dig:// URL
+  │  (intercepted by content scripts / page script / omnibox / nav)
+  ▼
+background.js  ── module service worker ("type":"module")
+  │  parseURN()            (shared, from dig-urn.mjs)
+  │  retrievalKey()        ┐
+  │  verifyInclusion()     │  dig_client.js + dig_client_bg.wasm
+  │  deriveKey()           │  (SRI-pinned read-crypto WASM)
+  │  decryptChunk()        ┘
+  ▼
+rpc.dig.net  ── JSON-RPC 2.0 dig.getContent  →  ciphertext + inclusion proof
+  ▼
+verified + decrypted bytes  →  data: URL  →  returned to the requesting page
 ```
 
-## Core Components
+`background.js` is the heart of the extension. It is loaded as an **ES module
+service worker** (`manifest.json` → `background.service_worker` with
+`"type": "module"`), which is required because `dig_client.js` is a
+`wasm-bindgen` ES module that uses `import.meta.url` and cannot be loaded via
+`importScripts()`. The WASM binary is integrity-checked (SHA-256) against a
+pinned digest before any crypto runs — a mismatch fails closed.
 
-### Framework (`src/core/Framework.js`)
-- Main entry point for all operations
-- Manages interceptor chain execution
-- Prevents recursive processing
-- Handles URL conversion
+## File map (what actually ships)
 
-### InterceptorRegistry (`src/core/InterceptorRegistry.js`)
-- Registers and manages interceptors
-- Prevents circular dependencies
-- Prioritizes interceptor execution
-- Tracks processed URLs
+`build.js` (`node build.js`) validates and copies these files into `dist/`:
 
-### StateManager (`src/core/StateManager.js`)
-- Manages application state
-- Persists to Chrome storage
-- Provides reactive updates
-- Handles configuration
+| File | Role |
+|---|---|
+| `manifest.json` | MV3 manifest: module SW, content scripts, permissions, omnibox, web-accessible resources |
+| `background.js` | Module service worker — URN parse, RPC fetch, WASM verify + decrypt, caching |
+| `dig-urn.mjs` | **Shared** URN parser + base36 store-id helpers (single source of truth; ES module) |
+| `dig_client.js` + `dig_client_bg.wasm` | SRI-pinned read-crypto WASM (`retrievalKey`, `deriveKey`, `verifyInclusion`, `decryptChunk`). **Do not edit** — it is the byte-identical cross-system crypto artifact (see `../../SYSTEM.md`). |
+| `content.js` | Content script — rewrites `dig://` resource references (img/script/link/srcset/etc.) on every page |
+| `middleware.js` | Content script — fallback-strategy ordering for resolving `dig://` requests |
+| `page-script.js` | Injected into the page (main world) to intercept `dig://` before the browser fetches it |
+| `popup.html` / `popup.css` / `popup.js` | Toolbar popup — configure the RPC endpoint, view status |
+| `dig-viewer.html` / `dig-viewer.js` | Standalone viewer iframe that fetches + embeds DIG content via the SW |
+| `src/favicon.png`, `src/logo.png` | Extension icon + popup logo |
 
-### SafetyGuard (`src/utils/SafetyGuard.js`)
-- Prevents infinite loops
-- Monitors stack depth
-- Tracks processing state
-- Enforces timeouts
+The Node test server in `server/` and the root `stub-server.js` / `test-server.js`
+are **development-only** and are not part of the shipped extension. The dev server
+imports `dig-urn.mjs` (via dynamic `import()`, since it runs as CommonJS) so it
+shares the exact same URN parser as the extension.
 
-## Configuration
+## Shared URN parser (`dig-urn.mjs`)
 
-### Server Configuration
-- **URL**: Configurable server URL (default: `localhost`)
-- **Port**: Configurable port (default: `8080`)
-- **UI**: Popup interface with restore default button
-- **Persistence**: Saved to Chrome storage
+There is exactly **one** `parseURN` implementation, in `dig-urn.mjs`. It accepts the
+union of inputs every caller passes — a `dig://` scheme prefix, leading slashes, the
+`urn:dig:` prefix, and an optional `?salt=<hex>` private-store param — and returns
+`{ chain, storeId, roothash, resourceKey, salt }`. The module service worker imports
+it directly (`import { parseURN } from './dig-urn.mjs'`); the dev server imports it
+via dynamic `import()`. The parser is pinned by `tests/parse-urn.test.mjs`
+(`node --test tests/`).
 
-### Safety Configuration
-- **Max Stack Depth**: 50 (configurable)
-- **Max Calls Per URL**: 10 (configurable)
-- **Max Processing Time**: 5000ms (configurable)
+The URN scheme itself (`urn:dig:<chain>:<storeID>[:<rootHash>][/<resourceKey>]`),
+the retrieval key (`SHA256(canonical_urn)`), and the crypto tags are **cross-system
+contracts** defined in `../../SYSTEM.md`; the parser must keep producing the same
+canonical components as the other implementations.
 
-## Interceptor System
+## Build
 
-### Registration
-```javascript
-framework.register('myInterceptor', async (url, context, framework) => {
-  // Process URL
-  return { processed: true, result: ... };
-}, {
-  priority: 10,
-  dependsOn: ['otherInterceptor'],
-  once: false
-});
+```bash
+npm run build        # node build.js  → dist/
+npm run build:zip    # same, plus a versioned .zip for distribution
 ```
 
-### Execution Flow
-1. Safety checks (can process?)
-2. Interceptor chain execution (priority order)
-3. First successful interceptor wins
-4. Safety cleanup
+`build.js` fails if any required file is missing. Load the unpacked extension from
+`dist/` via `chrome://extensions` → Developer mode → Load unpacked.
 
-## State Management
+## Tests
 
-### Configuration Keys
-- `server.url`: Server URL
-- `server.port`: Server port
-- `extension.enabled`: Extension enabled state
-- `logging.level`: Log level
-- `safety.*`: Safety settings
-
-### State Updates
-- Reactive: Listeners notified on changes
-- Persistent: Saved to Chrome storage
-- Defaults: Fallback to defaults if missing
-
-## Event System
-
-### Events
-- `framework:initialized`: Framework ready
-- `interceptor:registered`: New interceptor
-- `config:updated`: Configuration changed
-- `config:reset`: Reset to defaults
-
-### Usage
-```javascript
-framework.events.on('config:updated', ({ updates }) => {
-  // Handle config update
-});
+```bash
+node --test tests/   # pinning tests for the shared URN parser
 ```
-
-## Safety Features
-
-### 1. Processing Lock
-- URLs being processed are locked
-- Prevents concurrent processing
-- Automatic timeout release
-
-### 2. Stack Depth Protection
-- Monitors call stack depth
-- Prevents deep recursion
-- Configurable limit
-
-### 3. Call Count Limits
-- Tracks attempts per URL
-- Prevents infinite retries
-- Configurable threshold
-
-### 4. Timeout Protection
-- Maximum processing time
-- Automatic cleanup
-- Prevents hanging
-
-## Performance Optimizations
-
-### 1. Interceptor Prioritization
-- High priority interceptors run first
-- Early exit on success
-- Efficient chain execution
-
-### 2. Caching
-- Processed URL tracking
-- Prevents re-processing
-- Memory efficient
-
-### 3. Lazy Loading
-- Interceptors loaded on demand
-- Minimal initialization overhead
-- Fast startup
-
-## Build System
-
-### Bundling
-- ES6 modules → Single bundle
-- Tree shaking
-- Minification
-- Source maps
-
-### Output
-- `dist/` directory
-- Optimized for production
-- Compatible with Manifest V3
-
-## Usage
-
-### Initialization
-```javascript
-import framework from './core/Framework.js';
-
-await framework.init({
-  server: { url: 'localhost', port: 8080 },
-  safety: { maxStackDepth: 50 }
-});
-```
-
-### Processing URLs
-```javascript
-const result = await framework.processUrl('dig://example.com/resource');
-```
-
-### Configuration
-```javascript
-// Update server URL
-await framework.updateConfig({
-  'server.url': 'example.com',
-  'server.port': 3000
-});
-
-// Reset to defaults
-await framework.resetDefaults();
-```
-
-## Best Practices
-
-1. **Always use framework methods** - Don't bypass the framework
-2. **Register interceptors early** - During initialization
-3. **Use safety checks** - Before processing
-4. **Handle errors gracefully** - Don't break the chain
-5. **Monitor performance** - Use logger and events
-
-## Future Enhancements
-
-- [ ] Web Worker support
-- [ ] Service Worker integration
-- [ ] Advanced caching strategies
-- [ ] Performance metrics
-- [ ] Developer tools integration
-
-
