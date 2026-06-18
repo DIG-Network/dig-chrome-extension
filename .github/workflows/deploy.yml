@@ -1,0 +1,37 @@
+name: deploy
+
+# Browser extension — no S3/CloudFront origin. "Deploy" = build the packaged extension
+# (node build.js --zip -> ./dist + a .zip), publish the zip as a build artifact on every
+# push to main, and attach it to a GitHub Release when a v* tag is pushed (the artifact you
+# upload to the Chrome Web Store / Edge Add-ons dashboard).
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # create releases / upload release assets
+
+jobs:
+  build:
+    name: build + package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 20
+      - run: npm ci || npm install
+      - run: npm run build:zip # node build.js --zip -> ./dist + dist/*.zip
+      - name: upload build artifact
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: dig-extension
+          path: dist/**
+          if-no-files-found: error
+      - name: attach zip to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
+        with:
+          files: dist/*.zip
