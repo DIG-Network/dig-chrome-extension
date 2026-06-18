@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DIG Network Extension Icon Generator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #1a0a2e;
+      color: white;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    canvas {
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      margin: 10px;
+      background: linear-gradient(135deg, #1a0a2e 0%, #16213e 50%, #0f3460 100%);
+    }
+    button {
+      background: linear-gradient(135deg, #FF00FF 0%, #9D4EDD 100%);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+      font-weight: bold;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    .icon-preview {
+      display: inline-block;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>DIG Network Extension Icon Generator</h1>
+    <p>This tool generates extension icons with the DIG Network branding.</p>
+    
+    <div id="canvases"></div>
+    
+    <div>
+      <button onclick="generateAllIcons()">Generate All Icons</button>
+      <button onclick="downloadAll()">Download All Icons</button>
+    </div>
+    
+    <p><strong>Instructions:</strong> Click "Generate All Icons" then "Download All Icons". Save the files as icon16.png, icon48.png, and icon128.png in the icons/ directory.</p>
+  </div>
+
+  <script>
+    const sizes = [16, 48, 128];
+    const canvases = {};
+
+    function createCanvas(size) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      canvas.id = `canvas-${size}`;
+      
+      const container = document.createElement('div');
+      container.className = 'icon-preview';
+      container.innerHTML = `<p>${size}x${size}</p>`;
+      container.appendChild(canvas);
+      
+      document.getElementById('canvases').appendChild(container);
+      canvases[size] = canvas;
+      
+      return canvas;
+    }
+
+    function drawIcon(canvas, size) {
+      const ctx = canvas.getContext('2d');
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, size, size);
+      
+      // Background gradient
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#1a0a2e');
+      gradient.addColorStop(0.5, '#16213e');
+      gradient.addColorStop(1, '#0f3460');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+      
+      // Draw hexagonal "D" logo
+      const centerX = size / 2;
+      const centerY = size / 2;
+      const radius = size * 0.35;
+      
+      // Hexagon outline
+      ctx.strokeStyle = '#FF00FF';
+      ctx.lineWidth = Math.max(1, size / 16);
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI / 3) * i - Math.PI / 6;
+        const x = centerX + radius * Math.cos(angle);
+        const y = centerY + radius * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      
+      // "D" shape with gradient
+      const dGradient = ctx.createLinearGradient(centerX - radius * 0.5, centerY, centerX + radius * 0.5, centerY);
+      dGradient.addColorStop(0, '#FF00FF');
+      dGradient.addColorStop(1, '#9D4EDD');
+      ctx.fillStyle = dGradient;
+      
+      // Simplified "D" shape
+      ctx.beginPath();
+      ctx.moveTo(centerX - radius * 0.3, centerY - radius * 0.6);
+      ctx.lineTo(centerX + radius * 0.2, centerY - radius * 0.6);
+      ctx.lineTo(centerX + radius * 0.4, centerY - radius * 0.3);
+      ctx.lineTo(centerX + radius * 0.4, centerY + radius * 0.3);
+      ctx.lineTo(centerX + radius * 0.2, centerY + radius * 0.6);
+      ctx.lineTo(centerX - radius * 0.3, centerY + radius * 0.6);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function generateAllIcons() {
+      sizes.forEach(size => {
+        const canvas = createCanvas(size);
+        drawIcon(canvas, size);
+      });
+    }
+
+    function downloadCanvas(canvas, filename) {
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    }
+
+    function downloadAll() {
+      sizes.forEach(size => {
+        const canvas = canvases[size];
+        if (canvas) {
+          downloadCanvas(canvas, `icon${size}.png`);
+        }
+      });
+    }
+
+    // Auto-generate on load
+    window.onload = () => {
+      generateAllIcons();
+    };
+  </script>
+</body>
+</html>
+
