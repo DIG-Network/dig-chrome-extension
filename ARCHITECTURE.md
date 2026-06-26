@@ -62,6 +62,12 @@ it directly (`import { parseURN } from './dig-urn.mjs'`); the dev server imports
 via dynamic `import()`. The parser is pinned by `tests/parse-urn.test.mjs`
 (`node --test tests/`).
 
+A parsed URN **with** a `roothash` identifies a specific *capsule* — one immutable
+store generation, the pair `storeId:roothash` (a store is a sequence of capsules,
+one per commit). A **rootless** URN (`roothash === null`) references the store's
+**latest** capsule. (Capsule is the canonical term shared across the ecosystem;
+see `../../SYSTEM.md`.)
+
 The URN scheme itself (`urn:dig:<chain>:<storeID>[:<rootHash>][/<resourceKey>]`),
 the retrieval key (`SHA256(canonical_urn)`), and the crypto tags are **cross-system
 contracts** defined in `../../SYSTEM.md`; the parser must keep producing the same
