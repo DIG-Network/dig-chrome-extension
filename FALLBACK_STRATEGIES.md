@@ -14,7 +14,7 @@
   - Some resources (iframes) can't use blob URLs
 
 ### Priority 2: Redirect/URL Conversion ✅ (Currently Implemented)
-- **Method**: Convert `dig://` URLs to `http://localhost:8080/` and let browser fetch normally
+- **Method**: Convert `chia://` URLs to `http://localhost:8080/` and let browser fetch normally
 - **Advantages**: 
   - Simple and reliable
   - Works for all resource types
@@ -34,7 +34,7 @@
 ```javascript
 // Intercept error events before they bubble
 element.addEventListener('error', (e) => {
-  if (e.target.src?.startsWith('dig://')) {
+  if (e.target.src?.startsWith('chia://')) {
     e.preventDefault();
     e.stopPropagation();
     // Retry with different method
@@ -325,7 +325,7 @@ channel.port1.onmessage = (e) => {
 
 #### 9a. MutationObserver for Dynamic Content
 ```javascript
-// Watch for new elements with dig:// URLs
+// Watch for new elements with chia:// URLs
 const observer = new MutationObserver((mutations) => {
   mutations.forEach((mutation) => {
     mutation.addedNodes.forEach((node) => {
@@ -345,7 +345,7 @@ observer.observe(document, { childList: true, subtree: true });
 
 #### 9b. Element Replacement Middleware
 ```javascript
-// Replace elements with dig:// URLs before browser loads them
+// Replace elements with chia:// URLs before browser loads them
 function replaceElement(element) {
   const newElement = element.cloneNode(true);
   // Process newElement
@@ -354,7 +354,7 @@ function replaceElement(element) {
 ```
 
 **Benefits:**
-- Prevents browser from seeing dig:// URLs
+- Prevents browser from seeing chia:// URLs
 - Cleaner DOM
 - Better error handling
 
@@ -403,7 +403,7 @@ function reportError(digUrl, error, strategy) {
 
 #### 11a. CSP Header Modification
 ```javascript
-// Modify CSP headers to allow dig:// resources
+// Modify CSP headers to allow chia:// resources
 // Note: Limited by browser security policies
 ```
 
@@ -556,7 +556,7 @@ async function loadDigResource(element, attribute, digUrl) {
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    User Request                          │
-│                   (dig:// URL)                          │
+│                   (chia:// URL)                          │
 └────────────────────┬────────────────────────────────────┘
                      │
                      ▼

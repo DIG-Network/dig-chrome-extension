@@ -1,6 +1,6 @@
 # DIG Network Extension — Architecture
 
-A Chromium Manifest V3 extension that intercepts `dig://` URIs and resolves DIG
+A Chromium Manifest V3 extension that intercepts `chia://` URIs and resolves DIG
 content via `rpc.dig.net`, performing Merkle inclusion verification and
 AES-256-GCM-SIV decryption **client-side** using the `dig_client` WASM module
 (the same SRI-pinned artifact the hub and digstore use).
@@ -8,7 +8,7 @@ AES-256-GCM-SIV decryption **client-side** using the `dig_client` WASM module
 ## The shipping read path
 
 ```
-dig:// URL
+chia:// URL
   │  (intercepted by content scripts / page script / omnibox / nav)
   ▼
 background.js  ── module service worker ("type":"module")
@@ -40,9 +40,9 @@ pinned digest before any crypto runs — a mismatch fails closed.
 | `background.js` | Module service worker — URN parse, RPC fetch, WASM verify + decrypt, caching |
 | `dig-urn.mjs` | **Shared** URN parser + base36 store-id helpers (single source of truth; ES module) |
 | `dig_client.js` + `dig_client_bg.wasm` | SRI-pinned read-crypto WASM (`retrievalKey`, `deriveKey`, `verifyInclusion`, `decryptChunk`). **Do not edit** — it is the byte-identical cross-system crypto artifact (see `../../SYSTEM.md`). |
-| `content.js` | Content script — rewrites `dig://` resource references (img/script/link/srcset/etc.) on every page |
-| `middleware.js` | Content script — fallback-strategy ordering for resolving `dig://` requests |
-| `page-script.js` | Injected into the page (main world) to intercept `dig://` before the browser fetches it |
+| `content.js` | Content script — rewrites `chia://` resource references (img/script/link/srcset/etc.) on every page |
+| `middleware.js` | Content script — fallback-strategy ordering for resolving `chia://` requests |
+| `page-script.js` | Injected into the page (main world) to intercept `chia://` before the browser fetches it |
 | `popup.html` / `popup.css` / `popup.js` | Toolbar popup — configure the RPC endpoint, view status |
 | `dig-viewer.html` / `dig-viewer.js` | Standalone viewer iframe that fetches + embeds DIG content via the SW |
 | `src/favicon.png`, `src/logo.png` | Extension icon + popup logo |
@@ -55,7 +55,7 @@ shares the exact same URN parser as the extension.
 ## Shared URN parser (`dig-urn.mjs`)
 
 There is exactly **one** `parseURN` implementation, in `dig-urn.mjs`. It accepts the
-union of inputs every caller passes — a `dig://` scheme prefix, leading slashes, the
+union of inputs every caller passes — a `chia://` scheme prefix, leading slashes, the
 `urn:dig:` prefix, and an optional `?salt=<hex>` private-store param — and returns
 `{ chain, storeId, roothash, resourceKey, salt }`. The module service worker imports
 it directly (`import { parseURN } from './dig-urn.mjs'`); the dev server imports it

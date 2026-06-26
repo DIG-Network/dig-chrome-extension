@@ -1,7 +1,7 @@
-# PowerShell script to register dig:// protocol handler on Windows
+# PowerShell script to register chia:// protocol handler on Windows
 # Run as Administrator: Right-click PowerShell -> "Run as Administrator"
 
-Write-Host "Registering dig:// protocol handler..." -ForegroundColor Cyan
+Write-Host "Registering chia:// protocol handler..." -ForegroundColor Cyan
 
 # Get the path to Chrome/Edge/Brave
 $chromePaths = @(
@@ -32,7 +32,7 @@ if (-not $chromePath) {
 Write-Host "Found browser: $chromePath" -ForegroundColor Green
 
 # Registry path
-$regPath = "HKCU:\Software\Classes\dig"
+$regPath = "HKCU:\Software\Classes\chia"
 
 try {
     # Create the protocol key
@@ -41,7 +41,7 @@ try {
     }
     
     # Set default value
-    Set-ItemProperty -Path $regPath -Name "(Default)" -Value "URL:dig Protocol" -Type String
+    Set-ItemProperty -Path $regPath -Name "(Default)" -Value "URL:chia Protocol" -Type String
     
     # Set URL Protocol
     Set-ItemProperty -Path $regPath -Name "URL Protocol" -Value "" -Type String
@@ -54,18 +54,18 @@ try {
     
     # Set command to open URL in browser
     # Use --new-window to ensure it opens in a new window if Chrome is already running
-    # The browser extension will intercept the dig:// URL and redirect it
+    # The browser extension will intercept the chia:// URL and redirect it
     $command = "`"$chromePath`" --new-window `"%1`""
     Set-ItemProperty -Path $commandPath -Name "(Default)" -Value $command -Type String
     
-    Write-Host "✓ Successfully registered dig:// protocol handler!" -ForegroundColor Green
-    Write-Host "  Protocol: dig://" -ForegroundColor Gray
+    Write-Host "✓ Successfully registered chia:// protocol handler!" -ForegroundColor Green
+    Write-Host "  Protocol: chia://" -ForegroundColor Gray
     Write-Host "  Handler: $chromePath" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Note: The DIG Network Extension must be installed in your browser" -ForegroundColor Yellow
-    Write-Host "      for dig:// URLs to work properly." -ForegroundColor Yellow
+    Write-Host "      for chia:// URLs to work properly." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Test it by opening: dig://test/example" -ForegroundColor Cyan
+    Write-Host "Test it by opening: chia://test/example" -ForegroundColor Cyan
     
 } catch {
     Write-Host "ERROR: Failed to register protocol handler" -ForegroundColor Red

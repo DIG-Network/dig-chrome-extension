@@ -1,8 +1,8 @@
 #!/bin/bash
-# Script to register dig:// protocol handler on Linux
+# Script to register chia:// protocol handler on Linux
 # Run: chmod +x register-protocol-linux.sh && ./register-protocol-linux.sh
 
-echo "Registering dig:// protocol handler on Linux..."
+echo "Registering chia:// protocol handler on Linux..."
 
 # Find Chrome/Edge/Brave
 CHROME_PATH=""
@@ -41,11 +41,11 @@ cat > "$DESKTOP_DIR/dig-protocol-handler.desktop" <<EOF
 Version=1.0
 Type=Application
 Name=DIG Protocol Handler
-Comment=Handler for dig:// protocol URLs
+Comment=Handler for chia:// protocol URLs
 Exec=$CHROME_PATH %u
 Terminal=false
 NoDisplay=true
-MimeType=x-scheme-handler/dig;
+MimeType=x-scheme-handler/chia;
 EOF
 
 # Update desktop database
@@ -53,18 +53,18 @@ update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
 
 # Register with xdg-mime (if available)
 if command -v xdg-mime &> /dev/null; then
-    xdg-mime default dig-protocol-handler.desktop x-scheme-handler/dig
+    xdg-mime default dig-protocol-handler.desktop x-scheme-handler/chia
 fi
 
 echo ""
-echo "✓ Successfully registered dig:// protocol handler!"
-echo "  Protocol: dig://"
+echo "✓ Successfully registered chia:// protocol handler!"
+echo "  Protocol: chia://"
 echo "  Handler: $CHROME_PATH"
 echo ""
 echo "Note: The DIG Network Extension must be installed in your browser"
-echo "      for dig:// URLs to work properly."
+echo "      for chia:// URLs to work properly."
 echo ""
-echo "Test it by opening: dig://test/example"
+echo "Test it by opening: chia://test/example"
 echo ""
 echo "You may need to log out and log back in for the changes to take effect."
 

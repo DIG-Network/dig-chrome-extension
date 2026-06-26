@@ -4,7 +4,7 @@ Express server that serves test resources for the DIG Network Browser Extension.
 
 ## Purpose
 
-This server provides test endpoints that match the `dig://test/*` URLs used in the test page. When the browser extension intercepts `dig://` protocol requests, it redirects them to this localhost server.
+This server provides test endpoints that match the `chia://test/*` URLs used in the test page. When the browser extension intercepts `chia://` protocol requests, it redirects them to this localhost server.
 
 ## Installation
 
@@ -46,7 +46,7 @@ The server handles all `/test/*` routes and returns appropriate responses based 
 1. Start this server: `npm start`
 2. Activate the DIG Network Browser Extension
 3. Open `test.html` in your browser
-4. All `dig://test/*` requests will be redirected to this server
+4. All `chia://test/*` requests will be redirected to this server
 5. Check the browser console and Network tab to verify redirections
 
 ## Notes

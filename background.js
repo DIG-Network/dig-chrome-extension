@@ -209,8 +209,8 @@ const DEFAULT_SERVER_HOST = 'rpc.dig.net';
 // a second getRpcEndpoint() call (prevents TOCTOU disagreement if the user changes the setting).
 async function fetchContentViaRPC(urn, endpoint) {
   try {
-    // Normalise: strip dig:// prefix if present
-    let urnString = urn.replace(/^dig:\/\//, '');
+    // Normalise: strip chia:// prefix if present
+    let urnString = urn.replace(/^chia:\/\//, '');
     const parsed = parseURN(urnString);
     if (!parsed) {
       throw new Error('Invalid URN format');
@@ -329,14 +329,14 @@ async function getServerConfig() {
   };
 }
 
-// Convert dig:// URL - ALL dig:// URLs now use RPC
-// This function is kept for compatibility but all dig:// URLs should go through RPC
+// Convert chia:// URL - ALL chia:// URLs now use RPC
+// This function is kept for compatibility but all chia:// URLs should go through RPC
 async function convertDigUrl(url) {
-  if (typeof url !== 'string' || !url.startsWith('dig://')) {
+  if (typeof url !== 'string' || !url.startsWith('chia://')) {
     return url;
   }
   
-  // ALL dig:// URLs use RPC - return marker to indicate RPC should be used
+  // ALL chia:// URLs use RPC - return marker to indicate RPC should be used
   // The actual fetching will be done via fetchContentViaRPC
   return `rpc://${url}`;
 }
@@ -385,18 +385,18 @@ chrome.runtime.onInstalled.addListener(async () => {
   // Clean up any stale dig.local redirect rules from previous versions
   await removeStaleRedirectRules();
 
-  // Check for any existing tabs with dig:// URLs (in case extension loaded after tab was opened)
+  // Check for any existing tabs with chia:// URLs (in case extension loaded after tab was opened)
   checkExistingDigTabs();
 });
 
-// Check for existing tabs with dig:// URLs and redirect them
+// Check for existing tabs with chia:// URLs and redirect them
 async function checkExistingDigTabs() {
   try {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
-      if (tab.url && tab.url.startsWith('dig://') && !isLocalhostUrl(tab.url)) {
+      if (tab.url && tab.url.startsWith('chia://') && !isLocalhostUrl(tab.url)) {
         await redirectDigUrlToLocalhost(tab.id, tab.url);
-      } else if (tab.pendingUrl && tab.pendingUrl.startsWith('dig://')) {
+      } else if (tab.pendingUrl && tab.pendingUrl.startsWith('chia://')) {
         await redirectDigUrlToLocalhost(tab.id, tab.pendingUrl);
       } else if (tab.url && isDigLocalUrl(tab.url)) {
         await redirectDigLocalToExtension(tab.id, tab.url);
@@ -409,7 +409,7 @@ async function checkExistingDigTabs() {
   }
 }
 
-// Periodically check for dig:// tabs (catches cases where we missed the initial event)
+// Periodically check for chia:// tabs (catches cases where we missed the initial event)
 setInterval(() => {
   checkExistingDigTabs();
 }, 1000); // Check every second
@@ -424,7 +424,7 @@ chrome.runtime.onStartup.addListener(() => {
 // Cache for pre-loaded resources
 const resourceCache = new Map();
 
-// Pre-load dig:// resources when page loads
+// Pre-load chia:// resources when page loads
 // Now just stores server URLs instead of data URLs
 async function preloadResources(digUrls) {
   const endpoint = await getRpcEndpoint();
@@ -476,12 +476,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.action === 'convertDigUrl') {
-    // Convert dig:// URL to data URL via RPC
+    // Convert chia:// URL to data URL via RPC
     (async () => {
       try {
         const digUrl = message.url;
-        if (!digUrl || !digUrl.startsWith('dig://')) {
-          sendResponse({ error: 'Invalid dig:// URL' });
+        if (!digUrl || !digUrl.startsWith('chia://')) {
+          sendResponse({ error: 'Invalid chia:// URL' });
           return;
         }
         
@@ -497,7 +497,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.action === 'navigateToDigUrl') {
-    // Convert dig:// URL to server URL (subdomain format) and navigate tab
+    // Convert chia:// URL to server URL (subdomain format) and navigate tab
     // IMPORTANT: Must return true immediately to keep channel open, then call sendResponse in async
     const handleNavigateToDigUrl = async () => {
       try {
@@ -528,7 +528,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         // Try to send response (may fail if navigation closed port)
         try {
-          const urn = digUrl.replace(/^dig:\/\//, '');
+          const urn = digUrl.replace(/^chia:\/\//, '');
           const viewerUrl = chrome.runtime.getURL(`dig-viewer.html?urn=${encodeURIComponent(urn)}`);
           sendResponse({ success: true, url: viewerUrl });
         } catch (e) {
@@ -707,7 +707,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.action === 'preloadResources') {
-    // Pre-load multiple dig:// resources
+    // Pre-load multiple chia:// resources
     preloadResources(message.urls || [])
       .then(results => {
         sendResponse({ success: true, results });
@@ -719,12 +719,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.action === 'proxyRequest') {
-    // Proxy a dig:// request through the background service worker
+    // Proxy a chia:// request through the background service worker
     // PRIMARY: Use RPC to fetch content
     // FALLBACK: Use content server for legacy/test URLs
     const digUrl = message.url;
-    if (!digUrl || !digUrl.startsWith('dig://')) {
-      sendResponse({ error: 'Invalid dig:// URL' });
+    if (!digUrl || !digUrl.startsWith('chia://')) {
+      sendResponse({ error: 'Invalid chia:// URL' });
       return false;
     }
     
@@ -754,7 +754,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const cacheKey = endpoint + '|' + digUrl;
       try {
         // Parse URN to determine if we should use RPC
-        const urnString = digUrl.replace(/^dig:\/\//, '');
+        const urnString = digUrl.replace(/^chia:\/\//, '');
         const parsed = parseURN(urnString);
 
         if (parsed) {
@@ -848,17 +848,17 @@ function isDigLocalUrl(url) {
 }
 
 // Resolve dig.local subdomain URL back to URN
-// Removed: No subdomain redirection - dig:// URLs go directly to RPC
+// Removed: No subdomain redirection - chia:// URLs go directly to RPC
 // function resolveSubdomainToURN(url) { ... }
 
-// Handle dig:// URL navigation by fetching content and streaming as data URL
-// while keeping dig:// in the address bar
+// Handle chia:// URL navigation by fetching content and streaming as data URL
+// while keeping chia:// in the address bar
 // Simple function to redirect to dig-viewer.html with URN
 async function redirectToViewer(tabId, digUrl) {
   console.log('DIG Extension: redirectToViewer called with:', digUrl);
   
-  // Extract URN from dig:// URL (remove dig:// prefix)
-  const urn = digUrl.replace(/^dig:\/\//, '');
+  // Extract URN from chia:// URL (remove chia:// prefix)
+  const urn = digUrl.replace(/^chia:\/\//, '');
   
   // Construct viewer URL with URN parameter
   const viewerUrl = chrome.runtime.getURL(`dig-viewer.html?urn=${encodeURIComponent(urn)}`);
@@ -898,8 +898,8 @@ async function handleDigUrlNavigation(tabId, digUrl) {
   }
   
   try {
-    // Extract URN from dig:// URL (remove dig:// prefix)
-    const urn = digUrl.replace(/^dig:\/\//, '');
+    // Extract URN from chia:// URL (remove chia:// prefix)
+    const urn = digUrl.replace(/^chia:\/\//, '');
     
     // Redirect to dig-viewer.html with URN parameter
     // The viewer will fetch content via RPC and embed it
@@ -937,10 +937,10 @@ async function handleDigUrlNavigation(tabId, digUrl) {
   }
 }
 
-// Helper function to convert dig:// URL and redirect to viewer
+// Helper function to convert chia:// URL and redirect to viewer
 // This is now just a wrapper around handleDigUrlNavigation
 async function redirectDigUrlToLocalhost(tabId, digUrl) {
-  if (!digUrl || !digUrl.startsWith('dig://')) {
+  if (!digUrl || !digUrl.startsWith('chia://')) {
     return false;
   }
   
@@ -966,14 +966,14 @@ async function redirectDigUrlToLocalhost(tabId, digUrl) {
 }
 
 // Helper function to redirect dig.local to content server
-// Disabled: No subdomain redirection - dig:// URLs go directly to RPC
+// Disabled: No subdomain redirection - chia:// URLs go directly to RPC
 async function redirectDigLocalToExtension(tabId, digLocalUrl) {
-  // No-op: All dig:// URLs should go directly to RPC, no subdomain conversion
+  // No-op: All chia:// URLs should go directly to RPC, no subdomain conversion
   return false;
 }
 
-// Handle navigation to dig:// URLs via webNavigation (for in-page navigation and address bar)
-// This is the PRIMARY interceptor - catches dig:// URLs before Chrome processes them
+// Handle navigation to chia:// URLs via webNavigation (for in-page navigation and address bar)
+// This is the PRIMARY interceptor - catches chia:// URLs before Chrome processes them
 // NOTE: For address bar navigation, Chrome may show an external protocol dialog briefly
 // before the extension can intercept. This is a Chrome limitation.
 chrome.webNavigation.onBeforeNavigate.addListener(
@@ -993,9 +993,9 @@ chrome.webNavigation.onBeforeNavigate.addListener(
       return;
     }
     
-    // Handle dig:// URLs - fetch content and stream as data URL while keeping dig:// in URL bar
-    if (details.url && details.url.startsWith('dig://')) {
-      console.log('DIG Extension: onBeforeNavigate caught dig:// URL:', details.url);
+    // Handle chia:// URLs - fetch content and stream as data URL while keeping chia:// in URL bar
+    if (details.url && details.url.startsWith('chia://')) {
+      console.log('DIG Extension: onBeforeNavigate caught chia:// URL:', details.url);
       const enabledResult = await chrome.storage.local.get(['extensionEnabled']);
       const isEnabled = enabledResult.extensionEnabled !== false;
       
@@ -1003,10 +1003,10 @@ chrome.webNavigation.onBeforeNavigate.addListener(
         // Interrupt navigation and fetch content to stream as data URL
         try {
           // Cancel the current navigation by redirecting immediately
-          // Use handleDigUrlNavigation which loads as data URL and keeps dig:// in URL bar
+          // Use handleDigUrlNavigation which loads as data URL and keeps chia:// in URL bar
           await handleDigUrlNavigation(details.tabId, details.url);
         } catch (error) {
-          console.error('DIG Extension: Error handling dig:// navigation:', error);
+          console.error('DIG Extension: Error handling chia:// navigation:', error);
           // Show error page if RPC fails
           const errorPage = `data:text/html;charset=utf-8,${encodeURIComponent(`
 <!DOCTYPE html>
@@ -1033,7 +1033,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(
       return;
     }
     
-    // Also check for Google search pages with dig:// in query (catch before page loads)
+    // Also check for Google search pages with chia:// in query (catch before page loads)
     // IMPORTANT: Skip if we're already navigating to a data URL, dig.local, or viewer to prevent loops
     if (details.url && details.frameId === 0 && 
         !details.url.startsWith('data:') && 
@@ -1060,7 +1060,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(
             let decodedQuery = query;
             for (let i = 0; i < 3; i++) {
               // First try direct match
-              const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+              const digMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
               if (digMatch) {
                 digUrl = digMatch[0];
                 break;
@@ -1082,7 +1082,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(
             
             // Final check on fully decoded query
             if (!digUrl) {
-              const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+              const finalMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
               if (finalMatch) {
                 digUrl = finalMatch[0];
               }
@@ -1093,11 +1093,11 @@ chrome.webNavigation.onBeforeNavigate.addListener(
               const urlKey = `${details.tabId}:${digUrl}`;
               const lastProcessed = processedUrls.get(urlKey);
               if (lastProcessed && (Date.now() - lastProcessed) < PROCESSED_URL_TTL) {
-                console.log('DIG Extension: Already processing this dig:// URL, skipping to prevent loop');
+                console.log('DIG Extension: Already processing this chia:// URL, skipping to prevent loop');
                 return;
               }
               
-              console.log('DIG Extension: onBeforeNavigate detected dig:// in search, immediately replacing:', digUrl);
+              console.log('DIG Extension: onBeforeNavigate detected chia:// in search, immediately replacing:', digUrl);
               const searchEnabledResult = await chrome.storage.local.get(['extensionEnabled']);
               const isEnabled = searchEnabledResult.extensionEnabled !== false;
               
@@ -1131,10 +1131,10 @@ chrome.webNavigation.onBeforeNavigate.addListener(
       return;
     }
   },
-  { url: [{ schemes: ['dig', 'http', 'https'] }] }
+  { url: [{ schemes: ['chia', 'http', 'https'] }] }
 );
 
-// Also handle dig:// links clicked in pages (using content script approach)
+// Also handle chia:// links clicked in pages (using content script approach)
 chrome.webNavigation.onCommitted.addListener(
   async (details) => {
     // Skip data URLs - these are final destinations, don't intercept
@@ -1152,7 +1152,7 @@ chrome.webNavigation.onCommitted.addListener(
       return;
     }
     
-    if (details.url && details.url.startsWith('dig://') && details.frameId === 0) {
+    if (details.url && details.url.startsWith('chia://') && details.frameId === 0) {
       // Only main frame - use handleDigUrlNavigation to load as data URL
       try {
         await handleDigUrlNavigation(details.tabId, details.url);
@@ -1168,7 +1168,7 @@ chrome.webNavigation.onCommitted.addListener(
       await redirectDigLocalToExtension(details.tabId, details.url);
     }
     
-    // Aggressively catch Google search pages with dig:// in query and redirect immediately
+    // Aggressively catch Google search pages with chia:// in query and redirect immediately
     // This replaces the Google search page with the dig-viewer.html
     // IMPORTANT: Skip if we're already on a data URL, dig.local, or viewer to prevent loops
     if (details.url && details.frameId === 0 && 
@@ -1191,14 +1191,14 @@ chrome.webNavigation.onCommitted.addListener(
           
           if (query) {
             // URLSearchParams.get() automatically decodes, but handle both encoded and decoded cases
-            // Try to find dig:// URL in the query (might be URL-encoded or plain)
+            // Try to find chia:// URL in the query (might be URL-encoded or plain)
             let digUrl = null;
             
             // Try multiple decoding passes (Google may double-encode)
             let decodedQuery = query;
             for (let i = 0; i < 3; i++) {
               // First try direct match
-              const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+              const digMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
               if (digMatch) {
                 digUrl = digMatch[0];
                 break;
@@ -1220,7 +1220,7 @@ chrome.webNavigation.onCommitted.addListener(
             
             // Final check on fully decoded query
             if (!digUrl) {
-              const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+              const finalMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
               if (finalMatch) {
                 digUrl = finalMatch[0];
               }
@@ -1231,11 +1231,11 @@ chrome.webNavigation.onCommitted.addListener(
               const urlKey = `${details.tabId}:${digUrl}`;
               const lastProcessed = processedUrls.get(urlKey);
               if (lastProcessed && (Date.now() - lastProcessed) < PROCESSED_URL_TTL) {
-                console.log('DIG Extension: Already processing this dig:// URL in onCommitted, skipping to prevent loop');
+                console.log('DIG Extension: Already processing this chia:// URL in onCommitted, skipping to prevent loop');
                 return;
               }
               
-              console.log('DIG Extension: onCommitted detected dig:// in search query, redirecting to viewer:', digUrl);
+              console.log('DIG Extension: onCommitted detected chia:// in search query, redirecting to viewer:', digUrl);
               // Use handleDigUrlNavigation to redirect to dig-viewer.html
               try {
                 await handleDigUrlNavigation(details.tabId, digUrl);
@@ -1253,11 +1253,11 @@ chrome.webNavigation.onCommitted.addListener(
       }
     }
   },
-  { url: [{ schemes: ['dig', 'http', 'https'] }] }
+  { url: [{ schemes: ['chia', 'http', 'https'] }] }
 );
 
-// Handle tabs opened with dig:// URLs (from protocol handler, command line, or address bar)
-// This catches when Chrome is launched with dig:// URL from OS protocol handler
+// Handle tabs opened with chia:// URLs (from protocol handler, command line, or address bar)
+// This catches when Chrome is launched with chia:// URL from OS protocol handler
 // Also catches address bar navigation that might have been missed by onBeforeNavigate
 chrome.tabs.onUpdated.addListener(
   async (tabId, changeInfo, tab) => {
@@ -1279,8 +1279,8 @@ chrome.tabs.onUpdated.addListener(
     
     // Process when URL changes or when tab is loading
     if (changeInfo.url) {
-      // URL changed - check if it's dig:// (catches address bar navigation)
-      if (tab.url && tab.url.startsWith('dig://') && !isLocalhostUrl(tab.url)) {
+      // URL changed - check if it's chia:// (catches address bar navigation)
+      if (tab.url && tab.url.startsWith('chia://') && !isLocalhostUrl(tab.url)) {
         await handleDigUrlNavigation(tabId, tab.url);
         return;
       }
@@ -1295,7 +1295,7 @@ chrome.tabs.onUpdated.addListener(
     // Also check when status changes to loading (catches initial load)
     // This is important for address bar navigation
     if (changeInfo.status === 'loading') {
-      if (tab.url && tab.url.startsWith('dig://') && !isLocalhostUrl(tab.url)) {
+      if (tab.url && tab.url.startsWith('chia://') && !isLocalhostUrl(tab.url)) {
         await handleDigUrlNavigation(tabId, tab.url);
         return;
       }
@@ -1306,7 +1306,7 @@ chrome.tabs.onUpdated.addListener(
         return;
       }
       
-      // Also check if it's a search page with dig:// in URL (very early catch)
+      // Also check if it's a search page with chia:// in URL (very early catch)
       if (tab.url && !tab.url.includes('dig-viewer.html')) {
         const searchEngines = ['google.com/search', 'bing.com/search', 'duckduckgo.com', 'yahoo.com/search', 'search.yahoo.com'];
         const isSearchPage = searchEngines.some(engine => tab.url.includes(engine));
@@ -1328,7 +1328,7 @@ chrome.tabs.onUpdated.addListener(
               let decodedQuery = query;
               for (let i = 0; i < 3; i++) {
                 // First try direct match
-                const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+                const digMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
                 if (digMatch) {
                   digUrl = digMatch[0];
                   break;
@@ -1350,14 +1350,14 @@ chrome.tabs.onUpdated.addListener(
               
               // Final check on fully decoded query
               if (!digUrl) {
-                const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+                const finalMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
                 if (finalMatch) {
                   digUrl = finalMatch[0];
                 }
               }
               
               if (digUrl) {
-                console.log('DIG Extension: Early detection of dig:// in search (tabs.onUpdated), redirecting to viewer:', digUrl);
+                console.log('DIG Extension: Early detection of chia:// in search (tabs.onUpdated), redirecting to viewer:', digUrl);
                 try {
                   await handleDigUrlNavigation(tabId, digUrl);
                   return;
@@ -1375,7 +1375,7 @@ chrome.tabs.onUpdated.addListener(
     
     // Check when tab becomes complete (fallback for any missed cases)
     if (changeInfo.status === 'complete') {
-      if (tab.url && tab.url.startsWith('dig://') && !isLocalhostUrl(tab.url)) {
+      if (tab.url && tab.url.startsWith('chia://') && !isLocalhostUrl(tab.url)) {
         await handleDigUrlNavigation(tabId, tab.url);
         return;
       }
@@ -1402,7 +1402,7 @@ chrome.tabs.onUpdated.addListener(
               let decodedQuery = query;
               for (let i = 0; i < 3; i++) {
                 // First try direct match
-                const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+                const digMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
                 if (digMatch) {
                   digUrl = digMatch[0];
                   break;
@@ -1424,14 +1424,14 @@ chrome.tabs.onUpdated.addListener(
               
               // Final check on fully decoded query
               if (!digUrl) {
-                const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+                const finalMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
                 if (finalMatch) {
                   digUrl = finalMatch[0];
                 }
               }
               
               if (digUrl) {
-                console.log('DIG Extension: Final fallback - detected dig:// in completed search page, redirecting to viewer:', digUrl);
+                console.log('DIG Extension: Final fallback - detected chia:// in completed search page, redirecting to viewer:', digUrl);
                 try {
                   await handleDigUrlNavigation(tabId, digUrl);
                   return;
@@ -1454,7 +1454,7 @@ chrome.tabs.onUpdated.addListener(
     
     // Also check pendingUrl for address bar navigation (very early catch)
     if (tab.pendingUrl) {
-      if (tab.pendingUrl.startsWith('dig://') && !isLocalhostUrl(tab.pendingUrl)) {
+      if (tab.pendingUrl.startsWith('chia://') && !isLocalhostUrl(tab.pendingUrl)) {
         // Use handleDigUrlNavigation to load as data URL
         try {
           await handleDigUrlNavigation(tabId, tab.pendingUrl);
@@ -1473,7 +1473,7 @@ chrome.tabs.onUpdated.addListener(
   }
 );
 
-// Also listen for tab creation (when new tab/window is opened with dig:// URL)
+// Also listen for tab creation (when new tab/window is opened with chia:// URL)
 chrome.tabs.onCreated.addListener(
   async (tab) => {
     // Skip data URLs - these are final destinations
@@ -1484,13 +1484,13 @@ chrome.tabs.onCreated.addListener(
       return;
     }
     
-    // Check if tab has a dig:// URL (might be pending or already set)
-    if (tab.url && tab.url.startsWith('dig://')) {
+    // Check if tab has a chia:// URL (might be pending or already set)
+    if (tab.url && tab.url.startsWith('chia://')) {
       // URL is already set, redirect immediately
       setTimeout(async () => {
         await redirectDigUrlToLocalhost(tab.id, tab.url);
       }, 50);
-    } else if (tab.pendingUrl && tab.pendingUrl.startsWith('dig://')) {
+    } else if (tab.pendingUrl && tab.pendingUrl.startsWith('chia://')) {
       // URL is pending, wait a bit then check again
       setTimeout(async () => {
         try {
@@ -1499,9 +1499,9 @@ chrome.tabs.onCreated.addListener(
           if (updatedTab.url && updatedTab.url.startsWith('data:')) {
             return;
           }
-          if (updatedTab.url && updatedTab.url.startsWith('dig://')) {
+          if (updatedTab.url && updatedTab.url.startsWith('chia://')) {
             await redirectDigUrlToLocalhost(updatedTab.id, updatedTab.url);
-          } else if (updatedTab.pendingUrl && updatedTab.pendingUrl.startsWith('dig://')) {
+          } else if (updatedTab.pendingUrl && updatedTab.pendingUrl.startsWith('chia://')) {
             await redirectDigUrlToLocalhost(updatedTab.id, updatedTab.pendingUrl);
           }
         } catch (error) {
@@ -1532,7 +1532,7 @@ chrome.tabs.onCreated.addListener(
   }
 );
 
-// Catch DNS errors for dig.local and protocol errors for dig://
+// Catch DNS errors for dig.local and protocol errors for chia://
 chrome.webNavigation.onErrorOccurred.addListener(
   async (details) => {
     // Skip data URLs - these are final destinations
@@ -1548,14 +1548,14 @@ chrome.webNavigation.onErrorOccurred.addListener(
       }
     }
     
-    // Check if this is a protocol error for dig:// (Chrome redirecting to search)
+    // Check if this is a protocol error for chia:// (Chrome redirecting to search)
     // Errors like ERR_UNKNOWN_URL_SCHEME indicate Chrome doesn't recognize the protocol
     if ((details.error === 'net::ERR_UNKNOWN_URL_SCHEME' || 
          details.error === 'net::ERR_INVALID_URL' ||
          details.error === 'net::ERR_FAILED') && 
         details.frameId === 0) {
-      if (details.url && details.url.startsWith('dig://')) {
-        console.log('DIG Extension: Caught protocol error for dig://, redirecting:', details.url);
+      if (details.url && details.url.startsWith('chia://')) {
+        console.log('DIG Extension: Caught protocol error for chia://, redirecting:', details.url);
         try {
           await handleDigUrlNavigation(details.tabId, details.url);
         } catch (error) {
@@ -1567,16 +1567,16 @@ chrome.webNavigation.onErrorOccurred.addListener(
   }
 );
 
-// Also add a more aggressive check - monitor tabs for dig:// and dig.local attempts
+// Also add a more aggressive check - monitor tabs for chia:// and dig.local attempts
 // This catches cases where navigation fails before onBeforeNavigate fires
-// Also catches when Chrome treats dig:// URLs as search queries
+// Also catches when Chrome treats chia:// URLs as search queries
 setInterval(async () => {
   try {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
-      // Check pendingUrl for dig:// or dig.local (catches address bar input)
+      // Check pendingUrl for chia:// or dig.local (catches address bar input)
       if (tab.pendingUrl) {
-        if (tab.pendingUrl.startsWith('dig://')) {
+        if (tab.pendingUrl.startsWith('chia://')) {
           // Use handleDigUrlNavigation to load as data URL
           try {
             await handleDigUrlNavigation(tab.id, tab.pendingUrl);
@@ -1592,7 +1592,7 @@ setInterval(async () => {
         }
       }
       
-      // Check if current URL is a search engine page with dig:// in the query
+      // Check if current URL is a search engine page with chia:// in the query
       // Support Google, Bing, DuckDuckGo, Yahoo, and other search engines
       // IMPORTANT: Skip if we're already on a data URL or dig.local to prevent loops
       if (tab.url && !tab.url.startsWith('data:') && !isDigLocalUrl(tab.url)) {
@@ -1621,19 +1621,19 @@ setInterval(async () => {
             }
             
             if (query) {
-              // Extract dig:// URL from query (might be anywhere in the query string)
+              // Extract chia:// URL from query (might be anywhere in the query string)
               // Handle both URL-encoded and plain text
               let digUrl = null;
               
               // First try direct match (already decoded by searchParams.get)
-              const digMatch = query.match(/dig:\/\/[^\s"']+/);
+              const digMatch = query.match(/chia:\/\/[^\s"']+/);
               if (digMatch) {
                 digUrl = digMatch[0];
               } else {
                 // Try URL-decoding the entire query in case it's double-encoded
                 try {
                   const decodedQuery = decodeURIComponent(query);
-                  const decodedMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+                  const decodedMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
                   if (decodedMatch) {
                     digUrl = decodedMatch[0];
                   }
@@ -1642,11 +1642,11 @@ setInterval(async () => {
                 }
               }
               
-              // Also check if the entire query IS a dig:// URL (Chrome might have encoded it)
-              if (!digUrl && query.includes('dig%3A%2F%2F')) {
+              // Also check if the entire query IS a chia:// URL (Chrome might have encoded it)
+              if (!digUrl && query.includes('chia%3A%2F%2F')) {
                 try {
                   const decoded = decodeURIComponent(query);
-                  if (decoded.startsWith('dig://')) {
+                  if (decoded.startsWith('chia://')) {
                     digUrl = decoded;
                   }
                 } catch (e) {
@@ -1654,18 +1654,18 @@ setInterval(async () => {
                 }
               }
               
-              // Also check if query contains urn:dig: pattern (might be the URN without dig:// prefix)
+              // Also check if query contains urn:dig: pattern (might be the URN without chia:// prefix)
               if (!digUrl) {
                 const urnMatch = query.match(/urn:dig:[^\s"']+/);
                 if (urnMatch) {
-                  digUrl = 'dig://' + urnMatch[0];
+                  digUrl = 'chia://' + urnMatch[0];
                 } else {
                   // Try URL-decoded version
                   try {
                     const decodedQuery = decodeURIComponent(query);
                     const decodedUrnMatch = decodedQuery.match(/urn:dig:[^\s"']+/);
                     if (decodedUrnMatch) {
-                      digUrl = 'dig://' + decodedUrnMatch[0];
+                      digUrl = 'chia://' + decodedUrnMatch[0];
                     }
                   } catch (e) {
                     // Ignore
@@ -1678,15 +1678,15 @@ setInterval(async () => {
                 const urlKey = `${tab.id}:${digUrl}`;
                 const lastProcessed = processedUrls.get(urlKey);
                 if (lastProcessed && (Date.now() - lastProcessed) < PROCESSED_URL_TTL) {
-                  console.log('DIG Extension: Already processing this dig:// URL in interval check, skipping to prevent loop');
+                  console.log('DIG Extension: Already processing this chia:// URL in interval check, skipping to prevent loop');
                   continue;
                 }
                 
-                console.log('DIG Extension: Interval check detected dig:// URL in search query, redirecting to viewer:', digUrl);
+                console.log('DIG Extension: Interval check detected chia:// URL in search query, redirecting to viewer:', digUrl);
                 // Use handleDigUrlNavigation to route to dig-viewer.html → RPC
                 try {
                   await handleDigUrlNavigation(tab.id, digUrl);
-                  console.log('DIG Extension: Successfully replaced search page with dig:// content');
+                  console.log('DIG Extension: Successfully replaced search page with chia:// content');
                 } catch (error) {
                   console.error('DIG Extension: Error in interval handleDigUrlNavigation:', error);
                   await redirectDigUrlToLocalhost(tab.id, digUrl);
@@ -1719,13 +1719,13 @@ setInterval(async () => {
         }
       }
       
-      // Also check if URL contains dig:// (might be in error or search state)
-      if (tab.url && tab.url.includes('dig://') && !tab.url.startsWith('chrome-extension://') && !tab.url.startsWith('dig://')) {
-        // Try to extract dig:// URL from the current URL
-        const digMatch = tab.url.match(/dig:\/\/[^\s"']+/);
+      // Also check if URL contains chia:// (might be in error or search state)
+      if (tab.url && tab.url.includes('chia://') && !tab.url.startsWith('chrome-extension://') && !tab.url.startsWith('chia://')) {
+        // Try to extract chia:// URL from the current URL
+        const digMatch = tab.url.match(/chia:\/\/[^\s"']+/);
         if (digMatch) {
           const digUrl = digMatch[0];
-          console.log('DIG Extension: Detected dig:// URL in current page, redirecting:', digUrl);
+          console.log('DIG Extension: Detected chia:// URL in current page, redirecting:', digUrl);
           await redirectDigUrlToLocalhost(tab.id, digUrl);
         }
       }
@@ -1742,19 +1742,19 @@ chrome.omnibox.onInputEntered.addListener(
     
     const trimmedText = text.trim();
     
-    // Check if it's a dig:// URL or URN
-    if (trimmedText.startsWith('dig://') || trimmedText.startsWith('urn:dig:') || /^[a-f0-9]{64}/i.test(trimmedText)) {
-      // Handle as dig:// URL
+    // Check if it's a chia:// URL or URN
+    if (trimmedText.startsWith('chia://') || trimmedText.startsWith('urn:dig:') || /^[a-f0-9]{64}/i.test(trimmedText)) {
+      // Handle as chia:// URL
       let digUrl = trimmedText;
       
-      // If it doesn't start with dig://, add it
-      if (!digUrl.startsWith('dig://')) {
-        // If it starts with "urn:dig:", add "dig://" prefix
+      // If it doesn't start with chia://, add it
+      if (!digUrl.startsWith('chia://')) {
+        // If it starts with "urn:dig:", add "chia://" prefix
         if (digUrl.startsWith('urn:dig:')) {
-          digUrl = 'dig://' + digUrl;
+          digUrl = 'chia://' + digUrl;
         } else {
           // Otherwise, assume it's a URN and add both prefixes
-          digUrl = 'dig://urn:dig:' + digUrl;
+          digUrl = 'chia://urn:dig:' + digUrl;
         }
       }
       
@@ -1852,17 +1852,17 @@ chrome.omnibox.onInputChanged.addListener(
     
     if (text.trim().length === 0) {
       suggestions.push({
-        content: 'dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/',
-        description: 'Example: dig://urn:dig:chia:.../resource'
+        content: 'chia://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/',
+        description: 'Example: chia://urn:dig:chia:.../resource'
       });
     } else {
-      // If user is typing a URN, suggest the full dig:// URL
+      // If user is typing a URN, suggest the full chia:// URL
       let suggestedUrl = text.trim();
-      if (!suggestedUrl.startsWith('dig://')) {
+      if (!suggestedUrl.startsWith('chia://')) {
         if (suggestedUrl.startsWith('urn:dig:')) {
-          suggestedUrl = 'dig://' + suggestedUrl;
+          suggestedUrl = 'chia://' + suggestedUrl;
         } else {
-          suggestedUrl = 'dig://urn:dig:' + suggestedUrl;
+          suggestedUrl = 'chia://urn:dig:' + suggestedUrl;
         }
       }
       

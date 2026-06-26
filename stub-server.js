@@ -54,7 +54,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`DIG Network stub server running on http://localhost:${PORT}`);
-  console.log('This server will serve placeholder responses for dig:// protocol requests.');
+  console.log('This server will serve placeholder responses for chia:// protocol requests.');
 });
 
 server.on('error', (err) => {

@@ -5,7 +5,7 @@
  * inlined one in background.js). These tests pin the SUPERSET behaviour the single
  * shared implementation must satisfy so callers on both the Node (server.js) and the
  * module-SW (background.js) side keep working byte-for-byte:
- *   - strips a leading `dig://` scheme (background.js needed this)
+ *   - strips a leading `chia://` scheme (background.js needed this)
  *   - strips leading slashes (dig-urn.mjs needed this)
  *   - strips the `urn:dig:` prefix
  *   - extracts an optional `?salt=<hex>` query param (background.js needed this)
@@ -38,8 +38,8 @@ test('bare storeId (no chain prefix) assumes chia', () => {
   });
 });
 
-test('strips a dig:// scheme prefix (background.js behaviour)', () => {
-  assert.deepEqual(parseURN(`dig://urn:dig:chia:${STORE}/p.png`), {
+test('strips a chia:// scheme prefix (background.js behaviour)', () => {
+  assert.deepEqual(parseURN(`chia://urn:dig:chia:${STORE}/p.png`), {
     chain: 'chia', storeId: STORE, roothash: null, resourceKey: 'p.png', salt: null,
   });
 });

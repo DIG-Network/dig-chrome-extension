@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "DIG Network Extension",
   "version": "1.0.0",
-  "description": "Resolve dig:// URLs and DIG content via rpc.dig.net (client-side verified + decrypted).",
+  "description": "Resolve chia:// URLs and DIG content via rpc.dig.net (client-side verified + decrypted).",
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",

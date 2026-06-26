@@ -78,12 +78,12 @@ function decodeStoreId(encoded) {
  *
  * Single shared parser for every consumer in the extension — the Node test server
  * (server.js, CommonJS require) and the module service worker (background.js, ESM
- * import). It accepts the union of inputs those callers pass: a `dig://` scheme
+ * import). It accepts the union of inputs those callers pass: a `chia://` scheme
  * prefix, leading slashes, the `urn:dig:` prefix, and an optional `?salt=<hex>`
  * private-store query param. `salt` is always present in the result (null = public
  * store) so background.js's `parsed.salt ?? null` read is satisfied.
  *
- * @param {string} urnString - URN string (with or without `dig://` / `urn:dig:` prefix)
+ * @param {string} urnString - URN string (with or without `chia://` / `urn:dig:` prefix)
  * @returns {Object|null} `{ chain, storeId, roothash, resourceKey, salt }` or null if invalid
  */
 function parseURN(urnString) {
@@ -91,8 +91,8 @@ function parseURN(urnString) {
     return null;
   }
 
-  // Remove dig:// scheme prefix if present (callers may pass the raw dig:// URL)
-  urnString = urnString.replace(/^dig:\/\//i, '');
+  // Remove chia:// scheme prefix if present (callers may pass the raw chia:// URL)
+  urnString = urnString.replace(/^chia:\/\//i, '');
 
   // Remove leading slash(es) if present (path-style callers)
   urnString = urnString.replace(/^\/+/, '');

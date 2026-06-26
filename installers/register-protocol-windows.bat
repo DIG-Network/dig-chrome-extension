@@ -1,8 +1,8 @@
 @echo off
-REM Batch script to register dig:// protocol handler on Windows
+REM Batch script to register chia:// protocol handler on Windows
 REM Run as Administrator: Right-click -> "Run as Administrator"
 
-echo Registering dig:// protocol handler...
+echo Registering chia:// protocol handler...
 
 REM Check for admin privileges
 net session >nul 2>&1
@@ -43,18 +43,18 @@ if "%CHROME_PATH%"=="" (
 echo Found browser: %CHROME_PATH%
 
 REM Register protocol handler
-reg add "HKCU\Software\Classes\dig" /ve /d "URL:dig Protocol" /f >nul
-reg add "HKCU\Software\Classes\dig" /v "URL Protocol" /t REG_SZ /d "" /f >nul
-reg add "HKCU\Software\Classes\dig\shell\open\command" /ve /d "\"%CHROME_PATH%\" --new-window \"%%1\"" /f >nul
+reg add "HKCU\Software\Classes\chia" /ve /d "URL:chia Protocol" /f >nul
+reg add "HKCU\Software\Classes\chia" /v "URL Protocol" /t REG_SZ /d "" /f >nul
+reg add "HKCU\Software\Classes\chia\shell\open\command" /ve /d "\"%CHROME_PATH%\" --new-window \"%%1\"" /f >nul
 
 if %errorLevel% equ 0 (
     echo.
-    echo Successfully registered dig:// protocol handler!
+    echo Successfully registered chia:// protocol handler!
     echo.
     echo Note: The DIG Network Extension must be installed in your browser
-    echo       for dig:// URLs to work properly.
+    echo       for chia:// URLs to work properly.
     echo.
-    echo Test it by opening: dig://test/example
+    echo Test it by opening: chia://test/example
 ) else (
     echo ERROR: Failed to register protocol handler
     pause

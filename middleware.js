@@ -384,10 +384,10 @@ class DigResourceLoader {
     }
   }
 
-  // Convert dig:// URL - ALL dig:// URLs now use RPC via background script
+  // Convert chia:// URL - ALL chia:// URLs now use RPC via background script
   // This function returns a placeholder that will be replaced by proxyResource
   convertDigUrl(url) {
-    if (typeof url === 'string' && url.startsWith('dig://')) {
+    if (typeof url === 'string' && url.startsWith('chia://')) {
       // Return a placeholder data URL that indicates RPC should be used
       // The actual fetching will be done via proxyResource or background script
       // This placeholder prevents browser errors while proxy loads
@@ -596,7 +596,7 @@ class DigResourceLoader {
     if (this.errorHandlers.has(element)) return;
     
     const handler = (e) => {
-      if (e.target === element && (element.src || element.href || element.data)?.includes('dig://')) {
+      if (e.target === element && (element.src || element.href || element.data)?.includes('chia://')) {
         // Remove loading spinner on error
         const spinner = element.querySelector('.dig-loading-spinner');
         if (spinner) {
@@ -609,7 +609,7 @@ class DigResourceLoader {
         
         // Retry with different strategy
         const currentUrl = element.src || element.href || element.data;
-        if (currentUrl && currentUrl.startsWith('dig://')) {
+        if (currentUrl && currentUrl.startsWith('chia://')) {
           // Re-inject spinner for retry
           if (typeof injectLoadingSpinner === 'function') {
             injectLoadingSpinner(element, currentUrl);

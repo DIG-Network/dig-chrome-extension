@@ -58,14 +58,14 @@ async function getServerConfig() {
   };
 }
 
-// Convert dig:// URL to configured server URL
+// Convert chia:// URL to configured server URL
 async function convertDigUrl(url) {
-  if (typeof url !== 'string' || !url.startsWith('dig://')) {
+  if (typeof url !== 'string' || !url.startsWith('chia://')) {
     return url;
   }
   
   const config = await getServerConfig();
-  const urlPath = url.replace(/^dig:\/\//, '');
+  const urlPath = url.replace(/^chia:\/\//, '');
   let serverUrl = config.url;
   
   // Handle different server URL formats
@@ -207,8 +207,8 @@ async function initPopup() {
     const url = digUrlInput.value.trim();
     if (!url) return;
     
-    // If it doesn't start with dig://, add it
-    const digUrl = url.startsWith('dig://') ? url : `dig://${url}`;
+    // If it doesn't start with chia://, add it
+    const digUrl = url.startsWith('chia://') ? url : `chia://${url}`;
     
     // Convert to configured server URL
     const serverUrl = await convertDigUrl(digUrl);
