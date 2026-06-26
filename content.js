@@ -1,13 +1,13 @@
-// Content script to intercept all dig:// protocol requests
+// Content script to intercept all chia:// protocol requests
 // Handles: images, scripts, stylesheets, AJAX/fetch, and any other resource requests
 
-// Suppress console errors for dig:// scheme errors in content script context
+// Suppress console errors for chia:// scheme errors in content script context
 (function() {
   const originalConsoleError = console.error;
   console.error = function(...args) {
     const message = args.join(' ');
-    // Filter out dig:// scheme errors
-    if (message.includes('dig://') && (
+    // Filter out chia:// scheme errors
+    if (message.includes('chia://') && (
       message.includes('ERR_UNKNOWN_URL_SCHEME') ||
       message.includes('scheme does not have a registered handler') ||
       message.includes('not supported')
@@ -19,7 +19,7 @@
   };
 })();
 
-// Early detection: Check if we're on a Google search page with dig:// in URL
+// Early detection: Check if we're on a Google search page with chia:// in URL
 // This runs at document_start to catch it before Google's scripts load
 (function() {
   'use strict';
@@ -29,7 +29,7 @@
     return;
   }
   
-  // Check current URL for dig:// in search query
+  // Check current URL for chia:// in search query
   try {
     const currentUrl = window.location.href;
     const searchEngines = ['google.com/search', 'www.google.com/search', 'bing.com/search', 'duckduckgo.com', 'yahoo.com/search', 'search.yahoo.com'];
@@ -52,7 +52,7 @@
         let decodedQuery = query;
         for (let i = 0; i < 3; i++) {
           // First try direct match
-          const digMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+          const digMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
           if (digMatch) {
             digUrl = digMatch[0];
             break;
@@ -74,14 +74,14 @@
         
         // Final check on fully decoded query
         if (!digUrl) {
-          const finalMatch = decodedQuery.match(/dig:\/\/[^\s"']+/);
+          const finalMatch = decodedQuery.match(/chia:\/\/[^\s"']+/);
           if (finalMatch) {
             digUrl = finalMatch[0];
           }
         }
         
         if (digUrl) {
-          console.log('DIG Extension: Content script detected dig:// in search, redirecting:', digUrl);
+          console.log('DIG Extension: Content script detected chia:// in search, redirecting:', digUrl);
           // Request background script to redirect immediately
           // Use setTimeout(0) to ensure this runs after any pending operations
           setTimeout(() => {
@@ -190,11 +190,11 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
-// Convert dig:// URL - ALL dig:// URLs now use RPC via background script
+// Convert chia:// URL - ALL chia:// URLs now use RPC via background script
 // This function returns a placeholder that will be replaced by proxyResource
 // For cases where proxy isn't used, trigger async proxy via background script
 function convertDigUrl(url) {
-  if (typeof url === 'string' && url.startsWith('dig://')) {
+  if (typeof url === 'string' && url.startsWith('chia://')) {
     // Return a placeholder data URL - actual fetching will be done via proxyResource
     // This prevents browser errors while proxy loads content via RPC
     // The proxyResource function will replace this with the actual data URL from RPC
@@ -203,7 +203,7 @@ function convertDigUrl(url) {
   return url;
 }
 
-// Inject loading spinner for dig:// resources
+// Inject loading spinner for chia:// resources
 function injectLoadingSpinner(element, digUrl) {
   // Skip if spinner already exists, but still return removal function
   if (element.dataset.digSpinnerInjected) {
@@ -292,7 +292,7 @@ function injectLoadingSpinner(element, digUrl) {
   };
 }
 
-// Remove loading spinner for dig:// resources
+// Remove loading spinner for chia:// resources
 function removeLoadingSpinner(element) {
   const spinner = element.querySelector('.dig-loading-spinner');
   if (spinner) {
@@ -454,14 +454,14 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 function processElementSync(element) {
     if (!element) return;
     
-    // Only process if element has dig:// URLs - skip everything else
+    // Only process if element has chia:// URLs - skip everything else
     let hasDigUrl = false;
     
     // Handle img src and srcset - proxy via RPC immediately
     if (element.tagName === 'IMG') {
       // Check attribute first (more reliable at document_start)
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         hasDigUrl = true;
         // Inject spinner immediately
         const removeSpinner = injectLoadingSpinner(element, srcAttr);
@@ -476,7 +476,7 @@ function processElementSync(element) {
         });
       }
       // Also check property as fallback
-      if (element.src && typeof element.src === 'string' && element.src.startsWith('dig://')) {
+      if (element.src && typeof element.src === 'string' && element.src.startsWith('chia://')) {
         hasDigUrl = true;
         // Inject spinner immediately
         const removeSpinner = injectLoadingSpinner(element, element.src);
@@ -490,18 +490,18 @@ function processElementSync(element) {
           element.src = convertDigUrl(element.src);
         });
       }
-      // Handle srcset - proxy each dig:// URL via RPC
+      // Handle srcset - proxy each chia:// URL via RPC
       const srcsetAttr = element.getAttribute('srcset');
-      if (srcsetAttr && srcsetAttr.includes('dig://')) {
+      if (srcsetAttr && srcsetAttr.includes('chia://')) {
         hasDigUrl = true;
-        // Parse srcset and proxy each dig:// URL individually
+        // Parse srcset and proxy each chia:// URL individually
         const srcsetParts = srcsetAttr.split(',');
         const proxiedParts = [];
         const proxyPromises = [];
         
         srcsetParts.forEach((part, index) => {
           const trimmed = part.trim();
-          const digMatch = trimmed.match(/^(dig:\/\/[^\s]+)(\s+.+)?$/);
+          const digMatch = trimmed.match(/^(chia:\/\/[^\s]+)(\s+.+)?$/);
           if (digMatch) {
             const digUrl = digMatch[1];
             const descriptor = digMatch[2] || '';
@@ -541,7 +541,7 @@ function processElementSync(element) {
           });
         }
       }
-      if (element.srcset && element.srcset.includes('dig://')) {
+      if (element.srcset && element.srcset.includes('chia://')) {
         hasDigUrl = true;
         // Same handling for element.srcset property
         const srcsetParts = element.srcset.split(',');
@@ -550,7 +550,7 @@ function processElementSync(element) {
         
         srcsetParts.forEach((part, index) => {
           const trimmed = part.trim();
-          const digMatch = trimmed.match(/^(dig:\/\/[^\s]+)(\s+.+)?$/);
+          const digMatch = trimmed.match(/^(chia:\/\/[^\s]+)(\s+.+)?$/);
           if (digMatch) {
             const digUrl = digMatch[1];
             const descriptor = digMatch[2] || '';
@@ -588,27 +588,27 @@ function processElementSync(element) {
     // Handle picture source elements - proxy src with middleware, convert srcset
     if (element.tagName === 'SOURCE') {
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         hasDigUrl = true;
         digResourceLoader.loadAndApply(element, 'src', srcAttr, 5).catch(() => {});
         digResourceLoader.registerErrorHandler(element, srcAttr);
         digResourceLoader.registerLoadHandler(element, srcAttr);
       }
-      if (element.src && element.src.startsWith('dig://')) {
+      if (element.src && element.src.startsWith('chia://')) {
         hasDigUrl = true;
         digResourceLoader.loadAndApply(element, 'src', element.src, 5).catch(() => {});
         digResourceLoader.registerErrorHandler(element, element.src);
         digResourceLoader.registerLoadHandler(element, element.src);
       }
-      // srcset - proxy each dig:// URL via RPC
-      if (element.srcset && element.srcset.includes('dig://')) {
+      // srcset - proxy each chia:// URL via RPC
+      if (element.srcset && element.srcset.includes('chia://')) {
         const srcsetParts = element.srcset.split(',');
         const proxiedParts = [];
         const proxyPromises = [];
         
         srcsetParts.forEach((part, index) => {
           const trimmed = part.trim();
-          const digMatch = trimmed.match(/^(dig:\/\/[^\s]+)(\s+.+)?$/);
+          const digMatch = trimmed.match(/^(chia:\/\/[^\s]+)(\s+.+)?$/);
           if (digMatch) {
             const digUrl = digMatch[1];
             const descriptor = digMatch[2] || '';
@@ -643,7 +643,7 @@ function processElementSync(element) {
     // Handle script src - proxy through background worker with middleware
     if (element.tagName === 'SCRIPT') {
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         hasDigUrl = true;
         // For scripts, use special handling - inject inline if proxy succeeds
         (async () => {
@@ -667,7 +667,7 @@ function processElementSync(element) {
           }
         })();
         digResourceLoader.registerErrorHandler(element, srcAttr);
-      } else if (element.src && element.src.startsWith('dig://')) {
+      } else if (element.src && element.src.startsWith('chia://')) {
         hasDigUrl = true;
         (async () => {
           try {
@@ -692,7 +692,7 @@ function processElementSync(element) {
     // Handle link (stylesheet, icon, etc.) - proxy all link types
     if (element.tagName === 'LINK') {
       const hrefAttr = element.getAttribute('href');
-      if (hrefAttr && hrefAttr.startsWith('dig://')) {
+      if (hrefAttr && hrefAttr.startsWith('chia://')) {
         hasDigUrl = true;
         const rel = element.getAttribute('rel');
         // Proxy stylesheets via inline injection, other link types via blob URL
@@ -707,7 +707,7 @@ function processElementSync(element) {
             element.setAttribute('href', convertDigUrl(hrefAttr));
           });
         }
-      } else if (element.href && element.href.startsWith('dig://')) {
+      } else if (element.href && element.href.startsWith('chia://')) {
         hasDigUrl = true;
         const rel = element.getAttribute('rel');
         if (rel === 'stylesheet' || rel === 'style') {
@@ -725,7 +725,7 @@ function processElementSync(element) {
     // Handle video/audio sources - proxy via RPC immediately
     if (element.tagName === 'VIDEO' || element.tagName === 'AUDIO') {
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         hasDigUrl = true;
         // Inject spinner immediately
         const removeSpinner = injectLoadingSpinner(element, srcAttr);
@@ -739,7 +739,7 @@ function processElementSync(element) {
           element.setAttribute('src', convertDigUrl(srcAttr));
         });
       }
-      if (element.src && typeof element.src === 'string' && element.src.startsWith('dig://')) {
+      if (element.src && typeof element.src === 'string' && element.src.startsWith('chia://')) {
         hasDigUrl = true;
         // Inject spinner immediately
         const removeSpinner = injectLoadingSpinner(element, element.src);
@@ -758,14 +758,14 @@ function processElementSync(element) {
     // Handle iframe src - proxy through background worker
     if (element.tagName === 'IFRAME') {
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         hasDigUrl = true;
         // For iframes, we need to convert to localhost since blob URLs won't work for iframes
         // But try to proxy first to see if we can get the content
         // Actually, iframes need full page navigation, so convert is the only option
         element.setAttribute('src', convertDigUrl(srcAttr));
       }
-      if (element.src && element.src.startsWith('dig://')) {
+      if (element.src && element.src.startsWith('chia://')) {
         hasDigUrl = true;
         element.src = convertDigUrl(element.src);
       }
@@ -774,13 +774,13 @@ function processElementSync(element) {
     // Handle object/embed - proxy through background worker
     if (element.tagName === 'OBJECT' || element.tagName === 'EMBED') {
       const dataAttr = element.getAttribute('data');
-      if (dataAttr && dataAttr.startsWith('dig://')) {
+      if (dataAttr && dataAttr.startsWith('chia://')) {
         hasDigUrl = true;
         proxyResource(element, 'data', dataAttr).catch(() => {
           element.setAttribute('data', convertDigUrl(dataAttr));
         });
       }
-      if (element.data && element.data.startsWith('dig://')) {
+      if (element.data && element.data.startsWith('chia://')) {
         hasDigUrl = true;
         proxyResource(element, 'data', element.data).catch(() => {
           element.data = convertDigUrl(element.data);
@@ -791,7 +791,7 @@ function processElementSync(element) {
     // Handle SVG elements - <use>, <image>, gradients, patterns
     if (element.tagName === 'USE' || element.tagName === 'use') {
       const hrefAttr = element.getAttribute('href') || element.getAttribute('xlink:href');
-      if (hrefAttr && hrefAttr.startsWith('dig://')) {
+      if (hrefAttr && hrefAttr.startsWith('chia://')) {
         hasDigUrl = true;
         element.setAttribute('href', convertDigUrl(hrefAttr));
         if (element.hasAttribute('xlink:href')) {
@@ -801,7 +801,7 @@ function processElementSync(element) {
     }
     if (element.tagName === 'IMAGE' || element.tagName === 'image') {
       const hrefAttr = element.getAttribute('href') || element.getAttribute('xlink:href');
-      if (hrefAttr && hrefAttr.startsWith('dig://')) {
+      if (hrefAttr && hrefAttr.startsWith('chia://')) {
         hasDigUrl = true;
         element.setAttribute('href', convertDigUrl(hrefAttr));
         if (element.hasAttribute('xlink:href')) {
@@ -809,12 +809,12 @@ function processElementSync(element) {
         }
       }
     }
-    // SVG gradients and patterns with dig:// URLs in href/xlink:href
+    // SVG gradients and patterns with chia:// URLs in href/xlink:href
     if (element.tagName === 'LINEARGRADIENT' || element.tagName === 'RADIALGRADIENT' || 
         element.tagName === 'PATTERN' || element.tagName === 'linearGradient' || 
         element.tagName === 'radialGradient' || element.tagName === 'pattern') {
       const hrefAttr = element.getAttribute('href') || element.getAttribute('xlink:href');
-      if (hrefAttr && hrefAttr.startsWith('dig://')) {
+      if (hrefAttr && hrefAttr.startsWith('chia://')) {
         hasDigUrl = true;
         element.setAttribute('href', convertDigUrl(hrefAttr));
         if (element.hasAttribute('xlink:href')) {
@@ -826,14 +826,14 @@ function processElementSync(element) {
     // Handle form elements with action/formaction
     if (element.tagName === 'FORM') {
       const actionAttr = element.getAttribute('action');
-      if (actionAttr && actionAttr.startsWith('dig://')) {
+      if (actionAttr && actionAttr.startsWith('chia://')) {
         hasDigUrl = true;
         element.setAttribute('action', convertDigUrl(actionAttr));
       }
     }
     if (element.tagName === 'INPUT' || element.tagName === 'BUTTON') {
       const formactionAttr = element.getAttribute('formaction');
-      if (formactionAttr && formactionAttr.startsWith('dig://')) {
+      if (formactionAttr && formactionAttr.startsWith('chia://')) {
         hasDigUrl = true;
         element.setAttribute('formaction', convertDigUrl(formactionAttr));
       }
@@ -843,7 +843,7 @@ function processElementSync(element) {
     if (element.tagName === 'LINK') {
       const rel = element.getAttribute('rel');
       const hrefAttr = element.getAttribute('href');
-      if (hrefAttr && hrefAttr.startsWith('dig://')) {
+      if (hrefAttr && hrefAttr.startsWith('chia://')) {
         hasDigUrl = true;
         if (rel === 'stylesheet' || rel === 'style') {
           proxyStylesheet(element, hrefAttr).catch(() => {
@@ -867,11 +867,11 @@ function processElementSync(element) {
       }
     }
     
-    // Handle meta tags with dig:// URLs (og:image, twitter:image, etc.)
+    // Handle meta tags with chia:// URLs (og:image, twitter:image, etc.)
     if (element.tagName === 'META') {
       const property = element.getAttribute('property') || element.getAttribute('name');
       const content = element.getAttribute('content');
-      if (content && content.startsWith('dig://') && 
+      if (content && content.startsWith('chia://') && 
           (property === 'og:image' || property === 'og:image:url' || 
            property === 'twitter:image' || property === 'twitter:image:src' ||
            property === 'image' || property === 'thumbnail')) {
@@ -880,11 +880,11 @@ function processElementSync(element) {
       }
     }
     
-    // Handle HTML5 data attributes that might contain dig:// URLs
+    // Handle HTML5 data attributes that might contain chia:// URLs
     // Check all data-* attributes
     if (element.hasAttributes && element.hasAttributes()) {
       Array.from(element.attributes).forEach(attr => {
-        if (attr.name.startsWith('data-') && attr.value && attr.value.startsWith('dig://')) {
+        if (attr.name.startsWith('data-') && attr.value && attr.value.startsWith('chia://')) {
           hasDigUrl = true;
           element.setAttribute(attr.name, convertDigUrl(attr.value));
         }
@@ -892,12 +892,12 @@ function processElementSync(element) {
     }
     
     // Handle custom elements and web components
-    // Check if element is a custom element with dig:// URLs in attributes
+    // Check if element is a custom element with chia:// URLs in attributes
     if (element.localName && element.localName.includes('-')) {
       // This is likely a custom element (web component)
-      // Process all its attributes for dig:// URLs
+      // Process all its attributes for chia:// URLs
       Array.from(element.attributes || []).forEach(attr => {
-        if (attr.value && attr.value.startsWith('dig://')) {
+        if (attr.value && attr.value.startsWith('chia://')) {
           hasDigUrl = true;
           element.setAttribute(attr.name, convertDigUrl(attr.value));
         }
@@ -916,11 +916,11 @@ function processElementSync(element) {
       });
     }
     
-    // Handle inline styles with dig:// URLs
+    // Handle inline styles with chia:// URLs
     if (element.hasAttribute && element.hasAttribute('style')) {
       const styleText = element.getAttribute('style');
-      if (styleText && styleText.includes('dig://')) {
-        const newStyle = styleText.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (match, url) => {
+      if (styleText && styleText.includes('chia://')) {
+        const newStyle = styleText.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (match, url) => {
           return `url(${convertDigUrl(url)})`;
         });
         if (newStyle !== styleText) {
@@ -933,9 +933,9 @@ function processElementSync(element) {
     if (element.tagName === 'STYLE' && element.textContent) {
       let newContent = element.textContent;
       
-      // Convert @import statements with dig:// URLs
-      // Matches: @import url('dig://...'); or @import 'dig://...';
-      newContent = newContent.replace(/@import\s+(?:url\()?['"]?(dig:\/\/[^'")]+)['"]?\)?;?/gi, (match, url) => {
+      // Convert @import statements with chia:// URLs
+      // Matches: @import url('chia://...'); or @import 'chia://...';
+      newContent = newContent.replace(/@import\s+(?:url\()?['"]?(chia:\/\/[^'")]+)['"]?\)?;?/gi, (match, url) => {
         const convertedUrl = convertDigUrl(url);
         // Preserve the format (url() or plain string)
         if (match.includes('url(')) {
@@ -945,66 +945,66 @@ function processElementSync(element) {
         }
       });
       
-      // Convert @font-face src with dig:// URLs
-      // Matches: @font-face { src: url('dig://...'); } or src: url('dig://...') format('woff2');
-      newContent = newContent.replace(/@font-face\s*\{[^}]*src\s*:\s*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-        return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+      // Convert @font-face src with chia:// URLs
+      // Matches: @font-face { src: url('chia://...'); } or src: url('chia://...') format('woff2');
+      newContent = newContent.replace(/@font-face\s*\{[^}]*src\s*:\s*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+        return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
           return `url('${convertDigUrl(url)}')`;
         });
       });
       
-      // Convert url() functions with dig:// URLs - preserve quote style
-      newContent = newContent.replace(/url\((['"]?)(dig:\/\/[^'")]+)\1\)/gi, (match, quote, url) => {
+      // Convert url() functions with chia:// URLs - preserve quote style
+      newContent = newContent.replace(/url\((['"]?)(chia:\/\/[^'")]+)\1\)/gi, (match, quote, url) => {
         const convertedUrl = convertDigUrl(url);
         // Use single quotes for consistency
         return `url('${convertedUrl}')`;
       });
       
-      // Convert @keyframes with dig:// URLs
-      newContent = newContent.replace(/@keyframes\s+\w+\s*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-        return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+      // Convert @keyframes with chia:// URLs
+      newContent = newContent.replace(/@keyframes\s+\w+\s*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+        return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
           return `url('${convertDigUrl(url)}')`;
         });
       });
       
-      // Convert @property with dig:// URLs
-      newContent = newContent.replace(/@property\s+[^\{]+\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-        return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+      // Convert @property with chia:// URLs
+      newContent = newContent.replace(/@property\s+[^\{]+\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+        return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
           return `url('${convertDigUrl(url)}')`;
         });
       });
       
-      // Convert @layer with dig:// URLs
-      newContent = newContent.replace(/@layer[^\{]*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-        return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+      // Convert @layer with chia:// URLs
+      newContent = newContent.replace(/@layer[^\{]*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+        return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
           return `url('${convertDigUrl(url)}')`;
         });
       });
       
-      // Convert @container with dig:// URLs
-      newContent = newContent.replace(/@container[^\{]*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-        return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+      // Convert @container with chia:// URLs
+      newContent = newContent.replace(/@container[^\{]*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+        return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
           return `url('${convertDigUrl(url)}')`;
         });
       });
       
-      // Convert @scope with dig:// URLs
-      newContent = newContent.replace(/@scope[^\{]*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-        return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+      // Convert @scope with chia:// URLs
+      newContent = newContent.replace(/@scope[^\{]*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+        return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
           return `url('${convertDigUrl(url)}')`;
         });
       });
       
-      // Convert @font-palette-values with dig:// URLs
-      newContent = newContent.replace(/@font-palette-values[^\{]*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-        return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+      // Convert @font-palette-values with chia:// URLs
+      newContent = newContent.replace(/@font-palette-values[^\{]*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+        return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
           return `url('${convertDigUrl(url)}')`;
         });
       });
       
-      // Convert CSS custom properties (CSS variables) with dig:// URLs
-      // Matches: --variable: url('dig://...');
-      newContent = newContent.replace(/(--[^:]+):\s*url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (match, prop, url) => {
+      // Convert CSS custom properties (CSS variables) with chia:// URLs
+      // Matches: --variable: url('chia://...');
+      newContent = newContent.replace(/(--[^:]+):\s*url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (match, prop, url) => {
         return `${prop}: url('${convertDigUrl(url)}')`;
       });
       
@@ -1015,24 +1015,24 @@ function processElementSync(element) {
 }
 
 // Process all elements immediately (synchronous, no async checks)
-// Only processes elements with dig:// URLs - non-blocking
+// Only processes elements with chia:// URLs - non-blocking
 function processAllElementsImmediately() {
-  // Process all elements in the document - but only those with dig:// URLs
+  // Process all elements in the document - but only those with chia:// URLs
   // Use a more targeted approach to avoid processing everything
   if (document.documentElement) {
-    // First, try to find elements with dig:// in attributes
+    // First, try to find elements with chia:// in attributes
     const selectors = [
-      'img[src^="dig://"]',
-      'script[src^="dig://"]',
-      'link[href^="dig://"]',
-      'source[src^="dig://"]',
-      'source[srcset*="dig://"]',
-      'video[src^="dig://"]',
-      'audio[src^="dig://"]',
-      'iframe[src^="dig://"]',
-      'object[data^="dig://"]',
-      'embed[data^="dig://"]',
-      '[style*="dig://"]',
+      'img[src^="chia://"]',
+      'script[src^="chia://"]',
+      'link[href^="chia://"]',
+      'source[src^="chia://"]',
+      'source[srcset*="chia://"]',
+      'video[src^="chia://"]',
+      'audio[src^="chia://"]',
+      'iframe[src^="chia://"]',
+      'object[data^="chia://"]',
+      'embed[data^="chia://"]',
+      '[style*="chia://"]',
       'style'
     ];
     
@@ -1046,14 +1046,14 @@ function processAllElementsImmediately() {
       }
     });
     
-    // Also process style tags for dig:// in content - handle @import, @font-face, url(), and CSS variables
+    // Also process style tags for chia:// in content - handle @import, @font-face, url(), and CSS variables
     const styleTags = document.querySelectorAll('style');
     styleTags.forEach(style => {
-      if (style.textContent && style.textContent.includes('dig://')) {
+      if (style.textContent && style.textContent.includes('chia://')) {
         let newContent = style.textContent;
         
-        // Convert @import statements with dig:// URLs
-        newContent = newContent.replace(/@import\s+(?:url\()?['"]?(dig:\/\/[^'")]+)['"]?\)?;?/gi, (match, url) => {
+        // Convert @import statements with chia:// URLs
+        newContent = newContent.replace(/@import\s+(?:url\()?['"]?(chia:\/\/[^'")]+)['"]?\)?;?/gi, (match, url) => {
           const convertedUrl = convertDigUrl(url);
           if (match.includes('url(')) {
             return match.replace(url, convertedUrl);
@@ -1062,64 +1062,64 @@ function processAllElementsImmediately() {
           }
         });
         
-        // Convert @font-face src with dig:// URLs
-        newContent = newContent.replace(/@font-face\s*\{[^}]*src\s*:\s*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-          return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+        // Convert @font-face src with chia:// URLs
+        newContent = newContent.replace(/@font-face\s*\{[^}]*src\s*:\s*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+          return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
             return `url('${convertDigUrl(url)}')`;
           });
         });
         
-        // Convert url() functions with dig:// URLs - preserve quote style
-        newContent = newContent.replace(/url\((['"]?)(dig:\/\/[^'")]+)\1\)/gi, (match, quote, url) => {
+        // Convert url() functions with chia:// URLs - preserve quote style
+        newContent = newContent.replace(/url\((['"]?)(chia:\/\/[^'")]+)\1\)/gi, (match, quote, url) => {
           const convertedUrl = convertDigUrl(url);
           // Use single quotes for consistency
           return `url('${convertedUrl}')`;
         });
         
-        // Convert @keyframes with dig:// URLs
-        newContent = newContent.replace(/@keyframes\s+\w+\s*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-          return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+        // Convert @keyframes with chia:// URLs
+        newContent = newContent.replace(/@keyframes\s+\w+\s*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+          return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
             return `url('${convertDigUrl(url)}')`;
           });
         });
         
-        // Convert @property with dig:// URLs
-        newContent = newContent.replace(/@property\s+[^\{]+\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-          return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+        // Convert @property with chia:// URLs
+        newContent = newContent.replace(/@property\s+[^\{]+\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+          return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
             return `url('${convertDigUrl(url)}')`;
           });
         });
         
-        // Convert @layer with dig:// URLs
-        newContent = newContent.replace(/@layer[^\{]*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-          return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+        // Convert @layer with chia:// URLs
+        newContent = newContent.replace(/@layer[^\{]*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+          return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
             return `url('${convertDigUrl(url)}')`;
           });
         });
         
-        // Convert @container with dig:// URLs
-        newContent = newContent.replace(/@container[^\{]*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-          return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+        // Convert @container with chia:// URLs
+        newContent = newContent.replace(/@container[^\{]*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+          return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
             return `url('${convertDigUrl(url)}')`;
           });
         });
         
-        // Convert @scope with dig:// URLs
-        newContent = newContent.replace(/@scope[^\{]*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-          return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+        // Convert @scope with chia:// URLs
+        newContent = newContent.replace(/@scope[^\{]*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+          return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
             return `url('${convertDigUrl(url)}')`;
           });
         });
         
-        // Convert @font-palette-values with dig:// URLs
-        newContent = newContent.replace(/@font-palette-values[^\{]*\{[^}]*url\(['"]?(dig:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
-          return match.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
+        // Convert @font-palette-values with chia:// URLs
+        newContent = newContent.replace(/@font-palette-values[^\{]*\{[^}]*url\(['"]?(chia:\/\/[^'")]+)['"]?\)[^}]*\}/gi, (match) => {
+          return match.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (urlMatch, url) => {
             return `url('${convertDigUrl(url)}')`;
           });
         });
         
-        // Convert CSS custom properties (CSS variables) with dig:// URLs
-        newContent = newContent.replace(/(--[^:]+):\s*url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (match, prop, url) => {
+        // Convert CSS custom properties (CSS variables) with chia:// URLs
+        newContent = newContent.replace(/(--[^:]+):\s*url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (match, prop, url) => {
           return `${prop}: url('${convertDigUrl(url)}')`;
         });
         
@@ -1131,7 +1131,7 @@ function processAllElementsImmediately() {
   }
 }
 
-// Intercept and convert dig:// URLs in the DOM
+// Intercept and convert chia:// URLs in the DOM
 function interceptDigUrls() {
   // Process immediately - don't wait for async checks
   processAllElementsImmediately();
@@ -1164,58 +1164,58 @@ function interceptDigUrls() {
     // Handle img src and srcset - proxy images to avoid network errors
     if (element.tagName === 'IMG') {
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         // Proxy the image through background worker
         proxyResource(element, 'src', srcAttr).catch(() => {
           element.setAttribute('src', convertDigUrl(srcAttr));
         });
       }
-      if (element.src && element.src.startsWith('dig://')) {
+      if (element.src && element.src.startsWith('chia://')) {
         proxyResource(element, 'src', element.src).catch(() => {
           element.src = convertDigUrl(element.src);
         });
       }
       const srcsetAttr = element.getAttribute('srcset');
-      if (srcsetAttr && srcsetAttr.includes('dig://')) {
-        element.setAttribute('srcset', srcsetAttr.replace(/dig:\/\/[^\s,]+/g, (match) => convertDigUrl(match)));
+      if (srcsetAttr && srcsetAttr.includes('chia://')) {
+        element.setAttribute('srcset', srcsetAttr.replace(/chia:\/\/[^\s,]+/g, (match) => convertDigUrl(match)));
       }
-      if (element.srcset && element.srcset.includes('dig://')) {
-        element.srcset = element.srcset.replace(/dig:\/\/[^\s,]+/g, (match) => convertDigUrl(match));
+      if (element.srcset && element.srcset.includes('chia://')) {
+        element.srcset = element.srcset.replace(/chia:\/\/[^\s,]+/g, (match) => convertDigUrl(match));
       }
     }
     
     // Handle picture source elements - proxy src, convert srcset
     if (element.tagName === 'SOURCE') {
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         proxyResource(element, 'src', srcAttr).catch(() => {
           element.setAttribute('src', convertDigUrl(srcAttr));
         });
       }
-      if (element.src && element.src.startsWith('dig://')) {
+      if (element.src && element.src.startsWith('chia://')) {
         proxyResource(element, 'src', element.src).catch(() => {
           element.src = convertDigUrl(element.src);
         });
       }
       // srcset - convert since we can't easily proxy multiple URLs
       const srcsetAttr = element.getAttribute('srcset');
-      if (srcsetAttr && srcsetAttr.includes('dig://')) {
-        element.setAttribute('srcset', srcsetAttr.replace(/dig:\/\/[^\s,]+/g, (match) => convertDigUrl(match)));
+      if (srcsetAttr && srcsetAttr.includes('chia://')) {
+        element.setAttribute('srcset', srcsetAttr.replace(/chia:\/\/[^\s,]+/g, (match) => convertDigUrl(match)));
       }
-      if (element.srcset && element.srcset.includes('dig://')) {
-        element.srcset = element.srcset.replace(/dig:\/\/[^\s,]+/g, (match) => convertDigUrl(match));
+      if (element.srcset && element.srcset.includes('chia://')) {
+        element.srcset = element.srcset.replace(/chia:\/\/[^\s,]+/g, (match) => convertDigUrl(match));
       }
     }
     
     // Handle script src - proxy through background worker
     if (element.tagName === 'SCRIPT') {
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         proxyScript(element, srcAttr).catch(() => {
           element.setAttribute('src', convertDigUrl(srcAttr));
         });
       }
-      if (element.src && element.src.startsWith('dig://')) {
+      if (element.src && element.src.startsWith('chia://')) {
         proxyScript(element, element.src).catch(() => {
           element.src = convertDigUrl(element.src);
         });
@@ -1225,7 +1225,7 @@ function interceptDigUrls() {
     // Handle link (stylesheet, icon, etc.) - proxy all link types
     if (element.tagName === 'LINK') {
       const hrefAttr = element.getAttribute('href');
-      if (hrefAttr && hrefAttr.startsWith('dig://')) {
+      if (hrefAttr && hrefAttr.startsWith('chia://')) {
         const rel = element.getAttribute('rel');
         if (rel === 'stylesheet' || rel === 'style') {
           proxyStylesheet(element, hrefAttr).catch(() => {
@@ -1237,7 +1237,7 @@ function interceptDigUrls() {
           });
         }
       }
-      if (element.href && element.href.startsWith('dig://')) {
+      if (element.href && element.href.startsWith('chia://')) {
         const rel = element.getAttribute('rel');
         if (rel === 'stylesheet' || rel === 'style') {
           proxyStylesheet(element, element.href).catch(() => {
@@ -1254,12 +1254,12 @@ function interceptDigUrls() {
     // Handle video/audio sources - proxy through background worker
     if (element.tagName === 'VIDEO' || element.tagName === 'AUDIO') {
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         proxyResource(element, 'src', srcAttr).catch(() => {
           element.setAttribute('src', convertDigUrl(srcAttr));
         });
       }
-      if (element.src && element.src.startsWith('dig://')) {
+      if (element.src && element.src.startsWith('chia://')) {
         proxyResource(element, 'src', element.src).catch(() => {
           element.src = convertDigUrl(element.src);
         });
@@ -1269,11 +1269,11 @@ function interceptDigUrls() {
     // Handle iframe src - convert (iframes need full page navigation, can't use blob URLs)
     if (element.tagName === 'IFRAME') {
       const srcAttr = element.getAttribute('src');
-      if (srcAttr && srcAttr.startsWith('dig://')) {
+      if (srcAttr && srcAttr.startsWith('chia://')) {
         // Iframes need full page navigation, so convert is the only option
         element.setAttribute('src', convertDigUrl(srcAttr));
       }
-      if (element.src && element.src.startsWith('dig://')) {
+      if (element.src && element.src.startsWith('chia://')) {
         element.src = convertDigUrl(element.src);
       }
     }
@@ -1281,24 +1281,24 @@ function interceptDigUrls() {
     // Handle object/embed - proxy through background worker
     if (element.tagName === 'OBJECT' || element.tagName === 'EMBED') {
       const dataAttr = element.getAttribute('data');
-      if (dataAttr && dataAttr.startsWith('dig://')) {
+      if (dataAttr && dataAttr.startsWith('chia://')) {
         proxyResource(element, 'data', dataAttr).catch(() => {
           element.setAttribute('data', convertDigUrl(dataAttr));
         });
       }
-      if (element.data && element.data.startsWith('dig://')) {
+      if (element.data && element.data.startsWith('chia://')) {
         proxyResource(element, 'data', element.data).catch(() => {
           element.data = convertDigUrl(element.data);
         });
       }
     }
     
-    // Handle style tags and inline styles with dig:// URLs
+    // Handle style tags and inline styles with chia:// URLs
     if (element.tagName === 'STYLE' && element.textContent) {
       let newContent = element.textContent;
       
-      // Convert @import statements with dig:// URLs
-      newContent = newContent.replace(/@import\s+(?:url\()?['"]?(dig:\/\/[^'")]+)['"]?\)?;?/gi, (match, url) => {
+      // Convert @import statements with chia:// URLs
+      newContent = newContent.replace(/@import\s+(?:url\()?['"]?(chia:\/\/[^'")]+)['"]?\)?;?/gi, (match, url) => {
         const convertedUrl = convertDigUrl(url);
         if (match.includes('url(')) {
           return match.replace(url, convertedUrl);
@@ -1307,8 +1307,8 @@ function interceptDigUrls() {
         }
       });
       
-      // Convert url() functions with dig:// URLs - preserve quote style
-      newContent = newContent.replace(/url\((['"]?)(dig:\/\/[^'")]+)\1\)/gi, (match, quote, url) => {
+      // Convert url() functions with chia:// URLs - preserve quote style
+      newContent = newContent.replace(/url\((['"]?)(chia:\/\/[^'")]+)\1\)/gi, (match, quote, url) => {
         const convertedUrl = convertDigUrl(url);
         // Use single quotes for consistency
         return `url('${convertedUrl}')`;
@@ -1321,8 +1321,8 @@ function interceptDigUrls() {
     
     if (element.hasAttribute && element.hasAttribute('style') && element.style) {
       const styleText = element.getAttribute('style');
-      if (styleText && styleText.includes('dig://')) {
-        const newStyle = styleText.replace(/url\(['"]?(dig:\/\/[^'")]+)['"]?\)/gi, (match, url) => {
+      if (styleText && styleText.includes('chia://')) {
+        const newStyle = styleText.replace(/url\(['"]?(chia:\/\/[^'")]+)['"]?\)/gi, (match, url) => {
           return `url(${convertDigUrl(url)})`;
         });
         element.setAttribute('style', newStyle);
@@ -1384,9 +1384,9 @@ function interceptFetch() {
       let url = args[0];
       let isDigUrl = false;
       
-      if (typeof url === 'string' && url.startsWith('dig://')) {
+      if (typeof url === 'string' && url.startsWith('chia://')) {
         isDigUrl = true;
-      } else if (url instanceof Request && url.url.startsWith('dig://')) {
+      } else if (url instanceof Request && url.url.startsWith('chia://')) {
         isDigUrl = true;
         url = url.url;
       }
@@ -1467,8 +1467,8 @@ function interceptXHR() {
   const originalSend = XMLHttpRequest.prototype.send;
   
   XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-    // Store the original URL and method if it's a dig:// URL
-    if (extensionEnabled && typeof url === 'string' && url.startsWith('dig://')) {
+    // Store the original URL and method if it's a chia:// URL
+    if (extensionEnabled && typeof url === 'string' && url.startsWith('chia://')) {
       this._digUrl = url;
       this._digMethod = method;
       this._digRest = rest;
@@ -1481,7 +1481,7 @@ function interceptXHR() {
   };
   
   XMLHttpRequest.prototype.send = function(...args) {
-    // If this is a dig:// request, proxy it through background worker
+    // If this is a chia:// request, proxy it through background worker
     if (extensionEnabled && this._digUrl) {
       const digUrl = this._digUrl;
       const method = this._digMethod || 'GET';
@@ -1582,7 +1582,7 @@ function interceptXHR() {
       return; // Don't call original send yet
     }
     
-    // For non-dig:// URLs, call original send
+    // For non-chia:// URLs, call original send
     return originalSend.apply(this, args);
   };
 }
@@ -1605,7 +1605,7 @@ function interceptLinkClicks() {
   });
   
   document.addEventListener('click', (e) => {
-    // Only intercept dig:// links
+    // Only intercept chia:// links
     if (!extensionEnabled) return;
     
     let target = e.target;
@@ -1615,7 +1615,7 @@ function interceptLinkClicks() {
       target = target.parentElement;
     }
     
-    if (target && target.tagName === 'A' && target.href && target.href.startsWith('dig://')) {
+    if (target && target.tagName === 'A' && target.href && target.href.startsWith('chia://')) {
       e.preventDefault();
       e.stopPropagation();
       
@@ -1634,7 +1634,7 @@ function interceptLinkClicks() {
     
     if (event.data && event.data.type === 'dig-navigate' && event.data.url) {
       const digUrl = event.data.url;
-      if (digUrl.startsWith('dig://')) {
+      if (digUrl.startsWith('chia://')) {
         const localhostUrl = convertDigUrl(digUrl);
         // Use background script's chrome.tabs.update for most reliable navigation
         chrome.runtime.sendMessage({
@@ -1663,7 +1663,7 @@ function interceptLinkClicks() {
           return locationValue;
         },
         set: function(value) {
-          if (extensionEnabled && typeof value === 'string' && value.startsWith('dig://')) {
+          if (extensionEnabled && typeof value === 'string' && value.startsWith('chia://')) {
             const localhostUrl = convertDigUrl(value);
             // Use replace() to avoid recursion
             window.location.replace(localhostUrl);
@@ -1718,41 +1718,41 @@ function injectPageScript() {
   }
 }
 
-// Pre-load dig:// resources found in the page (Priority 7: Resource Preloading)
+// Pre-load chia:// resources found in the page (Priority 7: Resource Preloading)
 async function preloadPageResources() {
   const enabled = await isExtensionEnabled();
   if (!enabled) return;
   
-  // Collect all dig:// URLs from the page
+  // Collect all chia:// URLs from the page
   const digUrls = new Set();
   
-  // Find all dig:// URLs in the document
+  // Find all chia:// URLs in the document
   if (document.documentElement) {
     // Images
-    document.querySelectorAll('img[src^="dig://"]').forEach(img => {
+    document.querySelectorAll('img[src^="chia://"]').forEach(img => {
       digUrls.add(img.src);
     });
     
     // Links (stylesheets, etc.)
-    document.querySelectorAll('link[href^="dig://"]').forEach(link => {
+    document.querySelectorAll('link[href^="chia://"]').forEach(link => {
       digUrls.add(link.href);
     });
     
     // Scripts
-    document.querySelectorAll('script[src^="dig://"]').forEach(script => {
+    document.querySelectorAll('script[src^="chia://"]').forEach(script => {
       digUrls.add(script.src);
     });
     
     // CSS url() references in style attributes and style tags
-    document.querySelectorAll('[style*="dig://"]').forEach(el => {
+    document.querySelectorAll('[style*="chia://"]').forEach(el => {
       const style = el.getAttribute('style') || '';
-      const matches = style.match(/dig:\/\/[^\s'")]+/g);
+      const matches = style.match(/chia:\/\/[^\s'")]+/g);
       if (matches) matches.forEach(url => digUrls.add(url));
     });
     
     document.querySelectorAll('style').forEach(style => {
       const content = style.textContent || '';
-      const matches = content.match(/dig:\/\/[^\s'")]+/g);
+      const matches = content.match(/chia:\/\/[^\s'")]+/g);
       if (matches) matches.forEach(url => digUrls.add(url));
     });
   }
@@ -1824,27 +1824,27 @@ function checkForMissedResources() {
     return; // Already reloaded once, don't reload again
   }
   
-  // Check if there are any dig:// URLs in the DOM that weren't converted
+  // Check if there are any chia:// URLs in the DOM that weren't converted
   const hasUnconvertedDigUrls = document.querySelectorAll(
-    'img[src^="dig://"], script[src^="dig://"], link[href^="dig://"], ' +
-    'source[src^="dig://"], video[src^="dig://"], audio[src^="dig://"], ' +
-    'iframe[src^="dig://"], object[data^="dig://"], embed[data^="dig://"]'
+    'img[src^="chia://"], script[src^="chia://"], link[href^="chia://"], ' +
+    'source[src^="chia://"], video[src^="chia://"], audio[src^="chia://"], ' +
+    'iframe[src^="chia://"], object[data^="chia://"], embed[data^="chia://"]'
   ).length > 0;
   
-  // Also check for dig:// in style attributes
-  const hasDigInStyles = Array.from(document.querySelectorAll('[style*="dig://"]')).some(el => {
+  // Also check for chia:// in style attributes
+  const hasDigInStyles = Array.from(document.querySelectorAll('[style*="chia://"]')).some(el => {
     const style = el.getAttribute('style') || '';
-    return style.includes('dig://') && !style.includes('http://localhost:');
+    return style.includes('chia://') && !style.includes('http://localhost:');
   });
   
-  // Check for dig:// in style tags
+  // Check for chia:// in style tags
   const hasDigInStyleTags = Array.from(document.querySelectorAll('style')).some(style => {
     const content = style.textContent || '';
-    return content.includes('dig://') && !content.includes('http://localhost:');
+    return content.includes('chia://') && !content.includes('http://localhost:');
   });
   
   if (hasUnconvertedDigUrls || hasDigInStyles || hasDigInStyleTags) {
-    // We found unconverted dig:// URLs - we might have been too late
+    // We found unconverted chia:// URLs - we might have been too late
     // Check if page is still loading or just finished loading
     if (document.readyState === 'loading' || document.readyState === 'interactive') {
       // Page is still loading, wait a bit and check again
@@ -1854,9 +1854,9 @@ function checkForMissedResources() {
     } else {
       // Page has loaded, check if we still have unconverted URLs
       const stillHasUnconverted = document.querySelectorAll(
-        'img[src^="dig://"], script[src^="dig://"], link[href^="dig://"], ' +
-        'source[src^="dig://"], video[src^="dig://"], audio[src^="dig://"], ' +
-        'iframe[src^="dig://"], object[data^="dig://"], embed[data^="dig://"]'
+        'img[src^="chia://"], script[src^="chia://"], link[href^="chia://"], ' +
+        'source[src^="chia://"], video[src^="chia://"], audio[src^="chia://"], ' +
+        'iframe[src^="chia://"], object[data^="chia://"], embed[data^="chia://"]'
       ).length > 0;
       
       if (stillHasUnconverted) {
@@ -1872,8 +1872,8 @@ function checkForMissedResources() {
 // DIG Extension Content Script v2.0
 // Initialize all interceptors - run immediately, non-blocking
 (function() {
-  // Note: We DO want to process dig:// URLs even on localhost pages
-  // (e.g., test.html served from localhost:8080 contains dig:// URLs)
+  // Note: We DO want to process chia:// URLs even on localhost pages
+  // (e.g., test.html served from localhost:8080 contains chia:// URLs)
   // We just need to be careful not to interfere with normal localhost requests
   
   // Debug: Log that content script is running
@@ -1897,15 +1897,15 @@ function checkForMissedResources() {
     // Ignore CSP errors - we'll rely on content script
   }
   
-  // Process elements IMMEDIATELY - but only dig:// URLs
+  // Process elements IMMEDIATELY - but only chia:// URLs
   // This must run synchronously at document_start to catch resources before they load
   if (document.documentElement) {
     console.log('DIG Extension: Processing elements immediately');
     processAllElementsImmediately();
     
-    // Count how many dig:// URLs we found
-    const digUrls = document.querySelectorAll('[src^="dig://"], [href^="dig://"], [data^="dig://"]');
-    console.log(`DIG Extension: Found ${digUrls.length} elements with dig:// URLs`);
+    // Count how many chia:// URLs we found
+    const digUrls = document.querySelectorAll('[src^="chia://"], [href^="chia://"], [data^="chia://"]');
+    console.log(`DIG Extension: Found ${digUrls.length} elements with chia:// URLs`);
   } else {
     console.warn('DIG Extension: document.documentElement not available yet');
   }
@@ -1917,7 +1917,7 @@ function checkForMissedResources() {
   interceptLinkClicks();
   
   // Priority 9: DOM Manipulation - MutationObserver for dynamic content
-  // Watch for dynamically added elements with dig:// URLs
+  // Watch for dynamically added elements with chia:// URLs
   const mutationObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {
@@ -1947,24 +1947,24 @@ function checkForMissedResources() {
           if (node.querySelectorAll) {
             // Use valid CSS selectors - split into multiple queries to avoid invalid syntax
             const selectors = [
-              'img[src^="dig://"]',
-              'script[src^="dig://"]',
-              'link[href^="dig://"]',
-              'source[src^="dig://"]',
-              'video[src^="dig://"]',
-              'audio[src^="dig://"]',
-              'iframe[src^="dig://"]',
-              'object[data^="dig://"]',
-              'embed[data^="dig://"]',
-              'use[href^="dig://"]',
-              'image[href^="dig://"]',
-              'linearGradient[href^="dig://"]',
-              'radialGradient[href^="dig://"]',
-              'pattern[href^="dig://"]',
-              'form[action^="dig://"]',
-              'input[formaction^="dig://"]',
-              'button[formaction^="dig://"]',
-              'meta[content*="dig://"]'
+              'img[src^="chia://"]',
+              'script[src^="chia://"]',
+              'link[href^="chia://"]',
+              'source[src^="chia://"]',
+              'video[src^="chia://"]',
+              'audio[src^="chia://"]',
+              'iframe[src^="chia://"]',
+              'object[data^="chia://"]',
+              'embed[data^="chia://"]',
+              'use[href^="chia://"]',
+              'image[href^="chia://"]',
+              'linearGradient[href^="chia://"]',
+              'radialGradient[href^="chia://"]',
+              'pattern[href^="chia://"]',
+              'form[action^="chia://"]',
+              'input[formaction^="chia://"]',
+              'button[formaction^="chia://"]',
+              'meta[content*="chia://"]'
             ];
             
             // Process each selector separately to avoid invalid selector errors
@@ -1989,7 +1989,7 @@ function checkForMissedResources() {
               const svgElements = node.querySelectorAll('use, image, linearGradient, radialGradient, pattern');
               svgElements.forEach((el) => {
                 const xlinkHref = el.getAttribute('xlink:href');
-                if (xlinkHref && xlinkHref.startsWith('dig://')) {
+                if (xlinkHref && xlinkHref.startsWith('chia://')) {
                   if (typeof processElementSync !== 'undefined') {
                     processElementSync(el);
                   } else {
@@ -2007,7 +2007,7 @@ function checkForMissedResources() {
               allElements.forEach((el) => {
                 // Check all data-* attributes
                 Array.from(el.attributes).forEach(attr => {
-                  if (attr.name.startsWith('data-') && attr.value && attr.value.startsWith('dig://')) {
+                  if (attr.name.startsWith('data-') && attr.value && attr.value.startsWith('chia://')) {
                     if (typeof processElementSync !== 'undefined') {
                       processElementSync(el);
                     } else {
@@ -2032,7 +2032,7 @@ function checkForMissedResources() {
             attr === 'formaction' || attr === 'content' || attr.startsWith('data-') ||
             attr === 'xlink:href') {
           const value = element.getAttribute(attr);
-          if (value && value.startsWith('dig://')) {
+          if (value && value.startsWith('chia://')) {
             if (typeof processElementSync !== 'undefined') {
               processElementSync(element);
             } else {
@@ -2044,7 +2044,7 @@ function checkForMissedResources() {
         // Also check style attribute changes
         if (attr === 'style') {
           const styleValue = element.getAttribute('style');
-          if (styleValue && styleValue.includes('dig://')) {
+          if (styleValue && styleValue.includes('chia://')) {
             if (typeof processElementSync !== 'undefined') {
               processElementSync(element);
             } else {
@@ -2084,7 +2084,7 @@ function checkForMissedResources() {
     }
   });
 
-  // Bridge: relay page-context dig:// proxy requests to background SW (which has WASM/RPC access)
+  // Bridge: relay page-context chia:// proxy requests to background SW (which has WASM/RPC access)
   // page-script.js posts { type: 'DIG_PROXY_REQUEST', id, url } and awaits
   // { type: 'DIG_PROXY_RESPONSE', id, dataUrl, contentType } back.
   window.addEventListener('message', (event) => {
@@ -2092,7 +2092,7 @@ function checkForMissedResources() {
     if (!event.data || event.data.type !== 'DIG_PROXY_REQUEST') return;
     const { id, url } = event.data;
     if (!id || !url) return;
-    if (typeof url !== 'string' || !url.startsWith('dig://')) return;
+    if (typeof url !== 'string' || !url.startsWith('chia://')) return;
     chrome.runtime.sendMessage({ action: 'proxyRequest', url }, (proxyResponse) => {
       if (chrome.runtime.lastError) {
         window.postMessage({

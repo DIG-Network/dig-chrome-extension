@@ -1,8 +1,8 @@
 #!/bin/bash
-# Script to register dig:// protocol handler on macOS
+# Script to register chia:// protocol handler on macOS
 # Run: chmod +x register-protocol-macos.sh && ./register-protocol-macos.sh
 
-echo "Registering dig:// protocol handler on macOS..."
+echo "Registering chia:// protocol handler on macOS..."
 
 # Find Chrome/Edge/Brave
 CHROME_PATH=""
@@ -61,7 +61,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
             <string>DIG Network Protocol</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>dig</string>
+                <string>chia</string>
             </array>
         </dict>
     </array>
@@ -83,14 +83,14 @@ chmod +x "$APP_DIR/Contents/handler.sh"
 
 if [ $? -eq 0 ]; then
     echo ""
-    echo "✓ Successfully registered dig:// protocol handler!"
-    echo "  Protocol: dig://"
+    echo "✓ Successfully registered chia:// protocol handler!"
+    echo "  Protocol: chia://"
     echo "  Handler: $CHROME_PATH"
     echo ""
     echo "Note: The DIG Network Extension must be installed in your browser"
-    echo "      for dig:// URLs to work properly."
+    echo "      for chia:// URLs to work properly."
     echo ""
-    echo "Test it by opening: dig://test/example"
+    echo "Test it by opening: chia://test/example"
 else
     echo "ERROR: Failed to register protocol handler"
     exit 1

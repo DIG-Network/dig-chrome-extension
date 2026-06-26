@@ -1,10 +1,10 @@
-# PowerShell script to deregister dig:// protocol handler on Windows
+# PowerShell script to deregister chia:// protocol handler on Windows
 # Run as Administrator: Right-click PowerShell -> "Run as Administrator"
 
-Write-Host "Deregistering dig:// protocol handler..." -ForegroundColor Cyan
+Write-Host "Deregistering chia:// protocol handler..." -ForegroundColor Cyan
 
 # Registry path
-$regPath = "HKCU:\Software\Classes\dig"
+$regPath = "HKCU:\Software\Classes\chia"
 
 try {
     # Check if the protocol handler exists
@@ -12,7 +12,7 @@ try {
         # Remove the entire protocol handler registry key
         Remove-Item -Path $regPath -Recurse -Force
         
-        Write-Host "✓ Successfully deregistered dig:// protocol handler!" -ForegroundColor Green
+        Write-Host "✓ Successfully deregistered chia:// protocol handler!" -ForegroundColor Green
         Write-Host "  Removed: $regPath" -ForegroundColor Gray
     } else {
         Write-Host "⚠ Protocol handler not found. It may have already been removed." -ForegroundColor Yellow

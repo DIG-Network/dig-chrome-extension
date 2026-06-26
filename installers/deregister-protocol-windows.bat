@@ -1,8 +1,8 @@
 @echo off
-REM Batch script to deregister dig:// protocol handler on Windows
+REM Batch script to deregister chia:// protocol handler on Windows
 REM Run as Administrator: Right-click -> "Run as Administrator"
 
-echo Deregistering dig:// protocol handler...
+echo Deregistering chia:// protocol handler...
 
 REM Check for admin privileges
 net session >nul 2>&1
@@ -14,12 +14,12 @@ if %errorLevel% neq 0 (
 )
 
 REM Remove protocol handler
-reg query "HKCU\Software\Classes\dig" >nul 2>&1
+reg query "HKCU\Software\Classes\chia" >nul 2>&1
 if %errorLevel% equ 0 (
-    reg delete "HKCU\Software\Classes\dig" /f >nul
+    reg delete "HKCU\Software\Classes\chia" /f >nul
     if %errorLevel% equ 0 (
         echo.
-        echo Successfully deregistered dig:// protocol handler!
+        echo Successfully deregistered chia:// protocol handler!
         echo.
         echo Note: You may need to restart your browser for changes to take effect.
     ) else (

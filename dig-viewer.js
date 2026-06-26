@@ -27,8 +27,8 @@
         
         loading.textContent = 'Loading content via RPC...';
         
-        // Construct dig:// URL from URN
-        const digUrl = urn.startsWith('dig://') ? urn : `dig://${urn}`;
+        // Construct chia:// URL from URN
+        const digUrl = urn.startsWith('chia://') ? urn : `chia://${urn}`;
         
         console.log('DIG Viewer: Requesting content via RPC for:', digUrl);
         

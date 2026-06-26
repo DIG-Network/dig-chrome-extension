@@ -1,7 +1,7 @@
 {
   "name": "dig-browser-extension",
   "version": "1.0.0",
-  "description": "DIG Network Browser Extension - Intercepts dig:// protocol requests",
+  "description": "DIG Network Browser Extension - Intercepts chia:// protocol requests",
   "main": "stub-server.js",
   "scripts": {
     "build": "node build.js",

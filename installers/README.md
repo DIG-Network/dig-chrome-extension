@@ -1,13 +1,13 @@
 # DIG Protocol Handler Installation
 
-This directory contains scripts to register the `dig://` protocol handler at the OS level. This allows `dig://` URLs to work system-wide, not just within the browser extension.
+This directory contains scripts to register the `chia://` protocol handler at the OS level. This allows `chia://` URLs to work system-wide, not just within the browser extension.
 
 ## Important Notes
 
-1. **Browser Extension Required**: Even after registering the protocol handler, you still need the DIG Network Browser Extension installed in your browser for `dig://` URLs to work properly.
+1. **Browser Extension Required**: Even after registering the protocol handler, you still need the DIG Network Browser Extension installed in your browser for `chia://` URLs to work properly.
 
 2. **How It Works**: 
-   - OS-level registration tells the system to open `dig://` URLs in your browser
+   - OS-level registration tells the system to open `chia://` URLs in your browser
    - The browser extension then intercepts these URLs and redirects them to `localhost:8080`
    - This eliminates "scheme does not have a registered handler" errors
 
@@ -33,10 +33,10 @@ cd installers
 **Manual Registration (Alternative)**
 1. Open Registry Editor (`regedit`)
 2. Navigate to `HKEY_CURRENT_USER\Software\Classes`
-3. Create new key: `dig`
-4. Set default value to: `URL:dig Protocol`
+3. Create new key: `chia`
+4. Set default value to: `URL:chia Protocol`
 5. Create string value: `URL Protocol` (leave empty)
-6. Create key: `dig\shell\open\command`
+6. Create key: `chia\shell\open\command`
 7. Set default value to: `"C:\Path\To\Chrome.exe" "%1"`
 
 ### macOS
@@ -60,19 +60,19 @@ chmod +x installers/register-protocol-linux.sh
 
 **Manual Registration (Alternative)**
 1. Create `~/.local/share/applications/dig-protocol-handler.desktop`
-2. Add `x-scheme-handler/dig` MIME type
+2. Add `x-scheme-handler/chia` MIME type
 3. Run `update-desktop-database`
-4. Run `xdg-mime default dig-protocol-handler.desktop x-scheme-handler/dig`
+4. Run `xdg-mime default dig-protocol-handler.desktop x-scheme-handler/chia`
 
 ## Testing
 
 After installation, test the protocol handler:
 
-1. **In Browser**: Open `dig://test/example` in your browser's address bar
+1. **In Browser**: Open `chia://test/example` in your browser's address bar
 2. **From Terminal**: 
-   - Windows: `start dig://test/example`
-   - macOS: `open dig://test/example`
-   - Linux: `xdg-open dig://test/example`
+   - Windows: `start chia://test/example`
+   - macOS: `open chia://test/example`
+   - Linux: `xdg-open chia://test/example`
 
 ## Uninstallation
 
@@ -94,7 +94,7 @@ cd installers
 **Option 3: Manual Removal**
 ```powershell
 # Run PowerShell as Administrator
-Remove-Item "HKCU:\Software\Classes\dig" -Recurse -Force
+Remove-Item "HKCU:\Software\Classes\chia" -Recurse -Force
 ```
 
 ### macOS
@@ -121,7 +121,7 @@ update-desktop-database ~/.local/share/applications
 - Check that the browser path in the registry/desktop file is correct
 - Try uninstalling and reinstalling the protocol handler
 
-**Browser doesn't open dig:// URLs**
+**Browser doesn't open chia:// URLs**
 - Check that the browser path is correct in the registry/desktop file
 - Verify the browser extension is installed
 - Check browser console for errors

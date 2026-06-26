@@ -1,6 +1,6 @@
 /**
  * Express test server for DIG Network Browser Extension
- * Serves test resources that match dig://test/* URLs
+ * Serves test resources that match chia://test/* URLs
  * Run with: npm start
  */
 
@@ -107,11 +107,11 @@ body {
 
 /* Test background image */
 .bg-test {
-  background-image: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/background.png');
+  background-image: url('chia://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/background.png');
 }
 
 /* Import test */
-@import url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/imported.css');
+@import url('chia://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/imported.css');
       `);
     
     case '.js':
@@ -142,7 +142,7 @@ if (typeof window !== 'undefined') {
         timestamp: new Date().toISOString(),
         data: {
           test: 'This is a test response from the DIG Network RPC server',
-          protocol: 'dig://',
+          protocol: 'chia://',
           urn: urn
         }
       }));
@@ -741,11 +741,11 @@ body {
 
 /* Test background image */
 .bg-test {
-  background-image: url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/background.png');
+  background-image: url('chia://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/background.png');
 }
 
 /* Import test */
-@import url('dig://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/imported.css');
+@import url('chia://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/imported.css');
       `);
       break;
     
@@ -786,7 +786,7 @@ if (typeof window !== 'undefined') {
         timestamp: new Date().toISOString(),
         data: {
           test: 'This is a test response from the DIG Network test server',
-          protocol: 'dig://',
+          protocol: 'chia://',
           redirected: true,
           localhost: `http://localhost:${PORT}${req.path}`
         }
@@ -840,9 +840,9 @@ if (typeof window !== 'undefined') {
 <body>
   <div class="container">
     <h1>✅ DIG Network Test Page</h1>
-    <div class="success">Successfully loaded via dig:// protocol!</div>
+    <div class="success">Successfully loaded via chia:// protocol!</div>
     <p><strong>Requested Path:</strong> <code>${requestedPath}</code></p>
-    <p><strong>Full URL:</strong> <code>dig://test/${requestedPath}</code></p>
+    <p><strong>Full URL:</strong> <code>chia://test/${requestedPath}</code></p>
     <p><strong>Redirected To:</strong> <code>http://localhost:${PORT}${req.path}</code></p>
     <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
     <p>This page was successfully loaded through the DIG Network Browser Extension!</p>

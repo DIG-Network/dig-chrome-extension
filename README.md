@@ -1,20 +1,20 @@
 # DIG Network Browser Extension
 
-A Chromium browser extension that intercepts `dig://` protocol requests and redirects them to a localhost server.
+A Chromium browser extension that intercepts `chia://` protocol requests and redirects them to a localhost server.
 
 ## Features
 
 - **Toggle Control**: Activate or deactivate the extension with a simple toggle switch
-- **Comprehensive Protocol Interception**: Automatically intercepts ALL `dig://` protocol requests when active, including:
-  - Image tags (`<img src="dig://...">`)
-  - Script tags (`<script src="dig://...">`)
-  - Stylesheet links (`<link href="dig://...">`)
+- **Comprehensive Protocol Interception**: Automatically intercepts ALL `chia://` protocol requests when active, including:
+  - Image tags (`<img src="chia://...">`)
+  - Script tags (`<script src="chia://...">`)
+  - Stylesheet links (`<link href="chia://...">`)
   - Video/Audio sources
   - Iframe sources
   - CSS `url()` references (inline styles and `<style>` tags)
-  - Fetch API requests (`fetch('dig://...')`)
+  - Fetch API requests (`fetch('chia://...')`)
   - XMLHttpRequest calls
-  - Link navigation (`<a href="dig://...">`)
+  - Link navigation (`<a href="chia://...">`)
   - Any other DOM resource requests
 - **Localhost Redirection**: Redirects all intercepted requests to `http://localhost:8080`
 - **DIG Network Branding**: Uses the official DIG Network colors and styling (dark purple background, magenta/purple gradients)
@@ -37,7 +37,7 @@ npm run build
 
 ### OS-Level Protocol Handler (Optional)
 
-To register `dig://` as a system-wide protocol handler (eliminates "scheme does not have a registered handler" errors), see the [installers/README.md](installers/README.md) directory.
+To register `chia://` as a system-wide protocol handler (eliminates "scheme does not have a registered handler" errors), see the [installers/README.md](installers/README.md) directory.
 
 **Note**: The browser extension will work without OS-level registration, but you may see error messages. OS-level registration is optional but recommended for a better user experience.
 
@@ -89,12 +89,12 @@ The build script will:
 
 3. **Test the protocol interception**:
    - **Quick test**: Open `test.html` in your browser (after building, it's in the `dist/` folder)
-   - **Manual test**: Navigate to a `dig://` URL (e.g., `dig://example.com/image.png`)
+   - **Manual test**: Navigate to a `chia://` URL (e.g., `chia://example.com/image.png`)
    - The extension will redirect it to `http://localhost:8080/example.com/image.png`
 
 ### Test Page
 
-The project includes `test.html` - a comprehensive test page that exercises `dig://` protocol in:
+The project includes `test.html` - a comprehensive test page that exercises `chia://` protocol in:
 - Image tags (`<img>`, `<picture>`, `srcset`)
 - Script tags (`<script>`)
 - Stylesheet links (`<link>`)
@@ -105,7 +105,7 @@ The project includes `test.html` - a comprehensive test page that exercises `dig
 - Iframes
 - Dynamic content creation
 
-Open `test.html` in your browser and check the Developer Tools (F12) Network tab to see all `dig://` requests being redirected to `localhost:8080`.
+Open `test.html` in your browser and check the Developer Tools (F12) Network tab to see all `chia://` requests being redirected to `localhost:8080`.
 
 ## Test Server
 
@@ -154,7 +154,7 @@ dig-browser-extension/
 ├── popup.css              # Popup styling with DIG branding
 ├── popup.js               # Popup logic and toggle handling
 ├── background.js          # Service worker for protocol interception
-├── content.js             # Content script to intercept dig:// links
+├── content.js             # Content script to intercept chia:// links
 ├── stub-server.js         # Simple stub server (alternative to Express server)
 ├── server/                # Express test server (recommended)
 │   ├── server.js         # Main Express server
@@ -181,7 +181,7 @@ To generate the extension icons:
 ## Notes
 
 - The extension uses Manifest V3 (Chrome's latest extension format)
-- Protocol interception works by redirecting navigation attempts to `dig://` URLs
+- Protocol interception works by redirecting navigation attempts to `chia://` URLs
 - The Express test server is provided for testing purposes and should be replaced with the actual DIG Network server implementation
 
 ## Branding

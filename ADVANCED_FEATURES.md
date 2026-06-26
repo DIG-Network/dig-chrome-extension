@@ -1,6 +1,6 @@
-# DIG Extension - Advanced `dig://` Protocol Support
+# DIG Extension - Advanced `chia://` Protocol Support
 
-This document outlines all the advanced features and comprehensive support for the `dig://` protocol in the browser extension.
+This document outlines all the advanced features and comprehensive support for the `chia://` protocol in the browser extension.
 
 ## 🎯 Complete Feature Coverage
 
@@ -17,7 +17,7 @@ This document outlines all the advanced features and comprehensive support for t
 - ✅ `<form>` - action attribute
 - ✅ `<input>`, `<button>` - formaction attribute
 - ✅ `<meta>` - content attribute (og:image, twitter:image, etc.)
-- ✅ **HTML5 data-* attributes** - All data attributes containing dig:// URLs
+- ✅ **HTML5 data-* attributes** - All data attributes containing chia:// URLs
 - ✅ **Custom Elements / Web Components** - All attributes in custom elements
 
 ### SVG Elements
@@ -30,15 +30,15 @@ This document outlines all the advanced features and comprehensive support for t
 ### CSS Support
 - ✅ **Inline styles** - `style` attribute with `url()` functions
 - ✅ **`<style>` tags** - All CSS content
-- ✅ **`@import`** - Import statements with dig:// URLs
+- ✅ **`@import`** - Import statements with chia:// URLs
 - ✅ **`@font-face`** - Font source URLs
-- ✅ **`@keyframes`** - Animation keyframes with dig:// URLs
+- ✅ **`@keyframes`** - Animation keyframes with chia:// URLs
 - ✅ **`@property`** - CSS custom property definitions
 - ✅ **`@layer`** - CSS cascade layers
 - ✅ **`@container`** - Container queries
 - ✅ **`@scope`** - Scoped styles
 - ✅ **`@font-palette-values`** - Font color palette values
-- ✅ **CSS custom properties (CSS variables)** - `--variable: url('dig://...')`
+- ✅ **CSS custom properties (CSS variables)** - `--variable: url('chia://...')`
 - ✅ **All `url()` functions** - background-image, background, list-style-image, border-image, cursor, etc.
 
 ### JavaScript APIs
@@ -121,10 +121,10 @@ This document outlines all the advanced features and comprehensive support for t
 - ✅ **`CSS.URL`** - CSS Typed OM (if available)
 
 ### Navigation & Protocol Handling
-- ✅ **Address bar navigation** - Typing dig:// URLs
+- ✅ **Address bar navigation** - Typing chia:// URLs
 - ✅ **Protocol handler launches** - OS-level protocol registration
-- ✅ **Link clicks** - `<a href="dig://...">` navigation
-- ✅ **Programmatic navigation** - `window.location.href = 'dig://...'`
+- ✅ **Link clicks** - `<a href="chia://...">` navigation
+- ✅ **Programmatic navigation** - `window.location.href = 'chia://...'`
 
 ### Resource Hints
 - ✅ **`<link rel="preconnect">`** - Preconnect hints
@@ -162,9 +162,9 @@ This document outlines all the advanced features and comprehensive support for t
 
 #### Advanced CSS Processing
 - ✅ **All CSS at-rules** - @import, @font-face, @keyframes, @property, @layer, @container, @scope, @font-palette-values
-- ✅ **CSS custom properties** - Variables with dig:// URLs
+- ✅ **CSS custom properties** - Variables with chia:// URLs
 - ✅ **Complex selectors** - All selector types
-- ✅ **Media queries** - Responsive CSS (if dig:// URLs appear)
+- ✅ **Media queries** - Responsive CSS (if chia:// URLs appear)
 
 ## 🚀 Implementation Architecture
 
@@ -227,12 +227,12 @@ The extension is designed to support:
 
 ## 📝 Notes
 
-- Some APIs (like WebGPU, WebXR) don't typically use URLs in ways that would benefit from dig:// support, but the architecture is ready if needed
-- CSS @media queries and @supports don't typically contain dig:// URLs, but are handled if they do
+- Some APIs (like WebGPU, WebXR) don't typically use URLs in ways that would benefit from chia:// support, but the architecture is ready if needed
+- CSS @media queries and @supports don't typically contain chia:// URLs, but are handled if they do
 - The extension gracefully handles cases where APIs aren't available (feature detection)
 
 ---
 
-**This extension provides the most comprehensive `dig://` protocol support possible in a browser extension, covering virtually every way a URL can be used in modern web development.**
+**This extension provides the most comprehensive `chia://` protocol support possible in a browser extension, covering virtually every way a URL can be used in modern web development.**
 
 
