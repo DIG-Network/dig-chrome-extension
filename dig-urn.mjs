@@ -83,6 +83,13 @@ function decodeStoreId(encoded) {
  * private-store query param. `salt` is always present in the result (null = public
  * store) so background.js's `parsed.salt ?? null` read is satisfied.
  *
+ * parseURN returns `{ chain, storeId, roothash, resourceKey, salt }`. Capsule
+ * semantics (canonical, see ../../SYSTEM.md): a capsule = one immutable store
+ * generation = the pair `(storeId, rootHash)`, written `storeId:rootHash`; a
+ * store is a sequence of capsules (one per commit). If `roothash` is present, the
+ * URN identifies a SPECIFIC capsule (`storeId:roothash`). A rootless URN
+ * (`roothash === null`) references the store's LATEST capsule.
+ *
  * @param {string} urnString - URN string (with or without `chia://` / `urn:dig:` prefix)
  * @returns {Object|null} `{ chain, storeId, roothash, resourceKey, salt }` or null if invalid
  */

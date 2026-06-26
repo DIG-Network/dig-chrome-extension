@@ -222,6 +222,9 @@ async function fetchContentViaRPC(urn, endpoint) {
       : `urn:dig:chia:${parsed.storeId}${parsed.roothash ? ':' + parsed.roothash : ''}${parsed.resourceKey ? '/' + parsed.resourceKey : ''}`;
 
     const storeId     = parsed.storeId;
+    // Capsule selection (canonical term — see ../../SYSTEM.md): a rooted URN pins a
+    // SPECIFIC capsule (the immutable generation storeId:roothash); a rootless URN
+    // ('latest') resolves to the store's current/latest capsule.
     const root        = parsed.roothash || 'latest';
     const resourceKey = parsed.resourceKey || 'index.html';
     // salt: extracted from ?salt=<hex> by parseURN; null means public store
