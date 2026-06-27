@@ -84,6 +84,7 @@ To register `chia://` as a system-wide protocol handler (eliminates "scheme does
 
 - `npm run build` - Validates and prepares the extension in the `dist/` folder
 - `npm run build:zip` - Builds the extension and creates a zip file for distribution
+- `npm run vendor:wc` - (Re)bundles the WalletConnect SignClient into `vendor/` (esbuild)
 - `npm run server` - Starts the Express test server (recommended)
 - `npm run server:stub` - Starts the simple stub server (alternative)
 - `npm run generate-icons` - Generates icon placeholder files (icons should be created using `create-icons.html`)
@@ -92,7 +93,28 @@ The build script will:
 - ✅ Validate all required extension files
 - ✅ Check for icons (optional, but recommended)
 - ✅ Copy all files to a `dist/` directory ready for installation
+- ✅ Vendor the WalletConnect SignClient (see below) and bake the WC project id
 - ✅ Optionally create a zip file for distribution
+
+### WalletConnect → Sage wiring
+
+Live wallet pairing needs two build-time pieces (both handled by `npm run build`):
+
+1. **Vendored SignClient.** An MV3 extension page's CSP (`script-src 'self'`) blocks loading
+   the WalletConnect SignClient from a CDN, so the build bundles `@walletconnect/sign-client`
+   (+ deps) into a single same-origin ESM at `vendor/walletconnect-sign-client.js` via esbuild.
+   The bundle is **eval-free** (MV3 forbids `eval`/`new Function`); the build asserts this and
+   fails if a dependency reintroduces dynamic codegen. `popup/wallet-wc.js` imports it at
+   runtime. The bundle is a generated artifact (git-ignored) — regenerate with `npm run vendor:wc`.
+
+2. **WalletConnect (Reown) project id.** The build bakes a **default** project id into
+   `dist/wallet-wc.js` so pairing works out of the box. It is read at build time from
+   `WALLETCONNECT_PROJECT_ID` (env), falling back to the hub's
+   `apps/web/.env.local` `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` when building inside the
+   ecosystem superproject. In CI, set the `WALLETCONNECT_PROJECT_ID` repo/org secret. The
+   project id is **never** committed as a source literal; the options page field remains a
+   per-user override. (It is a client-public identifier, like the hub's `NEXT_PUBLIC_*`, so it
+   may appear in the built `dist/` artifact.)
 
 ## Usage
 

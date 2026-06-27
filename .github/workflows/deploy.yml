@@ -24,7 +24,13 @@ jobs:
           node-version: 20
       - run: npm ci || npm install
       - run: npm test # node --test tests/ — unit tests for the shared modules
+      # build:zip vendors the WalletConnect SignClient (esbuild) and bakes the shared Reown
+      # project id into dist/wallet-wc.js. The project id is a client-public identifier (the
+      # hub already ships it client-side); it's provided here as a secret so it never lives in
+      # source. Absent → the build still succeeds and the options-page field is the only override.
       - run: npm run build:zip # node build.js --zip -> ./dist + dist/*.zip
+        env:
+          WALLETCONNECT_PROJECT_ID: ${{ secrets.WALLETCONNECT_PROJECT_ID }}
       - name: upload build artifact
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
