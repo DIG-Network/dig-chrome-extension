@@ -17,6 +17,51 @@
       <a id="visitDigNetworkLink" class="header-link" href="#" title="Visit DIG Network">dig.net ↗</a>
     </div>
 
+    <!-- Verified badge line: reflects the active tab's chia:// verification state. -->
+    <div class="verify-line" id="verifyLine" style="display:none">
+      <span class="verify-dot" id="verifyDot"></span>
+      <span class="verify-text" id="verifyText">Verified on Chia</span>
+    </div>
+
+    <!-- Wallet panel: balance + connect/disconnect (WalletConnect → Sage) + Get DIG. -->
+    <div class="wallet-section">
+      <div class="wallet-head">
+        <span class="wallet-title">Wallet</span>
+        <span class="wallet-state" id="walletState">Not connected</span>
+      </div>
+      <div class="wallet-balances" id="walletBalances" style="display:none">
+        <div class="wallet-bal">
+          <span class="wallet-bal-label">XCH</span>
+          <span class="wallet-bal-value" id="walletXch">—</span>
+        </div>
+        <div class="wallet-bal">
+          <span class="wallet-bal-label">DIG</span>
+          <span class="wallet-bal-value" id="walletDig">—</span>
+        </div>
+      </div>
+      <div class="wallet-address" id="walletAddress" style="display:none"></div>
+      <div class="wallet-actions">
+        <button id="walletConnectBtn" class="wallet-btn wallet-btn-primary">Connect wallet</button>
+        <button id="walletDisconnectBtn" class="wallet-btn" style="display:none">Disconnect</button>
+        <a id="getDigLink" class="wallet-btn wallet-btn-ghost" href="#" title="Get DIG on TibetSwap">Get DIG ↗</a>
+      </div>
+      <!-- Pairing affordance (URI / copy) appears here when connecting. -->
+      <div class="wallet-pairing" id="walletPairing" style="display:none">
+        <p class="wallet-pairing-hint">Open Sage → scan or paste this pairing link:</p>
+        <div class="wallet-pairing-row">
+          <input type="text" id="walletPairingUri" class="wallet-pairing-uri" readonly>
+          <button id="walletPairingCopy" class="restore-button" title="Copy">⧉</button>
+        </div>
+      </div>
+      <p class="wallet-note" id="walletNote"></p>
+    </div>
+
+    <!-- Per-origin connection requests from dapps' window.chia.connect(). -->
+    <div class="connreq-section" id="connreqSection" style="display:none">
+      <p class="connreq-label">Connection requests</p>
+      <div class="connreq-list" id="connreqList"></div>
+    </div>
+
     <!-- Ecosystem funnel: drive users from the RPC client into DIGHUb. -->
     <div class="hub-section">
       <button id="browseHubButton" class="hub-button" title="Browse DIGHUb">
@@ -197,9 +242,13 @@
       <a id="getFullBrowserLink" class="upsell-link" href="#" title="Get the full DIG Browser">
         Get the full DIG Browser — native dig:// &amp; built-in wallet ↗
       </a>
+      <a id="openOptionsLink" class="upsell-link" href="#" title="DIG settings: cache + companion">
+        DIG settings — cache &amp; companion →
+      </a>
     </div>
   </div>
   <script src="popup.js"></script>
+  <script type="module" src="popup-wallet.js"></script>
 </body>
 </html>
 

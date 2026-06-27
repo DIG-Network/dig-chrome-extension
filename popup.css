@@ -741,3 +741,84 @@ body {
   color: var(--dig-purple);
 }
 
+/* ---- Verified badge line ---- */
+.verify-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.verify-line.verified { background: rgba(26, 143, 90, 0.10); color: #1a8f5a; border: 1px solid rgba(26,143,90,.25); }
+.verify-line.failed   { background: rgba(217, 45, 32, 0.10); color: #d92d20; border: 1px solid rgba(217,45,32,.25); }
+.verify-dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+
+/* ---- Wallet panel ---- */
+.wallet-section {
+  background: var(--dig-surface);
+  border: 1px solid var(--dig-border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wallet-head { display: flex; align-items: center; justify-content: space-between; }
+.wallet-title { font-size: 13px; font-weight: 700; letter-spacing: -.01em; }
+.wallet-state { font-size: 11.5px; font-weight: 600; color: var(--dig-muted); }
+.wallet-state.connected { color: #1a8f5a; }
+.wallet-balances { display: flex; gap: 10px; }
+.wallet-bal {
+  flex: 1; background: var(--dig-bg); border: 1px solid var(--dig-border);
+  border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px;
+}
+.wallet-bal-label { font-size: 10px; font-weight: 700; color: var(--dig-muted); letter-spacing: .03em; }
+.wallet-bal-value { font-size: 14px; font-weight: 700; }
+.wallet-address {
+  font-size: 11px; color: var(--dig-muted); font-family: 'SF Mono', Menlo, Consolas, monospace;
+  word-break: break-all; background: var(--dig-bg); border-radius: 6px; padding: 6px 8px;
+}
+.wallet-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.wallet-btn {
+  flex: 1; min-width: 110px; cursor: pointer; border: 1px solid var(--dig-border);
+  background: var(--dig-surface); color: var(--dig-text); border-radius: 8px;
+  padding: 9px 12px; font-size: 12.5px; font-weight: 600; text-align: center;
+  text-decoration: none; transition: border-color .15s, background .15s;
+}
+.wallet-btn:hover { border-color: var(--dig-purple); background: var(--dig-bg); }
+.wallet-btn-primary {
+  background: linear-gradient(135deg, var(--dig-purple) 0%, var(--dig-magenta) 100%);
+  color: #fff; border-color: transparent;
+}
+.wallet-btn-primary:hover { filter: brightness(1.06); background: linear-gradient(135deg, var(--dig-purple) 0%, var(--dig-magenta) 100%); }
+.wallet-btn-ghost { color: var(--dig-muted); }
+.wallet-pairing { display: flex; flex-direction: column; gap: 6px; }
+.wallet-pairing-hint { font-size: 11.5px; color: var(--dig-muted); }
+.wallet-pairing-row { display: flex; gap: 6px; }
+.wallet-pairing-uri {
+  flex: 1; font-size: 11px; padding: 7px 9px; border: 1px solid var(--dig-border);
+  border-radius: 6px; font-family: monospace; background: var(--dig-bg); color: var(--dig-text);
+}
+.wallet-note { font-size: 11px; color: var(--dig-muted); }
+.wallet-note.error { color: var(--dig-red); }
+
+/* ---- Connection requests (per-origin consent) ---- */
+.connreq-section {
+  background: var(--dig-surface); border: 1px solid var(--dig-border);
+  border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.connreq-label { font-size: 12px; font-weight: 700; }
+.connreq-list { display: flex; flex-direction: column; gap: 8px; }
+.connreq-item {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  background: var(--dig-bg); border: 1px solid var(--dig-border); border-radius: 8px; padding: 8px 10px;
+}
+.connreq-origin { flex: 1; word-break: break-all; font-weight: 600; }
+.connreq-btn {
+  cursor: pointer; border: 0; border-radius: 6px; padding: 6px 10px; font-size: 11.5px; font-weight: 700;
+}
+.connreq-allow { background: #1a8f5a; color: #fff; }
+.connreq-deny { background: var(--dig-surface); color: var(--dig-muted); border: 1px solid var(--dig-border); }
+

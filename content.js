@@ -1718,6 +1718,72 @@ function injectPageScript() {
   }
 }
 
+// Inject the CHIP-0002 `window.chia` provider (dig-provider.js) into the page's MAIN
+// world. Ported from the native DIG Browser; the provider relays each wallet RPC over
+// window.postMessage to wireWalletBridge() below, which forwards to the background SW
+// (→ WalletConnect → Sage). This gives any dapp the same `window.chia` the native
+// browser injects, on Chrome/Edge/Brave/Firefox.
+function injectWalletProvider() {
+  try {
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL('dig-provider.js');
+    script.onload = function () { try { this.remove(); } catch (e) { /* ignore */ } };
+    script.onerror = function () {
+      console.warn('DIG Extension: Failed to load wallet provider');
+    };
+    (document.head || document.documentElement).appendChild(script);
+  } catch (error) {
+    console.warn('DIG Extension: Error injecting wallet provider', error);
+  }
+}
+
+// Bridge page-world `window.chia` requests (DIG_WALLET_REQUEST) to the background SW,
+// then post the wallet's {status, body} envelope back to the page (DIG_WALLET_RESPONSE).
+// The background SW supplies the calling origin's per-origin consent gate; this bridge
+// only relays. window.location.origin is the committed page origin (the content script
+// runs in the isolated world of the same document), so it is trustworthy for gating.
+function wireWalletBridge() {
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    const d = event.data;
+    if (!d || d.type !== 'DIG_WALLET_REQUEST' || !d.id) return;
+
+    const reply = (envelope) => {
+      window.postMessage(
+        {
+          type: 'DIG_WALLET_RESPONSE',
+          id: d.id,
+          status: envelope && envelope.status,
+          body: envelope && envelope.body,
+          error: envelope && envelope.error,
+        },
+        '*'
+      );
+    };
+
+    try {
+      chrome.runtime.sendMessage(
+        {
+          action: 'walletRpc',
+          method: d.method,
+          params: d.params || {},
+          origin: window.location.origin,
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reply({ status: -1, error: chrome.runtime.lastError.message });
+            return;
+          }
+          // background returns { status, body } (or { status, error }).
+          reply(response || { status: -1, error: 'No response from wallet broker' });
+        }
+      );
+    } catch (e) {
+      reply({ status: -1, error: e && e.message ? e.message : 'wallet bridge error' });
+    }
+  });
+}
+
 // Pre-load chia:// resources found in the page (Priority 7: Resource Preloading)
 async function preloadPageResources() {
   const enabled = await isExtensionEnabled();
@@ -1895,6 +1961,15 @@ function checkForMissedResources() {
   } catch (e) {
     console.warn('DIG Extension: Failed to inject page script:', e);
     // Ignore CSP errors - we'll rely on content script
+  }
+
+  // Inject the `window.chia` wallet provider + bridge its requests to the background SW.
+  try {
+    wireWalletBridge();
+    injectWalletProvider();
+    console.log('DIG Extension: Wallet provider injected');
+  } catch (e) {
+    console.warn('DIG Extension: Failed to inject wallet provider:', e);
   }
   
   // Process elements IMMEDIATELY - but only chia:// URLs

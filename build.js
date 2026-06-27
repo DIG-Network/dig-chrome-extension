@@ -12,15 +12,33 @@ const EXTENSION_FILES = [
   'popup.html',
   'popup.css',
   'popup.js',
+  // Popup wallet panel + verified line + per-origin consent (module).
+  'popup-wallet.js',
   'dig-urn.mjs',
   // Ecosystem funnel: shared link constants + first-run welcome page.
   'links.mjs',
   'welcome.html',
   'welcome.js',
+  // DIG Home (new-tab override) — ported from the native DIG Browser NTP.
+  'newtab.html',
+  'newtab.css',
+  'newtab.js',
+  // DIG settings (options page): cache + companion + RPC + wallet project id.
+  'options.html',
+  'options.css',
+  'options.js',
+  // Shared app directory + omnibox classifier (NTP) and wallet method/broker modules.
+  'apps.mjs',
+  'wallet-methods.mjs',
+  'wallet-broker.mjs',
+  // WalletConnect → Sage transport (runs in the popup page).
+  'wallet-wc.js',
   'background.js',
   'middleware.js',
   'content.js',
   'page-script.js',
+  // Injected window.chia CHIP-0002 provider (main world).
+  'dig-provider.js',
   'dig-viewer.html',
   'dig-viewer.js',
   // dig-client WASM (ES module + binary) — required for client-side decryption in the module SW

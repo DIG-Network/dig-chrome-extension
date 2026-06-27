@@ -1,8 +1,33 @@
 # DIG Network Browser Extension
 
-A Chromium browser extension that intercepts `chia://` protocol requests and redirects them to a localhost server.
+A Chromium/Firefox (MV3) browser extension that brings the **DIG Network experience to any
+browser** — feature-parity-tracking the native [DIG Browser](https://github.com/DIG-Network/DIG_Browser).
+It resolves `chia://` content (verified + decrypted), overrides the new-tab page with DIG
+Home, injects a `window.chia` wallet, and shows a verified badge.
 
-## Features
+## DIG experience (parity with the native DIG Browser)
+
+- **DIG Home (new-tab page)**: a white/minimal DIG Home with the ecosystem app directory
+  (DIGHUb, XCH Annuity, TibetSwap, Docs), a Search ⇄ App Store switcher, and a DuckDuckGo
+  web-search fallback. Ported from the native browser's NTP.
+- **`window.chia` provider**: dapps get a CHIP-0002 `window.chia` on every page — the same
+  surface the native browser injects. Extensions can't run an in-process wallet, so it's
+  brokered over **WalletConnect → Sage**, with per-origin connect consent.
+- **Verified badge**: a `chia://` page that is Merkle-verified against its on-chain root
+  shows a green "Verified" badge (toolbar + popup + an in-page banner); verification
+  failure shows a distinct red state.
+- **Wallet panel** (popup): balance, connect/disconnect (WalletConnect → Sage), and a
+  "Get DIG ↗" link.
+- **DIG settings** (options page): local cache usage/clear, the dig-companion host
+  (`localhost:8080`) with a "companion not running" affordance, the upstream RPC endpoint,
+  and the WalletConnect project id.
+
+> Some native-browser features are **impossible in MV3** and stay browser-only: network-stack
+> `chia://` scheme interception (the extension renders via an in-extension viewer instead),
+> a truly in-process wallet, browser-layer privacy, and a native `chrome://settings` DIG
+> section.
+
+## Resolution features
 
 - **Toggle Control**: Activate or deactivate the extension with a simple toggle switch
 - **Comprehensive Protocol Interception**: Automatically intercepts ALL `chia://` protocol requests when active, including:

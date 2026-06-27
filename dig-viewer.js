@@ -2,7 +2,30 @@
 // Wait for DOM to be ready
 (function() {
   'use strict';
-  
+
+  // Show the verified / verification-failed banner (mirrors the native DIG Browser's
+  // verified badge). `verified === true` → green "verified on Chia"; false → red warning.
+  function showVerifyBanner(verified) {
+    const banner = document.getElementById('verifyBanner');
+    const text = document.getElementById('verifyText');
+    const close = document.getElementById('verifyClose');
+    if (!banner || !text) return;
+    if (verified) {
+      banner.className = 'verified';
+      text.textContent = 'Verified — Merkle-proven against the on-chain root, decrypted on this device';
+    } else {
+      banner.className = 'failed';
+      text.textContent = 'Verification failed — this content could not be proven against the on-chain root. Do not trust it.';
+    }
+    document.body.classList.add('has-banner');
+    if (close) {
+      close.onclick = () => {
+        banner.style.display = 'none';
+        document.body.classList.remove('has-banner');
+      };
+    }
+  }
+
   // Wait for DOM to load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
@@ -61,9 +84,20 @@
           // response.data is a data URL from RPC
           const dataUrl = response.data;
           const contentType = response.contentType || 'text/html';
-          
-          console.log('DIG Viewer: Received data URL, contentType:', contentType);
-          
+          const verified = !!response.verified;
+
+          console.log('DIG Viewer: Received data URL, contentType:', contentType, 'verified:', verified);
+
+          // Report verification to the background SW (sets the toolbar "Verified" badge)
+          // and show the in-page verified/failed banner — mirrors the native DIG Browser.
+          try {
+            chrome.runtime.sendMessage(
+              { action: 'reportVerification', verified, urn },
+              () => { void chrome.runtime.lastError; }
+            );
+          } catch (e) { /* non-fatal */ }
+          showVerifyBanner(verified);
+
           // Hide loading indicator
           loading.style.display = 'none';
           
