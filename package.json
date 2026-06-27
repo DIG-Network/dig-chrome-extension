@@ -1,9 +1,10 @@
 {
   "name": "dig-browser-extension",
-  "version": "1.0.0",
-  "description": "DIG Network Browser Extension - Intercepts chia:// protocol requests",
+  "version": "1.1.0",
+  "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
   "scripts": {
+    "test": "node --test tests/",
     "build": "node build.js",
     "build:zip": "node build.js --zip",
     "server": "cd server && npm start",

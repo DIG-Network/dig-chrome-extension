@@ -17,6 +17,18 @@ import initDigClient, {
 // background.js previously inlined a divergent copy; it now imports the one parser.
 import { parseURN } from './dig-urn.mjs';
 
+// Wallet broker: per-origin consent + CHIP-0002 routing for the injected window.chia
+// provider, backed by WalletConnect→Sage. The broker core (consent gate, method
+// validation, envelope shaping) is in wallet-broker.mjs; the live WC session runs in the
+// popup page (MV3 SWs can't hold a relay socket), so the SW-side transport proxies
+// requests to the popup when it's open and otherwise reports "not connected".
+import {
+  brokerRequest,
+  getConnection as getWalletConnection,
+  isOriginApproved,
+  setOriginApproval,
+} from './wallet-broker.mjs';
+
 // SRI for the read-crypto WASM (same artifact + digest as hub.dig.net sw.js and apps/web/lib/dig-client.js).
 // Fail closed: a mismatch (tampered/wrong artifact) refuses to run unverified crypto.
 const DIG_CLIENT_WASM_SHA256 = "ff486be806f908a2a90780e499a04dbd34e10e3b97be0470cb9ee841a1e49e77";
@@ -57,6 +69,113 @@ async function getRpcEndpoint() {
   } catch {
     return DEFAULT_RPC_ENDPOINT;
   }
+}
+
+// ---- Wallet transport (SW side) -----------------------------------------------
+// The live WalletConnect SignClient runs in the popup page (it needs IndexedDB + a
+// long-lived relay socket, which an MV3 service worker cannot keep alive). The SW
+// brokers each window.chia request through this transport, which proxies to the popup
+// via chrome.runtime.sendMessage. If the popup isn't open, there is no live session, so
+// isConnected() reports the persisted connection flag and request() asks the popup
+// (failing cleanly when it's closed — the provider then surfaces "pair Sage in the popup").
+const walletTransport = {
+  async isConnected() {
+    const conn = await getWalletConnection(chrome.storage.local);
+    return !!(conn && conn.connected);
+  },
+  request({ method, params }) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const done = (fn, arg) => { if (!settled) { settled = true; fn(arg); } };
+      try {
+        chrome.runtime.sendMessage(
+          { action: 'walletProxyToPopup', method, params },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              // No popup listening → no live relay session.
+              done(reject, new Error('Wallet popup is not open — open the extension and pair Sage'));
+              return;
+            }
+            if (!response) { done(reject, new Error('No response from wallet')); return; }
+            if (response.error) { done(reject, new Error(response.error)); return; }
+            done(resolve, response.data);
+          }
+        );
+      } catch (e) {
+        done(reject, e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  },
+};
+
+// Open the popup to collect per-origin consent. Programmatic popup opening isn't
+// universally available, so consent is collected out-of-band: the provider's connect()
+// receives 202 (pending) and polls while the user approves the site in the popup's
+// "Connection requests" list. We record the pending origin so the popup can surface it.
+async function recordPendingOrigin(origin) {
+  try {
+    const { 'wallet.pendingOrigins': pend } = await chrome.storage.local.get('wallet.pendingOrigins');
+    const list = Array.isArray(pend) ? pend : [];
+    if (!list.includes(origin)) list.push(origin);
+    await chrome.storage.local.set({ 'wallet.pendingOrigins': list });
+  } catch { /* best effort */ }
+}
+
+// ---- Verified badge ------------------------------------------------------------
+// The native DIG Browser shows a "Verified" badge when a dig:// page's content is
+// Merkle-verified against its on-chain root. The extension mirrors this on the toolbar
+// action: a green ✓ badge when verified, a red ! when verification failed, cleared
+// otherwise. Per-tab verification state is kept so the popup can show a matching line.
+// (Extensions can't recolor the omnibox like the browser; the action badge is the
+// closest MV3 surface.)
+const tabVerification = new Map(); // tabId -> { state: 'verified'|'failed', urn }
+
+const BADGE = {
+  verified: { text: '✓', color: '#1a8f5a', title: 'DIG: content verified on-chain' },
+  failed:   { text: '!', color: '#d92d20', title: 'DIG: verification FAILED — content not trusted' },
+};
+
+function setVerifiedBadge(tabId, state, urn) {
+  if (typeof tabId !== 'number') return;
+  try {
+    if (state === 'verified' || state === 'failed') {
+      tabVerification.set(tabId, { state, urn: urn || '' });
+      const b = BADGE[state];
+      chrome.action.setBadgeText({ tabId, text: b.text });
+      if (chrome.action.setBadgeBackgroundColor) {
+        chrome.action.setBadgeBackgroundColor({ tabId, color: b.color });
+      }
+      chrome.action.setTitle({ tabId, title: b.title });
+    } else {
+      clearVerifiedBadge(tabId);
+    }
+  } catch (e) {
+    console.warn('DIG Extension: setVerifiedBadge failed', e);
+  }
+}
+
+function clearVerifiedBadge(tabId) {
+  if (typeof tabId !== 'number') return;
+  tabVerification.delete(tabId);
+  try {
+    chrome.action.setBadgeText({ tabId, text: '' });
+    chrome.action.setTitle({ tabId, title: 'DIG Network Extension' });
+  } catch { /* tab may be gone */ }
+}
+
+// Clear the badge when a tab navigates away from DIG content or is closed.
+if (chrome.tabs && chrome.tabs.onRemoved) {
+  chrome.tabs.onRemoved.addListener((tabId) => tabVerification.delete(tabId));
+}
+if (chrome.webNavigation && chrome.webNavigation.onCommitted) {
+  chrome.webNavigation.onCommitted.addListener((details) => {
+    if (details.frameId !== 0) return; // main frame only
+    const url = details.url || '';
+    // dig-viewer (our render page) keeps its badge; a navigation to anything else clears it.
+    if (!url.startsWith(chrome.runtime.getURL('dig-viewer.html'))) {
+      clearVerifiedBadge(details.tabId);
+    }
+  });
 }
 
 // ---- dig.getContent read helpers (ported from hub.dig.net services/resolver/assets/sw.js) --
@@ -790,7 +909,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             success: true,
             data: dataUrl,
             contentType: contentType,
-            cached: false
+            cached: false,
+            verified: !!rpcResult.verified
           });
           return;
         }
@@ -825,10 +945,98 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ error: error.message });
       }
     })();
-    
+
     return true; // Keep channel open for async response
   }
-  
+
+  // window.chia RPC from the content-script bridge (DIG_WALLET_REQUEST). Routes through
+  // the broker (per-origin consent gate + WC→Sage transport). The committed page origin
+  // is supplied by the content script. Returns the {status, body} envelope the provider
+  // expects. NOTE: sender.origin (when present) is the unspoofable origin; we prefer it
+  // over the message-supplied origin so a compromised content script can't lie.
+  if (message.action === 'walletRpc') {
+    const origin = (sender && sender.origin) || message.origin;
+    (async () => {
+      const env = await brokerRequest(
+        {
+          storage: chrome.storage.local,
+          transport: walletTransport,
+          // For a not-yet-approved origin, record it as pending so the popup can prompt;
+          // do NOT auto-approve (the user approves in the popup → connect() resolves on poll).
+          requestConsent: async (o) => {
+            const approved = await isOriginApproved(chrome.storage.local, o);
+            if (!approved) await recordPendingOrigin(o);
+            return approved;
+          },
+        },
+        message.method,
+        message.params || {},
+        origin
+      );
+      try { sendResponse(env); } catch { /* port closed */ }
+    })();
+    return true; // async
+  }
+
+  // dig-viewer reports the Merkle-verification result for the chia:// content it rendered;
+  // set the toolbar "Verified" badge + remember per-tab state for the popup.
+  if (message.action === 'reportVerification') {
+    const tabId = sender && sender.tab ? sender.tab.id : null;
+    setVerifiedBadge(tabId, message.verified ? 'verified' : 'failed', message.urn);
+    return false;
+  }
+
+  // Popup asks for the active tab's verification state (to show the Verified line).
+  if (message.action === 'getVerification') {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabId = tabs[0] && tabs[0].id;
+        const v = (typeof tabId === 'number' && tabVerification.get(tabId)) || null;
+        sendResponse({ verification: v });
+      } catch (e) {
+        sendResponse({ verification: null });
+      }
+    })();
+    return true;
+  }
+
+  // Options page: report + clear the in-memory resource cache (the extension's local
+  // DIG content cache). Mirrors the native browser's DIG cache section (cap/usage/clear),
+  // scoped to what MV3 exposes (no on-disk cap slider — see the parity matrix).
+  if (message.action === 'getCacheStats') {
+    let bytes = 0;
+    try {
+      for (const v of resourceCache.values()) {
+        if (v && typeof v.data === 'string') bytes += v.data.length;
+      }
+    } catch { /* ignore */ }
+    sendResponse({ entries: resourceCache.size, approxBytes: bytes });
+    return false;
+  }
+  if (message.action === 'clearCache') {
+    try { resourceCache.clear(); sendResponse({ success: true }); }
+    catch (e) { sendResponse({ success: false, error: e.message }); }
+    return false;
+  }
+
+  // Popup approves/revokes a per-origin wallet connection request.
+  if (message.action === 'walletConsent') {
+    (async () => {
+      try {
+        await setOriginApproval(chrome.storage.local, message.origin, !!message.approved);
+        // Drop it from the pending list.
+        const { 'wallet.pendingOrigins': pend } = await chrome.storage.local.get('wallet.pendingOrigins');
+        const list = (Array.isArray(pend) ? pend : []).filter((o) => o !== message.origin);
+        await chrome.storage.local.set({ 'wallet.pendingOrigins': list });
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
   return false;
 });
 

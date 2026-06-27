@@ -1,11 +1,13 @@
 {
   "manifest_version": 3,
   "name": "DIG Network Extension",
-  "version": "1.0.0",
-  "description": "Resolve chia:// URLs and DIG content via rpc.dig.net (client-side verified + decrypted).",
+  "version": "1.1.0",
+  "description": "DIG Home, chia:// resolution (verified + decrypted), a window.chia wallet (WalletConnect → Sage), and a verified badge — the DIG Network experience on any browser.",
   "host_permissions": [
     "http://localhost/*",
+    "http://localhost:*/*",
     "http://127.0.0.1/*",
+    "http://127.0.0.1:*/*",
     "http://dig.local/*",
     "https://dig.local/*",
     "http://*.dig.local/*",
@@ -36,6 +38,13 @@
       "128": "src/favicon.png"
     }
   },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
   "icons": {
     "16": "src/favicon.png",
     "48": "src/favicon.png",
@@ -43,7 +52,18 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["page-script.js", "logo.png", "dig-viewer.html", "dig-viewer.js", "dig_client.js", "dig_client_bg.wasm"],
+      "resources": [
+        "page-script.js",
+        "dig-provider.js",
+        "logo.png",
+        "dig-viewer.html",
+        "dig-viewer.js",
+        "dig_client.js",
+        "dig_client_bg.wasm",
+        "apps.mjs",
+        "wallet-methods.mjs",
+        "wallet-broker.mjs"
+      ],
       "matches": ["<all_urls>"]
     }
   ],
@@ -60,4 +80,3 @@
     "keyword": "dig"
   }
 }
-

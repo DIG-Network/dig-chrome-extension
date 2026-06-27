@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#ffffff">
+<title>DIG Network</title>
+<!--
+  DIG Home — the extension's new-tab page. Ported from the native DIG Browser NTP
+  (modules/ungoogled-chromium-windows/dig/newtab/dig_newtab.html) so users on
+  Chrome/Edge/Brave/Firefox get the same DIG Home: white/minimal app directory +
+  search⇄app-store switcher + DuckDuckGo web-search fallback + the ecosystem app links.
+
+  Fonts/colors are inlined (no remote CSS) to satisfy the extension-page CSP and so the
+  page renders offline. The app directory + omnibox classifier come from apps.mjs.
+-->
+<link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="https://dig.net" title="DIG Network" data-ext-link>
+      <img src="src/logo.png" alt="">
+      <span class="wm">DIG<span class="n">&nbsp;Network</span></span>
+      <span class="alpha" title="Pre-release — expect rough edges">alpha</span>
+    </a>
+    <nav class="actions">
+      <a class="btn wallet" id="wallet" href="#" title="Your Chia wallet"><span class="dot"></span><span id="walletLabel">Wallet</span></a>
+      <a class="btn btn-primary" id="publish" href="https://hub.dig.net/new" title="Publish on DIGHUb" data-ext-link>&#43;&nbsp;Publish</a>
+    </nav>
+  </header>
+
+  <main>
+    <img class="logo" src="src/logo.png" alt="DIG Network" aria-hidden="true">
+    <h1>DIG<span class="n">&nbsp;Network</span></h1>
+    <p class="tag">Your window into the DIG Network &mdash; the unstoppable web. Open apps and stores by name, or search the web.</p>
+
+    <div class="switch" role="tablist" aria-label="Search or apps">
+      <button id="tabApps" role="tab" aria-selected="true" aria-controls="panelApps">App&nbsp;Store</button>
+      <button id="tabSearch" role="tab" aria-selected="false" aria-controls="panelSearch">Search</button>
+    </div>
+
+    <!-- App Store (primary) -->
+    <section class="panel" id="panelApps" role="tabpanel" aria-labelledby="tabApps">
+      <div class="grid" id="appGrid"><!-- populated from apps.mjs by newtab.js --></div>
+      <p class="dir-foot">Built something on DIG? <a href="https://hub.dig.net/new" data-ext-link>Publish on DIGHUb &#8599;</a></p>
+    </section>
+
+    <!-- Search -->
+    <section class="panel" id="panelSearch" role="tabpanel" aria-labelledby="tabSearch" hidden>
+      <form id="omni" autocomplete="off">
+        <div class="bar">
+          <span class="ic" id="lead" aria-hidden="true">&#128269;</span>
+          <input id="q" type="text" spellcheck="false"
+                 placeholder="Search the web, or open a chia:// store" aria-label="Search or DIG address">
+          <button class="go" type="submit" id="goBtn">Search</button>
+        </div>
+      </form>
+      <div class="mode" id="mode">On the DIG Network? Paste a <b>store id</b> or <b>chia://&hellip;</b>. Anything else searches the web.</div>
+      <p class="hint">Web searches go to DuckDuckGo &mdash; private by default.</p>
+    </section>
+
+    <span class="chip dig" style="margin-top:26px">
+      <span class="dig-dot"></span>&nbsp;Powered by Chia</span>
+  </main>
+
+  <footer>
+    <nav class="links" id="footerLinks"><!-- populated from apps.mjs by newtab.js --></nav>
+    <p class="trust"><span class="leaf">Built on Chia</span> &middot; every chia:// page is Merkle-verified on its on-chain root and decrypted on this device.</p>
+  </footer>
+
+  <script type="module" src="newtab.js"></script>
+</body>
+</html>
