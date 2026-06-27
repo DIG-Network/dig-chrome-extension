@@ -164,6 +164,16 @@ function copyFiles() {
     } else {
       log(`⚠️  Logo not found: ${logoSrc}`, 'yellow');
     }
+
+    // Copy the vector wordmark used by the popup header lockup.
+    const wordmarkSrc = path.join(srcDir, 'Wordmark-Black.svg');
+    const wordmarkDest = path.join(distSrcDir, 'Wordmark-Black.svg');
+    if (fs.existsSync(wordmarkSrc)) {
+      fs.copyFileSync(wordmarkSrc, wordmarkDest);
+      log(`✓ Copied: src/Wordmark-Black.svg`, 'green');
+    } else {
+      log(`⚠️  Wordmark not found: ${wordmarkSrc}`, 'yellow');
+    }
     // src/ only holds the favicon and logo assets above. (The old src/config,
     // src/core, src/utils "Framework" subsystem was unused by the shipping path
     // — manifest → background.js → dig_client.js WASM → rpc.dig.net — and was removed.)

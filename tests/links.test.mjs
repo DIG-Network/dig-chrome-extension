@@ -30,7 +30,7 @@ test('docs URL points at docs.dig.net', () => {
   assert.equal(DOCS_URL, 'https://docs.dig.net');
 });
 
-test('Get-$DIG URL points at TibetSwap', () => {
+test('Get-DIG URL points at TibetSwap', () => {
   assert.equal(TIBETSWAP_URL, 'https://v2.tibetswap.io/');
 });
 
@@ -45,11 +45,17 @@ test('every funnel URL is an absolute https URL', () => {
   }
 });
 
-test('RESOURCE_LINKS contains Get $DIG, Visit DIG Network, and Learn the protocol', () => {
+test('RESOURCE_LINKS contains Get DIG, Visit DIG Network, and Learn the protocol', () => {
   const byId = Object.fromEntries(RESOURCE_LINKS.map((l) => [l.id, l]));
   assert.equal(byId['get-dig'].url, TIBETSWAP_URL);
   assert.equal(byId['visit-dig-network'].url, DIG_NETWORK_URL);
   assert.equal(byId['learn-the-protocol'].url, DOCS_URL);
+});
+
+// Token symbol is plain "DIG" (no "$DIG") per ecosystem-wide consistency.
+test('Get-DIG label uses the plain DIG token symbol (no $DIG)', () => {
+  const getDig = RESOURCE_LINKS.find((l) => l.id === 'get-dig');
+  assert.equal(getDig.label, 'Get DIG');
 });
 
 test('every RESOURCE_LINKS entry has a label, an https url, and is external', () => {

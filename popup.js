@@ -11,7 +11,7 @@ const ECOSYSTEM_LINKS = {
 
 // Ordered Resources/footer links (mirrors RESOURCE_LINKS in links.mjs).
 const RESOURCE_LINKS = [
-  { id: 'get-dig', label: 'Get $DIG', url: ECOSYSTEM_LINKS.TIBETSWAP_URL },
+  { id: 'get-dig', label: 'Get DIG', url: ECOSYSTEM_LINKS.TIBETSWAP_URL },
   { id: 'visit-dig-network', label: 'Visit DIG Network', url: ECOSYSTEM_LINKS.DIG_NETWORK_URL },
   { id: 'learn-the-protocol', label: 'Learn the protocol', url: ECOSYSTEM_LINKS.DOCS_URL },
 ];
@@ -22,7 +22,7 @@ function openEcosystemLink(url) {
   window.close();
 }
 
-// Wire the ecosystem funnel surfaces: Browse DIG Hub CTA, header dig.net link,
+// Wire the ecosystem funnel surfaces: Browse DIGHUb CTA, header dig.net link,
 // the Resources links, and the soft full-DIG-Browser upsell.
 function setupEcosystemFunnels() {
   const browseHubButton = document.getElementById('browseHubButton');
@@ -743,7 +743,7 @@ async function initPopup() {
   // Load search engine config on popup init
   await loadSearchEngineConfig();
 
-  // Wire the ecosystem funnel surfaces (Browse DIG Hub, Resources, upsell, dig.net).
+  // Wire the ecosystem funnel surfaces (Browse DIGHUb, Resources, upsell, dig.net).
   setupEcosystemFunnels();
 
   // Only add event listeners if elements exist
