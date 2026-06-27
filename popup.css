@@ -1,3 +1,17 @@
+/* DIG brand palette (white product theme — matches hub.dig.net + the browser NTP). */
+:root {
+  --dig-bg: #f7f7fb;
+  --dig-surface: #ffffff;
+  --dig-text: #14122b;
+  --dig-muted: #5e5a7c;
+  --dig-border: #e4e1f0;
+  --dig-purple: #5800D6;   /* primary — lead with purple */
+  --dig-magenta: #FF00DE;  /* accent */
+  --dig-green: #38E1B0;    /* success */
+  --dig-red: #f44336;
+  --dig-amber: #ff9800;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -9,8 +23,8 @@ body {
   min-height: 200px;
   max-height: 600px;
   overflow-y: auto;
-  background: linear-gradient(135deg, #1a0a2e 0%, #16213e 50%, #0f3460 100%);
-  color: #ffffff;
+  background: var(--dig-bg);
+  color: var(--dig-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   padding: 20px;
 }
@@ -27,7 +41,7 @@ body {
   justify-content: center;
   position: relative;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--dig-border);
 }
 
 .header-link {
@@ -36,42 +50,57 @@ body {
   top: 0;
   font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--dig-muted);
   text-decoration: none;
   transition: color 0.3s ease;
 }
 
 .header-link:hover {
-  color: #FF00FF;
+  color: var(--dig-purple);
 }
 
 .logo {
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 0 8px rgba(255, 0, 255, 0.5));
+  gap: 8px;
   max-width: 100%;
   overflow: hidden;
 }
 
 .logo img {
   height: auto;
-  max-width: 100%;
-  max-height: 60px;
+  max-width: 200px;
+  max-height: 32px;
   display: block;
   object-fit: contain;
 }
 
+/* Lowercase "alpha" pill — signals pre-release without shouting. */
+.alpha-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: lowercase;
+  color: var(--dig-muted);
+  background: var(--dig-bg);
+  border: 1px solid var(--dig-border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  line-height: 1.4;
+  cursor: default;
+}
+
 .url-section {
   padding: 12px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--dig-surface);
   border-radius: 8px;
-  border: 1px solid rgba(255, 0, 255, 0.2);
+  border: 1px solid var(--dig-border);
 }
 
 .url-label {
   display: block;
-  color: #E0E0E0;
+  color: var(--dig-muted);
   font-size: 11px;
   font-weight: 600;
   margin-bottom: 8px;
@@ -88,10 +117,10 @@ body {
 .url-input {
   flex: 1;
   padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 0, 255, 0.3);
+  background: var(--dig-bg);
+  border: 1px solid var(--dig-border);
   border-radius: 6px;
-  color: #FFFFFF;
+  color: var(--dig-text);
   font-size: 13px;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   outline: none;
@@ -99,18 +128,18 @@ body {
 }
 
 .url-input:focus {
-  border-color: #FF00FF;
-  box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
-  background: rgba(0, 0, 0, 0.4);
+  border-color: var(--dig-purple);
+  box-shadow: 0 0 0 3px rgba(88, 0, 214, 0.15);
+  background: var(--dig-surface);
 }
 
 .url-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--dig-muted);
 }
 
 .go-button {
   padding: 8px 14px;
-  background: linear-gradient(135deg, #FF00FF 0%, #9D4EDD 100%);
+  background: var(--dig-purple);
   border: none;
   border-radius: 6px;
   color: white;
@@ -119,13 +148,13 @@ body {
   cursor: pointer;
   transition: all 0.3s ease;
   min-width: 40px;
-  box-shadow: 0 2px 8px rgba(255, 0, 255, 0.3);
+  box-shadow: 0 2px 8px rgba(88, 0, 214, 0.25);
   line-height: 1;
 }
 
 .go-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 0, 255, 0.5);
+  box-shadow: 0 4px 12px rgba(88, 0, 214, 0.4);
 }
 
 .go-button:active {
@@ -148,7 +177,7 @@ body {
 .toggle-text {
   font-size: 16px;
   font-weight: 500;
-  color: #ffffff;
+  color: var(--dig-text);
 }
 
 .toggle-container {
@@ -170,10 +199,10 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: var(--dig-border);
   transition: 0.3s;
   border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid var(--dig-border);
 }
 
 .toggle-slider:before {
@@ -190,8 +219,8 @@ body {
 }
 
 .toggle-input:checked + .toggle-slider {
-  background: linear-gradient(135deg, #FF00FF 0%, #9D4EDD 100%);
-  box-shadow: 0 0 12px rgba(255, 0, 255, 0.4);
+  background: var(--dig-purple);
+  border-color: var(--dig-purple);
 }
 
 .toggle-input:checked + .toggle-slider:before {
@@ -200,25 +229,25 @@ body {
 
 .status-text {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--dig-muted);
   padding-left: 4px;
 }
 
 .status-text.active {
-  color: #FF00FF;
+  color: var(--dig-purple);
   font-weight: 500;
 }
 
 .server-config-section {
   padding: 12px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--dig-surface);
   border-radius: 8px;
-  border: 1px solid rgba(255, 0, 255, 0.2);
+  border: 1px solid var(--dig-border);
 }
 
 .server-label {
   display: block;
-  color: #E0E0E0;
+  color: var(--dig-muted);
   font-size: 11px;
   font-weight: 600;
   margin-bottom: 8px;
@@ -236,10 +265,10 @@ body {
 .server-input {
   flex: 1;
   padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 0, 255, 0.3);
+  background: var(--dig-bg);
+  border: 1px solid var(--dig-border);
   border-radius: 6px;
-  color: #FFFFFF;
+  color: var(--dig-text);
   font-size: 13px;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   outline: none;
@@ -248,17 +277,17 @@ body {
 }
 
 .server-input:focus {
-  border-color: #FF00FF;
-  box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
-  background: rgba(0, 0, 0, 0.4);
+  border-color: var(--dig-purple);
+  box-shadow: 0 0 0 3px rgba(88, 0, 214, 0.15);
+  background: var(--dig-surface);
 }
 
 .restore-button {
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 0, 255, 0.3);
+  background: var(--dig-bg);
+  border: 1px solid var(--dig-border);
   border-radius: 6px;
-  color: #FFFFFF;
+  color: var(--dig-text);
   font-size: 16px;
   font-weight: bold;
   cursor: pointer;
@@ -269,8 +298,8 @@ body {
 }
 
 .restore-button:hover {
-  background: rgba(255, 0, 255, 0.2);
-  border-color: #FF00FF;
+  background: rgba(88, 0, 214, 0.08);
+  border-color: var(--dig-purple);
   transform: rotate(180deg);
 }
 
@@ -280,27 +309,27 @@ body {
 
 .server-info-text {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--dig-muted);
   font-family: 'Courier New', monospace;
   padding-left: 4px;
 }
 
 .info-section {
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--dig-border);
 }
 
 .info-text {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--dig-muted);
   line-height: 1.5;
 }
 
 .dig-local-section {
   padding: 12px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--dig-surface);
   border-radius: 8px;
-  border: 1px solid rgba(255, 0, 255, 0.2);
+  border: 1px solid var(--dig-border);
 }
 
 .dig-local-header {
@@ -311,7 +340,7 @@ body {
 }
 
 .dig-local-label {
-  color: #E0E0E0;
+  color: var(--dig-muted);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -330,20 +359,20 @@ body {
 }
 
 .status-indicator.resolved {
-  color: #4CAF50;
+  color: var(--dig-green);
   animation: pulse 2s infinite;
 }
 
 .status-indicator.not-resolved {
-  color: #f44336;
+  color: var(--dig-red);
 }
 
 .status-indicator.warning {
-  color: #ff9800;
+  color: var(--dig-amber);
 }
 
 .status-indicator.checking {
-  color: #ff9800;
+  color: var(--dig-amber);
   animation: pulse 1s infinite;
 }
 
@@ -354,19 +383,19 @@ body {
   width: 20px;
   height: 20px;
   padding: 0;
-  background: rgba(255, 0, 255, 0.2);
-  border: 1px solid rgba(255, 0, 255, 0.4);
+  background: rgba(88, 0, 214, 0.08);
+  border: 1px solid var(--dig-border);
   border-radius: 4px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--dig-muted);
   cursor: pointer;
   transition: all 0.3s ease;
   margin-left: 4px;
 }
 
 .retry-button:hover {
-  background: rgba(255, 0, 255, 0.3);
-  border-color: #FF00FF;
-  color: #FFFFFF;
+  background: rgba(88, 0, 214, 0.15);
+  border-color: var(--dig-purple);
+  color: var(--dig-purple);
   transform: rotate(90deg);
 }
 
@@ -386,18 +415,18 @@ body {
 
 .status-text-small {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--dig-muted);
 }
 
 .dig-local-info {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--dig-border);
 }
 
 .dig-local-message {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--dig-muted);
   line-height: 1.4;
   margin-bottom: 8px;
 }
@@ -405,45 +434,45 @@ body {
 .setup-button {
   width: 100%;
   padding: 8px 12px;
-  background: rgba(255, 0, 255, 0.2);
-  border: 1px solid rgba(255, 0, 255, 0.4);
+  background: rgba(88, 0, 214, 0.08);
+  border: 1px solid var(--dig-purple);
   border-radius: 6px;
-  color: #FFFFFF;
+  color: var(--dig-purple);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   margin-top: 8px;
 }
 
 .setup-button:hover {
-  background: rgba(255, 0, 255, 0.3);
-  border-color: #FF00FF;
+  background: rgba(88, 0, 214, 0.15);
+  border-color: var(--dig-purple);
 }
 
 .instructions {
   margin-top: 12px;
   padding: 12px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--dig-bg);
   border-radius: 6px;
-  border: 1px solid rgba(255, 0, 255, 0.2);
+  border: 1px solid var(--dig-border);
 }
 
 .os-selector {
   display: flex;
   gap: 4px;
   margin-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--dig-border);
   padding-bottom: 8px;
 }
 
 .os-tab {
   flex: 1;
   padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 0, 255, 0.2);
+  background: var(--dig-surface);
+  border: 1px solid var(--dig-border);
   border-radius: 4px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--dig-muted);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -451,19 +480,19 @@ body {
 }
 
 .os-tab:hover {
-  background: rgba(255, 0, 255, 0.1);
-  border-color: rgba(255, 0, 255, 0.4);
+  background: rgba(88, 0, 214, 0.08);
+  border-color: var(--dig-purple);
 }
 
 .os-tab.active {
-  background: rgba(255, 0, 255, 0.2);
-  border-color: #FF00FF;
-  color: #FFFFFF;
+  background: rgba(88, 0, 214, 0.1);
+  border-color: var(--dig-purple);
+  color: var(--dig-purple);
 }
 
 .os-instructions {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--dig-text);
   line-height: 1.6;
 }
 
@@ -483,31 +512,31 @@ body {
 }
 
 .os-instructions code {
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--dig-bg);
   padding: 2px 6px;
   border-radius: 3px;
   font-family: 'Courier New', monospace;
   font-size: 10px;
-  color: #FF00FF;
+  color: var(--dig-purple);
 }
 
 .code-block {
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--dig-bg);
   padding: 8px;
   border-radius: 4px;
-  border-left: 3px solid #FF00FF;
+  border-left: 3px solid var(--dig-purple);
   margin: 8px 0;
   font-family: 'Courier New', monospace;
   font-size: 10px;
-  color: #FFFFFF;
+  color: var(--dig-text);
   overflow-x: auto;
 }
 
 .os-instructions kbd {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--dig-bg);
   padding: 2px 6px;
   border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--dig-border);
   font-family: 'Courier New', monospace;
   font-size: 10px;
 }
@@ -515,15 +544,15 @@ body {
 .os-instructions small {
   display: block;
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--dig-muted);
   font-style: italic;
 }
 
 .search-engine-section {
   padding: 12px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--dig-surface);
   border-radius: 8px;
-  border: 1px solid rgba(255, 0, 255, 0.2);
+  border: 1px solid var(--dig-border);
 }
 
 .search-engine-header {
@@ -534,7 +563,7 @@ body {
 }
 
 .search-engine-label {
-  color: #E0E0E0;
+  color: var(--dig-muted);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -550,12 +579,12 @@ body {
 .search-engine-config {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--dig-border);
 }
 
 .search-url-label {
   display: block;
-  color: #E0E0E0;
+  color: var(--dig-muted);
   font-size: 11px;
   font-weight: 600;
   margin-bottom: 8px;
@@ -573,10 +602,10 @@ body {
 .search-url-input {
   flex: 1;
   padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 0, 255, 0.3);
+  background: var(--dig-bg);
+  border: 1px solid var(--dig-border);
   border-radius: 6px;
-  color: #FFFFFF;
+  color: var(--dig-text);
   font-size: 13px;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   outline: none;
@@ -585,14 +614,14 @@ body {
 }
 
 .search-url-input:focus {
-  border-color: #FF00FF;
-  box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
-  background: rgba(0, 0, 0, 0.4);
+  border-color: var(--dig-purple);
+  box-shadow: 0 0 0 3px rgba(88, 0, 214, 0.15);
+  background: var(--dig-surface);
 }
 
 .search-engine-info-text {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--dig-muted);
   font-family: 'Courier New', monospace;
   padding-left: 4px;
 }
@@ -600,17 +629,17 @@ body {
 .search-engine-status {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--dig-border);
 }
 
 .search-engine-status-text {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--dig-muted);
   line-height: 1.4;
   margin-bottom: 8px;
 }
 
-/* --- Ecosystem funnel: Browse DIG Hub CTA --- */
+/* --- Ecosystem funnel: Browse DIGHUb CTA --- */
 .hub-section {
   display: flex;
 }
@@ -622,19 +651,19 @@ body {
   gap: 2px;
   width: 100%;
   padding: 14px 16px;
-  background: linear-gradient(135deg, #FF00FF 0%, #9D4EDD 100%);
+  background: linear-gradient(135deg, #5800D6 0%, #FF00DE 100%);
   border: none;
   border-radius: 10px;
   color: #FFFFFF;
   cursor: pointer;
   text-align: left;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 14px rgba(255, 0, 255, 0.35);
+  box-shadow: 0 4px 14px rgba(88, 0, 214, 0.35);
 }
 
 .hub-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(255, 0, 255, 0.5);
+  box-shadow: 0 6px 18px rgba(88, 0, 214, 0.5);
 }
 
 .hub-button:active {
@@ -655,14 +684,14 @@ body {
 /* --- Ecosystem funnel: Resources + full-browser upsell --- */
 .resources-section {
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--dig-border);
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
 .resources-label {
-  color: #E0E0E0;
+  color: var(--dig-muted);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -679,10 +708,10 @@ body {
   flex: 1 1 auto;
   text-align: center;
   padding: 7px 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 0, 255, 0.25);
+  background: var(--dig-surface);
+  border: 1px solid var(--dig-border);
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--dig-text);
   font-size: 11px;
   font-weight: 500;
   text-decoration: none;
@@ -691,9 +720,9 @@ body {
 }
 
 .resource-link:hover {
-  background: rgba(255, 0, 255, 0.15);
-  border-color: #FF00FF;
-  color: #FFFFFF;
+  background: rgba(88, 0, 214, 0.08);
+  border-color: var(--dig-purple);
+  color: var(--dig-purple);
 }
 
 .upsell-link {
@@ -702,13 +731,13 @@ body {
   padding: 8px 10px;
   font-size: 11px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--dig-muted);
   text-decoration: none;
   border-radius: 6px;
   transition: color 0.3s ease;
 }
 
 .upsell-link:hover {
-  color: #FF00FF;
+  color: var(--dig-purple);
 }
 
