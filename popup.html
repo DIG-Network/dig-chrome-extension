@@ -12,8 +12,17 @@
       <div class="logo">
         <img src="logo.png" alt="DIG Network">
       </div>
+      <a id="visitDigNetworkLink" class="header-link" href="#" title="Visit DIG Network">dig.net ↗</a>
     </div>
-    
+
+    <!-- Ecosystem funnel: drive users from the RPC client into the DIG Hub. -->
+    <div class="hub-section">
+      <button id="browseHubButton" class="hub-button" title="Browse DIG Hub">
+        <span class="hub-button-title">Browse DIG Hub</span>
+        <span class="hub-button-sub">Explore &amp; publish on hub.dig.net</span>
+      </button>
+    </div>
+
         <div class="url-section">
           <label for="digUrlInput" class="url-label">Navigate to chia:// URL</label>
           <div class="url-input-container">
@@ -175,6 +184,17 @@
 
     <div class="info-section">
       <p class="info-text">When active, chia:// protocol requests will be redirected to the configured server.</p>
+    </div>
+
+    <!-- Ecosystem funnel: Resources + soft upsell to the full native DIG Browser. -->
+    <div class="resources-section">
+      <p class="resources-label">Resources</p>
+      <div class="resources-links" id="resourcesLinks">
+        <!-- Populated from RESOURCE_LINKS in popup.js so destinations stay in one place. -->
+      </div>
+      <a id="getFullBrowserLink" class="upsell-link" href="#" title="Get the full DIG Browser">
+        Get the full DIG Browser — native dig:// &amp; built-in wallet ↗
+      </a>
     </div>
   </div>
   <script src="popup.js"></script>

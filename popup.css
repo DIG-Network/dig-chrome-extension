@@ -25,8 +25,24 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   padding-bottom: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.header-link {
+  position: absolute;
+  right: 0;
+  top: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.header-link:hover {
+  color: #FF00FF;
 }
 
 .logo {
@@ -592,5 +608,107 @@ body {
   color: rgba(255, 255, 255, 0.7);
   line-height: 1.4;
   margin-bottom: 8px;
+}
+
+/* --- Ecosystem funnel: Browse DIG Hub CTA --- */
+.hub-section {
+  display: flex;
+}
+
+.hub-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #FF00FF 0%, #9D4EDD 100%);
+  border: none;
+  border-radius: 10px;
+  color: #FFFFFF;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 14px rgba(255, 0, 255, 0.35);
+}
+
+.hub-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(255, 0, 255, 0.5);
+}
+
+.hub-button:active {
+  transform: translateY(0);
+}
+
+.hub-button-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.hub-button-sub {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* --- Ecosystem funnel: Resources + full-browser upsell --- */
+.resources-section {
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resources-label {
+  color: #E0E0E0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.resources-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.resource-link {
+  flex: 1 1 auto;
+  text-align: center;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 0, 255, 0.25);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+.resource-link:hover {
+  background: rgba(255, 0, 255, 0.15);
+  border-color: #FF00FF;
+  color: #FFFFFF;
+}
+
+.upsell-link {
+  display: block;
+  text-align: center;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  border-radius: 6px;
+  transition: color 0.3s ease;
+}
+
+.upsell-link:hover {
+  color: #FF00FF;
 }
 

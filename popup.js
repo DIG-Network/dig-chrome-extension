@@ -1,3 +1,69 @@
+// Ecosystem funnel destinations. Kept in sync with links.mjs (the shared source of
+// truth); popup.js is loaded as a classic script and cannot `import`, so the values are
+// mirrored here and pinned by tests/links.test.mjs against links.mjs.
+const ECOSYSTEM_LINKS = {
+  HUB_URL: 'https://hub.dig.net',
+  DIG_NETWORK_URL: 'https://dig.net',
+  DOCS_URL: 'https://docs.dig.net',
+  TIBETSWAP_URL: 'https://v2.tibetswap.io/',
+  DIG_BROWSER_URL: 'https://github.com/DIG-Network/DIG_Browser/releases',
+};
+
+// Ordered Resources/footer links (mirrors RESOURCE_LINKS in links.mjs).
+const RESOURCE_LINKS = [
+  { id: 'get-dig', label: 'Get $DIG', url: ECOSYSTEM_LINKS.TIBETSWAP_URL },
+  { id: 'visit-dig-network', label: 'Visit DIG Network', url: ECOSYSTEM_LINKS.DIG_NETWORK_URL },
+  { id: 'learn-the-protocol', label: 'Learn the protocol', url: ECOSYSTEM_LINKS.DOCS_URL },
+];
+
+// Open an ecosystem link in a new tab and close the popup.
+function openEcosystemLink(url) {
+  chrome.tabs.create({ url });
+  window.close();
+}
+
+// Wire the ecosystem funnel surfaces: Browse DIG Hub CTA, header dig.net link,
+// the Resources links, and the soft full-DIG-Browser upsell.
+function setupEcosystemFunnels() {
+  const browseHubButton = document.getElementById('browseHubButton');
+  if (browseHubButton) {
+    browseHubButton.addEventListener('click', () => openEcosystemLink(ECOSYSTEM_LINKS.HUB_URL));
+  }
+
+  const visitDigNetworkLink = document.getElementById('visitDigNetworkLink');
+  if (visitDigNetworkLink) {
+    visitDigNetworkLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      openEcosystemLink(ECOSYSTEM_LINKS.DIG_NETWORK_URL);
+    });
+  }
+
+  const resourcesLinks = document.getElementById('resourcesLinks');
+  if (resourcesLinks) {
+    RESOURCE_LINKS.forEach(({ id, label, url }) => {
+      const link = document.createElement('a');
+      link.id = `resource-${id}`;
+      link.className = 'resource-link';
+      link.href = url;
+      link.textContent = label;
+      link.title = label;
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        openEcosystemLink(url);
+      });
+      resourcesLinks.appendChild(link);
+    });
+  }
+
+  const getFullBrowserLink = document.getElementById('getFullBrowserLink');
+  if (getFullBrowserLink) {
+    getFullBrowserLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      openEcosystemLink(ECOSYSTEM_LINKS.DIG_BROWSER_URL);
+    });
+  }
+}
+
 // Default server configuration
 const DEFAULT_SERVER_HOST = 'localhost:80';
 
@@ -676,7 +742,10 @@ async function initPopup() {
   
   // Load search engine config on popup init
   await loadSearchEngineConfig();
-  
+
+  // Wire the ecosystem funnel surfaces (Browse DIG Hub, Resources, upsell, dig.net).
+  setupEcosystemFunnels();
+
   // Only add event listeners if elements exist
   if (goButton) {
     goButton.addEventListener('click', navigateToDigUrl);

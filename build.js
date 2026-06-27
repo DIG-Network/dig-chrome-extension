@@ -13,6 +13,10 @@ const EXTENSION_FILES = [
   'popup.css',
   'popup.js',
   'dig-urn.mjs',
+  // Ecosystem funnel: shared link constants + first-run welcome page.
+  'links.mjs',
+  'welcome.html',
+  'welcome.js',
   'background.js',
   'middleware.js',
   'content.js',

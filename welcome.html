@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to DIG Network</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1a0a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      padding: 32px;
+    }
+    .card {
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 0, 255, 0.2);
+      border-radius: 16px;
+      padding: 40px 36px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    .logo {
+      max-height: 72px;
+      width: auto;
+      margin-bottom: 24px;
+      filter: drop-shadow(0 0 12px rgba(255, 0, 255, 0.5));
+    }
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    p.lead {
+      font-size: 15px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.75);
+      margin-bottom: 28px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+    .btn {
+      flex: 1 1 200px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #FF00FF 0%, #9D4EDD 100%);
+      color: #FFFFFF;
+      border: none;
+      box-shadow: 0 4px 14px rgba(255, 0, 255, 0.35);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(255, 0, 255, 0.5);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: #FFFFFF;
+      border: 1px solid rgba(255, 0, 255, 0.35);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 0, 255, 0.15);
+      border-color: #FF00FF;
+    }
+    .footnote {
+      margin-top: 28px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.45);
+      line-height: 1.6;
+    }
+    .footnote a {
+      color: rgba(255, 255, 255, 0.7);
+      text-decoration: none;
+    }
+    .footnote a:hover { color: #FF00FF; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="logo.png" alt="DIG Network">
+    <h1>Welcome to the DIG Network Extension</h1>
+    <p class="lead">
+      You can now open <strong>chia://</strong> links and browse DIG content right in your
+      browser. Here's where to go next.
+    </p>
+    <div class="actions">
+      <a id="visitDigNetwork" class="btn btn-primary" href="#">Visit DIG Network</a>
+      <a id="readTheDocs" class="btn btn-secondary" href="#">Read the docs</a>
+    </div>
+    <p class="footnote">
+      Want the full experience? Try the
+      <a id="getFullBrowser" href="#">native DIG Browser</a> — built-in wallet and native
+      dig:// support, no extension needed.
+    </p>
+  </div>
+  <script type="module" src="welcome.js"></script>
+</body>
+</html>
