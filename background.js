@@ -378,11 +378,22 @@ async function removeStaleRedirectRules() {
 }
 
 // Load extension state on startup
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (details) => {
   const result = await chrome.storage.local.get(['extensionEnabled']);
   if (result.extensionEnabled === undefined) {
     // Default to enabled
     await chrome.storage.local.set({ extensionEnabled: true });
+  }
+
+  // Ecosystem funnel: on a fresh install (not update/reload) open a welcome tab that
+  // points the new user at the rest of the DIG Network (dig.net + docs).
+  if (details && details.reason === 'install') {
+    try {
+      await chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+    } catch (e) {
+      // Tab creation can fail in some contexts (e.g. no window); funnel is best-effort.
+      console.warn('DIG Extension: could not open welcome tab', e);
+    }
   }
 
   // Clean up any stale dig.local redirect rules from previous versions
