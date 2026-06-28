@@ -3,33 +3,38 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
   <title>DIG Network Content</title>
   <style>
+    /* White product theme — matches welcome.html / the DIG Home NTP / hub.dig.net. */
+    :root {
+      --dig-bg: #f7f7fb; --dig-surface: #ffffff; --dig-text: #14122b;
+      --dig-muted: #5e5a7c; --dig-border: #e4e1f0; --dig-purple: #5800D6; --dig-magenta: #FF00DE;
+    }
+    html, body { height: 100%; }
     body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #000;
+      margin: 0; padding: 0; overflow: hidden; background: var(--dig-bg); color: var(--dig-text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     }
-    iframe {
-      width: 100%;
-      height: 100vh;
-      border: none;
-    }
+    iframe { width: 100%; height: 100vh; border: none; background: #fff; }
+    /* Branded loading state. */
     .loading {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #fff;
-      font-family: Arial, sans-serif;
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      color: var(--dig-muted); font-size: 14px; text-align: center;
     }
-    /* Verified badge banner — mirrors the native DIG Browser's verified state. */
+    .loading .spinner {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 3px solid var(--dig-border); border-top-color: var(--dig-purple);
+      animation: dig-spin 0.8s linear infinite;
+    }
+    @keyframes dig-spin { to { transform: rotate(360deg); } }
+    /* Verified badge banner — one canonical label, matching the popup + toolbar. */
     #verifyBanner {
       position: fixed; top: 0; left: 0; right: 0; z-index: 2147483647;
       display: none; align-items: center; gap: 8px;
       padding: 6px 14px; font: 600 12.5px/1.3 'Space Grotesk','Segoe UI',system-ui,sans-serif;
-      color: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.25);
+      color: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.15);
     }
     #verifyBanner.verified { display: flex; background: #1a8f5a; }
     #verifyBanner.failed   { display: flex; background: #d92d20; }
@@ -45,8 +50,12 @@
     <span class="dot"></span><span id="verifyText"></span>
     <span class="x" id="verifyClose" title="Dismiss">×</span>
   </div>
-  <div class="loading" id="loading">Loading DIG content...</div>
-  <script src="dig-viewer.js"></script>
+  <div class="loading" id="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="loadingText">Loading DIG content…</span>
+  </div>
+  <!-- Mount point the branded error page renders into (replaces the loading state). -->
+  <div id="errorMount"></div>
+  <script type="module" src="dig-viewer.js"></script>
 </body>
 </html>
-

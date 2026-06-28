@@ -1,143 +1,148 @@
-// DIG Viewer script - fetches content via RPC and embeds it
-// Wait for DOM to be ready
-(function() {
-  'use strict';
+// DIG Viewer — fetches chia:// content via the background SW and renders it in an iframe.
+// Loaded as an ES module so it can import the shared branded error page.
+import { friendlyCause } from './error-page.mjs';
 
-  // Show the verified / verification-failed banner (mirrors the native DIG Browser's
-  // verified badge). `verified === true` → green "verified on Chia"; false → red warning.
-  function showVerifyBanner(verified) {
-    const banner = document.getElementById('verifyBanner');
-    const text = document.getElementById('verifyText');
-    const close = document.getElementById('verifyClose');
-    if (!banner || !text) return;
-    if (verified) {
-      banner.className = 'verified';
-      text.textContent = 'Verified — Merkle-proven against the on-chain root, decrypted on this device';
-    } else {
-      banner.className = 'failed';
-      text.textContent = 'Verification failed — this content could not be proven against the on-chain root. Do not trust it.';
-    }
-    document.body.classList.add('has-banner');
-    if (close) {
-      close.onclick = () => {
-        banner.style.display = 'none';
-        document.body.classList.remove('has-banner');
-      };
-    }
-  }
+// One canonical verified label across popup / viewer / toolbar.
+const VERIFIED_LABEL = 'Verified on Chia';
+const VERIFIED_TOOLTIP = 'Merkle-proven against the on-chain root and decrypted on this device';
 
-  // Wait for DOM to load
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+// Show the verified / verification-failed banner (mirrors the popup line + toolbar badge).
+function showVerifyBanner(verified) {
+  const banner = document.getElementById('verifyBanner');
+  const text = document.getElementById('verifyText');
+  const close = document.getElementById('verifyClose');
+  if (!banner || !text) return;
+  if (verified) {
+    banner.className = 'verified';
+    banner.title = VERIFIED_TOOLTIP;
+    text.textContent = VERIFIED_LABEL;
   } else {
-    init();
+    banner.className = 'failed';
+    banner.title = 'This content could not be proven against the on-chain root — do not trust it.';
+    text.textContent = 'Verification failed';
   }
-  
-  function init() {
-    // Get the URN from URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const urn = urlParams.get('urn');
+  document.body.classList.add('has-banner');
+  if (close) {
+    close.onclick = () => {
+      banner.style.display = 'none';
+      document.body.classList.remove('has-banner');
+    };
+  }
+}
 
-    console.log('DIG Viewer: URN:', urn);
+// Render the branded, white-theme error state in place of the loading indicator.
+// NEVER shows the raw failure message — friendlyCause() maps it to a safe, plain-language
+// cause (so internal strings like "decoy or wrong key" never reach the user).
+function showError(url, rawMessage) {
+  const loading = document.getElementById('loading');
+  const mount = document.getElementById('errorMount');
+  if (loading) loading.style.display = 'none';
+  if (!mount) return;
+  mount.innerHTML = '';
 
-    const loading = document.getElementById('loading');
+  const card = document.createElement('div');
+  card.style.cssText =
+    'max-width:520px;width:calc(100% - 64px);margin:10vh auto 0;text-align:center;' +
+    'background:#ffffff;border:1px solid #e4e1f0;border-radius:16px;padding:40px 36px;' +
+    'box-shadow:0 8px 32px rgba(20,18,43,0.08);' +
+    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#14122b;";
 
-    async function loadContent() {
-      try {
-        if (!urn) {
-          throw new Error('No URN provided');
-        }
-        
-        loading.textContent = 'Loading content via RPC...';
-        
-        // Construct chia:// URL from URN
-        const digUrl = urn.startsWith('chia://') ? urn : `chia://${urn}`;
-        
-        console.log('DIG Viewer: Requesting content via RPC for:', digUrl);
-        
-        // Request background script to fetch content via RPC
-        chrome.runtime.sendMessage({
-          action: 'proxyRequest',
-          url: digUrl
-        }, async (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('DIG Viewer: Error requesting content:', chrome.runtime.lastError);
-            loading.textContent = 'Error: ' + chrome.runtime.lastError.message;
-            loading.style.color = '#f00';
-            return;
-          }
-          
-          if (response && response.error) {
-            console.error('DIG Viewer: RPC error:', response.error);
-            loading.textContent = 'Error: ' + response.error;
-            loading.style.color = '#f00';
-            return;
-          }
-          
-          if (!response || !response.success || !response.data) {
-            console.error('DIG Viewer: Invalid response:', response);
-            loading.textContent = 'Error: Invalid response from RPC';
-            loading.style.color = '#f00';
-            return;
-          }
-          
-          // response.data is a data URL from RPC
-          const dataUrl = response.data;
-          const contentType = response.contentType || 'text/html';
-          const verified = !!response.verified;
+  const mark = document.createElement('div');
+  mark.textContent = 'DIG';
+  mark.setAttribute('aria-hidden', 'true');
+  mark.style.cssText =
+    'width:56px;height:56px;margin:0 auto 20px;border-radius:50%;display:flex;align-items:center;' +
+    'justify-content:center;background:linear-gradient(135deg,#5800D6 0%,#FF00DE 100%);' +
+    'color:#fff;font-size:24px;font-weight:700;';
 
-          console.log('DIG Viewer: Received data URL, contentType:', contentType, 'verified:', verified);
+  const h1 = document.createElement('h1');
+  h1.textContent = "This DIG page couldn't be loaded";
+  h1.style.cssText = 'font-size:22px;font-weight:700;margin:0 0 10px;';
 
-          // Report verification to the background SW (sets the toolbar "Verified" badge)
-          // and show the in-page verified/failed banner — mirrors the native DIG Browser.
-          try {
-            chrome.runtime.sendMessage(
-              { action: 'reportVerification', verified, urn },
-              () => { void chrome.runtime.lastError; }
-            );
-          } catch (e) { /* non-fatal */ }
-          showVerifyBanner(verified);
+  const lead = document.createElement('p');
+  lead.textContent = friendlyCause(rawMessage); // safe, plain-language; never the raw string
+  lead.style.cssText = 'font-size:15px;line-height:1.6;color:#5e5a7c;margin:0 0 18px;';
 
-          // Hide loading indicator
-          loading.style.display = 'none';
-          
-          // Create iframe to display the content
-          const iframe = document.createElement('iframe');
-          iframe.src = dataUrl;
-          iframe.style.width = '100%';
-          iframe.style.height = '100vh';
-          iframe.style.border = 'none';
-          
-          // Handle iframe load
-          iframe.onload = () => {
-            console.log('DIG Viewer: Content loaded in iframe');
-          };
-          
-          iframe.onerror = (error) => {
-            console.error('DIG Viewer: Error loading iframe:', error);
-            loading.style.display = 'block';
-            loading.textContent = 'Error loading content';
-            loading.style.color = '#f00';
-          };
-          
-          // Replace body content with iframe
-          document.body.innerHTML = '';
-          document.body.appendChild(iframe);
-        });
-      } catch (e) {
-        console.error('DIG Viewer: Error loading content:', e);
-        loading.textContent = 'Error: ' + e.message;
-        loading.style.color = '#f00';
-      }
+  const addr = document.createElement('div');
+  addr.textContent = url || '';
+  addr.style.cssText =
+    'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;' +
+    'color:#14122b;background:#f7f7fb;border:1px solid #e4e1f0;border-radius:8px;padding:8px 10px;' +
+    'word-break:break-all;margin:0 0 24px;';
+
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;justify-content:center;';
+
+  const retry = document.createElement('button');
+  retry.textContent = 'Try again';
+  retry.style.cssText =
+    'flex:1 1 180px;padding:13px 18px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;' +
+    'border:none;background:linear-gradient(135deg,#5800D6 0%,#FF00DE 100%);color:#fff;' +
+    'box-shadow:0 4px 14px rgba(88,0,214,0.35);';
+  retry.addEventListener('click', () => location.reload());
+
+  const home = document.createElement('a');
+  home.textContent = 'Go to DIG Home';
+  home.href = 'https://dig.net';
+  home.style.cssText =
+    'flex:1 1 180px;padding:13px 18px;border-radius:10px;font-size:15px;font-weight:600;' +
+    'text-decoration:none;border:1px solid #5800D6;color:#5800D6;background:#fff;';
+
+  actions.append(retry, home);
+  card.append(mark, h1, lead);
+  if (url) card.append(addr);
+  card.append(actions);
+  mount.appendChild(card);
+}
+
+function init() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const urn = urlParams.get('urn');
+  const loading = document.getElementById('loading');
+  const digUrl = urn && (urn.startsWith('chia://') ? urn : `chia://${urn}`);
+
+  if (!urn) {
+    showError('', 'This address may not exist.');
+    return;
+  }
+
+  chrome.runtime.sendMessage({ action: 'proxyRequest', url: digUrl }, async (response) => {
+    if (chrome.runtime.lastError) {
+      showError(digUrl, chrome.runtime.lastError.message);
+      return;
+    }
+    if (response && response.error) {
+      showError(digUrl, response.error);
+      return;
+    }
+    if (!response || !response.success || !response.data) {
+      showError(digUrl, 'Failed to fetch');
+      return;
     }
 
-    // Start loading
-    if (urn) {
-      loadContent();
-    } else {
-      loading.textContent = 'No URN provided';
-      loading.style.color = '#f00';
-    }
-  }
-})();
+    const dataUrl = response.data;
+    const verified = !!response.verified;
 
+    // Report verification to the background SW (sets the toolbar badge) + show the banner.
+    try {
+      chrome.runtime.sendMessage(
+        { action: 'reportVerification', verified, urn },
+        () => { void chrome.runtime.lastError; }
+      );
+    } catch (e) { /* non-fatal */ }
+    showVerifyBanner(verified);
+
+    if (loading) loading.style.display = 'none';
+
+    const iframe = document.createElement('iframe');
+    iframe.src = dataUrl;
+    iframe.onerror = () => showError(digUrl, 'Failed to fetch');
+    document.body.appendChild(iframe);
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}

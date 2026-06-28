@@ -17,8 +17,11 @@
       <a id="visitDigNetworkLink" class="header-link" href="#" title="Visit DIG Network">dig.net ↗</a>
     </div>
 
-    <!-- Verified badge line: reflects the active tab's chia:// verification state. -->
-    <div class="verify-line" id="verifyLine" style="display:none">
+    <!-- Verified badge line: reflects the active tab's chia:// verification state.
+         One canonical label ("Verified on Chia") + one tooltip, matching the viewer
+         banner and the toolbar badge. -->
+    <div class="verify-line" id="verifyLine" style="display:none"
+         title="Merkle-proven against the on-chain root and decrypted on this device">
       <span class="verify-dot" id="verifyDot"></span>
       <span class="verify-text" id="verifyText">Verified on Chia</span>
     </div>
@@ -35,7 +38,7 @@
           <span class="wallet-bal-value" id="walletXch">—</span>
         </div>
         <div class="wallet-bal">
-          <span class="wallet-bal-label">DIG</span>
+          <span class="wallet-bal-label">$DIG</span>
           <span class="wallet-bal-value" id="walletDig">—</span>
         </div>
       </div>
@@ -43,7 +46,7 @@
       <div class="wallet-actions">
         <button id="walletConnectBtn" class="wallet-btn wallet-btn-primary">Connect wallet</button>
         <button id="walletDisconnectBtn" class="wallet-btn" style="display:none">Disconnect</button>
-        <a id="getDigLink" class="wallet-btn wallet-btn-ghost" href="#" title="Get DIG on TibetSwap">Get DIG ↗</a>
+        <a id="getDigLink" class="wallet-btn wallet-btn-ghost" href="#" title="Get $DIG on TibetSwap">Get $DIG ↗</a>
       </div>
       <!-- Pairing affordance (URI / copy) appears here when connecting. -->
       <div class="wallet-pairing" id="walletPairing" style="display:none">
@@ -70,167 +73,30 @@
       </button>
     </div>
 
-        <div class="url-section">
-          <label for="digUrlInput" class="url-label">Navigate to chia:// URL</label>
-          <div class="url-input-container">
-            <input 
-              type="text" 
-              id="digUrlInput" 
-              class="url-input" 
-              placeholder="chia://urn:dig:chia:storeID/path"
-              autocomplete="off"
-            />
-            <button id="goButton" class="go-button" title="Navigate">→</button>
-          </div>
-        </div>
-    
+    <!-- Open a chia:// address — the one thing this extension is for. -->
+    <div class="url-section">
+      <label for="digUrlInput" class="url-label">Open a chia:// address</label>
+      <div class="url-input-container">
+        <input
+          type="text"
+          id="digUrlInput"
+          class="url-input"
+          placeholder="chia://urn:dig:chia:storeID/path"
+          autocomplete="off"
+        />
+        <button id="goButton" class="go-button" title="Open">→</button>
+      </div>
+    </div>
+
     <div class="toggle-section">
       <label class="toggle-label">
-        <span class="toggle-text">Extension Status</span>
+        <span class="toggle-text">chia:// resolution</span>
         <div class="toggle-container">
           <input type="checkbox" id="extensionToggle" class="toggle-input">
           <span class="toggle-slider"></span>
         </div>
       </label>
       <p class="status-text" id="statusText">Inactive</p>
-    </div>
-
-    <div class="server-config-section">
-      <label for="serverHostInput" class="server-label">RPC Host</label>
-      <div class="server-input-container">
-        <input
-          type="text"
-          id="serverHostInput"
-          class="server-input"
-          placeholder="localhost:80"
-          autocomplete="off"
-        />
-        <button id="restoreDefaultButton" class="restore-button" title="Restore Default">↺</button>
-      </div>
-      <p class="server-info-text" id="serverInfoText">Redirects to: http://localhost:80</p>
-    </div>
-
-    <div class="server-config-section">
-      <label for="digRpcEndpointInput" class="server-label">DIG RPC Endpoint</label>
-      <div class="server-input-container">
-        <input
-          type="text"
-          id="digRpcEndpointInput"
-          class="server-input"
-          placeholder="https://rpc.dig.net/"
-          autocomplete="off"
-        />
-        <button id="restoreRpcDefaultButton" class="restore-button" title="Restore Default">↺</button>
-      </div>
-      <p class="server-info-text" id="digRpcEndpointInfoText">Content fetched from: https://rpc.dig.net/</p>
-    </div>
-
-    <div class="dig-local-section">
-      <div class="dig-local-header">
-        <label class="dig-local-label">dig.local Status</label>
-        <div class="dig-local-status" id="digLocalStatus">
-          <span class="status-indicator" id="statusIndicator">●</span>
-          <span class="status-text-small" id="digLocalStatusText">Checking...</span>
-          <button class="retry-button" id="retryButton" title="Retry DNS check" style="display: none;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.48L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-      <div class="dig-local-info" id="digLocalInfo" style="display: none;">
-        <p class="dig-local-message" id="digLocalMessage"></p>
-        <div class="hosts-setup" id="hostsSetup" style="display: none;">
-          <button class="setup-button" id="showInstructionsButton">Show Setup Instructions</button>
-          <div class="instructions" id="instructions" style="display: none;">
-            <div class="os-selector">
-              <button class="os-tab active" data-os="windows">Windows</button>
-              <button class="os-tab" data-os="macos">macOS</button>
-              <button class="os-tab" data-os="linux">Linux</button>
-            </div>
-            <div class="os-instructions" id="windowsInstructions">
-              <ol>
-                <li>Open Notepad as Administrator:
-                  <ul>
-                    <li><strong>Method 1 (Recommended):</strong>
-                      <ul>
-                        <li>Press <kbd>Win</kbd> key and type "notepad"</li>
-                        <li>Right-click on "Notepad" in the search results</li>
-                        <li>Select "Run as administrator"</li>
-                        <li>Click "Yes" when prompted by User Account Control</li>
-                      </ul>
-                    </li>
-                    <li><strong>Method 2:</strong>
-                      <ul>
-                        <li>Press <kbd>Win + X</kbd> and select "Windows PowerShell (Admin)" or "Terminal (Admin)"</li>
-                        <li>Type: <code>notepad C:\Windows\System32\drivers\etc\hosts</code></li>
-                        <li>Press <kbd>Enter</kbd> and click "Yes" when prompted</li>
-                      </ul>
-                    </li>
-                  </ul>
-                </li>
-                <li>In Notepad, open the hosts file:
-                  <ul>
-                    <li>Click <strong>File</strong> → <strong>Open</strong> (or press <kbd>Ctrl+O</kbd>)</li>
-                    <li>Navigate to: <code>C:\Windows\System32\drivers\etc\</code></li>
-                    <li>Change the file filter from "Text Documents (*.txt)" to <strong>"All Files (*.*)"</strong></li>
-                    <li>Select the file named <code>hosts</code> (it has no extension)</li>
-                    <li>Click <strong>Open</strong></li>
-                  </ul>
-                </li>
-                <li>Add this line at the end of the file:
-                  <div class="code-block">127.0.0.1    dig.local</div>
-                </li>
-                <li>Save the file:
-                  <ul>
-                    <li>Press <kbd>Ctrl+S</kbd> or click <strong>File</strong> → <strong>Save</strong></li>
-                    <li>Close Notepad</li>
-                  </ul>
-                </li>
-                <li>Flush DNS cache (open PowerShell or Command Prompt as Admin):
-                  <div class="code-block">ipconfig /flushdns</div>
-                  <small>Or restart your browser</small>
-                </li>
-              </ol>
-            </div>
-            <div class="os-instructions" id="macosInstructions" style="display: none;">
-              <ol>
-                <li>Open Terminal</li>
-                <li>Edit the hosts file:
-                  <div class="code-block">sudo nano /etc/hosts</div>
-                </li>
-                <li>Add this line at the end of the file:
-                  <div class="code-block">127.0.0.1    dig.local</div>
-                </li>
-                <li>Save: Press <kbd>Ctrl+O</kbd>, then <kbd>Enter</kbd>, then <kbd>Ctrl+X</kbd></li>
-                <li>Flush DNS cache:
-                  <div class="code-block">sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder</div>
-                </li>
-              </ol>
-            </div>
-            <div class="os-instructions" id="linuxInstructions" style="display: none;">
-              <ol>
-                <li>Open Terminal</li>
-                <li>Edit the hosts file:
-                  <div class="code-block">sudo nano /etc/hosts</div>
-                  <small>Or use your preferred editor (vim, gedit, etc.)</small>
-                </li>
-                <li>Add this line at the end of the file:
-                  <div class="code-block">127.0.0.1    dig.local</div>
-                </li>
-                <li>Save: Press <kbd>Ctrl+O</kbd>, then <kbd>Enter</kbd>, then <kbd>Ctrl+X</kbd></li>
-                <li>Flush DNS cache (if using systemd-resolved):
-                  <div class="code-block">sudo systemd-resolve --flush-caches</div>
-                </li>
-              </ol>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="info-section">
-      <p class="info-text">When active, chia:// protocol requests will be redirected to the configured server.</p>
     </div>
 
     <!-- Ecosystem funnel: Resources + soft upsell to the full native DIG Browser. -->
@@ -242,8 +108,8 @@
       <a id="getFullBrowserLink" class="upsell-link" href="#" title="Get the full DIG Browser">
         Get the full DIG Browser — native dig:// &amp; built-in wallet ↗
       </a>
-      <a id="openOptionsLink" class="upsell-link" href="#" title="DIG settings: cache + companion">
-        DIG settings — cache &amp; companion →
+      <a id="openOptionsLink" class="upsell-link" href="#" title="DIG settings: cache, dig-node &amp; RPC">
+        DIG settings — cache, dig-node &amp; RPC →
       </a>
     </div>
   </div>
@@ -251,4 +117,3 @@
   <script type="module" src="popup-wallet.js"></script>
 </body>
 </html>
-
