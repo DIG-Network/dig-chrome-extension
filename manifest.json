@@ -58,6 +58,7 @@
         "logo.png",
         "dig-viewer.html",
         "dig-viewer.js",
+        "error-page.mjs",
         "dig_client.js",
         "dig_client_bg.wasm",
         "apps.mjs",
@@ -75,7 +76,8 @@
     "declarativeNetRequest",
     "scripting",
     "omnibox",
-    "search"
+    "search",
+    "notifications"
   ],
   "omnibox": {
     "keyword": "dig"
