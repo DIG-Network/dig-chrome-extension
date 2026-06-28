@@ -5,13 +5,21 @@
 //   - Wallet panel: balance (XCH + DIG) + connect/disconnect (WalletConnect → Sage) + Get DIG.
 //   - Verified badge line: reflects the active tab's chia:// Merkle-verification state.
 //   - Connection requests: approve/deny dapps' window.chia.connect() per origin.
-//   - DIG settings link: opens the options page (cache + companion).
+//   - DIG settings link: opens the options page (cache + dig-node host + RPC).
 
 import * as wc from './wallet-wc.js';
 import { getApprovedOrigins } from './wallet-broker.mjs';
 
 const TIBETSWAP_URL = 'https://v2.tibetswap.io/';
 const $ = (id) => document.getElementById(id);
+
+// DIG CAT asset id (TAIL) — the token whose balance fills the $DIG wallet row.
+// Source of truth: SYSTEM.md "Canonical terminology & branding" / "DIG CAT payment".
+const DIG_CAT_ASSET_ID = 'a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81';
+
+// One canonical verified label across popup / viewer / toolbar.
+const VERIFIED_LABEL = 'Verified on Chia';
+const VERIFIED_TOOLTIP = 'Merkle-proven against the on-chain root and decrypted on this device';
 
 // ---- Verified badge line ----
 async function refreshVerifyLine() {
@@ -25,11 +33,13 @@ async function refreshVerifyLine() {
     if (v && v.state === 'verified') {
       line.style.display = 'flex';
       line.className = 'verify-line verified';
-      text.textContent = 'Verified — proven against the on-chain root';
+      line.title = VERIFIED_TOOLTIP;
+      text.textContent = VERIFIED_LABEL;
     } else if (v && v.state === 'failed') {
       line.style.display = 'flex';
       line.className = 'verify-line failed';
-      text.textContent = 'Verification failed — do not trust this content';
+      line.title = 'This content could not be proven against the on-chain root — do not trust it.';
+      text.textContent = 'Verification failed';
     } else {
       line.style.display = 'none';
     }
@@ -85,8 +95,14 @@ async function refreshBalances(conn) {
   } catch {
     if (xch) xch.textContent = '—';
   }
-  // DIG CAT balance — assetId left to the wallet's configured DIG asset; shown as — if unknown.
-  if (dig) dig.textContent = '—';
+  // $DIG CAT balance — query the DIG TAIL so the row shows a real number instead of a
+  // dead "—". Falls back to "—" only when the wallet can't report it.
+  try {
+    const digBal = await wc.request('chip0002_getAssetBalance', { type: 'cat', assetId: DIG_CAT_ASSET_ID });
+    if (dig) dig.textContent = fmtAmount(digBal && (digBal.confirmed ?? digBal.spendable ?? digBal));
+  } catch {
+    if (dig) dig.textContent = '—';
+  }
 }
 
 function setNote(msg, isError) {
