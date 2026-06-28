@@ -1,14 +1,15 @@
-// DIG settings (options) controller.
+// DIG settings (options) controller — the ONE settings home.
 //
 // Mirrors the native DIG Browser's chrome://settings DIG section within MV3 limits:
-// local cache usage/clear, the dig-companion host (server.host) with a reachability
-// check, the upstream DIG RPC endpoint, and the WalletConnect project id.
+// local cache usage/clear, the dig-node host (server.host) with a reachability check,
+// the upstream DIG RPC endpoint, and the WalletConnect project id. (The popup is the
+// product surface; all config controls live here.)
 
 import { DIG_BROWSER_URL } from './links.mjs';
+import { DEFAULT_DIG_NODE_HOST, parseServerHost } from './server-config.mjs';
 
 const $ = (id) => document.getElementById(id);
 
-const DEFAULT_COMPANION = 'localhost:8080';
 const DEFAULT_RPC = 'https://rpc.dig.net/';
 
 function fmtBytes(n) {
@@ -42,46 +43,45 @@ async function clearCache() {
   }
 }
 
-// ---- Companion host (server.host) ----
+// ---- dig-node host (server.host) ----
 async function loadCompanion() {
   const input = $('companionHost');
   try {
     const { 'server.host': host } = await chrome.storage.local.get('server.host');
-    input.value = host || DEFAULT_COMPANION;
+    input.value = host || DEFAULT_DIG_NODE_HOST;
   } catch {
-    input.value = DEFAULT_COMPANION;
+    input.value = DEFAULT_DIG_NODE_HOST;
   }
   checkCompanion();
 }
 
 async function saveCompanion() {
   const input = $('companionHost');
-  const host = (input.value || '').trim() || DEFAULT_COMPANION;
+  const host = (input.value || '').trim() || DEFAULT_DIG_NODE_HOST;
   await chrome.storage.local.set({ 'server.host': host });
-  // Keep the legacy split keys in sync (popup.js reads these too).
-  const m = host.replace(/^https?:\/\//, '').match(/^([^:]+)(?::(\d+))?$/);
-  if (m) {
-    await chrome.storage.local.set({ 'server.url': m[1], 'server.port': m[2] ? parseInt(m[2], 10) : 80 });
-  }
+  // Keep the legacy split keys in sync via the SHARED parser (so the background read path
+  // and these keys can never disagree on the default port — 8080, the dig-node port).
+  const { url, port } = parseServerHost(host);
+  await chrome.storage.local.set({ 'server.url': url, 'server.port': port });
   checkCompanion();
 }
 
 async function checkCompanion() {
   const status = $('companionStatus');
-  const host = ($('companionHost').value || '').trim() || DEFAULT_COMPANION;
+  const host = ($('companionHost').value || '').trim() || DEFAULT_DIG_NODE_HOST;
   const url = /^https?:\/\//.test(host) ? host : `http://${host}`;
-  status.textContent = 'Checking companion…';
+  status.textContent = 'Checking dig-node…';
   status.className = 'note';
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 2000);
     await fetch(url + '/', { method: 'GET', mode: 'no-cors', signal: ctrl.signal });
     clearTimeout(t);
-    status.textContent = `Companion reachable at ${host}.`;
+    status.textContent = `dig-node reachable at ${host}.`;
     status.className = 'note ok';
   } catch {
     status.textContent =
-      `Companion not running at ${host}. Start dig-companion, or leave this and the extension ` +
+      `dig-node not running at ${host}. Start dig-node, or leave this and the extension ` +
       `will use the hosted RPC endpoint below.`;
     status.className = 'note warn';
   }
@@ -135,7 +135,7 @@ function init() {
   $('companionHost').addEventListener('input', debounce(saveCompanion, 400));
   $('companionHost').addEventListener('blur', saveCompanion);
   $('companionDefaultBtn').addEventListener('click', () => {
-    $('companionHost').value = DEFAULT_COMPANION;
+    $('companionHost').value = DEFAULT_DIG_NODE_HOST;
     saveCompanion();
   });
   $('rpcEndpoint').addEventListener('input', debounce(saveRpc, 400));

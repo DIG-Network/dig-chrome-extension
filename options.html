@@ -6,13 +6,14 @@
 <meta name="color-scheme" content="light">
 <title>DIG settings</title>
 <!--
-  DIG settings (options page). Mirrors the native DIG Browser's chrome://settings DIG
-  section as closely as MV3 allows:
+  DIG settings (options page) — the ONE settings home. All developer/config controls live
+  here (the popup is the product surface). Mirrors the native DIG Browser's
+  chrome://settings DIG section as closely as MV3 allows:
     - Local DIG content cache: usage + clear (no on-disk cap slider — MV3 has no equivalent
       to the browser's dig-node config; see the parity matrix).
-    - dig-companion: the local DIG RPC the extension resolves chia:// through (server.host),
-      with a "companion not running" affordance.
-    - DIG RPC endpoint: the upstream used when no companion is configured (rpc.dig.net).
+    - dig-node host: the local DIG node the extension resolves chia:// through (server.host),
+      with a "dig-node not running" affordance.
+    - DIG RPC endpoint: the upstream used when no dig-node is configured (rpc.dig.net).
     - Wallet: the WalletConnect project id used to pair Sage.
 -->
 <link rel="stylesheet" href="options.css">
@@ -39,24 +40,24 @@
       <p class="note" id="cacheNote"></p>
     </section>
 
-    <!-- Companion -->
+    <!-- dig-node -->
     <section class="card">
-      <h2>dig-companion (local resolver)</h2>
-      <p class="desc">Run the dig-companion app to resolve chia:// content locally (the standalone
-        twin of the native browser's in-process dig-node). Point this at the companion's address;
+      <h2>dig-node (local resolver)</h2>
+      <p class="desc">Run the dig-node app to resolve chia:// content locally (the standalone
+        twin of the native browser's in-process dig-node). Point this at the dig-node's address;
         leave it on the default to use the hosted RPC instead.</p>
-      <label class="lbl" for="companionHost">Companion host</label>
+      <label class="lbl" for="companionHost">dig-node host</label>
       <div class="row">
         <input type="text" id="companionHost" class="input" placeholder="localhost:8080" autocomplete="off">
         <button id="companionDefaultBtn" class="btn ghost" title="Restore default">↺</button>
       </div>
-      <p class="note" id="companionStatus">Checking companion…</p>
+      <p class="note" id="companionStatus">Checking dig-node…</p>
     </section>
 
     <!-- Upstream RPC -->
     <section class="card">
       <h2>DIG RPC endpoint (upstream)</h2>
-      <p class="desc">Used to fetch ciphertext + Merkle proofs when no companion is configured.
+      <p class="desc">Used to fetch ciphertext + Merkle proofs when no dig-node is configured.
         Verification and decryption always happen on this device.</p>
       <label class="lbl" for="rpcEndpoint">Endpoint</label>
       <div class="row">
