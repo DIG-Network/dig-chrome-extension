@@ -1,0 +1,97 @@
+name: publish-chrome-web-store
+
+# Package the extension and PUBLISH it to the Chrome Web Store.
+#
+# Trigger:
+#   - a pushed `v*` tag (the release cut), or
+#   - manual `workflow_dispatch` (optionally to trusted testers only).
+#
+# How it works: it reuses the same `npm run build:zip` as the regular deploy workflow to
+# produce dist/ + a packaged zip, then uploads + publishes that zip with the official
+# `chrome-webstore-upload-cli` (binary: `chrome-webstore-upload`). Run with NO subcommand the
+# CLI both uploads and publishes the new version of an existing store item.
+#
+# REQUIRED SECRETS (repo or org level — these do NOT exist yet; the maintainer must add them.
+# Until they are provisioned this workflow is EXPECTED to fail at the publish step):
+#   - CHROME_EXTENSION_ID   the extension's item id in the Web Store dashboard
+#   - CHROME_CLIENT_ID      OAuth2 client id (Google Cloud project, Chrome Web Store API enabled)
+#   - CHROME_CLIENT_SECRET  OAuth2 client secret for that client
+#   - CHROME_REFRESH_TOKEN  OAuth2 refresh token minted for that client (offline access)
+#
+# The CLI reads the credentials from the environment (CLIENT_ID / CLIENT_SECRET /
+# REFRESH_TOKEN / EXTENSION_ID); we map the CHROME_* secrets onto those env vars below.
+# Mint the refresh token with: https://github.com/fregante/chrome-webstore-upload-keys
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      trusted_testers:
+        description: "Publish to trusted testers only (instead of all users)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+# Never run two publishes concurrently against the same store item.
+concurrency:
+  group: chrome-web-store-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: package + publish to Chrome Web Store
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 20
+
+      - run: npm ci || npm install
+
+      - run: npm test # node --test tests/ — gate publish on the unit tests
+
+      # Reuse the SAME packaging path as deploy.yml: build dist/ + the packaged zip. The
+      # WalletConnect project id is a client-public identifier (the hub already ships it
+      # client-side); absent → the build still succeeds and the options-page field is the
+      # only override.
+      - run: npm run build:zip # node build.js --zip -> ./dist + ./dig-network-extension-v<version>.zip
+        env:
+          WALLETCONNECT_PROJECT_ID: ${{ secrets.WALLETCONNECT_PROJECT_ID }}
+
+      # Resolve the packaged zip path (the version is read from package.json by build.js).
+      - name: locate packaged zip
+        id: zip
+        run: |
+          ZIP="$(ls dig-network-extension-v*.zip | head -n1)"
+          if [ -z "$ZIP" ]; then echo "No packaged zip found" >&2; exit 1; fi
+          echo "path=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "Packaged: $ZIP"
+
+      # Publish to the Chrome Web Store via the official CLI (binary: chrome-webstore-upload).
+      # No subcommand ⇒ upload + publish. `--trusted-testers` (publish to testers only) is
+      # added on a manual dispatch when requested. This step is EXPECTED to fail until the
+      # four CHROME_* secrets above are provisioned.
+      - name: upload + publish to Chrome Web Store
+        env:
+          # The CLI reads these from the environment. Map repo/org CHROME_* secrets onto them.
+          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          TRUSTED_TESTERS: ${{ github.event_name == 'workflow_dispatch' && inputs.trusted_testers }}
+        run: |
+          ARGS=(--source "${{ steps.zip.outputs.path }}" --extension-id "$EXTENSION_ID")
+          if [ "$TRUSTED_TESTERS" = "true" ]; then
+            # Trusted-testers publish runs as the explicit `publish` subcommand after upload.
+            npx --yes chrome-webstore-upload-cli@3 upload "${ARGS[@]}"
+            npx --yes chrome-webstore-upload-cli@3 publish --extension-id "$EXTENSION_ID" --trusted-testers
+          else
+            # No subcommand ⇒ upload + publish to all users.
+            npx --yes chrome-webstore-upload-cli@3 "${ARGS[@]}"
+          fi
