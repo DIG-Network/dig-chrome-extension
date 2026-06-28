@@ -17,6 +17,12 @@ import initDigClient, {
 // background.js previously inlined a divergent copy; it now imports the one parser.
 import { parseURN } from './dig-urn.mjs';
 
+// Branded, plain-language chia:// error page (white theme; never leaks crypto strings).
+import { buildErrorPageHtml } from './error-page.mjs';
+
+// Shared dig-node host config (one parser/default for the server.host key).
+import { parseServerHost as parseDigNodeHost } from './server-config.mjs';
+
 // Wallet broker: per-origin consent + CHIP-0002 routing for the injected window.chia
 // provider, backed by WalletConnect→Sage. The broker core (consent gate, method
 // validation, envelope shaping) is in wallet-broker.mjs; the live WC session runs in the
@@ -71,6 +77,15 @@ async function getRpcEndpoint() {
   }
 }
 
+// Build a data: URL for the branded, white-theme chia:// error page. Uses the shared
+// error-page builder so the message is mapped to a friendly, non-leaking cause (internal
+// strings like "decoy or wrong key" are never shown).
+function digErrorPageUrl(url, error) {
+  const rawMessage = error && error.message ? error.message : String(error || '');
+  const html = buildErrorPageHtml({ url, rawMessage });
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
 // ---- Wallet transport (SW side) -----------------------------------------------
 // The live WalletConnect SignClient runs in the popup page (it needs IndexedDB + a
 // long-lived relay socket, which an MV3 service worker cannot keep alive). The SW
@@ -118,6 +133,50 @@ async function recordPendingOrigin(origin) {
     const list = Array.isArray(pend) ? pend : [];
     if (!list.includes(origin)) list.push(origin);
     await chrome.storage.local.set({ 'wallet.pendingOrigins': list });
+    // A site is asking to connect, but the popup may be closed (where the user reviews +
+    // approves the consent). Flag it so they know to open the extension: a global action
+    // badge plus a one-shot notification naming the site.
+    signalWalletAttention(origin, list.length);
+  } catch { /* best effort */ }
+}
+
+// Show a global "needs attention" badge on the toolbar action and fire a notification so
+// the user opens the popup to review a pending window.chia connection. The badge is global
+// (no tabId) so it shows regardless of the active tab; it is cleared once the pending list
+// empties (see clearWalletAttentionIfEmpty).
+function signalWalletAttention(origin, pendingCount) {
+  try {
+    chrome.action.setBadgeText({ text: '●' });
+    if (chrome.action.setBadgeBackgroundColor) {
+      chrome.action.setBadgeBackgroundColor({ color: '#5800D6' });
+    }
+    chrome.action.setTitle({
+      title: `DIG: ${pendingCount} wallet connection request${pendingCount === 1 ? '' : 's'} — open to review`,
+    });
+  } catch { /* action may be unavailable */ }
+  try {
+    if (chrome.notifications && chrome.notifications.create) {
+      let site = origin;
+      try { site = new URL(origin).host || origin; } catch { /* keep origin */ }
+      chrome.notifications.create(`dig-wallet-${origin}`, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('src/favicon.png'),
+        title: 'Wallet connection request',
+        message: `${site} wants to connect your Chia wallet. Open the DIG extension to review.`,
+        priority: 1,
+      });
+    }
+  } catch { /* notifications may be unavailable / denied */ }
+}
+
+// Clear the global wallet-attention badge + title once no origins are pending.
+async function clearWalletAttentionIfEmpty() {
+  try {
+    const { 'wallet.pendingOrigins': pend } = await chrome.storage.local.get('wallet.pendingOrigins');
+    if (!Array.isArray(pend) || pend.length === 0) {
+      chrome.action.setBadgeText({ text: '' });
+      chrome.action.setTitle({ title: 'DIG Network Extension' });
+    }
   } catch { /* best effort */ }
 }
 
@@ -402,53 +461,27 @@ async function fetchContentViaRPC(urn, endpoint) {
   }
 }
 
-// Parse RPC host into URL and port
-function parseServerHost(host) {
-  if (!host || !host.trim()) {
-    return { url: 'localhost', port: 80 };
-  }
-  
-  host = host.trim();
-  
-  // Remove protocol if present
-  let url = host.replace(/^https?:\/\//, '');
-  
-  // Check if port is specified
-  const portMatch = url.match(/:(\d+)$/);
-  let port = 80;
-  
-  if (portMatch) {
-    port = parseInt(portMatch[1], 10);
-    url = url.replace(/:\d+$/, '');
-  }
-  
-  // Validate port
-  if (port < 1 || port > 65535) {
-    port = 80;
-  }
-  
-  // If URL is empty after parsing, use localhost
-  if (!url) {
-    url = 'localhost';
-  }
-  
-  return { url, port };
-}
+// Parse the dig-node host (server.host) into { url, port }. Delegates to the shared
+// server-config.mjs parser so the popup, options page, and background all agree on the
+// SAME name, default (localhost:8080 — the dig-node port), and parse rules.
+const parseServerHost = parseDigNodeHost;
 
-// Get server configuration from storage
+// Get the dig-node config from storage.
 async function getServerConfig() {
   const result = await chrome.storage.local.get(['server.host', 'server.url', 'server.port']);
-  
-  // If new format exists, use it
+
+  // The canonical key is server.host.
   if (result['server.host']) {
     return parseServerHost(result['server.host']);
   }
-  
-  // Fallback to old format for backward compatibility
-  return {
-    url: result['server.url'] || DEFAULT_SERVER_URL,
-    port: result['server.port'] || DEFAULT_SERVER_PORT
-  };
+
+  // Back-compat: older split keys. parseServerHost supplies the dig-node default port.
+  if (result['server.url']) {
+    return parseServerHost(`${result['server.url']}:${result['server.port'] || ''}`);
+  }
+
+  // Nothing configured → the dig-node default.
+  return parseServerHost('');
 }
 
 // Convert chia:// URL - ALL chia:// URLs now use RPC
@@ -542,10 +575,18 @@ async function checkExistingDigTabs() {
   }
 }
 
-// Periodically check for chia:// tabs (catches cases where we missed the initial event)
-setInterval(() => {
-  checkExistingDigTabs();
-}, 1000); // Check every second
+// Event-driven catch for chia:// tabs. The PRIMARY interceptor is onBeforeNavigate; this
+// onUpdated listener is a cheap backstop for the rare case where a tab's url/pendingUrl
+// lands on chia:// without firing onBeforeNavigate (e.g. address-bar edge cases), without
+// the cost of a tight polling loop. (The old 1s sweep over ALL tabs is gone.)
+if (chrome.tabs && chrome.tabs.onUpdated) {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    const candidate = changeInfo.url || (tab && (tab.pendingUrl || tab.url));
+    if (candidate && candidate.startsWith('chia://') && !isLocalhostUrl(candidate)) {
+      redirectDigUrlToLocalhost(tabId, candidate);
+    }
+  });
+}
 
 // Also check on startup (not just on install)
 chrome.runtime.onStartup.addListener(() => {
@@ -597,17 +638,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false; // Not async
   }
 
-  if (message.action === 'checkDigLocalDNS') {
-    // dig.local DNS probing removed — content is served via rpc.dig.net RPC POST.
-    // Always report not-resolvable so callers fall through to the RPC path.
-    try {
-      sendResponse({ resolvable: false });
-    } catch (e) {
-      // port already closed
-    }
-    return false;
-  }
-  
   if (message.action === 'convertDigUrl') {
     // Convert chia:// URL to data URL via RPC
     (async () => {
@@ -1029,6 +1059,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const { 'wallet.pendingOrigins': pend } = await chrome.storage.local.get('wallet.pendingOrigins');
         const list = (Array.isArray(pend) ? pend : []).filter((o) => o !== message.origin);
         await chrome.storage.local.set({ 'wallet.pendingOrigins': list });
+        // Clear the toolbar attention badge once nothing is pending.
+        await clearWalletAttentionIfEmpty();
         sendResponse({ success: true });
       } catch (e) {
         sendResponse({ success: false, error: e.message });
@@ -1137,25 +1169,7 @@ async function handleDigUrlNavigation(tabId, digUrl) {
     console.log('DIG Extension: Successfully redirected to viewer');
   } catch (error) {
     console.error('DIG Extension: Error in handleDigUrlNavigation:', error);
-    // Show error page
-    const errorPage = `data:text/html;charset=utf-8,${encodeURIComponent(`
-<!DOCTYPE html>
-<html>
-<head>
-  <title>DIG Network Error</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #1a0a2e; color: white; }
-    .error { color: #ff6b6b; }
-  </style>
-</head>
-<body>
-  <h1 class="error">Failed to load DIG content</h1>
-  <p>URL: ${digUrl}</p>
-  <p>Error: ${error.message}</p>
-</body>
-</html>
-    `)}`;
-    await chrome.tabs.update(tabId, { url: errorPage });
+    await chrome.tabs.update(tabId, { url: digErrorPageUrl(digUrl, error) });
   }
 }
 
@@ -1229,25 +1243,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(
           await handleDigUrlNavigation(details.tabId, details.url);
         } catch (error) {
           console.error('DIG Extension: Error handling chia:// navigation:', error);
-          // Show error page if RPC fails
-          const errorPage = `data:text/html;charset=utf-8,${encodeURIComponent(`
-<!DOCTYPE html>
-<html>
-<head>
-  <title>DIG Network Error</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #1a0a2e; color: white; }
-    .error { color: #ff6b6b; }
-  </style>
-</head>
-<body>
-  <h1 class="error">Failed to load DIG content</h1>
-  <p>URL: ${details.url}</p>
-  <p>Error: ${error.message}</p>
-</body>
-</html>
-          `)}`;
-          await chrome.tabs.update(details.tabId, { url: errorPage });
+          await chrome.tabs.update(details.tabId, { url: digErrorPageUrl(details.url, error) });
         }
       } else {
         console.log('DIG Extension: Extension is disabled, not redirecting');
@@ -1789,9 +1785,10 @@ chrome.webNavigation.onErrorOccurred.addListener(
   }
 );
 
-// Also add a more aggressive check - monitor tabs for chia:// and dig.local attempts
-// This catches cases where navigation fails before onBeforeNavigate fires
-// Also catches when Chrome treats chia:// URLs as search queries
+// Low-frequency backstop sweep — catches the rare case where a chia:// navigation slips
+// past onBeforeNavigate, or where a search engine rewrote a chia:// query. The primary
+// path is event-driven (onBeforeNavigate + the omnibox/search handlers); this is the
+// safety net, so it runs every few seconds rather than the old tight 100ms loop.
 setInterval(async () => {
   try {
     const tabs = await chrome.tabs.query({});
@@ -1955,7 +1952,7 @@ setInterval(async () => {
   } catch (error) {
     // Ignore errors
   }
-}, 100); // Check every 100ms (very frequent to catch Google search immediately)
+}, 3000); // Low-frequency backstop (was 100ms); the primary path is event-driven.
 
 // Omnibox handler - allows users to type "dig" followed by URN or search query in address bar
 chrome.omnibox.onInputEntered.addListener(
@@ -1995,25 +1992,7 @@ chrome.omnibox.onInputEntered.addListener(
           await chrome.tabs.create({ url: rpcResult.dataUrl });
         } catch (error) {
           console.error('DIG Extension: RPC failed for new tab:', error);
-          // Fallback: show error page
-          const errorPage = `data:text/html;charset=utf-8,${encodeURIComponent(`
-<!DOCTYPE html>
-<html>
-<head>
-  <title>DIG Network Error</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #1a0a2e; color: white; }
-    .error { color: #ff6b6b; }
-  </style>
-</head>
-<body>
-  <h1 class="error">Failed to load DIG content</h1>
-  <p>URL: ${digUrl}</p>
-  <p>Error: ${error.message}</p>
-</body>
-</html>
-          `)}`;
-          await chrome.tabs.create({ url: errorPage });
+          await chrome.tabs.create({ url: digErrorPageUrl(digUrl, error) });
         }
       }
     } else {
