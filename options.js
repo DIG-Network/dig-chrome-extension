@@ -6,7 +6,8 @@
 // product surface; all config controls live here.)
 
 import { DIG_BROWSER_URL } from './links.mjs';
-import { DEFAULT_DIG_NODE_HOST, parseServerHost } from './server-config.mjs';
+import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from './server-config.mjs';
+import { digNodeInstallPrompt } from './dig-node-status.mjs';
 
 const $ = (id) => document.getElementById(id);
 
@@ -69,22 +70,21 @@ async function saveCompanion() {
 async function checkCompanion() {
   const status = $('companionStatus');
   const host = ($('companionHost').value || '').trim() || DEFAULT_DIG_NODE_HOST;
-  const url = /^https?:\/\//.test(host) ? host : `http://${host}`;
   status.textContent = 'Checking dig-node…';
   status.className = 'note';
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 2000);
-    await fetch(url + '/', { method: 'GET', mode: 'no-cors', signal: ctrl.signal });
-    clearTimeout(t);
-    status.textContent = `dig-node reachable at ${host}.`;
+  // Use the SHARED resolver so this reflects the same try-list the background read path uses:
+  // dig.local first (branded, port 80), then localhost:<port>. Reports the reachable address.
+  const base = await resolveDigNode(host, { timeoutMs: 2000 }).catch(() => null);
+  if (base) {
+    status.textContent = `dig-node reachable at ${base}.`;
     status.className = 'note ok';
-  } catch {
-    status.textContent =
-      `dig-node not running at ${host}. Start dig-node, or leave this and the extension ` +
-      `will use the hosted RPC endpoint below.`;
-    status.className = 'note warn';
+    return;
   }
+  const prompt = digNodeInstallPrompt();
+  status.textContent =
+    `dig-node not found. ${prompt.installLabel} (${prompt.installUrl}), or leave this — the ` +
+    `extension will use the hosted RPC endpoint below.`;
+  status.className = 'note warn';
 }
 
 // ---- Upstream RPC ----

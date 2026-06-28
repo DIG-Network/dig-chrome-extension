@@ -9,6 +9,7 @@
 
 import * as wc from './wallet-wc.js';
 import { getApprovedOrigins } from './wallet-broker.mjs';
+import { digNodeInstallPrompt } from './dig-node-status.mjs';
 
 const TIBETSWAP_URL = 'https://v2.tibetswap.io/';
 const $ = (id) => document.getElementById(id);
@@ -142,6 +143,44 @@ async function doDisconnect() {
   }
 }
 
+// ---- dig-node install prompt ----
+// Shown ONLY when no local dig-node is reachable (dig.local or localhost:port). It is a soft
+// nudge — the extension still resolves chia:// via the hosted network without a local node —
+// so the banner explains the upside and links to the universal installer. One copy source
+// (dig-node-status.mjs) so the popup, options page, and error path never drift.
+async function refreshDigNodeBanner() {
+  const banner = $('digNodeBanner');
+  if (!banner) return;
+  let reachable = false;
+  try {
+    const r = await chrome.runtime.sendMessage({ action: 'getDigNodeStatus' });
+    reachable = !!(r && r.reachable);
+  } catch {
+    // Treat a failed probe as "not reachable" → show the prompt.
+    reachable = false;
+  }
+  if (reachable) {
+    banner.style.display = 'none';
+    return;
+  }
+  const prompt = digNodeInstallPrompt();
+  const title = $('digNodeTitle');
+  const body = $('digNodeBody');
+  const install = $('digNodeInstall');
+  if (title) title.textContent = prompt.title;
+  if (body) body.textContent = prompt.body;
+  if (install) {
+    install.textContent = prompt.installLabel;
+    install.href = prompt.installUrl;
+    install.onclick = (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: prompt.installUrl });
+      window.close();
+    };
+  }
+  banner.style.display = 'flex';
+}
+
 // ---- Per-origin connection requests ----
 async function refreshConnReqs() {
   const section = $('connreqSection');
@@ -228,6 +267,7 @@ function init() {
   refreshVerifyLine();
   refreshWalletPanel();
   refreshConnReqs();
+  refreshDigNodeBanner();
 
   // If deep-linked to #wallet (from the NTP wallet pill), scroll the panel into view.
   if (location.hash === '#wallet') {

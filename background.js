@@ -19,9 +19,15 @@ import { parseURN } from './dig-urn.mjs';
 
 // Branded, plain-language chia:// error page (white theme; never leaks crypto strings).
 import { buildErrorPageHtml } from './error-page.mjs';
+// dig-node install prompt + "dig-node required" error mapping (universal installer link).
+import { digNodeInstallPrompt, isDigNodeRequiredError } from './dig-node-status.mjs';
 
-// Shared dig-node host config (one parser/default for the server.host key).
-import { parseServerHost as parseDigNodeHost } from './server-config.mjs';
+// Shared dig-node host config (one parser/default for the server.host key) + the local-node
+// resolution order (dig.local preferred, localhost:port fallback) and reachability probe.
+import {
+  parseServerHost as parseDigNodeHost,
+  resolveDigNode,
+} from './server-config.mjs';
 
 // Wallet broker: per-origin consent + CHIP-0002 routing for the injected window.chia
 // provider, backed by WalletConnect→Sage. The broker core (consent gate, method
@@ -65,10 +71,12 @@ async function ensureDig() {
   return { retrievalKey, deriveKey, verifyInclusion, decryptChunk };
 }
 
-// ---- RPC endpoint (defaults to rpc.dig.net, configurable via storage) ----------
+// ---- RPC endpoint (prefers a reachable local dig-node; else the hosted rpc.dig.net) -------
 const DEFAULT_RPC_ENDPOINT = 'https://rpc.dig.net/';
 
-async function getRpcEndpoint() {
+// The hosted upstream the extension uses when NO local dig-node is reachable. Configurable
+// via the options page (`digRpcEndpoint`); defaults to rpc.dig.net.
+async function getHostedRpcEndpoint() {
   try {
     const { digRpcEndpoint } = await chrome.storage.local.get('digRpcEndpoint');
     return digRpcEndpoint || DEFAULT_RPC_ENDPOINT;
@@ -77,12 +85,64 @@ async function getRpcEndpoint() {
   }
 }
 
+// Short-TTL cache of the resolved local-node base URL so we don't probe dig.local +
+// localhost on every single resource fetch. `null` = "probed, none reachable".
+let _localNodeCache = { at: 0, base: undefined };
+const LOCAL_NODE_TTL_MS = 10_000;
+
+// Resolve the local dig-node base URL (dig.local preferred, localhost:<port> fallback),
+// caching the result briefly. Returns the reachable base URL string, or null if the
+// dig-node is not running (then the caller uses the hosted endpoint).
+async function resolveLocalDigNode() {
+  const now = Date.now();
+  if (_localNodeCache.base !== undefined && now - _localNodeCache.at < LOCAL_NODE_TTL_MS) {
+    return _localNodeCache.base;
+  }
+  let host;
+  try {
+    const { 'server.host': h } = await chrome.storage.local.get('server.host');
+    host = h;
+  } catch { /* default host */ }
+  const base = await resolveDigNode(host).catch(() => null);
+  _localNodeCache = { at: now, base: base || null };
+  return base || null;
+}
+
+/**
+ * Resolve the content RPC endpoint for a fetch. PREFERS a reachable local dig-node (its
+ * JSON-RPC POST root), falling back to the hosted rpc.dig.net. The local node is the user's
+ * own machine — faster, private, offline-capable — so it wins when reachable.
+ *
+ * Mirrors the shared resolution order in server-config.mjs (dig.local → localhost:port);
+ * here the chosen base becomes the JSON-RPC POST endpoint (trailing slash).
+ */
+async function getRpcEndpoint() {
+  const localBase = await resolveLocalDigNode();
+  if (localBase) return localBase.endsWith('/') ? localBase : localBase + '/';
+  return getHostedRpcEndpoint();
+}
+
+// Invalidate the local-node cache whenever the configured host changes so a new value takes
+// effect immediately (no stale 10s window after the user edits server.host).
+try {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && (changes['server.host'] || changes['server.url'] || changes['server.port'])) {
+      _localNodeCache = { at: 0, base: undefined };
+    }
+  });
+} catch { /* storage.onChanged unavailable in some contexts */ }
+
 // Build a data: URL for the branded, white-theme chia:// error page. Uses the shared
 // error-page builder so the message is mapped to a friendly, non-leaking cause (internal
 // strings like "decoy or wrong key" are never shown).
 function digErrorPageUrl(url, error) {
   const rawMessage = error && error.message ? error.message : String(error || '');
-  const html = buildErrorPageHtml({ url, rawMessage });
+  // If the failure is a local-dig-node-required one (the user pointed the extension at a
+  // local node that isn't running), offer the universal installer instead of just "try again".
+  const installPrompt = isDigNodeRequiredError(rawMessage)
+    ? (({ installLabel, installUrl }) => ({ installLabel, installUrl }))(digNodeInstallPrompt())
+    : undefined;
+  const html = buildErrorPageHtml({ url, rawMessage, installPrompt });
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
@@ -1048,6 +1108,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     try { resourceCache.clear(); sendResponse({ success: true }); }
     catch (e) { sendResponse({ success: false, error: e.message }); }
     return false;
+  }
+
+  // Popup: is a local dig-node reachable? Resolves the dig.local → localhost:port try-list
+  // and reports the chosen base (or null). Used to show/hide the "install dig-node" prompt.
+  if (message.action === 'getDigNodeStatus') {
+    (async () => {
+      try {
+        const base = await resolveLocalDigNode();
+        sendResponse({ reachable: !!base, base: base || null });
+      } catch {
+        sendResponse({ reachable: false, base: null });
+      }
+    })();
+    return true;
   }
 
   // Popup approves/revokes a per-origin wallet connection request.

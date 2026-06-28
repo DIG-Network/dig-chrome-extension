@@ -75,3 +75,33 @@ test('INTERNAL_LEAK_PATTERNS is a non-empty list of RegExp', () => {
   assert.ok(Array.isArray(INTERNAL_LEAK_PATTERNS) && INTERNAL_LEAK_PATTERNS.length > 0);
   for (const p of INTERNAL_LEAK_PATTERNS) assert.ok(p instanceof RegExp);
 });
+
+test('renders an "Install dig-node" action when an installPrompt is provided', () => {
+  const html = buildErrorPageHtml({
+    url: 'chia://x',
+    rawMessage: 'dig-node not running',
+    installPrompt: {
+      installLabel: 'Install dig-node',
+      installUrl: 'https://github.com/DIG-Network/dig-installer/releases',
+    },
+  });
+  assert.ok(/Install dig-node/i.test(html), 'should show the install action');
+  assert.ok(
+    /github\.com\/DIG-Network\/dig-installer\/releases/i.test(html),
+    'should link to the installer releases page'
+  );
+});
+
+test('does NOT render an install action when no installPrompt is given (generic error)', () => {
+  const html = buildErrorPageHtml({ url: 'chia://x', rawMessage: 'dig RPC HTTP error 500' });
+  assert.ok(!/dig-installer/i.test(html), 'generic errors must not show the installer link');
+});
+
+test('the install action url is HTML-escaped (cannot inject markup)', () => {
+  const html = buildErrorPageHtml({
+    url: 'chia://x',
+    rawMessage: 'boom',
+    installPrompt: { installLabel: 'Install', installUrl: 'https://x/"><script>alert(1)</script>' },
+  });
+  assert.ok(!/<script>alert/i.test(html), 'install url must be escaped');
+});
