@@ -98,6 +98,69 @@
       text-decoration: none;
     }
     .footnote a:hover { color: var(--dig-magenta); }
+    /* "Try it" — the one thing the extension is for. */
+    .tryit {
+      margin: 28px 0 4px;
+      text-align: left;
+      background: var(--dig-bg);
+      border: 1px solid var(--dig-border);
+      border-radius: 12px;
+      padding: 18px 18px 16px;
+    }
+    .tryit h2 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .tryit ol {
+      margin: 0 0 12px 18px;
+      font-size: 13.5px;
+      line-height: 1.7;
+      color: var(--dig-muted);
+    }
+    .tryit code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: var(--dig-surface);
+      border: 1px solid var(--dig-border);
+      border-radius: 6px;
+      padding: 1px 5px;
+      color: var(--dig-text);
+    }
+    .tryit-row { display: flex; gap: 8px; align-items: center; }
+    .tryit-example {
+      flex: 1;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11.5px;
+      background: var(--dig-surface);
+      border: 1px solid var(--dig-border);
+      border-radius: 8px;
+      padding: 9px 10px;
+      color: var(--dig-text);
+      word-break: break-all;
+      cursor: copy;
+    }
+    .tryit-copy {
+      flex: 0 0 auto;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--dig-purple);
+      background: var(--dig-surface);
+      color: var(--dig-purple);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tryit-copy:hover { background: rgba(88, 0, 214, 0.08); }
+    .tryit-newtab {
+      display: inline-block;
+      margin-top: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--dig-purple);
+      text-decoration: none;
+    }
+    .tryit-newtab:hover { color: var(--dig-magenta); }
   </style>
 </head>
 <body>
@@ -106,8 +169,23 @@
     <h1>Welcome to the DIG Network Extension</h1>
     <p class="lead">
       You can now open <strong>chia://</strong> links and browse DIG content right in your
-      browser. Here's where to go next.
+      browser — every page is verified on-chain and decrypted on your device.
     </p>
+
+    <!-- Try it: the one thing the extension is for. -->
+    <section class="tryit">
+      <h2>Try it</h2>
+      <ol>
+        <li>Type a <code>chia://</code> address straight into your browser's address bar, or</li>
+        <li>Open a <strong>new tab</strong> to browse the DIG Home app directory.</li>
+      </ol>
+      <div class="tryit-row">
+        <span id="exampleAddr" class="tryit-example" title="Click to copy">chia://urn:dig:chia:&lt;storeId&gt;/index.html</span>
+        <button id="copyExample" class="tryit-copy" title="Copy the example">Copy</button>
+      </div>
+      <a id="openDigHome" class="tryit-newtab" href="#">Open a new tab to browse →</a>
+    </section>
+
     <div class="actions">
       <a id="visitDigNetwork" class="btn btn-primary" href="#">Visit DIG Network</a>
       <a id="readTheDocs" class="btn btn-secondary" href="#">Read the docs</a>
