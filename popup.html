@@ -26,6 +26,17 @@
       <span class="verify-text" id="verifyText">Verified on Chia</span>
     </div>
 
+    <!-- dig-node prompt: shown only when no local dig-node is reachable. Soft, plain-language
+         nudge to install the universal dig-installer (the extension still works via the hosted
+         network without it). Populated by popup-wallet.js from dig-node-status.mjs. -->
+    <div class="dignode-banner" id="digNodeBanner" style="display:none">
+      <div class="dignode-copy">
+        <span class="dignode-title" id="digNodeTitle"></span>
+        <span class="dignode-body" id="digNodeBody"></span>
+      </div>
+      <a id="digNodeInstall" class="dignode-install" href="#" target="_blank" rel="noopener"></a>
+    </div>
+
     <!-- Wallet panel: balance + connect/disconnect (WalletConnect → Sage) + Get DIG. -->
     <div class="wallet-section">
       <div class="wallet-head">

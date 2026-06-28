@@ -16,10 +16,12 @@ const EXTENSION_FILES = [
   // Popup wallet panel + verified line + per-origin consent (module).
   'popup-wallet.js',
   'dig-urn.mjs',
-  // Shared dig-node host config (one parser/default for the server.host key) + the
-  // branded, plain-language chia:// error page (white theme, never leaks crypto strings).
+  // Shared dig-node host config (one parser/default for the server.host key + the
+  // dig.local→localhost resolution order) + the branded, plain-language chia:// error
+  // page (white theme, never leaks crypto strings) + the dig-node install prompt/copy.
   'server-config.mjs',
   'error-page.mjs',
+  'dig-node-status.mjs',
   // Ecosystem funnel: shared link constants + first-run welcome page.
   'links.mjs',
   'welcome.html',

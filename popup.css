@@ -366,6 +366,33 @@ body {
   color: var(--dig-purple);
 }
 
+/* ---- dig-node install prompt (soft, white theme) ---- */
+.dignode-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--dig-surface);
+  border: 1px solid var(--dig-border);
+  border-left: 3px solid var(--dig-purple);
+  border-radius: 12px;
+  padding: 14px;
+}
+.dignode-copy { display: flex; flex-direction: column; gap: 4px; }
+.dignode-title { font-size: 13px; font-weight: 700; letter-spacing: -.01em; color: var(--dig-text); }
+.dignode-body { font-size: 12px; line-height: 1.5; color: var(--dig-muted); }
+.dignode-install {
+  align-self: flex-start;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--dig-purple) 0%, var(--dig-magenta) 100%);
+  box-shadow: 0 4px 14px rgba(88, 0, 214, 0.30);
+}
+.dignode-install:hover { filter: brightness(1.05); }
+
 /* ---- Verified badge line ---- */
 .verify-line {
   display: flex;

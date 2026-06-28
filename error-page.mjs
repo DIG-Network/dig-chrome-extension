@@ -66,12 +66,20 @@ export function friendlyCause(rawMessage) {
  * @param {string} [opts.rawMessage] the internal failure message (used ONLY to pick a
  *                                    friendly cause — never shown verbatim)
  * @param {string} [opts.homeUrl]    recovery destination for "DIG Home" (defaults to dig.net)
+ * @param {{installLabel: string, installUrl: string}} [opts.installPrompt] when the failure was
+ *        caused by an unreachable LOCAL dig-node, the caller passes this so the page offers an
+ *        "Install dig-node" action linking to the universal installer. Omit it for generic
+ *        (non-dig-node) errors so the installer link never shows spuriously.
  * @returns {string} a complete `<!DOCTYPE html> … </html>` document
  */
-export function buildErrorPageHtml({ url, rawMessage, homeUrl = 'https://dig.net' } = {}) {
+export function buildErrorPageHtml({ url, rawMessage, homeUrl = 'https://dig.net', installPrompt } = {}) {
   const safeUrl = escapeHtml(url);
   const cause = escapeHtml(friendlyCause(rawMessage));
   const safeHome = escapeHtml(homeUrl);
+  const installBtn =
+    installPrompt && installPrompt.installUrl
+      ? `<a class="btn btn-primary" href="${escapeHtml(installPrompt.installUrl)}" target="_blank" rel="noopener">${escapeHtml(installPrompt.installLabel || 'Install dig-node')}</a>`
+      : '';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -127,7 +135,8 @@ export function buildErrorPageHtml({ url, rawMessage, homeUrl = 'https://dig.net
     <p class="lead">${cause}</p>
     ${safeUrl ? `<div class="addr">${safeUrl}</div>` : ''}
     <div class="actions">
-      <a class="btn btn-primary" href="javascript:location.reload()">Try again</a>
+      ${installBtn}
+      <a class="btn ${installBtn ? 'btn-secondary' : 'btn-primary'}" href="javascript:location.reload()">Try again</a>
       <a class="btn btn-secondary" href="${safeHome}">Go to DIG Home</a>
     </div>
   </div>
