@@ -19,7 +19,7 @@
 <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <main class="wrap">
+  <main class="wrap" data-testid="options-root">
     <header class="head">
       <img src="src/logo.png" alt="" class="logo">
       <div>
@@ -34,8 +34,8 @@
       <p class="desc">Verified chia:// content this extension has fetched is cached in memory for
         this session to speed up repeat loads. It clears when the browser restarts.</p>
       <div class="row">
-        <span class="stat" id="cacheStat">—</span>
-        <button id="clearCacheBtn" class="btn">Clear cache</button>
+        <span class="stat" id="cacheStat" data-testid="cache-stat">—</span>
+        <button id="clearCacheBtn" class="btn" data-testid="clear-cache">Clear cache</button>
       </div>
       <p class="note" id="cacheNote"></p>
     </section>
@@ -48,10 +48,10 @@
         leave it on the default to use the hosted RPC instead.</p>
       <label class="lbl" for="companionHost">dig-node host</label>
       <div class="row">
-        <input type="text" id="companionHost" class="input" placeholder="localhost:8080" autocomplete="off">
-        <button id="companionDefaultBtn" class="btn ghost" title="Restore default">↺</button>
+        <input type="text" id="companionHost" class="input" placeholder="localhost:8080" autocomplete="off" data-testid="dignode-host-input">
+        <button id="companionDefaultBtn" class="btn ghost" title="Restore default" data-testid="dignode-host-reset">↺</button>
       </div>
-      <p class="note" id="companionStatus">Checking dig-node…</p>
+      <p class="note" id="companionStatus" role="status" data-testid="dignode-status">Checking dig-node…</p>
     </section>
 
     <!-- Upstream RPC -->
@@ -61,8 +61,8 @@
         Verification and decryption always happen on this device.</p>
       <label class="lbl" for="rpcEndpoint">Endpoint</label>
       <div class="row">
-        <input type="text" id="rpcEndpoint" class="input" placeholder="https://rpc.dig.net/" autocomplete="off">
-        <button id="rpcDefaultBtn" class="btn ghost" title="Restore default">↺</button>
+        <input type="text" id="rpcEndpoint" class="input" placeholder="https://rpc.dig.net/" autocomplete="off" data-testid="rpc-endpoint-input">
+        <button id="rpcDefaultBtn" class="btn ghost" title="Restore default" data-testid="rpc-endpoint-reset">↺</button>
       </div>
     </section>
 
@@ -73,7 +73,7 @@
         WalletConnect / Reown project id to enable pairing.</p>
       <label class="lbl" for="projectId">WalletConnect project id</label>
       <div class="row">
-        <input type="text" id="projectId" class="input" placeholder="your-walletconnect-project-id" autocomplete="off">
+        <input type="text" id="projectId" class="input" placeholder="your-walletconnect-project-id" autocomplete="off" data-testid="wc-project-id-input">
       </div>
       <p class="note" id="walletNote"></p>
     </section>

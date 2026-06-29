@@ -46,16 +46,18 @@
   </style>
 </head>
 <body>
-  <div id="verifyBanner" role="status" aria-live="polite">
-    <span class="dot"></span><span id="verifyText"></span>
-    <span class="x" id="verifyClose" title="Dismiss">×</span>
+  <div id="verifyBanner" role="status" aria-live="polite" data-testid="verify-banner" data-verified="">
+    <span class="dot"></span><span id="verifyText" data-testid="verify-text"></span>
+    <span class="x" id="verifyClose" title="Dismiss" role="button" aria-label="Dismiss">×</span>
   </div>
-  <div class="loading" id="loading">
+  <div class="loading" id="loading" role="status">
     <span class="spinner" aria-hidden="true"></span>
     <span id="loadingText">Loading DIG content…</span>
   </div>
-  <!-- Mount point the branded error page renders into (replaces the loading state). -->
-  <div id="errorMount"></div>
+  <!-- Mount point the branded error page renders into (replaces the loading state).
+       On a failure the document carries data-dig-error=<DIG_ERR_* code> so an agent can read
+       the machine discriminant without scraping the (deliberately friendly) human copy. -->
+  <div id="errorMount" data-testid="error-mount"></div>
   <script type="module" src="dig-viewer.js"></script>
 </body>
 </html>
