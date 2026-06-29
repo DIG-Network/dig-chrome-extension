@@ -8,6 +8,15 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { bundle: bundleWalletConnect, OUT_FILE: WC_VENDOR_FILE } = require('./scripts/bundle-walletconnect');
 
+// CLI flags. `--json` (machine mode) emits ONE JSON object to stdout, routes all human prose
+// to stderr, and suppresses color — the ecosystem-wide CLI convention (AGENT_FRIENDLY.md).
+const JSON_MODE = process.argv.includes('--json');
+const MAKE_ZIP = process.argv.includes('--zip') || process.argv.includes('-z');
+
+// Documented, stable build exit codes (see README). 0 success / 2 validation failed (a
+// required source file is missing) / 3 a build step (vendoring / artifact write) failed.
+const EXIT = Object.freeze({ SUCCESS: 0, VALIDATION_FAILED: 2, BUILD_STEP_FAILED: 3 });
+
 const EXTENSION_FILES = [
   'manifest.json',
   'popup.html',
@@ -22,6 +31,11 @@ const EXTENSION_FILES = [
   'server-config.mjs',
   'error-page.mjs',
   'dig-node-status.mjs',
+  // Agent-friendly contracts: catalogued chia:// loader error codes (DIG_ERR_*, aligned with
+  // docs error-codes.json) + the versioned background MESSAGE catalogue (ACTIONS enum +
+  // getCapabilities self-description). Both imported at runtime by background.js.
+  'error-codes.mjs',
+  'messages.mjs',
   // Ecosystem funnel: shared link constants + first-run welcome page.
   'links.mjs',
   'welcome.html',
@@ -83,8 +97,14 @@ const colors = {
   blue: '\x1b[34m'
 };
 
+// Human prose goes to stderr under --json (so stdout carries ONLY the JSON object) and is
+// suppressed of color there; otherwise it goes to stdout colored as before.
 function log(message, color = 'reset') {
-  console.log(`${colors[color]}${message}${colors.reset}`);
+  if (JSON_MODE) {
+    process.stderr.write(message + '\n');
+  } else {
+    console.log(`${colors[color]}${message}${colors.reset}`);
+  }
 }
 
 function checkFile(filePath, required = true) {
@@ -326,6 +346,23 @@ function injectProjectId(projectId) {
   return true;
 }
 
+/**
+ * Generate dist/agent-surface.json — the machine-readable self-description of the extension
+ * contract (message protocol, actions, wallet methods, error codes, provider surface). Built
+ * from the same source modules the runtime imports so it can't drift. Returns the object.
+ */
+async function generateAgentSurface() {
+  log('\n🤖 Generating agent-surface.json...', 'blue');
+  // agent-surface.mjs is ESM; build.js is CommonJS → load it via dynamic import().
+  const { buildAgentSurface } = await import('./agent-surface.mjs');
+  const version = require('./package.json').version;
+  const surface = buildAgentSurface(version);
+  const dest = path.join(DIST_DIR, 'agent-surface.json');
+  fs.writeFileSync(dest, JSON.stringify(surface, null, 2));
+  log('✓ Wrote: agent-surface.json', 'green');
+  return surface;
+}
+
 /** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
 async function vendorWalletConnect() {
   log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
@@ -344,17 +381,18 @@ async function vendorWalletConnect() {
 
 async function main() {
   log('🚀 Building DIG Network Browser Extension...\n', 'blue');
-  
+
   // Validate
   const isValid = validateExtension();
   if (!isValid) {
     log('\n❌ Validation failed. Please fix the errors above.', 'red');
-    process.exit(1);
+    emitJsonResult({ ok: false, error: { code: 'VALIDATION_FAILED', message: 'A required source file is missing.' } });
+    process.exit(EXIT.VALIDATION_FAILED);
   }
-  
+
   // Create dist directory
   createDistDirectory();
-  
+
   // Copy files
   copyFiles();
 
@@ -365,9 +403,11 @@ async function main() {
   // never a committed source literal, never logged).
   injectProjectId(readProjectId());
 
+  // Emit the machine-readable agent-surface index (single source of truth: messages.mjs etc).
+  const surface = await generateAgentSurface();
+
   // Create zip (optional)
-  const createZipFile = process.argv.includes('--zip') || process.argv.includes('-z');
-  if (createZipFile) {
+  if (MAKE_ZIP) {
     createZip();
   }
 
@@ -378,10 +418,28 @@ async function main() {
   log('   3. Enable "Developer mode"');
   log('   4. Click "Load unpacked"');
   log(`   5. Select the "${path.basename(DIST_DIR)}" folder\n`, 'blue');
+
+  // Under --json, emit ONE structured result object to stdout (the convention agents parse).
+  emitJsonResult({
+    ok: true,
+    schemaVersion: 1,
+    name: surface.name,
+    version: surface.version,
+    distDir: path.basename(DIST_DIR),
+    zip: MAKE_ZIP,
+    artifacts: ['manifest.json', 'background.js', 'agent-surface.json'],
+    agentSurface: surface,
+  });
+}
+
+/** Print the single JSON result object to stdout when --json is set; otherwise a no-op. */
+function emitJsonResult(obj) {
+  if (JSON_MODE) process.stdout.write(JSON.stringify(obj) + '\n');
 }
 
 main().catch((e) => {
   log(`\n❌ Build failed: ${e.message}`, 'red');
-  process.exit(1);
+  emitJsonResult({ ok: false, error: { code: 'BUILD_STEP_FAILED', message: String(e && e.message || e) } });
+  process.exit(EXIT.BUILD_STEP_FAILED);
 });
 

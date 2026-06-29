@@ -3,6 +3,7 @@
   "version": "1.1.0",
   "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
+  "types": "messages.d.ts",
   "scripts": {
     "test": "node --test tests/",
     "build": "node build.js",

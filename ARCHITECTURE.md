@@ -39,6 +39,10 @@ pinned digest before any crypto runs — a mismatch fails closed.
 | `manifest.json` | MV3 manifest: module SW, content scripts, permissions, omnibox, web-accessible resources |
 | `background.js` | Module service worker — URN parse, RPC fetch, WASM verify + decrypt, caching |
 | `dig-urn.mjs` | **Shared** URN parser + base36 store-id helpers (single source of truth; ES module) |
+| `messages.mjs` | **Versioned MESSAGE catalogue** — the frozen `ACTIONS` enum + JSDoc-typed request/response DTOs for every `chrome.runtime` action, plus the `getCapabilities` self-description. Imported by `background.js` / `dig-viewer.js`. |
+| `error-codes.mjs` | **Catalogued chia:// loader error codes** (`DIG_ERR_*`) + `classifyError`/`makeError`. The four canonical codes mirror docs.dig.net `error-codes.json` `dig-loader`. |
+| `dig-provider-core.mjs` | Unit-tested core of the injected `window.chia` provider (version/info/methods + standard error codes). `dig-provider.js` inlines this surface. |
+| `agent-surface.mjs` → `dist/agent-surface.json` | Machine-readable self-description (actions + wallet methods + error codes + provider surface) generated at build time from the modules above. |
 | `dig_client.js` + `dig_client_bg.wasm` | SRI-pinned read-crypto WASM (`retrievalKey`, `deriveKey`, `verifyInclusion`, `decryptChunk`). **Do not edit** — it is the byte-identical cross-system crypto artifact (see `../../SYSTEM.md`). |
 | `content.js` | Content script — rewrites `chia://` resource references (img/script/link/srcset/etc.) on every page |
 | `middleware.js` | Content script — fallback-strategy ordering for resolving `chia://` requests |
@@ -73,12 +77,66 @@ the retrieval key (`SHA256(canonical_urn)`), and the crypto tags are **cross-sys
 contracts** defined in `../../SYSTEM.md`; the parser must keep producing the same
 canonical components as the other implementations.
 
+## Machine-readable contracts (agent-friendly surface)
+
+The extension exposes three stable, versioned, machine-consumable contracts so an agent (or
+the popup / viewer themselves) can drive it without reading 90 KB of `background.js`. All
+three are generated from single-source modules and surfaced as one JSON artifact at
+`dist/agent-surface.json` (a `web_accessible_resource`) — also printable with
+`node build.js --json`.
+
+### 1. The background MESSAGE protocol — `messages.mjs`
+
+Every `chrome.runtime` `message.action` the service worker handles is enumerated in the
+frozen `ACTIONS` enum, documented in `MESSAGE_CATALOGUE` (one entry per action with a
+`summary` + request/response field shapes), and versioned by `MESSAGE_PROTOCOL_VERSION`.
+Consumers import `ACTIONS.proxyRequest` instead of the raw string. The
+`getCapabilities` action returns the whole self-description
+(`{ version, messageProtocol, actions, walletMethods, stateChangingMethods, errorCodes, bridge }`).
+The page↔extension provider bridge is `BRIDGE.WALLET_REQUEST` / `BRIDGE.WALLET_RESPONSE`
+(window.postMessage). `messages.test.mjs` fails if a handler is added without a catalogue
+entry (drift guard).
+
+### 2. chia:// loader error codes — `error-codes.mjs`
+
+Every read-path failure carries a stable `DIG_ERR_*` code alongside the friendly human
+message — `proxyRequest` / `convertDigUrl` / `getDataUrl` return
+`{ success:false, code, message }`, and the viewer exposes the code on the document as
+`data-dig-error`. The **four canonical codes** are the cross-surface `dig-loader` subset and
+are kept byte-identical with docs.dig.net's `static/error-codes.json`:
+
+| Code | Meaning |
+|---|---|
+| `DIG_ERR_PROOF_MISMATCH` | Served content didn't verify against the on-chain root (tamper / wrong root). |
+| `DIG_ERR_DECRYPT_TAG` | AES-256-GCM-SIV tag failed — wrong key/salt, corrupt bytes, or a decoy. |
+| `DIG_ERR_NOT_FOUND` | Blind miss (decoy) — no resource at this retrieval key under this generation. |
+| `DIG_ERR_NETWORK` | Node/CDN unreachable or transport failed. |
+
+Two extension-local codes (not part of the shared subset): `DIG_ERR_INVALID_URN`,
+`DIG_ERR_DIGNODE_REQUIRED`. The friendly human copy is unchanged (the error page still never
+leaks crypto strings — see `error-page.mjs`); the code is purely the machine discriminant.
+
+### 3. The injected `window.chia` provider — `dig-provider.js` / `dig-provider-core.mjs`
+
+Besides `isDIG`/`request`/`connect`/`on`/`off`, the provider is self-describing:
+`window.chia.version`, `window.chia.info` (`{ isDIG, transport:'walletconnect',
+edition:'extension', providerVersion }`), and `window.chia.methods` (the `WALLET_METHODS`
+catalogue) — also discoverable at runtime via
+`request({ method:'chip0002_getMethods' })` (answered locally). Thrown errors carry the
+**standard wallet codes**: `4001` user-rejected, `4100` unauthorized, `4200` unsupported,
+`4900` disconnected (replacing the old ad-hoc `-1` / raw-HTTP-status sentinels). This surface
+is kept byte-aligned with the native DIG Browser's `window.chia` (see `../../SYSTEM.md`).
+
 ## Build
 
 ```bash
-npm run build        # node build.js  → dist/
-npm run build:zip    # same, plus a versioned .zip for distribution
+npm run build         # node build.js  → dist/ (+ dist/agent-surface.json)
+npm run build:zip     # same, plus a versioned .zip for distribution
+node build.js --json  # machine mode: ONE JSON result on stdout, prose on stderr
 ```
+
+Build exit codes: `0` success · `2` validation failed (a required source file is missing) ·
+`3` a build step failed (vendoring / artifact write).
 
 `build.js` fails if any required file is missing. Load the unpacked extension from
 `dist/` via `chrome://extensions` → Developer mode → Load unpacked.
