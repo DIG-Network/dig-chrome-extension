@@ -64,7 +64,8 @@ async function bundle() {
   }
 
   const kb = (Buffer.byteLength(out) / 1024).toFixed(0);
-  console.log(`✓ Vendored WalletConnect SignClient -> vendor/walletconnect-sign-client.js (${kb} KB, eval-free)`);
+  // Diagnostic prose → stderr, so a `build.js --json` stdout stays a single JSON object.
+  console.error(`✓ Vendored WalletConnect SignClient -> vendor/walletconnect-sign-client.js (${kb} KB, eval-free)`);
   return OUT_FILE;
 }
 

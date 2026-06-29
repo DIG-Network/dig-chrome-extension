@@ -12,7 +12,11 @@ Home, injects a `window.chia` wallet, and shows a verified badge.
   web-search fallback. Ported from the native browser's NTP.
 - **`window.chia` provider**: dapps get a CHIP-0002 `window.chia` on every page — the same
   surface the native browser injects. Extensions can't run an in-process wallet, so it's
-  brokered over **WalletConnect → Sage**, with per-origin connect consent.
+  brokered over **WalletConnect → Sage**, with per-origin connect consent. The provider is
+  **self-describing**: `window.chia.version`, `window.chia.info`
+  (`{ isDIG, transport, edition }`), `window.chia.methods`, and a local
+  `request({ method:'chip0002_getMethods' })` introspection call; thrown errors use the
+  standard wallet codes (`4001`/`4100`/`4200`/`4900`).
 - **Verified badge**: a `chia://` page that is Merkle-verified against its on-chain root
   shows a green "Verified" badge (toolbar + popup + an in-page banner); verification
   failure shows a distinct red state.
@@ -26,6 +30,26 @@ Home, injects a `window.chia` wallet, and shows a verified badge.
 > `chia://` scheme interception (the extension renders via an in-extension viewer instead),
 > a truly in-process wallet, browser-layer privacy, and a native `chrome://settings` DIG
 > section.
+
+## Machine-readable / agent surface
+
+The extension ships stable, versioned, machine-consumable contracts (see
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) → "Machine-readable contracts"):
+
+- **`dist/agent-surface.json`** (`web_accessible_resource`) — one self-describing index of
+  the message protocol, the `ACTIONS` list, the wallet method surface, the error-code
+  catalogue, and the provider surface. Generated from source at build time (can't drift).
+  Also printable with `node build.js --json`.
+- **Message catalogue** (`messages.mjs`): the frozen `ACTIONS` enum + typed request/response
+  DTOs; the `getCapabilities` action returns the full self-description.
+- **Error codes** (`error-codes.mjs`): every loader failure returns
+  `{ success:false, code, message }` with a stable `DIG_ERR_*` code; the four canonical codes
+  match docs.dig.net `error-codes.json` `dig-loader`. The viewer also exposes the code as
+  `document.documentElement[data-dig-error]`.
+- **`data-testid` + ARIA** on the popup, options, and viewer surfaces so an agent can drive
+  and assert on them deterministically.
+- **TypeScript declarations** (`*.d.ts`) for the shared `.mjs` modules (`package.json` →
+  `types`).
 
 ## Resolution features
 
