@@ -28,10 +28,26 @@ test('app directory lists the four ecosystem apps with correct hosts', () => {
   assert.equal(byHost['docs.dig.net'].url, 'https://docs.dig.net');
 });
 
-test('TibetSwap is marked as a DIG (token) destination', () => {
+test('TibetSwap is marked as a $DIG (token) destination', () => {
   const tibet = DIG_APPS.find((a) => a.host === 'v2.tibetswap.io');
   assert.equal(tibet.dig, true);
-  assert.equal(tibet.chip, 'Buy DIG');
+  // $DIG sigil on first reference (SYSTEM.md "Token: $DIG").
+  assert.equal(tibet.chip, 'Buy $DIG');
+  assert.match(tibet.blurb, /\$DIG/, 'TibetSwap blurb should carry the $DIG sigil');
+});
+
+test('DIG Home footer offers all three Get-$DIG venues in order', () => {
+  // The footer must surface the canonical three venues (mirrors hub GET_DIG_SOURCES),
+  // not TibetSwap alone.
+  const getDig = DIG_HOME_FOOTER_LINKS.filter((l) => /\$DIG/.test(l.label));
+  assert.deepEqual(
+    getDig.map((l) => l.url),
+    [
+      'https://v2.tibetswap.io/',
+      'https://dexie.space/offers/a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81/XCH',
+      'https://xch.9mm.pro/token/a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81',
+    ],
+  );
 });
 
 test('every app entry has a name, host, https url, glyph and blurb', () => {

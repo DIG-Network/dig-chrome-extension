@@ -21,9 +21,9 @@ Home, injects a `window.chia` wallet, and shows a verified badge.
   shows a green "Verified" badge (toolbar + popup + an in-page banner); verification
   failure shows a distinct red state.
 - **Wallet panel** (popup): balance, connect/disconnect (WalletConnect → Sage), and a
-  "Get DIG ↗" link.
-- **DIG settings** (options page): local cache usage/clear, the dig-companion host
-  (`localhost:8080`) with a "companion not running" affordance, the upstream RPC endpoint,
+  "Get $DIG ↗" link (all three venues — TibetSwap, dexie.space, xch.9mm.pro).
+- **DIG settings** (options page): local cache usage/clear, the dig-node host
+  (`localhost:8080`) with a "dig-node not running" affordance, the upstream RPC endpoint,
   and the WalletConnect project id.
 
 > Some native-browser features are **impossible in MV3** and stay browser-only: network-stack
