@@ -19,6 +19,11 @@ import { parseURN } from './dig-urn.mjs';
 
 // Branded, plain-language chia:// error page (white theme; never leaks crypto strings).
 import { buildErrorPageHtml } from './error-page.mjs';
+// Catalogued, stable chia:// loader error codes (DIG_ERR_*) + the coded-error envelope.
+// Aligned with docs.dig.net static/error-codes.json `dig-loader` surface.
+import { DIG_ERR, makeError } from './error-codes.mjs';
+// The versioned message catalogue: the frozen ACTIONS enum + getCapabilities self-description.
+import { ACTIONS, buildCapabilities } from './messages.mjs';
 // dig-node install prompt + "dig-node required" error mapping (universal installer link).
 import { digNodeInstallPrompt, isDigNodeRequiredError } from './dig-node-status.mjs';
 
@@ -704,16 +709,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const digUrl = message.url;
         if (!digUrl || !digUrl.startsWith('chia://')) {
-          sendResponse({ error: 'Invalid chia:// URL' });
+          sendResponse({ ...makeError('Invalid chia:// URL', DIG_ERR.DIG_ERR_INVALID_URN), error: 'Invalid chia:// URL' });
           return;
         }
-        
+
         // Use RPC to get data URL
         const rpcResult = await fetchContentViaRPC(digUrl);
         sendResponse({ url: rpcResult.dataUrl, dataUrl: rpcResult.dataUrl });
       } catch (error) {
         console.error('DIG Extension: Error converting URL via RPC:', error);
-        sendResponse({ error: error.message });
+        // Coded envelope: stable DIG_ERR_* code + the original human message.
+        sendResponse({ ...makeError(error), error: error.message });
       }
     })();
     return true; // Keep channel open for async response
@@ -831,7 +837,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       } catch (error) {
         console.error('DIG Extension: Error getting data URL from RPC:', error);
         try {
-          sendResponse({ error: error.message });
+          // Coded envelope: stable DIG_ERR_* code + the original human message.
+          sendResponse({ ...makeError(error), error: error.message });
         } catch (e) {
           console.error('DIG Extension: Failed to send error response (port closed):', e);
         }
@@ -947,10 +954,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // FALLBACK: Use content server for legacy/test URLs
     const digUrl = message.url;
     if (!digUrl || !digUrl.startsWith('chia://')) {
-      sendResponse({ error: 'Invalid chia:// URL' });
+      // Coded envelope: keep the friendly message for humans, add a stable machine code.
+      sendResponse({ ...makeError('Invalid chia:// URL', DIG_ERR.DIG_ERR_INVALID_URN), error: 'Invalid chia:// URL' });
       return false;
     }
-    
+
     // Resolve the endpoint ONCE so the cache key and the fetch agree on the same
     // value even if the user changes the setting mid-request (TOCTOU fix).
     const endpointP = getRpcEndpoint();
@@ -1024,15 +1032,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         } catch (rpcError) {
           console.error('DIG Extension: RPC failed for invalid URN:', rpcError);
-          sendResponse({
-            error: `Invalid URN format: ${rpcError.message}`,
-            success: false
-          });
+          // Coded envelope: classify the underlying failure; keep human prose in `error`.
+          const env = makeError(rpcError);
+          sendResponse({ ...env, error: `Invalid URN format: ${rpcError.message}` });
           return;
         }
       } catch (error) {
         console.error('DIG Extension: Proxy request failed:', error);
-        sendResponse({ error: error.message });
+        // Coded envelope: stable DIG_ERR_* code + the original human message.
+        sendResponse({ ...makeError(error), error: error.message });
       }
     })();
 
@@ -1122,6 +1130,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     })();
     return true;
+  }
+
+  // Self-description: machine-readable capability/version surface. Returns the message
+  // protocol version, the full ACTIONS list, the wallet method surface, and the error-code
+  // catalogue so an agent can introspect the whole extension contract with one call.
+  if (message.action === ACTIONS.getCapabilities) {
+    let version = 'unknown';
+    try { version = chrome.runtime.getManifest().version || 'unknown'; } catch { /* ignore */ }
+    sendResponse(buildCapabilities(version));
+    return false;
   }
 
   // Popup approves/revokes a per-origin wallet connection request.
