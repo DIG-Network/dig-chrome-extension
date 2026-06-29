@@ -5,7 +5,7 @@
  * to funnel the new user into the rest of the DIG Network. Destinations come from the
  * shared links.mjs so they can never drift from the popup's funnels.
  */
-import { DIG_NETWORK_URL, DOCS_URL, DIG_BROWSER_URL } from './links.mjs';
+import { DIG_NETWORK_URL, DOCS_URL, DIG_BROWSER_URL, DISCORD_URL } from './links.mjs';
 
 function wire(id, url) {
   const el = document.getElementById(id);
@@ -21,6 +21,7 @@ function wire(id, url) {
 wire('visitDigNetwork', DIG_NETWORK_URL);
 wire('readTheDocs', DOCS_URL);
 wire('getFullBrowser', DIG_BROWSER_URL);
+wire('joinDiscord', DISCORD_URL);
 
 // "Try it" affordances — make the one thing the extension is for concrete.
 // Copy the example chia:// address (click the box or the Copy button).

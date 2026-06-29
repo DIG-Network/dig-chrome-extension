@@ -17,9 +17,10 @@ const ECOSYSTEM_LINKS = {
   DIG_BROWSER_URL: 'https://github.com/DIG-Network/DIG_Browser/releases',
 };
 
-// Ordered Resources/footer links (mirrors RESOURCE_LINKS in links.mjs).
+// Ordered Resources/footer links (mirrors RESOURCE_LINKS in links.mjs — pinned by
+// tests/links.test.mjs so the labels/urls can never drift between the two surfaces).
 const RESOURCE_LINKS = [
-  { id: 'get-dig', label: 'Get DIG', url: ECOSYSTEM_LINKS.TIBETSWAP_URL },
+  { id: 'get-dig', label: 'Get $DIG', url: ECOSYSTEM_LINKS.TIBETSWAP_URL },
   { id: 'visit-dig-network', label: 'Visit DIG Network', url: ECOSYSTEM_LINKS.DIG_NETWORK_URL },
   { id: 'learn-the-protocol', label: 'Learn the protocol', url: ECOSYSTEM_LINKS.DOCS_URL },
 ];

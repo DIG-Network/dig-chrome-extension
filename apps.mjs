@@ -36,8 +36,8 @@ export const DIG_APPS = [
     host: 'v2.tibetswap.io',
     url: 'https://v2.tibetswap.io',
     glyph: '\u{1F4B0}', // 💰
-    blurb: 'Swap XCH ↔ tokens. Get DIG here to publish on the DIG Network.',
-    chip: 'Buy DIG',
+    blurb: 'Swap XCH ↔ tokens. Get $DIG here to publish on the DIG Network.',
+    chip: 'Buy $DIG',
     dig: true,
   },
   {
@@ -50,12 +50,25 @@ export const DIG_APPS = [
   },
 ];
 
-/** Footer links shown beneath DIG Home. */
+/**
+ * The DIG CAT asset id (tail hash) — pinned, mirrors hub `apps/web/lib/links.js` so the
+ * dexie/9mm Get-$DIG venue URLs are byte-identical to the hub's canonical sources.
+ */
+const DIG_ASSET_ID =
+  'a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81';
+
+/**
+ * Footer links shown beneath DIG Home. The Get-$DIG block surfaces the canonical THREE
+ * venues in order (TibetSwap, dexie.space, xch.9mm.pro — mirrors hub `GET_DIG_SOURCES`), so
+ * the new-tab footer offers the same acquisition paths as the rest of the ecosystem.
+ */
 export const DIG_HOME_FOOTER_LINKS = [
   { label: 'DIG Network', url: 'https://dig.net' },
   { label: 'DIGHUb', url: 'https://hub.dig.net' },
   { label: 'Docs', url: 'https://docs.dig.net' },
-  { label: 'Buy DIG on TibetSwap', url: 'https://v2.tibetswap.io' },
+  { label: 'Get $DIG · TibetSwap', url: 'https://v2.tibetswap.io/' },
+  { label: 'Get $DIG · dexie', url: `https://dexie.space/offers/${DIG_ASSET_ID}/XCH` },
+  { label: 'Get $DIG · 9mm.pro', url: `https://xch.9mm.pro/token/${DIG_ASSET_ID}` },
 ];
 
 /** Web-search fallback for non-DIG omnibox queries — DuckDuckGo (private by default). */

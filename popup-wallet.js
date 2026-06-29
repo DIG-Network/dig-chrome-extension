@@ -2,7 +2,7 @@
 //
 // Loaded as a module alongside popup.js (which keeps the existing RPC/host controls).
 // This module owns the parity features added to reach the native DIG Browser experience:
-//   - Wallet panel: balance (XCH + DIG) + connect/disconnect (WalletConnect → Sage) + Get DIG.
+//   - Wallet panel: balance (XCH + $DIG) + connect/disconnect (WalletConnect → Sage) + Get $DIG.
 //   - Verified badge line: reflects the active tab's chia:// Merkle-verification state.
 //   - Connection requests: approve/deny dapps' window.chia.connect() per origin.
 //   - DIG settings link: opens the options page (cache + dig-node host + RPC).

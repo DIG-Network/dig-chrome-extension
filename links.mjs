@@ -20,8 +20,37 @@ export const DIG_NETWORK_URL = 'https://dig.net';
 /** docs.dig.net — protocol + integration documentation. */
 export const DOCS_URL = 'https://docs.dig.net';
 
-/** TibetSwap — where users buy DIG (the token spent to deploy capsules). */
+/**
+ * The DIG CAT asset id (tail hash, plain hex). Pinned; never user-supplied. Mirrors hub
+ * `apps/web/lib/links.js` `DIG_ASSET_ID` so the dexie/9mm venue URLs are byte-identical
+ * to the hub's canonical Get-$DIG sources.
+ */
+export const DIG_ASSET_ID =
+  'a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81';
+
+/** 1. TibetSwap — the XCH↔$DIG AMM. The original (and still primary) acquisition path. */
 export const TIBETSWAP_URL = 'https://v2.tibetswap.io/';
+
+/** 2. dexie.space — the $DIG/XCH market on the dexie DEX (per-CAT swap route by tail hash). */
+export const DEXIE_DIG_URL = `https://dexie.space/offers/${DIG_ASSET_ID}/XCH`;
+
+/** 3. xch.9mm.pro — the 9mm.pro token page for the DIG CAT. */
+export const NINEMM_DIG_URL = `https://xch.9mm.pro/token/${DIG_ASSET_ID}`;
+
+/**
+ * The canonical ordered list of ways to get $DIG — TibetSwap, then dexie, then 9mm.pro.
+ * Mirrors hub `apps/web/lib/links.js` `GET_DIG_SOURCES` so every surface that funnels a user
+ * to acquire $DIG offers the SAME three venues in the SAME order. `name` is the short venue
+ * label; `hint` is a one-line description for menus.
+ */
+export const GET_DIG_SOURCES = [
+  { name: 'TibetSwap', url: TIBETSWAP_URL, hint: 'XCH ↔ DIG AMM' },
+  { name: 'dexie', url: DEXIE_DIG_URL, hint: 'DIG / XCH on the dexie DEX' },
+  { name: '9mm.pro', url: NINEMM_DIG_URL, hint: 'DIG token on 9mm.pro' },
+];
+
+/** The DIG Network community Discord — the canonical org invite (matches dig.net + docs + hub). */
+export const DISCORD_URL = 'https://discord.gg/dignetwork';
 
 /** Full DIG Browser releases — the native client we soft-upsell over the extension. */
 export const DIG_BROWSER_URL = 'https://github.com/DIG-Network/DIG_Browser/releases';
@@ -29,9 +58,11 @@ export const DIG_BROWSER_URL = 'https://github.com/DIG-Network/DIG_Browser/relea
 /**
  * Ordered list of resource links rendered in the popup's Resources/footer section.
  * `id` is used for stable hooks/tests; `external` marks links that open a new tab.
+ * "Get $DIG" leads to TibetSwap (the primary venue); the popup wallet panel also surfaces
+ * all three {@link GET_DIG_SOURCES}.
  */
 export const RESOURCE_LINKS = [
-  { id: 'get-dig', label: 'Get DIG', url: TIBETSWAP_URL, external: true },
+  { id: 'get-dig', label: 'Get $DIG', url: TIBETSWAP_URL, external: true },
   { id: 'visit-dig-network', label: 'Visit DIG Network', url: DIG_NETWORK_URL, external: true },
   { id: 'learn-the-protocol', label: 'Learn the protocol', url: DOCS_URL, external: true },
 ];
