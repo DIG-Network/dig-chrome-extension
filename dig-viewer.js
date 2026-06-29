@@ -1,6 +1,10 @@
 // DIG Viewer — fetches chia:// content via the background SW and renders it in an iframe.
 // Loaded as an ES module so it can import the shared branded error page.
 import { friendlyCause } from './error-page.mjs';
+// Stable action names (no raw string literals) + the catalogued loader error codes so the
+// viewer exposes a machine-readable failure discriminant alongside the friendly human copy.
+import { ACTIONS } from './messages.mjs';
+import { classifyError, DIG_ERR } from './error-codes.mjs';
 
 // One canonical verified label across popup / viewer / toolbar.
 const VERIFIED_LABEL = 'Verified on Chia';
@@ -21,6 +25,9 @@ function showVerifyBanner(verified) {
     banner.title = 'This content could not be proven against the on-chain root — do not trust it.';
     text.textContent = 'Verification failed';
   }
+  // Machine state as data-* (read by agents without scraping label/class).
+  banner.setAttribute('data-verified', verified ? 'true' : 'false');
+  document.documentElement.setAttribute('data-dig-verified', verified ? 'true' : 'false');
   document.body.classList.add('has-banner');
   if (close) {
     close.onclick = () => {
@@ -32,11 +39,16 @@ function showVerifyBanner(verified) {
 
 // Render the branded, white-theme error state in place of the loading indicator.
 // NEVER shows the raw failure message — friendlyCause() maps it to a safe, plain-language
-// cause (so internal strings like "decoy or wrong key" never reach the user).
-function showError(url, rawMessage) {
+// cause (so internal strings like "decoy or wrong key" never reach the user). The stable
+// machine code (DIG_ERR_*) is exposed as a document data-* attribute + on the mount so an
+// agent can branch on the failure kind without scraping the human copy.
+function showError(url, rawMessage, code) {
   const loading = document.getElementById('loading');
   const mount = document.getElementById('errorMount');
   if (loading) loading.style.display = 'none';
+  const errCode = code || classifyError(rawMessage) || DIG_ERR.DIG_ERR_NETWORK;
+  document.documentElement.setAttribute('data-dig-error', errCode);
+  if (mount) mount.setAttribute('data-dig-error', errCode);
   if (!mount) return;
   mount.innerHTML = '';
 
@@ -106,17 +118,19 @@ function init() {
     return;
   }
 
-  chrome.runtime.sendMessage({ action: 'proxyRequest', url: digUrl }, async (response) => {
+  chrome.runtime.sendMessage({ action: ACTIONS.proxyRequest, url: digUrl }, async (response) => {
     if (chrome.runtime.lastError) {
       showError(digUrl, chrome.runtime.lastError.message);
       return;
     }
     if (response && response.error) {
-      showError(digUrl, response.error);
+      // The coded envelope carries response.code (DIG_ERR_*); pass it through so the viewer
+      // surfaces the machine discriminant (data-dig-error) even though the human copy stays friendly.
+      showError(digUrl, response.error, response.code);
       return;
     }
     if (!response || !response.success || !response.data) {
-      showError(digUrl, 'Failed to fetch');
+      showError(digUrl, 'Failed to fetch', DIG_ERR.DIG_ERR_NETWORK);
       return;
     }
 
@@ -126,7 +140,7 @@ function init() {
     // Report verification to the background SW (sets the toolbar badge) + show the banner.
     try {
       chrome.runtime.sendMessage(
-        { action: 'reportVerification', verified, urn },
+        { action: ACTIONS.reportVerification, verified, urn },
         () => { void chrome.runtime.lastError; }
       );
     } catch (e) { /* non-fatal */ }

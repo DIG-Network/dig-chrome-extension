@@ -36,16 +36,22 @@ async function refreshVerifyLine() {
       line.className = 'verify-line verified';
       line.title = VERIFIED_TOOLTIP;
       text.textContent = VERIFIED_LABEL;
+      // Machine state as a data-* attribute (not just CSS class / label) so an agent can
+      // read the verdict deterministically.
+      line.setAttribute('data-verified', 'true');
     } else if (v && v.state === 'failed') {
       line.style.display = 'flex';
       line.className = 'verify-line failed';
       line.title = 'This content could not be proven against the on-chain root — do not trust it.';
       text.textContent = 'Verification failed';
+      line.setAttribute('data-verified', 'false');
     } else {
       line.style.display = 'none';
+      line.setAttribute('data-verified', '');
     }
   } catch {
     line.style.display = 'none';
+    line.setAttribute('data-verified', '');
   }
 }
 

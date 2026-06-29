@@ -7,23 +7,25 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container">
+  <div class="container" role="main" data-testid="popup-root">
     <div class="header">
       <div class="logo">
         <!-- Vector wordmark (matches docs.dig.net light-mode navbar). -->
         <img src="src/Wordmark-Black.svg" alt="DIG Network">
         <span class="alpha-badge" title="Pre-release — expect rough edges">alpha</span>
       </div>
-      <a id="visitDigNetworkLink" class="header-link" href="#" title="Visit DIG Network">dig.net ↗</a>
+      <a id="visitDigNetworkLink" class="header-link" href="#" title="Visit DIG Network" data-testid="visit-dig-network">dig.net ↗</a>
     </div>
 
     <!-- Verified badge line: reflects the active tab's chia:// verification state.
          One canonical label ("Verified on Chia") + one tooltip, matching the viewer
-         banner and the toolbar badge. -->
-    <div class="verify-line" id="verifyLine" style="display:none"
+         banner and the toolbar badge. The verdict is exposed as data-verified so an
+         agent can read it without scraping the visible label/CSS class. -->
+    <div class="verify-line" id="verifyLine" style="display:none" role="status"
+         data-testid="verify-line" data-verified=""
          title="Merkle-proven against the on-chain root and decrypted on this device">
       <span class="verify-dot" id="verifyDot"></span>
-      <span class="verify-text" id="verifyText">Verified on Chia</span>
+      <span class="verify-text" id="verifyText" data-testid="verify-text">Verified on Chia</span>
     </div>
 
     <!-- dig-node prompt: shown only when no local dig-node is reachable. Soft, plain-language
@@ -55,9 +57,9 @@
       </div>
       <div class="wallet-address" id="walletAddress" style="display:none"></div>
       <div class="wallet-actions">
-        <button id="walletConnectBtn" class="wallet-btn wallet-btn-primary">Connect wallet</button>
-        <button id="walletDisconnectBtn" class="wallet-btn" style="display:none">Disconnect</button>
-        <a id="getDigLink" class="wallet-btn wallet-btn-ghost" href="#" title="Get $DIG on TibetSwap">Get $DIG ↗</a>
+        <button id="walletConnectBtn" class="wallet-btn wallet-btn-primary" data-testid="wallet-connect">Connect wallet</button>
+        <button id="walletDisconnectBtn" class="wallet-btn" style="display:none" data-testid="wallet-disconnect">Disconnect</button>
+        <a id="getDigLink" class="wallet-btn wallet-btn-ghost" href="#" title="Get $DIG on TibetSwap" data-testid="get-dig">Get $DIG ↗</a>
       </div>
       <!-- Pairing affordance (URI / copy) appears here when connecting. -->
       <div class="wallet-pairing" id="walletPairing" style="display:none">
@@ -78,7 +80,7 @@
 
     <!-- Ecosystem funnel: drive users from the RPC client into DIGHUb. -->
     <div class="hub-section">
-      <button id="browseHubButton" class="hub-button" title="Browse DIGHUb">
+      <button id="browseHubButton" class="hub-button" title="Browse DIGHUb" data-testid="browse-hub">
         <span class="hub-button-title">Browse DIGHUb</span>
         <span class="hub-button-sub">Explore &amp; publish on hub.dig.net</span>
       </button>
@@ -94,8 +96,10 @@
           class="url-input"
           placeholder="chia://urn:dig:chia:storeID/path"
           autocomplete="off"
+          data-testid="chia-url-input"
+          aria-label="Open a chia:// address"
         />
-        <button id="goButton" class="go-button" title="Open">→</button>
+        <button id="goButton" class="go-button" title="Open" data-testid="chia-url-go" aria-label="Open address">→</button>
       </div>
     </div>
 
@@ -103,11 +107,11 @@
       <label class="toggle-label">
         <span class="toggle-text">chia:// resolution</span>
         <div class="toggle-container">
-          <input type="checkbox" id="extensionToggle" class="toggle-input">
+          <input type="checkbox" id="extensionToggle" class="toggle-input" data-testid="resolution-toggle" aria-label="Toggle chia:// resolution">
           <span class="toggle-slider"></span>
         </div>
       </label>
-      <p class="status-text" id="statusText">Inactive</p>
+      <p class="status-text" id="statusText" role="status" data-testid="status-text">Inactive</p>
     </div>
 
     <!-- Ecosystem funnel: Resources + soft upsell to the full native DIG Browser. -->
@@ -119,7 +123,7 @@
       <a id="getFullBrowserLink" class="upsell-link" href="#" title="Get the full DIG Browser">
         Get the full DIG Browser — native dig:// &amp; built-in wallet ↗
       </a>
-      <a id="openOptionsLink" class="upsell-link" href="#" title="DIG settings: cache, dig-node &amp; RPC">
+      <a id="openOptionsLink" class="upsell-link" href="#" title="DIG settings: cache, dig-node &amp; RPC" data-testid="open-options">
         DIG settings — cache, dig-node &amp; RPC →
       </a>
     </div>
