@@ -13,10 +13,40 @@
 // own per-call approval still gate key/sign methods, mirroring the browser's origin gate.
 //
 // Injected into the page's MAIN world at document_start by content.js.
+//
+// SELF-DESCRIPTION (agent-friendly): besides isDIG/request/connect/on/off this provider
+// exposes `version`, an `info` capability object, and a `methods` catalogue — and answers
+// `request({method:'chip0002_getMethods'})` locally — so a dapp/agent can feature-detect
+// the surface without out-of-band knowledge. The thrown-error `code` uses the STANDARD
+// wallet codes (4001 user-rejected, 4100 unauthorized, 4200 unsupported, 4900 disconnected)
+// instead of ad-hoc sentinels. This surface is mirrored from dig-provider-core.mjs (the
+// unit-tested source of truth) and kept byte-aligned with the native DIG Browser provider
+// (SYSTEM.md → keep the two providers in sync). This file inlines it because the MAIN world
+// cannot use ES `import`.
 (function () {
   if (window.chia) return; // never clobber an already-present provider
   var listeners = {};
   var pending = {}; // id -> { resolve, reject, timer }
+
+  // Standard wallet provider error codes (EIP-1193 / CHIP-0002 aligned). Mirrors
+  // PROVIDER_ERROR_CODES in dig-provider-core.mjs.
+  var ERR = { USER_REJECTED: 4001, UNAUTHORIZED: 4100, UNSUPPORTED_METHOD: 4200, DISCONNECTED: 4900 };
+
+  // The Sage-parity method catalogue (mirrors wallet-methods.mjs WALLET_METHODS). Inlined
+  // so window.chia.methods + chip0002_getMethods can answer locally with zero round-trips.
+  var WALLET_METHODS = [
+    'chip0002_chainId', 'chip0002_connect', 'chip0002_getPublicKeys', 'chip0002_signMessage',
+    'chip0002_signCoinSpends', 'chip0002_getAssetBalance', 'chip0002_getAssetCoins',
+    'chia_getAddress', 'chia_signMessageByAddress', 'chia_send', 'chia_getTransactions',
+    'chia_getNfts', 'chia_transferNft', 'chia_mintNft', 'chia_bulkMintNfts', 'chia_getDids',
+    'chia_createDidWallet', 'chia_transferDid', 'chia_getOfferSummary', 'chia_createOffer',
+    'chia_takeOffer', 'chia_cancelOffer',
+  ];
+
+  // Extension version, read from the manifest at injection time (best-effort; the page world
+  // has chrome.runtime.getManifest on Chromium MV3).
+  var EXT_VERSION = 'unknown';
+  try { if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest) EXT_VERSION = chrome.runtime.getManifest().version || 'unknown'; } catch (e) { /* page world */ }
 
   function emit(ev, data) {
     (listeners[ev] || []).slice().forEach(function (fn) {
@@ -32,7 +62,7 @@
       var timer = setTimeout(function () {
         delete pending[id];
         var e = new Error('DIG wallet request timed out');
-        e.code = -1;
+        e.code = ERR.DISCONNECTED; // 4900 — no reply from the wallet bridge
         reject(e);
       }, timeoutMs || 120000);
       pending[id] = { resolve: resolve, reject: reject, timer: timer };
@@ -54,29 +84,43 @@
     p.resolve({ status: d.status, body: d.body, error: d.error });
   });
 
-  // One CHIP-0002 RPC. Maps the {status, body} envelope to the resolve/reject + error
-  // shapes the dapp ecosystem expects (mirrors the native provider + the WC→Sage path).
-  async function rpc(method, params) {
-    var env = await bridgeCall(method, params);
+  // Map a broker {status, body} envelope (or its absence) to an Error carrying a STANDARD
+  // wallet code. Mirrors mapEnvelopeToError() in dig-provider-core.mjs.
+  function mapEnvelopeToError(env) {
     if (!env) {
       var ne = new Error('DIG wallet is not reachable');
-      ne.code = -1;
-      throw ne;
+      ne.code = ERR.DISCONNECTED;
+      return ne;
     }
     var status = env.status || 0;
     var body = env.body || {};
+    var msg = (body && body.error) || env.error || ('DIG wallet error ' + status);
     if (status === 202) {
       var pe = new Error('Connection pending approval');
-      pe.code = 4001;
+      pe.code = ERR.USER_REJECTED; // 4001
       pe.pending = true;
-      throw pe;
+      pe.status = status;
+      return pe;
     }
-    if (status < 200 || status >= 300) {
-      var fe = new Error((body && body.error) || env.error || ('DIG wallet error ' + status));
-      fe.code = status || -1;
-      throw fe;
+    var code;
+    if (status === 401 || status === 403) code = ERR.UNAUTHORIZED;       // 4100
+    else if (status === 404) code = ERR.UNSUPPORTED_METHOD;             // 4200
+    else if (status >= 500 || status === 0) code = ERR.DISCONNECTED;    // 4900
+    else code = ERR.USER_REJECTED;                                      // 4001
+    var fe = new Error(msg);
+    fe.code = code;
+    fe.status = status;
+    return fe;
+  }
+
+  // One CHIP-0002 RPC. Resolves body.data on 2xx; throws a standard-coded error otherwise.
+  async function rpc(method, params) {
+    var env = await bridgeCall(method, params);
+    var status = env && env.status || 0;
+    if (!env || status < 200 || status >= 300) {
+      throw mapEnvelopeToError(env);
     }
-    return body.data;
+    return (env.body || {}).data;
   }
 
   // connect() blocks until the user approves this origin (or rejects / times out).
@@ -101,11 +145,19 @@
   window.chia = {
     isDIG: true,
     isConnected: false,
+    // Self-describing surface (agent-friendly): version, capability info, method catalogue.
+    version: EXT_VERSION,
+    info: { isDIG: true, transport: 'walletconnect', edition: 'extension', providerVersion: 1 },
+    methods: WALLET_METHODS.slice(),
     // CHIP-0002 entrypoint. Accepts bare ("getPublicKeys"), chip0002_-namespaced, and
-    // chia_-namespaced method names (normalised on the broker side too).
+    // chia_-namespaced method names (normalised on the broker side too). Answers the
+    // method-discovery call locally so an agent can introspect before connecting.
     request: function (args) {
       var method = args && args.method;
       var params = args && args.params;
+      if (method === 'chip0002_getMethods' || method === 'chia_getMethods') {
+        return Promise.resolve(WALLET_METHODS.slice());
+      }
       if (method === 'connect' || method === 'chip0002_connect') {
         return connect(params && params.eager);
       }
