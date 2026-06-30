@@ -36,6 +36,11 @@ const EXTENSION_FILES = [
   // getCapabilities self-description). Both imported at runtime by background.js.
   'error-codes.mjs',
   'messages.mjs',
+  // DIG Control Panel (dig://control parity) decision logic + the DIG Shields per-resource
+  // proof ledger (#134, byte-mirror of the browser's dig/shields/dig_ledger.mjs). Imported by
+  // the popup (popup-wallet.js), the background SW, and the dig-viewer.
+  'dig-control.mjs',
+  'dig-ledger.mjs',
   // Ecosystem funnel: shared link constants + first-run welcome page.
   'links.mjs',
   'welcome.html',

@@ -21,9 +21,26 @@ test('popup.html exposes data-testid on every primary control', () => {
     'popup-root', 'verify-line', 'wallet-connect', 'wallet-disconnect', 'get-dig',
     'chia-url-input', 'chia-url-go', 'resolution-toggle', 'status-text',
     'browse-hub', 'open-options',
+    // The three toolbar actions (browser parity) + their panels.
+    'dig-toolbar', 'toolbar-wallet', 'toolbar-shield', 'toolbar-control',
+    'wallet-panel', 'shield-panel', 'control-panel',
   ]) {
     assert.match(html, new RegExp(`data-testid="${id}"`), `popup.html missing data-testid="${id}"`);
   }
+});
+
+test('popup.html toolbar exposes the three actions with aria-pressed + panel targets', () => {
+  const html = read('popup.html');
+  // The toolbar is an ARIA toolbar grouping the three actions.
+  assert.match(html, /role="toolbar"/, 'toolbar should be an ARIA toolbar');
+  for (const panel of ['wallet', 'shield', 'control']) {
+    assert.match(html, new RegExp(`data-panel="${panel}"`), `toolbar missing a button targeting the ${panel} panel`);
+  }
+  // The Shield + Control buttons carry a machine-readable status dot (agent-readable verdict).
+  assert.match(html, /id="shieldDot"[^>]*data-verified=/, 'shield dot should carry data-verified');
+  assert.match(html, /id="controlDot"[^>]*data-node=/, 'control dot should carry data-node');
+  // The control panel reports its mode (manage|install) as a data-* attribute.
+  assert.match(html, /id="controlPanel"[^>]*data-mode=/, 'control panel should carry data-mode');
 });
 
 test('popup.html keeps the white product theme + ARIA on the verify status line', () => {

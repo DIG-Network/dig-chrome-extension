@@ -5,6 +5,9 @@ import { friendlyCause } from './error-page.mjs';
 // viewer exposes a machine-readable failure discriminant alongside the friendly human copy.
 import { ACTIONS } from './messages.mjs';
 import { classifyError, DIG_ERR } from './error-codes.mjs';
+// Shared URN parser — derive the capsule (storeId:rootHash) + resource path so the per-resource
+// proof verdict can be recorded into the DIG Shields ledger (#134).
+import { parseURN } from './dig-urn.mjs';
 
 // One canonical verified label across popup / viewer / toolbar.
 const VERIFIED_LABEL = 'Verified on Chia';
@@ -144,6 +147,30 @@ function init() {
         () => { void chrome.runtime.lastError; }
       );
     } catch (e) { /* non-fatal */ }
+
+    // Record this resource's inclusion-proof verdict into the active tab's DIG Shields proof
+    // ledger (#134) so the popup's Shield action can list the per-resource proofs. The verdict
+    // is the loader's (response.verified) — the ledger never re-verifies. Best-effort.
+    try {
+      const parsed = parseURN(String(urn).replace(/^chia:\/\//, ''));
+      if (parsed) {
+        chrome.runtime.sendMessage(
+          {
+            action: ACTIONS.recordLedgerEntry,
+            storeId: parsed.storeId,
+            rootHash: parsed.roothash || 'latest',
+            resourcePath: parsed.resourceKey || 'index.html',
+            inclusionProofPassed: verified,
+            errorCode: verified ? '' : DIG_ERR.DIG_ERR_PROOF_MISMATCH,
+            // The extension read path fetches inclusion only (dig.getContent) — no execution
+            // proof is available, so the ledger honestly records none.
+            executionProofStatus: '',
+          },
+          () => { void chrome.runtime.lastError; }
+        );
+      }
+    } catch (e) { /* non-fatal */ }
+
     showVerifyBanner(verified);
 
     if (loading) loading.style.display = 'none';

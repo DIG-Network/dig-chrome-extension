@@ -54,6 +54,11 @@ export const ACTIONS = Object.freeze({
   getCacheStats: 'getCacheStats',
   clearCache: 'clearCache',
   getDigNodeStatus: 'getDigNodeStatus',
+  // ── DIG Shields (per-resource proof ledger) — mirrors the browser dig://shields #134 ──
+  recordLedgerEntry: 'recordLedgerEntry',
+  getShieldLedger: 'getShieldLedger',
+  // ── DIG Control Panel (node management) — mirrors the browser dig://control ──
+  getControlStatus: 'getControlStatus',
   // ── diagnostics ──
   reportError: 'reportError',
   reportSuccess: 'reportSuccess',
@@ -176,6 +181,21 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Probe whether a local dig-node is reachable; report the chosen base.',
     request: '{ action }',
     response: '{ reachable:boolean, base:string|null }',
+  },
+  [ACTIONS.recordLedgerEntry]: {
+    summary: "Viewer records one resource's inclusion-proof verdict into the active tab's proof ledger (DIG Shields #134).",
+    request: '{ action, storeId:string, rootHash:string, resourcePath:string, inclusionProofPassed:boolean, errorCode?:string, executionProofStatus?:string }',
+    response: '{ success:boolean }',
+  },
+  [ACTIONS.getShieldLedger]: {
+    summary: "DIG Shields: the active tab's capsule + grouped per-resource proof ledger (verified/failed) + aggregate verdict.",
+    request: '{ action }',
+    response: "{ capsule:{storeId,rootHash}|null, verification:{state}|null, group:{passed,failed,passedCount,failedCount,total,allPassed,empty}, entries:object[] }",
+  },
+  [ACTIONS.getControlStatus]: {
+    summary: 'DIG Control Panel: detect a local dig-node (manage vs install) + best-effort control.status; honest hosted-RPC fallback. Mirrors dig://control.',
+    request: '{ action }',
+    response: "{ mode:'manage'|'install', localNode:boolean, base:string|null, controlEndpoint:string|null, readFallback:string, status:object|null, authRequired:boolean, controlMethods:string[] }",
   },
   [ACTIONS.reportError]: {
     summary: 'Record a resolution-strategy error (kept as a rolling diagnostics buffer).',

@@ -34,6 +34,19 @@ import {
   resolveDigNode,
 } from './server-config.mjs';
 
+// DIG Control Panel decision logic (the dig://control parity surface): detect a local dig-node
+// → manage vs install, the catalogued control.* method names, and the honest hosted-RPC
+// fallback. Byte-consistent with the dig-node control RPC contract (dig-companion control.rs).
+import {
+  decideControlView,
+  CONTROL_METHODS,
+  isUnauthorizedControlResult,
+} from './dig-control.mjs';
+
+// DIG Shields per-resource proof LEDGER (#134, mirrored from the browser): the per-tab/
+// per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
+import { LedgerStore, groupLedger } from './dig-ledger.mjs';
+
 // Wallet broker: per-origin consent + CHIP-0002 routing for the injected window.chia
 // provider, backed by WalletConnect→Sage. The broker core (consent gate, method
 // validation, envelope shaping) is in wallet-broker.mjs; the live WC session runs in the
@@ -254,6 +267,22 @@ async function clearWalletAttentionIfEmpty() {
 // closest MV3 surface.)
 const tabVerification = new Map(); // tabId -> { state: 'verified'|'failed', urn }
 
+// Per-tab DIG Shields proof LEDGER (#134): tabId -> LedgerStore (per-capsule accumulator of
+// per-resource inclusion-proof verdicts). The dig-viewer records each resolved resource's
+// verdict (via the recordLedgerEntry action) so the popup's Shield action can list the proofs.
+// Bounded per capsule by LedgerStore; cleared when the tab navigates away / is closed.
+const tabLedger = new Map(); // tabId -> LedgerStore
+
+/** Get (or lazily create) the proof ledger for a tab. */
+function ledgerForTab(tabId) {
+  let l = tabLedger.get(tabId);
+  if (!l) {
+    l = new LedgerStore();
+    tabLedger.set(tabId, l);
+  }
+  return l;
+}
+
 const BADGE = {
   verified: { text: '✓', color: '#1a8f5a', title: 'DIG: content verified on-chain' },
   failed:   { text: '!', color: '#d92d20', title: 'DIG: verification FAILED — content not trusted' },
@@ -281,6 +310,7 @@ function setVerifiedBadge(tabId, state, urn) {
 function clearVerifiedBadge(tabId) {
   if (typeof tabId !== 'number') return;
   tabVerification.delete(tabId);
+  tabLedger.delete(tabId);
   try {
     chrome.action.setBadgeText({ tabId, text: '' });
     chrome.action.setTitle({ tabId, title: 'DIG Network Extension' });
@@ -289,7 +319,7 @@ function clearVerifiedBadge(tabId) {
 
 // Clear the badge when a tab navigates away from DIG content or is closed.
 if (chrome.tabs && chrome.tabs.onRemoved) {
-  chrome.tabs.onRemoved.addListener((tabId) => tabVerification.delete(tabId));
+  chrome.tabs.onRemoved.addListener((tabId) => { tabVerification.delete(tabId); tabLedger.delete(tabId); });
 }
 if (chrome.webNavigation && chrome.webNavigation.onCommitted) {
   chrome.webNavigation.onCommitted.addListener((details) => {
@@ -367,6 +397,39 @@ async function rpcCall(endpoint, method, params) {
   const j = await res.json();
   if (j && j.error) throw new Error('dig RPC ' + method + ': ' + (j.error.message || 'error'));
   return j ? j.result : null;
+}
+
+/**
+ * POST a CONTROL/admin method (control.*) to a local dig-node's JSON-RPC root and return the
+ * FULL parsed JSON-RPC envelope ({ result } | { error: { code, message, data } }) — unlike
+ * rpcCall which unwraps to result and throws on error. The Control Panel needs the raw error
+ * code to distinguish the expected UNAUTHORIZED (-32020) reply (node present but the mutating
+ * control surface is token-gated, and the extension can't read the on-disk control token) from
+ * a real failure.
+ *
+ * The dig-node reflects the chrome-extension:// CORS origin and allows the control-token header
+ * (dig-companion/src/server.rs), so the request reaches the loopback node. We do not (and
+ * cannot) populate the X-Dig-Control-Token header — an MV3 extension has no filesystem access —
+ * so a node will answer mutating control.* with UNAUTHORIZED, which the caller handles honestly.
+ */
+async function controlRpc(endpoint, method, params) {
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: params || {} }),
+    });
+  } catch (e) {
+    // Unreachable loopback node → no envelope; caller treats this as "no status".
+    return null;
+  }
+  if (!res.ok) return { error: { code: -32000, message: 'control RPC HTTP error ' + res.status } };
+  try {
+    return await res.json();
+  } catch {
+    return { error: { code: -32700, message: 'control RPC returned non-JSON' } };
+  }
 }
 
 // RPC back-end caps each window at 3 MiB; loop until `complete`.
@@ -1127,6 +1190,111 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ reachable: !!base, base: base || null });
       } catch {
         sendResponse({ reachable: false, base: null });
+      }
+    })();
+    return true;
+  }
+
+  // DIG Shields (#134): the dig-viewer records each resolved resource's inclusion-proof
+  // verdict into the active tab's proof ledger so the popup's Shield action can list the
+  // per-resource proofs. The verdict is the loader's — this never re-verifies.
+  if (message.action === ACTIONS.recordLedgerEntry) {
+    const tabId = sender && sender.tab ? sender.tab.id : null;
+    try {
+      if (typeof tabId === 'number') {
+        ledgerForTab(tabId).record({
+          storeId: message.storeId,
+          rootHash: message.rootHash,
+          resourcePath: message.resourcePath,
+          inclusionProofPassed: message.inclusionProofPassed === true,
+          errorCode: message.errorCode,
+          executionProofStatus: message.executionProofStatus,
+        });
+      }
+      sendResponse({ success: true });
+    } catch (e) {
+      sendResponse({ success: false, error: e && e.message });
+    }
+    return false;
+  }
+
+  // DIG Shields surface (popup Shield action): the active tab's capsule (storeId:rootHash),
+  // its aggregate verification verdict, and the grouped per-resource proof ledger
+  // (verified/failed). Mirrors the native browser's dig://shields per-capsule proof list.
+  if (message.action === ACTIONS.getShieldLedger) {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabId = tabs[0] && tabs[0].id;
+        const verification = (typeof tabId === 'number' && tabVerification.get(tabId)) || null;
+        const ledger = (typeof tabId === 'number' && tabLedger.get(tabId)) || null;
+        // Derive the active capsule from the recorded entries (the loader keyed them by
+        // storeId:rootHash); fall back to parsing the verified URN if no entries yet.
+        let capsule = null;
+        let entries = [];
+        if (ledger) {
+          // Most-recent capsule = the one with the most-recently recorded entry.
+          for (const [, perResource] of ledger._byCapsule) {
+            for (const e of perResource.values()) {
+              if (e.storeId) { capsule = { storeId: e.storeId, rootHash: e.rootHash || 'latest' }; }
+            }
+          }
+          if (capsule) entries = ledger.entriesFor(capsule.storeId, capsule.rootHash);
+        }
+        if (!capsule && verification && verification.urn) {
+          const p = parseURN(String(verification.urn).replace(/^chia:\/\//, ''));
+          if (p) capsule = { storeId: p.storeId, rootHash: p.roothash || 'latest' };
+        }
+        const group = groupLedger(entries);
+        sendResponse({ capsule, verification, group, entries });
+      } catch (e) {
+        sendResponse({ capsule: null, verification: null, group: groupLedger([]), entries: [] });
+      }
+    })();
+    return true;
+  }
+
+  // DIG Control Panel (popup Control Panel action): detect a local dig-node and decide
+  // manage-vs-install (mirrors the browser's dig://control), then best-effort read
+  // control.status from the node. The mutating control.* surface is gated by a local control
+  // token the extension cannot read (no filesystem access), so a node that answers
+  // UNAUTHORIZED is reported as present-but-token-gated (authRequired) — the UI then deep-links
+  // full management to the native DIG Browser. The hosted RPC fallback is always reported so
+  // the UI can state honestly that reads keep working without a node.
+  if (message.action === ACTIONS.getControlStatus) {
+    (async () => {
+      try {
+        const hostedFallback = await getHostedRpcEndpoint();
+        const view = await decideControlView({ resolveNode: resolveLocalDigNode, hostedFallback });
+        let status = null;
+        let authRequired = false;
+        if (view.mode === 'manage' && view.controlEndpoint) {
+          // Try control.status. An open node answers it; a token-gated node answers
+          // UNAUTHORIZED (-32020) — the expected outcome for the token-less extension.
+          const resp = await controlRpc(view.controlEndpoint, 'control.status', {}).catch(() => null);
+          if (resp && resp.result) {
+            status = resp.result;
+          } else if (isUnauthorizedControlResult(resp)) {
+            authRequired = true; // node is present, but control.* needs the local token
+          }
+        }
+        sendResponse({
+          mode: view.mode,
+          localNode: view.localNode,
+          base: view.base,
+          controlEndpoint: view.controlEndpoint,
+          readFallback: view.readFallback,
+          status,
+          authRequired,
+          controlMethods: [...CONTROL_METHODS],
+        });
+      } catch (e) {
+        // Honest failure: treat as no node (install mode), reads still fall back to hosted.
+        sendResponse({
+          mode: 'install', localNode: false, base: null, controlEndpoint: null,
+          readFallback: DEFAULT_RPC_ENDPOINT, status: null, authRequired: false,
+          controlMethods: [...CONTROL_METHODS],
+        });
       }
     })();
     return true;
