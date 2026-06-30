@@ -17,15 +17,65 @@
       <a id="visitDigNetworkLink" class="header-link" href="#" title="Visit DIG Network" data-testid="visit-dig-network">dig.net ↗</a>
     </div>
 
-    <!-- Verified badge line: reflects the active tab's chia:// verification state.
-         One canonical label ("Verified on Chia") + one tooltip, matching the viewer
-         banner and the toolbar badge. The verdict is exposed as data-verified so an
-         agent can read it without scraping the visible label/CSS class. -->
-    <div class="verify-line" id="verifyLine" style="display:none" role="status"
-         data-testid="verify-line" data-verified=""
-         title="Merkle-proven against the on-chain root and decrypted on this device">
-      <span class="verify-dot" id="verifyDot"></span>
-      <span class="verify-text" id="verifyText" data-testid="verify-text">Verified on Chia</span>
+    <!-- Toolbar actions — Wallet · Shield · Control Panel — mirroring the native DIG Browser's
+         toolbar (browser/extension feature parity). Each button toggles the matching panel
+         below; the active button is reflected via aria-pressed + data-active for agents. -->
+    <div class="toolbar" role="toolbar" aria-label="DIG actions" data-testid="dig-toolbar">
+      <button id="toolbarWallet" class="toolbar-btn" type="button"
+              data-testid="toolbar-wallet" data-panel="wallet" aria-pressed="false"
+              title="DIG Wallet — balance, connect (WalletConnect → Sage)">
+        <span class="toolbar-icon" aria-hidden="true">&#128091;</span>
+        <span class="toolbar-text">Wallet</span>
+      </button>
+      <button id="toolbarShield" class="toolbar-btn" type="button"
+              data-testid="toolbar-shield" data-panel="shield" aria-pressed="false"
+              title="DIG Shields — verification &amp; proof status for this page">
+        <span class="toolbar-icon" aria-hidden="true">&#128737;</span>
+        <span class="toolbar-text">Shield</span>
+        <!-- Verdict dot for the active tab; color set by popup-wallet.js. -->
+        <span class="toolbar-dot" id="shieldDot" data-testid="shield-dot" data-verified=""></span>
+      </button>
+      <button id="toolbarControl" class="toolbar-btn" type="button"
+              data-testid="toolbar-control" data-panel="control" aria-pressed="false"
+              title="Control Panel — your dig-node">
+        <span class="toolbar-icon" aria-hidden="true">&#9881;</span>
+        <span class="toolbar-text">Control Panel</span>
+        <!-- Node-present dot; color set by popup-wallet.js. -->
+        <span class="toolbar-dot" id="controlDot" data-testid="control-dot" data-node=""></span>
+      </button>
+    </div>
+
+    <!-- DIG Shields panel — the active tab's chia:// verification + per-resource proof ledger
+         (#134), mirroring the native browser's dig://shields. Hidden until the Shield action is
+         opened. -->
+    <div class="panel shield-panel" id="shieldPanel" style="display:none" role="region"
+         aria-label="DIG Shields" data-testid="shield-panel">
+      <div class="verify-line" id="verifyLine" role="status"
+           data-testid="verify-line" data-verified=""
+           title="Merkle-proven against the on-chain root and decrypted on this device">
+        <span class="verify-dot" id="verifyDot"></span>
+        <span class="verify-text" id="verifyText" data-testid="verify-text">Open a chia:// page to see its proof status</span>
+      </div>
+      <!-- Capsule disclosure (storeId:rootHash) for the active tab. -->
+      <div class="shield-capsule" id="shieldCapsule" style="display:none" data-testid="shield-capsule">
+        <span class="shield-capsule-label">Capsule</span>
+        <code class="shield-capsule-value" id="shieldCapsuleValue"></code>
+      </div>
+      <!-- Per-resource proof ledger summary: Verified (N) / Failed (M). -->
+      <div class="shield-ledger" id="shieldLedger" data-testid="shield-ledger">
+        <div class="shield-ledger-summary" id="shieldLedgerSummary"></div>
+        <ul class="shield-ledger-list" id="shieldLedgerList"></ul>
+      </div>
+      <p class="shield-note" id="shieldNote"></p>
+    </div>
+
+    <!-- DIG Control Panel — your dig-node. Mirrors the native browser's dig://control: when a
+         local dig-node is reachable it shows node status (management); otherwise a landing page
+         encouraging install of the dig-node (reads keep working via the hosted network). Hidden
+         until the Control Panel action is opened; contents filled by popup-wallet.js. -->
+    <div class="panel control-panel" id="controlPanel" style="display:none" role="region"
+         aria-label="DIG Control Panel" data-testid="control-panel" data-mode="">
+      <div class="control-body" id="controlBody"></div>
     </div>
 
     <!-- dig-node prompt: shown only when no local dig-node is reachable. Soft, plain-language
@@ -39,8 +89,9 @@
       <a id="digNodeInstall" class="dignode-install" href="#" target="_blank" rel="noopener"></a>
     </div>
 
-    <!-- Wallet panel: balance + connect/disconnect (WalletConnect → Sage) + Get DIG. -->
-    <div class="wallet-section">
+    <!-- Wallet panel: balance + connect/disconnect (WalletConnect → Sage) + Get DIG.
+         Toggled by the Wallet toolbar action (open by default on popup load). -->
+    <div class="wallet-section panel" id="walletPanel" role="region" aria-label="DIG Wallet" data-testid="wallet-panel">
       <div class="wallet-head">
         <span class="wallet-title">Wallet</span>
         <span class="wallet-state" id="walletState">Not connected</span>

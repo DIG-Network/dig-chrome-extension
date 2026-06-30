@@ -41,6 +41,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'getDataUrl', 'updateServerConfig', 'reportError', 'reportSuccess', 'navigate',
     'preloadResources', 'proxyRequest', 'walletRpc', 'reportVerification', 'getVerification',
     'getCacheStats', 'clearCache', 'getDigNodeStatus', 'walletConsent',
+    // Shield action (per-resource proof ledger) + Control Panel (node management view):
+    'recordLedgerEntry', 'getShieldLedger', 'getControlStatus',
     'addSearchEngine', 'getDefaultSearchEngine', 'isDigSearchDefault', 'updateSearchConfig',
     // background → content broadcast:
     'updateRpcHost',

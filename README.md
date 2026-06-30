@@ -20,8 +20,23 @@ Home, injects a `window.chia` wallet, and shows a verified badge.
 - **Verified badge**: a `chia://` page that is Merkle-verified against its on-chain root
   shows a green "Verified" badge (toolbar + popup + an in-page banner); verification
   failure shows a distinct red state.
-- **Wallet panel** (popup): balance, connect/disconnect (WalletConnect → Sage), and a
-  "Get $DIG ↗" link (all three venues — TibetSwap, dexie.space, xch.9mm.pro).
+- **Toolbar actions — Wallet · Shield · Control Panel** (popup): the popup leads with a
+  three-action toolbar mirroring the native DIG Browser's toolbar, each switching to its panel:
+  - **Wallet** — balance (XCH + $DIG), connect/disconnect (WalletConnect → Sage), and a
+    "Get $DIG ↗" link. The extension equivalent of the browser's docked `dig://wallet`.
+  - **Shield** — the **DIG Shields** surface for the active tab: the aggregate verified/failed
+    verdict, the capsule (`storeId:rootHash`) disclosure, and the **per-resource proof ledger**
+    (#134) — each resolved resource's inclusion-proof verdict grouped **Verified (N) / Failed
+    (M)**. Execution proofs are kept honest (a mock/absent proof is never shown as verified — the
+    read path fetches inclusion only). The ledger model (`dig-ledger.mjs`) is a byte-mirror of the
+    browser's `dig/shields/dig_ledger.mjs`.
+  - **Control Panel** — your dig-node, the extension equivalent of the browser's `dig://control`.
+    It detects a local dig-node (`dig.local` → `localhost:<port>`) and shows either **node status**
+    (when reachable) or an **install landing** (when not). The catalogued `control.*` RPCs
+    (`control.status`/`config.*`/`cache.*`/`hostedStores.*`/`sync.*`) and detection order match the
+    dig-node control contract exactly. The mutating control surface is gated by an on-disk control
+    token an MV3 extension can't read, so full node management deep-links to the native DIG Browser;
+    when no local node is present, reads transparently fall back to `rpc.dig.net` (stated honestly).
 - **DIG settings** (options page): local cache usage/clear, the dig-node host
   (`localhost:8080`) with a "dig-node not running" affordance, the upstream RPC endpoint,
   and the WalletConnect project id.

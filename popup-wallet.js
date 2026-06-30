@@ -10,6 +10,13 @@
 import * as wc from './wallet-wc.js';
 import { getApprovedOrigins } from './wallet-broker.mjs';
 import { digNodeInstallPrompt } from './dig-node-status.mjs';
+import { ACTIONS } from './messages.mjs';
+import { groupLedger, inclusionProofDisplay, executionProofDisplay } from './dig-ledger.mjs';
+import { controlPanelViewModel } from './dig-control.mjs';
+
+// Full native DIG Browser releases page — the Control Panel deep-links here for token-gated
+// node management the extension can't drive under MV3 (no filesystem access to the control token).
+const DIG_BROWSER_URL = 'https://github.com/DIG-Network/DIG_Browser/releases';
 
 const TIBETSWAP_URL = 'https://v2.tibetswap.io/';
 const $ = (id) => document.getElementById(id);
@@ -22,37 +29,310 @@ const DIG_CAT_ASSET_ID = 'a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367
 const VERIFIED_LABEL = 'Verified on Chia';
 const VERIFIED_TOOLTIP = 'Merkle-proven against the on-chain root and decrypted on this device';
 
-// ---- Verified badge line ----
-async function refreshVerifyLine() {
+// ---- DIG Shields panel (verify line + per-resource proof ledger #134) ----
+//
+// Mirrors the native DIG Browser's dig://shields: the active tab's aggregate verification
+// verdict, the capsule (storeId:rootHash) disclosure, and the per-resource inclusion-proof
+// ledger grouped Verified (N) / Failed (M). Honest: execution proofs are NEVER green-checked
+// (the read path fetches inclusion only — see dig-ledger.mjs executionProofDisplay).
+async function refreshShieldPanel() {
   const line = $('verifyLine');
-  const dot = $('verifyDot');
   const text = $('verifyText');
+  const shieldDot = $('shieldDot');
+  const capsuleWrap = $('shieldCapsule');
+  const capsuleVal = $('shieldCapsuleValue');
+  const summary = $('shieldLedgerSummary');
+  const list = $('shieldLedgerList');
+  const note = $('shieldNote');
   if (!line) return;
+
+  let resp = null;
   try {
-    const resp = await chrome.runtime.sendMessage({ action: 'getVerification' });
-    const v = resp && resp.verification;
-    if (v && v.state === 'verified') {
-      line.style.display = 'flex';
-      line.className = 'verify-line verified';
-      line.title = VERIFIED_TOOLTIP;
-      text.textContent = VERIFIED_LABEL;
-      // Machine state as a data-* attribute (not just CSS class / label) so an agent can
-      // read the verdict deterministically.
-      line.setAttribute('data-verified', 'true');
-    } else if (v && v.state === 'failed') {
-      line.style.display = 'flex';
-      line.className = 'verify-line failed';
-      line.title = 'This content could not be proven against the on-chain root — do not trust it.';
-      text.textContent = 'Verification failed';
-      line.setAttribute('data-verified', 'false');
-    } else {
-      line.style.display = 'none';
-      line.setAttribute('data-verified', '');
-    }
-  } catch {
-    line.style.display = 'none';
+    resp = await chrome.runtime.sendMessage({ action: ACTIONS.getShieldLedger });
+  } catch { resp = null; }
+
+  const v = resp && resp.verification;
+  // Aggregate verdict line + the toolbar Shield dot.
+  if (v && v.state === 'verified') {
+    line.className = 'verify-line verified';
+    line.title = VERIFIED_TOOLTIP;
+    if (text) text.textContent = VERIFIED_LABEL;
+    line.setAttribute('data-verified', 'true');
+    if (shieldDot) shieldDot.setAttribute('data-verified', 'true');
+  } else if (v && v.state === 'failed') {
+    line.className = 'verify-line failed';
+    line.title = 'This content could not be proven against the on-chain root — do not trust it.';
+    if (text) text.textContent = 'Verification failed';
+    line.setAttribute('data-verified', 'false');
+    if (shieldDot) shieldDot.setAttribute('data-verified', 'false');
+  } else {
+    line.className = 'verify-line';
+    line.title = '';
+    if (text) text.textContent = 'Open a chia:// page to see its proof status';
     line.setAttribute('data-verified', '');
+    if (shieldDot) shieldDot.setAttribute('data-verified', '');
   }
+
+  // Capsule disclosure (storeId:rootHash).
+  const capsule = resp && resp.capsule;
+  if (capsule && capsule.storeId && capsuleWrap && capsuleVal) {
+    capsuleWrap.style.display = 'flex';
+    capsuleVal.textContent = `${capsule.storeId}:${capsule.rootHash || 'latest'}`;
+  } else if (capsuleWrap) {
+    capsuleWrap.style.display = 'none';
+  }
+
+  // Per-resource proof ledger (grouped Verified/Failed).
+  const entries = (resp && Array.isArray(resp.entries)) ? resp.entries : [];
+  const group = (resp && resp.group) || groupLedger(entries);
+  if (summary) {
+    summary.innerHTML = '';
+    if (group.empty) {
+      summary.textContent = '';
+    } else {
+      const pass = document.createElement('span');
+      pass.className = 'shield-pill passed';
+      pass.textContent = `Verified ${group.passedCount}`;
+      summary.appendChild(pass);
+      if (group.failedCount > 0) {
+        const fail = document.createElement('span');
+        fail.className = 'shield-pill failed';
+        fail.textContent = `Failed ${group.failedCount}`;
+        summary.appendChild(fail);
+      }
+    }
+  }
+  if (list) {
+    list.innerHTML = '';
+    for (const e of entries) {
+      const incl = inclusionProofDisplay(e);
+      const exec = executionProofDisplay(e);
+      const li = document.createElement('li');
+      li.className = 'shield-ledger-item ' + (incl.verified ? 'passed' : 'failed');
+      li.setAttribute('data-verified', incl.verified ? 'true' : 'false');
+      const dot = document.createElement('span');
+      dot.className = 'res-dot';
+      const path = document.createElement('span');
+      path.className = 'res-path';
+      path.textContent = e.resourcePath || 'index.html';
+      // Plain-language proof title; jargon (root/error) available via the tooltip.
+      li.title = incl.verified
+        ? `${incl.label}${incl.hasRoot ? ` (root ${incl.proofRoot.slice(0, 12)}…)` : ''}. ${exec.label}.`
+        : `${incl.label}${incl.errorCode ? ` (${incl.errorCode})` : ''}. ${exec.label}.`;
+      const ex = document.createElement('span');
+      ex.className = 'res-exec';
+      ex.textContent = exec.verified ? 'proof ✓' : '';
+      li.append(dot, path, ex);
+      list.appendChild(li);
+    }
+  }
+  if (note) {
+    if (group.empty) {
+      note.textContent = 'Per-resource proof status appears here once you open a chia:// page in this tab.';
+    } else if (group.allPassed) {
+      note.textContent = 'Every resource on this page was Merkle-proven against the on-chain root and decrypted on this device.';
+    } else {
+      note.textContent = 'Some resources failed verification — they were not proven against the on-chain root. Do not trust them.';
+    }
+  }
+}
+
+// Backwards-compatible alias: other call sites (init, hash deep-link) still call this.
+async function refreshVerifyLine() { return refreshShieldPanel(); }
+
+// ---- DIG Control Panel (your dig-node) ----
+//
+// Mirrors the native DIG Browser's dig://control. Detects a local dig-node and renders either:
+//   - MANAGE: the node's status (from the open control.status / read surface). The mutating
+//     control.* methods are gated by an on-disk control token the extension can't read, so when
+//     the node answers UNAUTHORIZED we honestly show node-present status and deep-link full
+//     management to the native DIG Browser (which CAN present the token).
+//   - INSTALL: a landing page encouraging install of the dig-node. Reads keep working via the
+//     hosted network (rpc.dig.net) — stated honestly.
+async function refreshControlPanel() {
+  const panel = $('controlPanel');
+  const body = $('controlBody');
+  const controlDot = $('controlDot');
+  if (!panel || !body) return;
+
+  let view = null;
+  try {
+    view = await chrome.runtime.sendMessage({ action: ACTIONS.getControlStatus });
+  } catch { view = null; }
+  if (!view) {
+    view = { mode: 'install', localNode: false, controlEndpoint: null, status: null, authRequired: false };
+  }
+
+  // The presentation decision is the tested pure view model (dig-control.mjs); the code below is
+  // thin DOM glue over it.
+  const vm = controlPanelViewModel(view);
+  panel.setAttribute('data-mode', vm.mode);
+  if (controlDot) controlDot.setAttribute('data-node', vm.nodeOnline ? 'true' : 'false');
+  body.innerHTML = '';
+
+  if (vm.mode === 'manage') {
+    renderControlManage(body, vm);
+  } else {
+    renderControlInstall(body, vm);
+  }
+}
+
+// Render the node-management view from the view model (node detected). Shows status stats when
+// the node answered control.status; otherwise (token-gated) an honest "node detected" panel +
+// deep-link to the native DIG Browser for full management.
+function renderControlManage(body, vm) {
+  const head = document.createElement('div');
+  head.className = 'control-status-head';
+  const title = document.createElement('span');
+  title.className = 'control-title';
+  title.textContent = 'Your dig-node';
+  const state = document.createElement('span');
+  state.className = 'control-state online';
+  state.textContent = 'Running';
+  state.setAttribute('data-testid', 'control-node-state');
+  head.append(title, state);
+  body.appendChild(head);
+
+  body.appendChild(controlRow('Address', vm.base || ''));
+
+  if (vm.hasStats) {
+    const grid = document.createElement('div');
+    grid.className = 'control-grid';
+    grid.setAttribute('data-testid', 'control-stats');
+    const stats = [
+      ['Hosted stores', vm.stats.hostedStores],
+      ['Cached capsules', vm.stats.cachedCapsules],
+      ['Cache used', fmtBytes(vm.stats.cacheUsedBytes)],
+      ['§21 sync', vm.stats.syncOn ? 'On' : 'Off'],
+    ];
+    for (const [label, value] of stats) {
+      const cell = document.createElement('div');
+      cell.className = 'control-stat';
+      const l = document.createElement('span');
+      l.className = 'control-stat-label';
+      l.textContent = label;
+      const v = document.createElement('span');
+      v.className = 'control-stat-value';
+      v.textContent = String(value);
+      cell.append(l, v);
+      grid.appendChild(cell);
+    }
+    body.appendChild(grid);
+    body.appendChild(controlRow('Upstream', vm.upstream || ''));
+  }
+
+  // Honest about what the extension can drive: full (mutating) management needs the local control
+  // token, which only an app with filesystem access (the native DIG Browser) can read.
+  const note = document.createElement('p');
+  note.setAttribute('data-testid', 'control-manage-note');
+  note.textContent = vm.note;
+  body.appendChild(note);
+
+  if (vm.deepLinkBrowser) {
+    const cta = document.createElement('button');
+    cta.className = 'control-cta';
+    cta.setAttribute('data-testid', 'control-get-browser');
+    cta.textContent = 'Manage in the DIG Browser ↗';
+    cta.addEventListener('click', () => { chrome.tabs.create({ url: DIG_BROWSER_URL }); window.close(); });
+    body.appendChild(cta);
+  }
+}
+
+// Render the install landing (no node detected) from the view model. Encourages installing the
+// dig-node and is honest that reads keep working through the hosted network without one.
+function renderControlInstall(body, vm) {
+  const prompt = vm.install;
+  const head = document.createElement('div');
+  head.className = 'control-status-head';
+  const title = document.createElement('span');
+  title.className = 'control-title';
+  title.textContent = prompt.title;
+  const state = document.createElement('span');
+  state.className = 'control-state offline';
+  state.textContent = 'No local node';
+  state.setAttribute('data-testid', 'control-node-state');
+  head.append(title, state);
+  body.appendChild(head);
+
+  const p = document.createElement('p');
+  p.setAttribute('data-testid', 'control-install-note');
+  p.textContent = prompt.body;
+  body.appendChild(p);
+
+  const cta = document.createElement('a');
+  cta.className = 'control-cta';
+  cta.setAttribute('data-testid', 'control-install');
+  cta.href = prompt.installUrl;
+  cta.textContent = prompt.installLabel + ' ↗';
+  cta.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: prompt.installUrl });
+    window.close();
+  });
+  body.appendChild(cta);
+
+  // Honest read-fallback line: content keeps working without a node.
+  const fb = document.createElement('p');
+  fb.setAttribute('data-testid', 'control-read-fallback');
+  fb.textContent = vm.readFallbackLine;
+  body.appendChild(fb);
+}
+
+/** A labelled key/value row for the control panel. */
+function controlRow(label, value) {
+  const row = document.createElement('div');
+  row.className = 'control-row';
+  const l = document.createElement('span');
+  l.className = 'control-row-label';
+  l.textContent = label;
+  const v = document.createElement('span');
+  v.className = 'control-row-value';
+  v.textContent = value;
+  row.append(l, v);
+  return row;
+}
+
+function fmtBytes(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB'];
+  let i = 0; let x = v;
+  while (x >= 1024 && i < u.length - 1) { x /= 1024; i++; }
+  return `${x.toFixed(i ? 1 : 0)} ${u[i]}`;
+}
+
+// ---- Toolbar action switcher (Wallet · Shield · Control Panel) ----
+//
+// One panel visible at a time; the active button reflects aria-pressed=true + data-active so an
+// agent can read the open action. Wallet is the default open panel on popup load.
+const PANELS = {
+  wallet: 'walletPanel',
+  shield: 'shieldPanel',
+  control: 'controlPanel',
+};
+
+function showPanel(name) {
+  for (const [panel, elId] of Object.entries(PANELS)) {
+    const el = $(elId);
+    if (el) el.style.display = panel === name ? (panel === 'wallet' ? 'flex' : 'flex') : 'none';
+  }
+  // Reflect the active button.
+  document.querySelectorAll('.toolbar-btn').forEach((btn) => {
+    const isActive = btn.getAttribute('data-panel') === name;
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    if (isActive) btn.setAttribute('data-active', 'true');
+    else btn.removeAttribute('data-active');
+  });
+  // Lazily refresh the panel being shown.
+  if (name === 'shield') refreshShieldPanel();
+  if (name === 'control') refreshControlPanel();
+  if (name === 'wallet') refreshWalletPanel();
+}
+
+function setupToolbar() {
+  document.querySelectorAll('.toolbar-btn').forEach((btn) => {
+    btn.addEventListener('click', () => showPanel(btn.getAttribute('data-panel')));
+  });
 }
 
 // ---- Wallet panel ----
@@ -270,7 +550,19 @@ function init() {
   // Fulfil dapp requests over the relay while the popup is open.
   try { wc.listenForBrokeredRequests(); } catch { /* no WC bundle yet */ }
 
-  refreshVerifyLine();
+  // Toolbar: Wallet · Shield · Control Panel. Wire the switcher and open the panel matching the
+  // deep-link hash (#shield / #control), defaulting to Wallet.
+  setupToolbar();
+  const initial =
+    location.hash === '#shield' ? 'shield' :
+    location.hash === '#control' ? 'control' : 'wallet';
+  showPanel(initial);
+
+  // Prime the toolbar status dots so the Shield (verified) + Control (node present) verdicts are
+  // visible without first opening each panel — an at-a-glance, agent-readable state.
+  refreshShieldPanel();
+  refreshControlPanel();
+
   refreshWalletPanel();
   refreshConnReqs();
   refreshDigNodeBanner();

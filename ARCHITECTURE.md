@@ -41,13 +41,15 @@ pinned digest before any crypto runs — a mismatch fails closed.
 | `dig-urn.mjs` | **Shared** URN parser + base36 store-id helpers (single source of truth; ES module) |
 | `messages.mjs` | **Versioned MESSAGE catalogue** — the frozen `ACTIONS` enum + JSDoc-typed request/response DTOs for every `chrome.runtime` action, plus the `getCapabilities` self-description. Imported by `background.js` / `dig-viewer.js`. |
 | `error-codes.mjs` | **Catalogued chia:// loader error codes** (`DIG_ERR_*`) + `classifyError`/`makeError`. The four canonical codes mirror docs.dig.net `error-codes.json` `dig-loader`. |
+| `dig-control.mjs` | **DIG Control Panel** decision logic (the `dig://control` parity surface): `decideControlView` (detect a local dig-node → manage vs install), `controlPanelViewModel`, the catalogued `CONTROL_METHODS` (`control.*`), `CONTROL_ERR` codes, and `controlInstallPrompt`. Byte-consistent with the dig-node control RPC contract (`dig-companion` `control.rs`/`meta.rs`). Imported by `background.js` (the `getControlStatus` handler + `controlRpc` bridge) and the popup. |
+| `dig-ledger.mjs` | **DIG Shields per-resource proof ledger** (#134) — `LedgerStore`, `groupLedger`, `inclusionProofDisplay`, `executionProofDisplay`. A **byte-mirror** of the native browser's `dig/shields/dig_ledger.mjs`; the dig-viewer records each resolved resource's inclusion verdict into the active tab's ledger (the `recordLedgerEntry` action) and the popup's Shield action lists it. Execution proofs are kept honest (never green-checked when mock/absent). |
 | `dig-provider-core.mjs` | Unit-tested core of the injected `window.chia` provider (version/info/methods + standard error codes). `dig-provider.js` inlines this surface. |
 | `agent-surface.mjs` → `dist/agent-surface.json` | Machine-readable self-description (actions + wallet methods + error codes + provider surface) generated at build time from the modules above. |
 | `dig_client.js` + `dig_client_bg.wasm` | SRI-pinned read-crypto WASM (`retrievalKey`, `deriveKey`, `verifyInclusion`, `decryptChunk`). **Do not edit** — it is the byte-identical cross-system crypto artifact (see `../../SYSTEM.md`). |
 | `content.js` | Content script — rewrites `chia://` resource references (img/script/link/srcset/etc.) on every page |
 | `middleware.js` | Content script — fallback-strategy ordering for resolving `chia://` requests |
 | `page-script.js` | Injected into the page (main world) to intercept `chia://` before the browser fetches it |
-| `popup.html` / `popup.css` / `popup.js` | Toolbar popup — configure the RPC endpoint, view status |
+| `popup.html` / `popup.css` / `popup.js` / `popup-wallet.js` | Toolbar popup — leads with the three actions (**Wallet · Shield · Control Panel**, mirroring the native browser toolbar); `popup-wallet.js` owns the toolbar switcher + the wallet panel + the DIG Shields proof-ledger panel + the Control Panel (driven by `dig-control.mjs` / `dig-ledger.mjs`). Open a `chia://` address + the resolution toggle + ecosystem funnels round it out. |
 | `dig-viewer.html` / `dig-viewer.js` | Standalone viewer iframe that fetches + embeds DIG content via the SW |
 | `src/favicon.png`, `src/logo.png` | Extension icon + popup logo |
 
