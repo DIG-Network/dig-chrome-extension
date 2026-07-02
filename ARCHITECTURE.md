@@ -155,5 +155,18 @@ Build exit codes: `0` success · `2` validation failed (a required source file i
 ## Tests
 
 ```bash
-node --test tests/   # pinning tests for the shared URN parser
+npm test              # node --test tests/ — the full unit suite
+npm run test:coverage # c8 node --test tests/ — same suite, gated at >=80% coverage
 ```
+
+The unit suite pins every shared-module contract (URN parser, message protocol, error codes,
+wallet surface, node resolution, shields ledger, control panel). Coverage is measured by c8
+over the shipped `.mjs` logic modules (config in `.c8rc.json`) and CI-gated at >=80% on lines,
+branches, functions, and statements — a run below the floor fails the build (deploy.yml +
+publish-chrome-web-store.yml both run `npm run test:coverage`).
+
+The repo's normative contract lives in [`SPEC.md`](./SPEC.md) — the authoritative,
+implementation-independent spec for the `chia://` read path + `dig.getContent` wire, the
+internal message protocol, the loader error taxonomy, the `window.chia` provider, the
+node-resolution ladder, configuration, and the security invariants. `tests/spec-consistency.test.mjs`
+guards SPEC.md against drift from the code.

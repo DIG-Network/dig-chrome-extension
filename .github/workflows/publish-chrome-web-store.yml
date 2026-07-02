@@ -54,7 +54,8 @@ jobs:
 
       - run: npm ci || npm install
 
-      - run: npm test # node --test tests/ — gate publish on the unit tests
+      # Gate publish on the unit tests + the >=80% coverage floor (c8 / .c8rc.json).
+      - run: npm run test:coverage # c8 node --test tests/ — tests + >=80% coverage gate
 
       # Reuse the SAME packaging path as deploy.yml: build dist/ + the packaged zip. The
       # WalletConnect project id is a client-public identifier (the hub already ships it

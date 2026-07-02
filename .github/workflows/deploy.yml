@@ -23,7 +23,9 @@ jobs:
         with:
           node-version: 20
       - run: npm ci || npm install
-      - run: npm test # node --test tests/ — unit tests for the shared modules
+      # Unit tests for the shared modules, gated at >=80% coverage (c8 / .c8rc.json):
+      # a run below the floor FAILS the build.
+      - run: npm run test:coverage # c8 node --test tests/ — tests + >=80% coverage gate
       # build:zip vendors the WalletConnect SignClient (esbuild) and bakes the shared Reown
       # project id into dist/wallet-wc.js. The project id is a client-public identifier (the
       # hub already ships it client-side); it's provided here as a secret so it never lives in
