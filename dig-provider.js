@@ -35,13 +35,48 @@
   // The Sage-parity method catalogue (mirrors wallet-methods.mjs WALLET_METHODS). Inlined
   // so window.chia.methods + chip0002_getMethods can answer locally with zero round-trips.
   var WALLET_METHODS = [
-    'chip0002_chainId', 'chip0002_connect', 'chip0002_getPublicKeys', 'chip0002_signMessage',
-    'chip0002_signCoinSpends', 'chip0002_getAssetBalance', 'chip0002_getAssetCoins',
+    'chip0002_chainId', 'chip0002_connect', 'chip0002_getPublicKeys', 'chip0002_filterUnlockedCoins',
+    'chip0002_signMessage', 'chip0002_signCoinSpends', 'chip0002_getAssetBalance', 'chip0002_getAssetCoins',
     'chia_getAddress', 'chia_signMessageByAddress', 'chia_send', 'chia_getTransactions',
     'chia_getNfts', 'chia_transferNft', 'chia_mintNft', 'chia_bulkMintNfts', 'chia_getDids',
     'chia_createDidWallet', 'chia_transferDid', 'chia_getOfferSummary', 'chia_createOffer',
     'chia_takeOffer', 'chia_cancelOffer',
   ];
+
+  // Goby / CHIP-0002 / Sage-WC2 method-name aliases. Mirrors GOBY_ALIASES in
+  // wallet-methods.mjs (the unit-tested source of truth) — a Goby dApp calls bare
+  // names (`transfer`, `createOffer`, `getNFTs`) that don't map 1:1 to chip0002_.
+  var GOBY_ALIASES = {
+    chainId: 'chip0002_chainId', getPublicKeys: 'chip0002_getPublicKeys',
+    filterUnlockedCoins: 'chip0002_filterUnlockedCoins', getAssetBalance: 'chip0002_getAssetBalance',
+    getAssetCoins: 'chip0002_getAssetCoins', signMessage: 'chip0002_signMessage',
+    signCoinSpends: 'chip0002_signCoinSpends',
+    transfer: 'chia_send', send: 'chia_send', getAddress: 'chia_getAddress',
+    signMessageByAddress: 'chia_signMessageByAddress', getTransactions: 'chia_getTransactions',
+    getNFTs: 'chia_getNfts', getNfts: 'chia_getNfts', transferNft: 'chia_transferNft',
+    mintNft: 'chia_mintNft', bulkMintNfts: 'chia_bulkMintNfts', getDids: 'chia_getDids',
+    createDid: 'chia_createDidWallet', createDidWallet: 'chia_createDidWallet',
+    transferDid: 'chia_transferDid', getOfferSummary: 'chia_getOfferSummary',
+    createOffer: 'chia_createOffer', takeOffer: 'chia_takeOffer', cancelOffer: 'chia_cancelOffer',
+  };
+  var CHAIN_ID = 'mainnet'; // DIG is Chia mainnet
+
+  function normalizeMethod(method) {
+    if (!method) return method;
+    if (/^(chip0002_|chia_)/.test(method)) return method;
+    if (GOBY_ALIASES[method]) return GOBY_ALIASES[method];
+    return 'chip0002_' + method;
+  }
+
+  // Goby transfer{to} → Sage chia_send{address}; other methods pass params through.
+  function remapGobyParams(method, params) {
+    if (!params) return params;
+    if ((method === 'transfer' || method === 'send') && params.to != null && params.address == null) {
+      var out = {}; for (var k in params) { if (k !== 'to') out[k] = params[k]; }
+      out.address = params.to; return out;
+    }
+    return params;
+  }
 
   // Extension version, read from the manifest at injection time (best-effort; the page world
   // has chrome.runtime.getManifest on Chromium MV3).
@@ -123,13 +158,19 @@
     return (env.body || {}).data;
   }
 
+  // Private session state. isConnected() is a callable (Goby convention).
+  var _connected = false;
+  var _chainId;
+  var _selectedAddress;
+
   // connect() blocks until the user approves this origin (or rejects / times out).
   async function connect(eager) {
     var deadline = Date.now() + 120000;
     for (;;) {
       try {
         var r = await rpc('chip0002_connect', { eager: !!eager });
-        window.chia.isConnected = true;
+        _connected = true;
+        _chainId = CHAIN_ID;
         emit('connect', r);
         return r;
       } catch (e) {
@@ -142,31 +183,84 @@
     }
   }
 
+  // Route a dApp-facing method (bare Goby/CHIP-0002/Sage or already-namespaced) to the broker.
+  function callGoby(dappMethod, params) {
+    return rpc(normalizeMethod(dappMethod), remapGobyParams(dappMethod, params));
+  }
+  async function fetchAddress() {
+    var r = await rpc('chia_getAddress', {});
+    var addr = (typeof r === 'string') ? r : (r && r.address);
+    if (addr) _selectedAddress = addr;
+    return addr ? [addr] : [];
+  }
+  async function requestAccounts() { await connect(false); return fetchAddress(); }
+  function accounts() {
+    if (!_connected) {
+      var e = new Error('DIG wallet is not connected — call connect() first');
+      e.code = ERR.DISCONNECTED; return Promise.reject(e);
+    }
+    return fetchAddress();
+  }
+  function walletSwitchChain(params) {
+    var target = params && params.chainId;
+    if (target === CHAIN_ID || target == null) return Promise.resolve(null);
+    var e = new Error('DIG wallet supports only Chia mainnet');
+    e.code = ERR.UNSUPPORTED_METHOD; return Promise.reject(e);
+  }
+
   window.chia = {
     isDIG: true,
-    isConnected: false,
+    // Goby identity flags — a Goby/Sage dApp feature-detects these (loroco parity).
+    isGoby: true,
+    name: 'DIG',
+    apiVersion: '1.0.0',
     // Self-describing surface (agent-friendly): version, capability info, method catalogue.
     version: EXT_VERSION,
     info: { isDIG: true, transport: 'walletconnect', edition: 'extension', providerVersion: 1 },
     methods: WALLET_METHODS.slice(),
-    // CHIP-0002 entrypoint. Accepts bare ("getPublicKeys"), chip0002_-namespaced, and
-    // chia_-namespaced method names (normalised on the broker side too). Answers the
-    // method-discovery call locally so an agent can introspect before connecting.
+    errorCodes: ERR,
+    get chainId() { return _chainId; },
+    get selectedAddress() { return _selectedAddress; },
+    isConnected: function () { return _connected; },
+    // CHIP-0002 + Goby entrypoint. Accepts bare Goby/Sage names, chip0002_-/chia_-namespaced
+    // names, and answers method-discovery locally so an agent can introspect before connecting.
     request: function (args) {
       var method = args && args.method;
       var params = args && args.params;
-      if (method === 'chip0002_getMethods' || method === 'chia_getMethods') {
+      if (method === 'chip0002_getMethods' || method === 'chia_getMethods' || method === 'getMethods') {
         return Promise.resolve(WALLET_METHODS.slice());
       }
-      if (method === 'connect' || method === 'chip0002_connect') {
-        return connect(params && params.eager);
-      }
-      var m = /^(chip0002_|chia_)/.test(method) ? method : 'chip0002_' + method;
-      return rpc(m, params);
+      if (method === 'connect' || method === 'chip0002_connect') return connect(params && params.eager);
+      if (method === 'requestAccounts') return requestAccounts();
+      if (method === 'accounts') return accounts();
+      if (method === 'walletSwitchChain') return walletSwitchChain(params);
+      return callGoby(method, params);
     },
+    // Goby-legacy DIRECT methods (dexie.space, tibetswap, … call these on the object).
     connect: connect,
+    walletSwitchChain: walletSwitchChain,
+    walletWatchAsset: function (p) { return callGoby('walletWatchAsset', p); },
+    getPublicKeys: function (p) { return callGoby('getPublicKeys', p); },
+    filterUnlockedCoins: function (p) { return callGoby('filterUnlockedCoins', p); },
+    getAssetCoins: function (p) { return callGoby('getAssetCoins', p); },
+    getAssetBalance: function (p) { return callGoby('getAssetBalance', p); },
+    signCoinSpends: function (p) { return callGoby('signCoinSpends', p); },
+    signMessage: function (p) { return callGoby('signMessage', p); },
+    signMessageByAddress: function (p) { return callGoby('signMessageByAddress', p); },
+    transfer: function (p) { return callGoby('transfer', p); },
+    sendTransaction: function (p) { return callGoby('sendTransaction', p); },
+    createOffer: function (p) { return callGoby('createOffer', p); },
+    takeOffer: function (p) { return callGoby('takeOffer', p); },
+    cancelOffer: function (p) { return callGoby('cancelOffer', p); },
+    getNFTs: function (p) { return callGoby('getNFTs', p); },
+    getNFTInfo: function (p) { return callGoby('getNFTInfo', p); },
+    requestAccounts: requestAccounts,
+    accounts: accounts,
     on: function (ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
     off: function (ev, fn) {
+      listeners[ev] = (listeners[ev] || []).filter(function (x) { return x !== fn; });
+    },
+    removeListener: function (ev, fn) {
       listeners[ev] = (listeners[ev] || []).filter(function (x) { return x !== fn; });
     },
   };

@@ -17,10 +17,26 @@
  * Plain ES module (no DOM) so it runs under `node --test`.
  */
 
-import { WALLET_METHODS } from './wallet-methods.mjs';
+import { WALLET_METHODS, normalizeMethod, remapGobyParams } from './wallet-methods.mjs';
 
 /** Contract version of the injected provider surface. */
 export const WALLET_PROVIDER_VERSION = 1;
+
+/**
+ * The wallet's display name, exposed as `window.chia.name`. Goby dApps read this
+ * (Goby returns "Goby", loroco "Loroco"); DIG identifies as "DIG". Kept identical
+ * across the two injected providers.
+ */
+export const WALLET_PROVIDER_NAME = 'DIG';
+
+/**
+ * The Goby/CHIP-0002 API version string, exposed as `window.chia.apiVersion`. Goby
+ * dApps feature-gate on this. "1.0.0" = the CHIP-0002 + Goby-extensions surface below.
+ */
+export const WALLET_API_VERSION = '1.0.0';
+
+/** DIG operates on Chia mainnet; `window.chia.chainId` reports this once connected. */
+export const WALLET_CHAIN_ID = 'mainnet';
 
 /**
  * Self-describing capability object exposed as `window.chia.info`. An agent feature-detects
@@ -113,9 +129,20 @@ export function buildProvider({ bridgeCall, version, emit } = {}) {
     (listeners[ev] || []).slice().forEach((fn) => { try { fn(data); } catch { /* isolate */ } });
   });
 
+  // Private session state. isConnected() is a callable (Goby convention) reading
+  // `_connected`; chainId/selectedAddress are getters over the cached values.
+  let _connected = false;
+  let _chainId;
+  let _selectedAddress;
+
   async function rpc(method, params) {
     const env = await bridgeCall(method, params);
-    if (!env || (env.status || 0) < 200 || (env.status || 0) >= 300) {
+    const status = (env && env.status) || 0;
+    // Only a 200 is a final success. A 202 means "approval pending" — throw it as a
+    // pending error so connect()'s retry loop polls (mapEnvelopeToError sets .pending);
+    // any non-2xx is a real error. (Without the explicit 202 case a pending response
+    // would fall through as success with body.data === undefined.)
+    if (!env || status < 200 || status >= 300 || status === 202) {
       throw mapEnvelopeToError(env);
     }
     return (env.body || {}).data;
@@ -126,7 +153,8 @@ export function buildProvider({ bridgeCall, version, emit } = {}) {
     for (;;) {
       try {
         const r = await rpc('chip0002_connect', { eager: !!eager });
-        provider.isConnected = true;
+        _connected = true;
+        _chainId = WALLET_CHAIN_ID; // DIG is Chia mainnet
         fire('connect', r);
         return r;
       } catch (e) {
@@ -139,30 +167,100 @@ export function buildProvider({ bridgeCall, version, emit } = {}) {
     }
   }
 
+  // Route a dApp-facing method (bare Goby/CHIP-0002/Sage name OR already-namespaced)
+  // to the broker: alias → broker name, remap params (Goby transfer{to}→chia_send{address}).
+  function callGoby(dappMethod, params) {
+    return rpc(normalizeMethod(dappMethod), remapGobyParams(dappMethod, params));
+  }
+
+  // Resolve + cache the wallet's primary receive address. Goby's requestAccounts/accounts
+  // return an address list; Sage's chia_getAddress returns {address} (or a bare string).
+  async function fetchAddress() {
+    const r = await rpc('chia_getAddress', {});
+    const addr = typeof r === 'string' ? r : (r && r.address);
+    if (addr) _selectedAddress = addr;
+    return addr ? [addr] : [];
+  }
+
+  // Goby account helpers.
+  async function requestAccounts() {
+    await connect(false);       // prompts for approval if the origin isn't connected yet
+    return fetchAddress();
+  }
+  function accounts() {
+    if (!_connected) {
+      const e = new Error('DIG wallet is not connected — call connect() first');
+      e.code = PROVIDER_ERROR_CODES.DISCONNECTED; // 4900
+      return Promise.reject(e);
+    }
+    return fetchAddress();
+  }
+
+  // DIG operates only on Chia mainnet. A switch TO mainnet is a no-op success; any other
+  // chain is unsupported (answered locally — never forwarded to the broker).
+  function walletSwitchChain(params) {
+    const target = params && params.chainId;
+    if (target === WALLET_CHAIN_ID || target == null) return Promise.resolve(null);
+    const e = new Error('DIG wallet supports only Chia mainnet');
+    e.code = PROVIDER_ERROR_CODES.UNSUPPORTED_METHOD; // 4200
+    return Promise.reject(e);
+  }
+
   const provider = {
     isDIG: true,
-    isConnected: false,
+    // Goby identity flags — a Goby/Sage dApp feature-detects these (see loroco parity).
+    isGoby: true,
+    name: WALLET_PROVIDER_NAME,
+    apiVersion: WALLET_API_VERSION,
     version: version || 'unknown',
     info: PROVIDER_INFO,
     /** The Sage-parity method catalogue an agent can introspect without out-of-band knowledge. */
     methods: WALLET_METHODS,
+    /** Stable thrown-error code enum (documented in the README provider section). */
+    errorCodes: PROVIDER_ERROR_CODES,
+    get chainId() { return _chainId; },
+    get selectedAddress() { return _selectedAddress; },
+    isConnected() { return _connected; },
     request(args) {
       const method = args && args.method;
       const params = args && args.params;
       // Local introspection — answered without a round-trip so an agent can discover the
       // surface even before connecting.
-      if (method === 'chip0002_getMethods' || method === 'chia_getMethods') {
+      if (method === 'chip0002_getMethods' || method === 'chia_getMethods' || method === 'getMethods') {
         return Promise.resolve(WALLET_METHODS);
       }
       if (method === 'connect' || method === 'chip0002_connect') {
         return connect(params && params.eager);
       }
-      const m = /^(chip0002_|chia_)/.test(method) ? method : 'chip0002_' + method;
-      return rpc(m, params);
+      if (method === 'requestAccounts') return requestAccounts();
+      if (method === 'accounts') return accounts();
+      if (method === 'walletSwitchChain') return walletSwitchChain(params);
+      return callGoby(method, params);
     },
+    // Goby-legacy DIRECT methods. dApps built against Goby's pre-CHIP-0002 surface
+    // (dexie.space, tibetswap, …) call these on the object instead of via request().
     connect,
+    walletSwitchChain,
+    walletWatchAsset(params) { return callGoby('walletWatchAsset', params); },
+    getPublicKeys(params) { return callGoby('getPublicKeys', params); },
+    filterUnlockedCoins(params) { return callGoby('filterUnlockedCoins', params); },
+    getAssetCoins(params) { return callGoby('getAssetCoins', params); },
+    getAssetBalance(params) { return callGoby('getAssetBalance', params); },
+    signCoinSpends(params) { return callGoby('signCoinSpends', params); },
+    signMessage(params) { return callGoby('signMessage', params); },
+    signMessageByAddress(params) { return callGoby('signMessageByAddress', params); },
+    transfer(params) { return callGoby('transfer', params); },
+    sendTransaction(params) { return callGoby('sendTransaction', params); },
+    createOffer(params) { return callGoby('createOffer', params); },
+    takeOffer(params) { return callGoby('takeOffer', params); },
+    cancelOffer(params) { return callGoby('cancelOffer', params); },
+    getNFTs(params) { return callGoby('getNFTs', params); },
+    getNFTInfo(params) { return callGoby('getNFTInfo', params); },
+    requestAccounts,
+    accounts,
     on(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
     off(ev, fn) { listeners[ev] = (listeners[ev] || []).filter((x) => x !== fn); },
+    removeListener(ev, fn) { listeners[ev] = (listeners[ev] || []).filter((x) => x !== fn); },
   };
   return provider;
 }
