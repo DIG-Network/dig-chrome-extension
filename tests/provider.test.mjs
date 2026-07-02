@@ -10,10 +10,11 @@
  *   - a documented, standard-aligned thrown-error code contract (4001/4100/4200) — the same
  *     codes the native DIG Browser provider uses, so the two stay byte-aligned.
  *
- * The provider's pure logic is factored into buildProvider() in dig-provider-core.mjs so it
- * is unit-testable under `node --test` without a DOM. dig-provider.js (the injected IIFE)
- * imports nothing — it inlines the same surface — so this test pins the core that the IIFE
- * mirrors via a structure assertion.
+ * The provider's pure logic lives in buildProvider() in the shared @dignetwork/chia-provider
+ * package (re-exported via dig-provider-core.mjs) so it is unit-testable under `node --test`
+ * without a DOM. The injected file (dist/dig-provider.js) is BUNDLED from that package by
+ * build.js — this test pins the package surface AND that the entry wires it over the extension's
+ * postMessage transport, so the injected provider can never drift from the package.
  *
  * Run: node --test tests/
  */
@@ -116,21 +117,39 @@ test('request throws an error carrying a standard code on a 4xx', async () => {
   );
 });
 
-test('the injected IIFE (dig-provider.js) stays in lockstep with the core', () => {
-  // The injected file cannot `import` (it runs in the page MAIN world), so it inlines the
-  // same surface. Guard that it actually exposes the new affordances so the two never drift.
-  const src = readFileSync(join(__dirname, '..', 'dig-provider.js'), 'utf8');
-  assert.match(src, /chip0002_getMethods/, 'injected provider must answer chip0002_getMethods');
-  assert.match(src, /window\.chia\.methods|methods:/, 'injected provider must expose .methods');
-  assert.match(src, /version:/, 'injected provider must expose .version');
-  assert.match(src, /info:/, 'injected provider must expose .info');
-  assert.match(src, /4001/, 'injected provider must use the 4001 user-rejected code');
-  assert.match(src, /4100/, 'injected provider must use the 4100 unauthorized code');
-  assert.match(src, /4200/, 'injected provider must use the 4200 unsupported code');
-  // Goby-compat surface must be inlined too (see loroco parity tests below).
-  assert.match(src, /isGoby/, 'injected provider must advertise isGoby');
-  assert.match(src, /requestAccounts/, 'injected provider must expose requestAccounts');
-  assert.match(src, /walletSwitchChain/, 'injected provider must expose walletSwitchChain');
+test('the injected provider entry (dig-provider.entry.mjs) derives window.chia from the shared package', () => {
+  // The injected provider is no longer a hand-copied IIFE — it is BUNDLED from
+  // @dignetwork/chia-provider (the single source of truth). Guard that the entry actually wires
+  // buildProvider from the package and supplies the extension's postMessage transport, so the
+  // injected surface can never drift from the package (the old duplication caused exactly that).
+  const entry = readFileSync(join(__dirname, '..', 'dig-provider.entry.mjs'), 'utf8');
+  assert.match(entry, /from ['"]@dignetwork\/chia-provider['"]/, 'entry must import from @dignetwork/chia-provider');
+  assert.match(entry, /buildProvider/, 'entry must call the package buildProvider');
+  assert.match(entry, /window\.chia\s*=\s*buildProvider/, 'window.chia must be the package buildProvider output');
+  assert.match(entry, /DIG_WALLET_REQUEST/, 'entry must relay over the postMessage bridge (DIG_WALLET_REQUEST)');
+  assert.match(entry, /if \(window\.chia\) return/, 'entry must never clobber an existing provider');
+});
+
+test('build.js bundles dist/dig-provider.js as a self-contained IIFE carrying the shared surface', async () => {
+  // Bundle the entry exactly as build.js does (esbuild IIFE) and assert the shipped injected file
+  // is self-contained (no runtime import/require) and carries the package surface — so a broken
+  // bundle can never ship a stub.
+  const esbuild = await import('esbuild');
+  const out = await esbuild.build({
+    entryPoints: [join(__dirname, '..', 'dig-provider.entry.mjs')],
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: ['chrome111'],
+    write: false,
+  });
+  const code = out.outputFiles[0].text;
+  // Self-contained: no unresolved ES import/export or CJS require survived bundling.
+  assert.doesNotMatch(code, /(^|[^.\w])(import|export)\s|(^|[^.\w])require\s*\(/m, 'bundle must be a self-contained IIFE');
+  // The shared package surface must be present (buildProvider was bundled, not stubbed).
+  for (const needle of ['window.chia', 'isGoby', 'requestAccounts', 'walletSwitchChain', 'chip0002_getMethods']) {
+    assert.ok(code.includes(needle), `bundled provider must contain "${needle}"`);
+  }
 });
 
 // ─── Goby / CHIP-0002 / Sage-WC2 compatibility (loroco window.chia parity) ──────

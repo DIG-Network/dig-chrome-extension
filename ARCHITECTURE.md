@@ -43,7 +43,8 @@ pinned digest before any crypto runs — a mismatch fails closed.
 | `error-codes.mjs` | **Catalogued chia:// loader error codes** (`DIG_ERR_*`) + `classifyError`/`makeError`. The four canonical codes mirror docs.dig.net `error-codes.json` `dig-loader`. |
 | `dig-control.mjs` | **DIG Control Panel** decision logic (the `dig://control` parity surface): `decideControlView` (detect a local dig-node → manage vs install), `controlPanelViewModel`, the catalogued `CONTROL_METHODS` (`control.*`), `CONTROL_ERR` codes, and `controlInstallPrompt`. Byte-consistent with the dig-node control RPC contract (`dig-companion` `control.rs`/`meta.rs`). Imported by `background.js` (the `getControlStatus` handler + `controlRpc` bridge) and the popup. |
 | `dig-ledger.mjs` | **DIG Shields per-resource proof ledger** (#134) — `LedgerStore`, `groupLedger`, `inclusionProofDisplay`, `executionProofDisplay`. A **byte-mirror** of the native browser's `dig/shields/dig_ledger.mjs`; the dig-viewer records each resolved resource's inclusion verdict into the active tab's ledger (the `recordLedgerEntry` action) and the popup's Shield action lists it. Execution proofs are kept honest (never green-checked when mock/absent). |
-| `dig-provider-core.mjs` | Unit-tested core of the injected `window.chia` provider (version/info/methods + standard error codes). `dig-provider.js` inlines this surface. |
+| `dig-provider-core.mjs` / `wallet-methods.mjs` | Thin re-exports of the canonical **`@dignetwork/chia-provider`** package (the single source of truth for the `window.chia` surface, shared byte-for-byte with the native DIG Browser). Kept as import points so the SW/broker/agent-surface/tests import them unchanged. |
+| `dig-provider.entry.mjs` → `dist/dig-provider.js` | The MAIN-world injected provider: `build.js` esbuild-bundles this entry (which wraps the package's `buildProvider` with the extension's postMessage transport) into a self-contained IIFE. NOT a hand-copied surface. |
 | `agent-surface.mjs` → `dist/agent-surface.json` | Machine-readable self-description (actions + wallet methods + error codes + provider surface) generated at build time from the modules above. |
 | `dig_client.js` + `dig_client_bg.wasm` | SRI-pinned read-crypto WASM (`retrievalKey`, `deriveKey`, `verifyInclusion`, `decryptChunk`). **Do not edit** — it is the byte-identical cross-system crypto artifact (see `../../SYSTEM.md`). |
 | `content.js` | Content script — rewrites `chia://` resource references (img/script/link/srcset/etc.) on every page |
@@ -118,16 +119,24 @@ Two extension-local codes (not part of the shared subset): `DIG_ERR_INVALID_URN`
 `DIG_ERR_DIGNODE_REQUIRED`. The friendly human copy is unchanged (the error page still never
 leaks crypto strings — see `error-page.mjs`); the code is purely the machine discriminant.
 
-### 3. The injected `window.chia` provider — `dig-provider.js` / `dig-provider-core.mjs`
+### 3. The injected `window.chia` provider — `@dignetwork/chia-provider`
 
-Besides `isDIG`/`request`/`connect`/`on`/`off`, the provider is self-describing:
-`window.chia.version`, `window.chia.info` (`{ isDIG, transport:'walletconnect',
-edition:'extension', providerVersion }`), and `window.chia.methods` (the `WALLET_METHODS`
-catalogue) — also discoverable at runtime via
+The injected `window.chia` is BUILT FROM the shared **`@dignetwork/chia-provider`** package —
+the single source of truth for the DIG provider contract, consumed identically by the native DIG
+Browser and this extension so the two can never drift. `build.js` esbuild-bundles
+`dig-provider.entry.mjs` (which wraps the package's `buildProvider` with the extension's
+`window.postMessage` → content-script → background-SW → WalletConnect→Sage transport) into
+`dist/dig-provider.js` as a self-contained MAIN-world IIFE.
+
+The surface is a Goby/CHIP-0002/Sage-WC2 superset: besides `isDIG`/`request`/`connect`/`on`/`off`
+it advertises `isGoby`, Goby-legacy direct methods (`transfer`, `createOffer`, `getPublicKeys`, …),
+`requestAccounts`/`accounts`, `walletSwitchChain` (mainnet-only), a callable `isConnected()`, and is
+self-describing: `window.chia.version`, `window.chia.info`
+(`{ isDIG, transport:'walletconnect', edition:'extension', providerVersion }`), and
+`window.chia.methods` (the `WALLET_METHODS` catalogue) — also discoverable via
 `request({ method:'chip0002_getMethods' })` (answered locally). Thrown errors carry the
 **standard wallet codes**: `4001` user-rejected, `4100` unauthorized, `4200` unsupported,
-`4900` disconnected (replacing the old ad-hoc `-1` / raw-HTTP-status sentinels). This surface
-is kept byte-aligned with the native DIG Browser's `window.chia` (see `../../SYSTEM.md`).
+`4900` disconnected. See the package `SPEC.md` for the normative contract.
 
 ## Build
 
