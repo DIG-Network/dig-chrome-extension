@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const esbuild = require('esbuild');
 const { bundle: bundleWalletConnect, OUT_FILE: WC_VENDOR_FILE } = require('./scripts/bundle-walletconnect');
 
 // CLI flags. `--json` (machine mode) emits ONE JSON object to stdout, routes all human prose
@@ -63,8 +64,9 @@ const EXTENSION_FILES = [
   'middleware.js',
   'content.js',
   'page-script.js',
-  // Injected window.chia CHIP-0002 provider (main world).
-  'dig-provider.js',
+  // NB: the injected window.chia provider (dist/dig-provider.js) is NOT plain-copied — it is
+  // BUNDLED from dig-provider.entry.mjs + @dignetwork/chia-provider by bundleProvider() below,
+  // so the injected surface is the shared package's, never a hand-copied divergent one.
   'dig-viewer.html',
   'dig-viewer.js',
   // dig-client WASM (ES module + binary) — required for client-side decryption in the module SW
@@ -368,6 +370,55 @@ async function generateAgentSurface() {
   return surface;
 }
 
+// The MAIN-world injected provider entry (imports @dignetwork/chia-provider's buildProvider and
+// wraps it with the extension's postMessage transport). esbuild inlines the package into a single
+// IIFE — the MAIN world has no ES import at runtime.
+const PROVIDER_ENTRY = path.join(__dirname, 'dig-provider.entry.mjs');
+const PROVIDER_OUT = path.join(DIST_DIR, 'dig-provider.js');
+
+// Guard: the bundled injected provider must be a self-contained IIFE (no runtime import/require)
+// and must carry the shared-package surface (isGoby, requestAccounts, walletSwitchChain) so a
+// regression that fails to bundle the package fails the build loudly instead of shipping a stub.
+const PROVIDER_ESM_LEAK = /(^|[^.\w])(import|export)\s|(^|[^.\w])require\s*\(/m;
+
+/**
+ * Bundle the injected `window.chia` provider from dig-provider.entry.mjs + the shared
+ * @dignetwork/chia-provider package into dist/dig-provider.js as a single MAIN-world IIFE.
+ * The injected surface is thus the SHARED package's buildProvider output — never a hand-copied
+ * divergent one — wrapped with the extension's postMessage bridge transport.
+ */
+async function bundleProvider() {
+  log('\n🪪 Bundling injected window.chia provider (@dignetwork/chia-provider)...', 'blue');
+  await esbuild.build({
+    entryPoints: [PROVIDER_ENTRY],
+    outfile: PROVIDER_OUT,
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: ['chrome111'],
+    legalComments: 'none',
+    // Readable output (not minified) so the shipped provider stays auditable.
+    minify: false,
+  });
+  const out = fs.readFileSync(PROVIDER_OUT, 'utf8');
+  // Must be a self-contained IIFE: no unresolved ES import/export or CJS require survived bundling.
+  if (PROVIDER_ESM_LEAK.test(out)) {
+    const m = out.match(PROVIDER_ESM_LEAK);
+    throw new Error(
+      'Bundled dig-provider.js still contains an ES import/export or require() — the package did ' +
+        `not inline. Offending match near: ${JSON.stringify((m && m[0]) || '')}`
+    );
+  }
+  // Must carry the shared-package surface (proves buildProvider was bundled, not a stub).
+  for (const needle of ['window.chia', 'isGoby', 'requestAccounts', 'walletSwitchChain']) {
+    if (!out.includes(needle)) {
+      throw new Error(`Bundled dig-provider.js is missing "${needle}" — @dignetwork/chia-provider was not bundled.`);
+    }
+  }
+  const kb = (Buffer.byteLength(out) / 1024).toFixed(0);
+  log(`✓ Bundled: dig-provider.js (${kb} KB, shared @dignetwork/chia-provider surface)`, 'green');
+}
+
 /** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
 async function vendorWalletConnect() {
   log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
@@ -403,6 +454,10 @@ async function main() {
 
   // Vendor the WalletConnect SignClient (same-origin ESM for MV3) into dist/vendor/.
   await vendorWalletConnect();
+
+  // Bundle the injected window.chia provider from the shared @dignetwork/chia-provider package
+  // into dist/dig-provider.js (single IIFE for the page MAIN world).
+  await bundleProvider();
 
   // Inject the shared WalletConnect project id into dist/wallet-wc.js (build-time only;
   // never a committed source literal, never logged).
