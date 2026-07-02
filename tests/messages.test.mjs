@@ -18,6 +18,7 @@ import {
   BRIDGE,
   MESSAGE_CATALOGUE,
   isKnownAction,
+  buildCapabilities,
 } from '../messages.mjs';
 
 test('MESSAGE_PROTOCOL_VERSION is a positive integer (the contract version)', () => {
@@ -90,4 +91,39 @@ test('getCapabilities is catalogued (the self-describing version/capability surf
   assert.ok(entry);
   // Its response advertises version + the action list + the provider surface.
   assert.match(JSON.stringify(entry.response), /version|actions|methods/i);
+});
+
+test('buildCapabilities returns the full machine-readable self-description payload', () => {
+  const caps = buildCapabilities('9.9.9');
+  assert.equal(caps.version, '9.9.9');
+  assert.equal(caps.messageProtocol, MESSAGE_PROTOCOL_VERSION);
+  // actions mirrors the ACTIONS enum values, one-for-one.
+  assert.deepEqual([...caps.actions].sort(), Object.values(ACTIONS).sort());
+  // wallet + state-changing method lists and error codes are present and are arrays.
+  assert.ok(Array.isArray(caps.walletMethods) && caps.walletMethods.length > 0);
+  assert.ok(Array.isArray(caps.stateChangingMethods) && caps.stateChangingMethods.length > 0);
+  assert.ok(Array.isArray(caps.errorCodes) && caps.errorCodes.length > 0);
+  // every state-changing method is also in the overall wallet surface
+  for (const m of caps.stateChangingMethods) {
+    assert.ok(caps.walletMethods.includes(m), `${m} must be in walletMethods`);
+  }
+  // bridge is a copy (a plain object mirror of the frozen BRIDGE), with the wire types.
+  assert.equal(caps.bridge.WALLET_REQUEST, BRIDGE.WALLET_REQUEST);
+  assert.equal(caps.bridge.WALLET_RESPONSE, BRIDGE.WALLET_RESPONSE);
+});
+
+test('buildCapabilities defaults the version to "unknown" when none is supplied', () => {
+  assert.equal(buildCapabilities().version, 'unknown');
+  assert.equal(buildCapabilities(undefined).version, 'unknown');
+});
+
+test('buildCapabilities returns fresh copies, not the frozen source objects', () => {
+  const caps = buildCapabilities('1.0.0');
+  // mutating the returned arrays/object must not throw (they are not frozen) and must
+  // not affect a subsequent call — proving the builder copies rather than aliases.
+  caps.actions.push('__scratch__');
+  caps.bridge.__scratch__ = 'x';
+  const fresh = buildCapabilities('1.0.0');
+  assert.ok(!fresh.actions.includes('__scratch__'), 'actions must be a fresh array each call');
+  assert.ok(!('__scratch__' in fresh.bridge), 'bridge must be a fresh copy each call');
 });
