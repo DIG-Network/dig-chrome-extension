@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/c8rc.json",
+  "all": true,
+  "src": ["."],
+  "include": ["*.mjs"],
+  "exclude": [
+    "tests/**",
+    "node_modules/**",
+    "vendor/**",
+    "dist/**",
+    "server/**",
+    "**/*.d.ts",
+    "dig-provider.entry.mjs"
+  ],
+  "reporter": ["text", "text-summary"],
+  "check-coverage": true,
+  "lines": 80,
+  "branches": 80,
+  "functions": 80,
+  "statements": 80,
+  "clean": true
+}
