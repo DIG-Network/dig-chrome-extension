@@ -127,4 +127,125 @@ test('the injected IIFE (dig-provider.js) stays in lockstep with the core', () =
   assert.match(src, /4001/, 'injected provider must use the 4001 user-rejected code');
   assert.match(src, /4100/, 'injected provider must use the 4100 unauthorized code');
   assert.match(src, /4200/, 'injected provider must use the 4200 unsupported code');
+  // Goby-compat surface must be inlined too (see loroco parity tests below).
+  assert.match(src, /isGoby/, 'injected provider must advertise isGoby');
+  assert.match(src, /requestAccounts/, 'injected provider must expose requestAccounts');
+  assert.match(src, /walletSwitchChain/, 'injected provider must expose walletSwitchChain');
+});
+
+// ─── Goby / CHIP-0002 / Sage-WC2 compatibility (loroco window.chia parity) ──────
+// A dApp built for Goby / Sage's WC2 API expects: identity flags (isGoby), Goby-legacy
+// DIRECT methods on the object (provider.getPublicKeys(), .transfer(), …) rather than
+// only request({method}), the requestAccounts/accounts helpers, walletSwitchChain, and
+// isConnected() as a callable. buildProvider must expose all of these as a SUPERSET of
+// the existing DIG surface.
+
+/** A bridgeCall spy that records (method, params) and returns canned data per method. */
+function spyBridge() {
+  const calls = [];
+  const bridgeCall = async (method, params) => {
+    calls.push({ method, params });
+    if (method === 'chia_getAddress') return { status: 200, body: { data: { address: 'xch1testaddr' } } };
+    if (method === 'chia_send') return { status: 200, body: { data: { id: '0xspend' } } };
+    if (method === 'chip0002_connect') return { status: 200, body: { data: true } };
+    return { status: 200, body: { data: {} } };
+  };
+  return { calls, bridgeCall };
+}
+
+test('provider advertises Goby identity flags (isGoby/name/apiVersion) alongside isDIG', () => {
+  const { bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  assert.equal(p.isDIG, true);
+  assert.equal(p.isGoby, true);
+  assert.equal(typeof p.name, 'string');
+  assert.ok(p.name.length > 0);
+  assert.equal(typeof p.apiVersion, 'string');
+});
+
+test('isConnected() is a callable that flips true after connect', async () => {
+  const { bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  assert.equal(typeof p.isConnected, 'function');
+  assert.equal(p.isConnected(), false);
+  await p.connect();
+  assert.equal(p.isConnected(), true);
+  assert.equal(p.chainId, 'mainnet'); // DIG is Chia mainnet
+});
+
+test('Goby-legacy direct methods exist on the provider object', () => {
+  const { bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  for (const m of [
+    'connect', 'getPublicKeys', 'filterUnlockedCoins', 'getAssetCoins', 'getAssetBalance',
+    'signCoinSpends', 'signMessage', 'transfer', 'sendTransaction', 'createOffer', 'takeOffer',
+    'cancelOffer', 'signMessageByAddress', 'getNFTs', 'getNFTInfo', 'walletSwitchChain',
+    'walletWatchAsset', 'requestAccounts', 'accounts',
+  ]) {
+    assert.equal(typeof p[m], 'function', `${m} is a direct method`);
+  }
+});
+
+test('request({method:"transfer"}) routes to chia_send with to→address remap', async () => {
+  const { calls, bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  await p.request({ method: 'transfer', params: { to: 'xch1dest', amount: 7, fee: 1 } });
+  const sent = calls.find((c) => c.method === 'chia_send');
+  assert.ok(sent, 'transfer must reach the broker as chia_send');
+  assert.deepEqual(sent.params, { amount: 7, fee: 1, address: 'xch1dest' });
+});
+
+test('the direct transfer() method routes identically to request', async () => {
+  const { calls, bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  await p.transfer({ to: 'xch1dest2', amount: 3 });
+  const sent = calls.find((c) => c.method === 'chia_send');
+  assert.ok(sent);
+  assert.deepEqual(sent.params, { amount: 3, address: 'xch1dest2' });
+});
+
+test('request({method:"getPublicKeys"}) routes to chip0002_getPublicKeys', async () => {
+  const { calls, bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  await p.request({ method: 'getPublicKeys' });
+  assert.ok(calls.some((c) => c.method === 'chip0002_getPublicKeys'));
+});
+
+test('requestAccounts() connects then returns the address list + caches selectedAddress', async () => {
+  const { bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  const accts = await p.requestAccounts();
+  assert.deepEqual(accts, ['xch1testaddr']);
+  assert.equal(p.isConnected(), true);
+  assert.equal(p.selectedAddress, 'xch1testaddr');
+});
+
+test('accounts() throws 4900 when not connected, returns addresses once connected', async () => {
+  const { bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  await assert.rejects(() => p.accounts(), (e) => { assert.equal(e.code, 4900); return true; });
+  await p.connect();
+  assert.deepEqual(await p.accounts(), ['xch1testaddr']);
+});
+
+test('walletSwitchChain accepts mainnet locally and rejects other chains as unsupported', async () => {
+  const { calls, bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  assert.equal(await p.walletSwitchChain({ chainId: 'mainnet' }), null);
+  assert.equal(calls.length, 0, 'mainnet switch is answered locally, no bridge call');
+  await assert.rejects(
+    () => p.walletSwitchChain({ chainId: 'testnet11' }),
+    (e) => { assert.equal(e.code, 4200); return true; },
+  );
+});
+
+test('on/off/removeListener accept chainChanged and accountChanged without throwing', () => {
+  const { bridgeCall } = spyBridge();
+  const p = buildProvider({ bridgeCall, version: '1.0.0' });
+  const fn = () => {};
+  assert.doesNotThrow(() => p.on('chainChanged', fn));
+  assert.doesNotThrow(() => p.on('accountChanged', fn));
+  assert.equal(typeof p.removeListener, 'function');
+  assert.doesNotThrow(() => p.removeListener('chainChanged', fn));
+  assert.doesNotThrow(() => p.off('accountChanged', fn));
 });
