@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.2.0] - 2026-07-04
+
+### Bug Fixes
+- Pure-RPC-consumer SoC — remove content caching, fix custom-node override (#2)
+
 ## [1.1.1] - 2026-07-04
 
 ### CI
