@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.1.1] - 2026-07-04
+
+### CI
+- Release = downloadable build archive (.zip) on tag; Chrome Web Store publish manual until hooked up (#230)- Add PR quality gates (test/coverage/build) [#230] (#1)
+
 ## [1.1.0] - 2026-07-04
 
 ### Features
