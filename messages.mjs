@@ -22,8 +22,11 @@ import { DIG_ERR } from './error-codes.mjs';
 /**
  * Version of THIS message contract (the action set + their request/response shapes). Bump
  * on any breaking change so a consumer can feature-detect via the `getCapabilities` action.
+ *
+ * v2 (#43 / #41 SoC audit): removed `preloadResources`, `getCacheStats`, and `clearCache` —
+ * the extension no longer caches resolved content (caching is a dig-node job).
  */
-export const MESSAGE_PROTOCOL_VERSION = 1;
+export const MESSAGE_PROTOCOL_VERSION = 2;
 
 /**
  * Frozen enum of every `message.action` the extension routes over chrome.runtime. Each key
@@ -39,7 +42,6 @@ export const ACTIONS = Object.freeze({
   navigateToDigUrl: 'navigateToDigUrl',
   navigateToDataUrl: 'navigateToDataUrl', // deprecated; navigates a legacy server URL
   getDataUrl: 'getDataUrl', // deprecated; returns a data: URL
-  preloadResources: 'preloadResources',
   navigate: 'navigate',
   // ── extension state ──
   toggleExtension: 'toggleExtension',
@@ -48,11 +50,9 @@ export const ACTIONS = Object.freeze({
   // ── wallet (window.chia broker) ──
   walletRpc: 'walletRpc',
   walletConsent: 'walletConsent',
-  // ── verification + cache + node status ──
+  // ── verification + node status ──
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
-  getCacheStats: 'getCacheStats',
-  clearCache: 'clearCache',
   getDigNodeStatus: 'getDigNodeStatus',
   // ── DIG Shields (per-resource proof ledger) — mirrors the browser dig://shields #134 ──
   recordLedgerEntry: 'recordLedgerEntry',
@@ -98,9 +98,9 @@ const CODED_ERROR = `{ success:false, code:DIG_ERR_*, message } on failure (code
  */
 export const MESSAGE_CATALOGUE = Object.freeze({
   [ACTIONS.proxyRequest]: {
-    summary: 'Resolve a chia:// URL to verified, decrypted content (the primary read path).',
+    summary: 'Resolve a chia:// URL to verified, decrypted content (the primary read path, no caching).',
     request: '{ action, url:string /* chia://… */ }',
-    response: `{ success:true, data:dataUrl, contentType:string, cached:boolean, verified?:boolean } | ${CODED_ERROR}`,
+    response: `{ success:true, data:dataUrl, contentType:string, verified?:boolean } | ${CODED_ERROR}`,
   },
   [ACTIONS.convertDigUrl]: {
     summary: 'Resolve a chia:// URL and return a data: URL (one-shot, no caching).',
@@ -122,11 +122,6 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     request: '{ action, url:string }',
     response: `{ dataUrl:string, url:string } | ${CODED_ERROR}`,
   },
-  [ACTIONS.preloadResources]: {
-    summary: 'Pre-fetch several chia:// resources to warm the cache.',
-    request: '{ action, urls:string[] }',
-    response: '{ success:true, results:any[] } | { error:string }',
-  },
   [ACTIONS.navigate]: {
     summary: 'Navigate the active tab to an arbitrary URL.',
     request: '{ action, url:string }',
@@ -138,7 +133,7 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: 'none (synchronous)',
   },
   [ACTIONS.updateServerConfig]: {
-    summary: 'Persist the dig-node / RPC host config and clear the resource cache.',
+    summary: 'Persist the dig-node / RPC host config.',
     request: '{ action, host?:string } | { action, url?:string, port?:number }',
     response: 'none (synchronous)',
   },
@@ -166,16 +161,6 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: "Popup asks for the active tab's verification state.",
     request: '{ action }',
     response: "{ verification: { state:'verified'|'failed', urn:string } | null }",
-  },
-  [ACTIONS.getCacheStats]: {
-    summary: 'Report the in-memory resource cache size (entries + approx bytes).',
-    request: '{ action }',
-    response: '{ entries:number, approxBytes:number }',
-  },
-  [ACTIONS.clearCache]: {
-    summary: 'Clear the in-memory resource cache.',
-    request: '{ action }',
-    response: '{ success:boolean, error?:string }',
   },
   [ACTIONS.getDigNodeStatus]: {
     summary: 'Probe whether a local dig-node is reachable; report the chosen base.',

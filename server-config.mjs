@@ -74,16 +74,35 @@ export function formatServerHost(url, port) {
 export const DIG_LOCAL_URL = 'http://dig.local';
 
 /**
- * Build the ordered try-list of local dig-node base URLs: `dig.local` first, then
- * `localhost:<port>`. The port for the localhost fallback comes from the configured
- * `server.host` (defaulting to {@link DEFAULT_DIG_NODE_PORT}). The list is the single source
- * of truth for "which local addresses, in what order" — callers probe it top-to-bottom.
+ * Hosts that mean "the standard local dig-node", not a distinct/remote node the user is
+ * pointing the extension at. Configuring one of these (with any port) keeps the normal
+ * dig.local-first, localhost-fallback ladder; anything else is a genuine override (below).
+ */
+const LOCAL_ALIAS_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'dig.local']);
+
+/**
+ * Build the ordered try-list of local dig-node base URLs.
  *
- * @param {string} [host] the configured `server.host` (used only for the localhost port)
- * @returns {string[]} `['http://dig.local', 'http://localhost:<port>']`
+ * §5.3 override precedence: an explicitly-configured host that names something OTHER than the
+ * standard local aliases (`localhost` / `127.0.0.1` / `::1` / `dig.local`) is a genuine custom
+ * node — it wins ENTIRELY over the ladder, so it is the ONLY candidate returned (the
+ * dig.local/localhost probes are skipped). Absent a custom host (blank input, or one of the
+ * local aliases), the ladder is `dig.local` first, then `localhost:<port>` — the port coming
+ * from the configured `server.host` (defaulting to {@link DEFAULT_DIG_NODE_PORT}).
+ *
+ * Previously this destructured only `{ port }` from the parsed host and silently discarded
+ * `url`, so a configured custom host (e.g. `my-node.example.com:9000`) was NEVER actually
+ * tried — only its port leaked into the localhost fallback. Fixed: see #43 / #41 audit.
+ *
+ * @param {string} [host] the configured `server.host`
+ * @returns {string[]} `['http://<custom-host>:<port>']`, or
+ *   `['http://dig.local', 'http://localhost:<port>']` when no custom host is configured
  */
 export function digNodeCandidates(host) {
-  const { port } = parseServerHost(host);
+  const { url, port } = parseServerHost(host);
+  if (url && !LOCAL_ALIAS_HOSTS.has(url.toLowerCase())) {
+    return [`http://${url}:${port}`];
+  }
   return [DIG_LOCAL_URL, `http://localhost:${port}`];
 }
 

@@ -41,18 +41,52 @@ test('digNodeCandidates honours a configured host:port for the localhost fallbac
   ]);
 });
 
-test('digNodeCandidates uses the default port when the configured host has none', () => {
-  assert.deepEqual(digNodeCandidates('my-node'), [
+test('digNodeCandidates treats 127.0.0.1 as a local alias (still uses the dig.local ladder)', () => {
+  assert.deepEqual(digNodeCandidates('127.0.0.1:9777'), [
+    'http://dig.local',
+    'http://localhost:9777',
+  ]);
+});
+
+test('digNodeCandidates uses the default port when a local-alias host has none', () => {
+  assert.deepEqual(digNodeCandidates('localhost'), [
     'http://dig.local',
     `http://localhost:${DEFAULT_DIG_NODE_PORT}`,
   ]);
 });
 
-test('digNodeCandidates always lists dig.local FIRST, localhost SECOND', () => {
+test('digNodeCandidates always lists dig.local FIRST, localhost SECOND (default/local-alias hosts)', () => {
   const list = digNodeCandidates('localhost:8080');
   assert.equal(list[0], 'http://dig.local', 'dig.local must be tried first');
   assert.ok(list[1].startsWith('http://localhost:'), 'localhost must be the fallback');
   assert.equal(list.length, 2);
+});
+
+// ---- §5.3 override precedence: an explicit custom node host wins ENTIRELY -----------------
+//
+// REGRESSION (#43 / #41 audit): `digNodeCandidates` used to destructure only `{ port }` from
+// the parsed host and silently drop `url`, so a user who configured a genuinely different
+// node (e.g. `my-node.example.com:9000`) never actually had it tried — the extension always
+// probed `dig.local` then `localhost:<port>` instead, ignoring the configured host entirely.
+// The options page promises "Point this at the dig-node's address", so this was a real bug.
+
+test('digNodeCandidates: an explicit custom host wins ENTIRELY over dig.local/localhost (regression)', () => {
+  const list = digNodeCandidates('my-node.example.com:9000');
+  assert.deepEqual(
+    list,
+    ['http://my-node.example.com:9000'],
+    'the configured custom host must be the ONLY candidate — dig.local/localhost must not be probed'
+  );
+});
+
+test('digNodeCandidates: a custom host with no port falls back to the default dig-node port', () => {
+  assert.deepEqual(digNodeCandidates('192.168.1.50'), [`http://192.168.1.50:${DEFAULT_DIG_NODE_PORT}`]);
+});
+
+test('digNodeCandidates: a custom host is case-insensitively distinguished from local aliases', () => {
+  // "DIG.LOCAL" / "LOCALHOST" typed in any case are still the well-known local aliases, not a
+  // custom remote node — they keep the normal ladder.
+  assert.deepEqual(digNodeCandidates('LOCALHOST:9000'), ['http://dig.local', 'http://localhost:9000']);
 });
 
 test('probeDigNode resolves true when fetch succeeds within the timeout', async () => {
@@ -96,4 +130,13 @@ test('resolveDigNode returns null when NO candidate is reachable (dig-node not r
   const fetch = async () => { throw new Error('Failed to fetch'); };
   const r = await resolveDigNode('localhost:8080', { fetch });
   assert.equal(r, null);
+});
+
+test('resolveDigNode probes ONLY the custom host when one is explicitly configured (regression)', async () => {
+  const tried = [];
+  const fetch = async (url) => { tried.push(url); return { ok: true }; };
+  const r = await resolveDigNode('my-node.example.com:9000', { fetch });
+  assert.equal(r, 'http://my-node.example.com:9000');
+  // Must NOT have probed dig.local or localhost — the custom host wins entirely (§5.3).
+  assert.deepEqual(tried, ['http://my-node.example.com:9000/']);
 });

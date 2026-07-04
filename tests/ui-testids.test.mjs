@@ -59,7 +59,7 @@ test('popup.html exposes the verify verdict as a data-* attribute (not just clas
 test('options.html exposes data-testid on every config control', () => {
   const html = read('options.html');
   for (const id of [
-    'options-root', 'cache-stat', 'clear-cache', 'dignode-host-input', 'dignode-host-reset',
+    'options-root', 'dignode-host-input', 'dignode-host-reset',
     'dignode-status', 'rpc-endpoint-input', 'rpc-endpoint-reset', 'wc-project-id-input',
   ]) {
     assert.match(html, new RegExp(`data-testid="${id}"`), `options.html missing data-testid="${id}"`);

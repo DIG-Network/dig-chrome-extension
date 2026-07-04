@@ -5,7 +5,7 @@
 //   - Wallet panel: balance (XCH + $DIG) + connect/disconnect (WalletConnect → Sage) + Get $DIG.
 //   - Verified badge line: reflects the active tab's chia:// Merkle-verification state.
 //   - Connection requests: approve/deny dapps' window.chia.connect() per origin.
-//   - DIG settings link: opens the options page (cache + dig-node host + RPC).
+//   - DIG settings link: opens the options page (dig-node host + RPC).
 
 import * as wc from './wallet-wc.js';
 import { getApprovedOrigins } from './wallet-broker.mjs';

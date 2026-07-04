@@ -122,8 +122,9 @@
 // Uses CSP-safe data attribute instead of inline script
 function injectRpcHostToPage() {
   try {
-    // Use cachedRpcHost from middleware.js scope - always read current value
-    const rpcHost = typeof cachedRpcHost !== 'undefined' ? cachedRpcHost : 'localhost:80';
+    // Use cachedRpcHost from middleware.js scope - always read current value. Default MUST
+    // match the dig-node's actual default port (8080), not the http-standard 80.
+    const rpcHost = typeof cachedRpcHost !== 'undefined' ? cachedRpcHost : 'localhost:8080';
     
     // Set data attribute on document element (CSP-safe)
     if (document.documentElement) {
@@ -1511,10 +1512,6 @@ function interceptXHR() {
           }
           
           if (proxyResponse.success) {
-            // Cache the result
-            digResourceLoader.memoryCache.set(digUrl, proxyResponse.data);
-            digResourceLoader.indexedDBCache.set(digUrl, proxyResponse.data).catch(() => {});
-            
             // Convert data URL to blob/text and set response
             fetch(proxyResponse.data)
               .then(r => {
@@ -1782,91 +1779,6 @@ function wireWalletBridge() {
       reply({ status: -1, error: e && e.message ? e.message : 'wallet bridge error' });
     }
   });
-}
-
-// Pre-load chia:// resources found in the page (Priority 7: Resource Preloading)
-async function preloadPageResources() {
-  const enabled = await isExtensionEnabled();
-  if (!enabled) return;
-  
-  // Collect all chia:// URLs from the page
-  const digUrls = new Set();
-  
-  // Find all chia:// URLs in the document
-  if (document.documentElement) {
-    // Images
-    document.querySelectorAll('img[src^="chia://"]').forEach(img => {
-      digUrls.add(img.src);
-    });
-    
-    // Links (stylesheets, etc.)
-    document.querySelectorAll('link[href^="chia://"]').forEach(link => {
-      digUrls.add(link.href);
-    });
-    
-    // Scripts
-    document.querySelectorAll('script[src^="chia://"]').forEach(script => {
-      digUrls.add(script.src);
-    });
-    
-    // CSS url() references in style attributes and style tags
-    document.querySelectorAll('[style*="chia://"]').forEach(el => {
-      const style = el.getAttribute('style') || '';
-      const matches = style.match(/chia:\/\/[^\s'")]+/g);
-      if (matches) matches.forEach(url => digUrls.add(url));
-    });
-    
-    document.querySelectorAll('style').forEach(style => {
-      const content = style.textContent || '';
-      const matches = content.match(/chia:\/\/[^\s'")]+/g);
-      if (matches) matches.forEach(url => digUrls.add(url));
-    });
-  }
-  
-  // Pre-load all found resources using middleware system
-  if (digUrls.size > 0) {
-    console.log(`DIG Extension: Pre-loading ${digUrls.size} resources`);
-    
-    // Preload with priority queue
-    const preloadPromises = Array.from(digUrls).map((url, index) => {
-      // Higher priority for resources found earlier in DOM
-      const priority = digUrls.size - index;
-      return digResourceLoader.requestQueue.enqueue(async () => {
-        try {
-          const result = await digResourceLoader.loadResource(null, null, url, priority);
-          // Cache the result
-          if (result.data && result.data.data) {
-            digResourceLoader.memoryCache.set(url, result.data.data);
-            digResourceLoader.indexedDBCache.set(url, result.data.data).catch(() => {});
-          }
-          return result;
-        } catch (error) {
-          // Ignore preload errors
-          return null;
-        }
-      }, priority);
-    });
-    
-    Promise.allSettled(preloadPromises).then(results => {
-      const successful = results.filter(r => r.status === 'fulfilled' && r.value).length;
-      console.log(`DIG Extension: Pre-loaded ${successful}/${digUrls.size} resources`);
-    });
-    
-    // Also send to background worker for background preloading
-    chrome.runtime.sendMessage(
-      { action: 'preloadResources', urls: Array.from(digUrls) },
-      (response) => {
-        if (response && response.success) {
-          // Cache results from background worker
-          response.results.forEach(result => {
-            if (result.data && result.data.data) {
-              digResourceLoader.memoryCache.set(result.url, result.data.data);
-            }
-          });
-        }
-      }
-    );
-  }
 }
 
 // Check if we're on a localhost page
@@ -2234,20 +2146,18 @@ function checkForMissedResources() {
         checkForMissedResources();
       }, 200);
       
-      // Pre-load resources after DOM is ready (non-blocking, heavily delayed)
-      // This happens once and then stops
+      // Check for missed resources once more after DOM is ready (non-blocking, delayed).
+      // (A whole-page cache-warming preload pass used to run here; removed with the content
+      // cache it existed to warm — #43 / #41 SoC audit decision 3. Resources are still
+      // resolved on demand as each element is processed.)
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
           setTimeout(() => {
-            preloadPageResources();
-            // Also check for missed resources after DOM is ready
             checkForMissedResources();
-          }, 500); // Heavily delay preloading to not block page load
+          }, 500);
         }, { once: true });
       } else {
         setTimeout(() => {
-          preloadPageResources();
-          // Also check for missed resources
           checkForMissedResources();
         }, 500);
       }

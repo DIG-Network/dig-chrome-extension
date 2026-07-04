@@ -1,9 +1,9 @@
 // DIG settings (options) controller — the ONE settings home.
 //
-// Mirrors the native DIG Browser's chrome://settings DIG section within MV3 limits:
-// local cache usage/clear, the dig-node host (server.host) with a reachability check,
-// the upstream DIG RPC endpoint, and the WalletConnect project id. (The popup is the
-// product surface; all config controls live here.)
+// The extension is a pure RPC consumer — it does NOT cache resolved content (caching is a
+// dig-node job; see #43 / #41 SoC audit). This page configures: the dig-node host
+// (server.host) with a reachability check, the upstream DIG RPC endpoint, and the
+// WalletConnect project id. (The popup is the product surface; all config controls live here.)
 
 import { DIG_BROWSER_URL } from './links.mjs';
 import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from './server-config.mjs';
@@ -12,37 +12,6 @@ import { digNodeInstallPrompt } from './dig-node-status.mjs';
 const $ = (id) => document.getElementById(id);
 
 const DEFAULT_RPC = 'https://rpc.dig.net/';
-
-function fmtBytes(n) {
-  if (!n) return '0 B';
-  const u = ['B', 'KB', 'MB', 'GB'];
-  let i = 0;
-  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-  return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
-}
-
-// ---- Cache ----
-async function refreshCache() {
-  try {
-    const r = await chrome.runtime.sendMessage({ action: 'getCacheStats' });
-    $('cacheStat').textContent = r
-      ? `${r.entries} item${r.entries === 1 ? '' : 's'} · ~${fmtBytes(r.approxBytes)}`
-      : '—';
-  } catch {
-    $('cacheStat').textContent = 'unavailable';
-  }
-}
-
-async function clearCache() {
-  const note = $('cacheNote');
-  try {
-    await chrome.runtime.sendMessage({ action: 'clearCache' });
-    if (note) { note.textContent = 'Cache cleared.'; note.className = 'note ok'; }
-    await refreshCache();
-  } catch (e) {
-    if (note) { note.textContent = 'Could not clear cache.'; note.className = 'note warn'; }
-  }
-}
 
 // ---- dig-node host (server.host) ----
 async function loadCompanion() {
@@ -73,7 +42,8 @@ async function checkCompanion() {
   status.textContent = 'Checking dig-node…';
   status.className = 'note';
   // Use the SHARED resolver so this reflects the same try-list the background read path uses:
-  // dig.local first (branded, port 80), then localhost:<port>. Reports the reachable address.
+  // an explicitly-configured custom host wins ENTIRELY (§5.3); otherwise dig.local first
+  // (branded, port 80), then localhost:<port>. Reports the reachable address.
   const base = await resolveDigNode(host, { timeoutMs: 2000 }).catch(() => null);
   if (base) {
     status.textContent = `dig-node reachable at ${base}.`;
@@ -126,12 +96,10 @@ function debounce(fn, ms) {
 }
 
 function init() {
-  refreshCache();
   loadCompanion();
   loadRpc();
   loadProjectId();
 
-  $('clearCacheBtn').addEventListener('click', clearCache);
   $('companionHost').addEventListener('input', debounce(saveCompanion, 400));
   $('companionHost').addEventListener('blur', saveCompanion);
   $('companionDefaultBtn').addEventListener('click', () => {

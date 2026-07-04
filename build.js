@@ -50,7 +50,7 @@ const EXTENSION_FILES = [
   'newtab.html',
   'newtab.css',
   'newtab.js',
-  // DIG settings (options page): cache + companion + RPC + wallet project id.
+  // DIG settings (options page): dig-node host + RPC + wallet project id.
   'options.html',
   'options.css',
   'options.js',

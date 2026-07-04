@@ -29,11 +29,17 @@ The extension delivers the DIG Network experience on any Chromium browser:
 4. **DIG Control Panel** — detect a local dig-node and expose manage-vs-install actions.
 5. **DIG Home / omnibox / search** — a new-tab surface and a `dig`-keyword omnibox.
 
-All content verification and decryption happen **client-side**. The extension is a
-consumer/read client in the DIG ecosystem; it does not write stores or spend on-chain.
+All content verification and decryption happen **client-side**. The extension is a **pure
+RPC-consumer read client** in the DIG ecosystem: it does not write stores, spend on-chain, run
+P2P/DHT/gossip/sync, or cache resolved content. The client-side verify+decrypt path (§5, §6) is
+the trustless read tier and is NOT a node responsibility — every implementation that reads DIG
+content this way (this extension, the native DIG Browser, the hub, digstore) verifies and
+decrypts locally against blind ciphertext the node serves; the node never needs to be trusted.
 
-Out of scope: on-chain spends (the hub owns those), running a node (the dig-node owns that),
-and serving content to peers (the dig-node owns that).
+Out of scope (dig-node responsibilities this extension MUST NOT reimplement): on-chain spends
+(the hub owns those), P2P/DHT/gossip/peer discovery, chain-watch/subscriptions, serving content
+to peers, and **caching resolved/decrypted content** — every read re-fetches, re-verifies, and
+re-decrypts (§15).
 
 ---
 
@@ -205,7 +211,7 @@ The reader reassembles windows into a single buffer of `total_length` and passes
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `1`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `2`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -216,18 +222,16 @@ shape.
 
 | Action | Purpose |
 |---|---|
-| `proxyRequest` | Resolve a `chia://` URL to verified, decrypted content (primary read). |
+| `proxyRequest` | Resolve a `chia://` URL to verified, decrypted content (primary read, no caching). |
 | `convertDigUrl` | Resolve a `chia://` URL to a `data:` URL (one-shot, no caching). |
 | `navigateToDigUrl` | Open a `chia://` URL in the dig-viewer for the sender/active tab. |
-| `preloadResources` | Warm the cache with several `chia://` resources. |
 | `navigate` | Navigate the active tab to a URL. |
 | `toggleExtension` | Toggle `chia://` resolution on/off. |
-| `updateServerConfig` | Persist the dig-node/RPC host config and clear the resource cache. |
+| `updateServerConfig` | Persist the dig-node/RPC host config. |
 | `updateRpcHost` | Background→content broadcast that the RPC host changed. |
 | `walletRpc` | Broker one `window.chia` CHIP-0002 RPC (per-origin gated). |
 | `walletConsent` | Popup approves/revokes a dapp origin for wallet access. |
 | `reportVerification` / `getVerification` | Record/read the active tab's verification state. |
-| `getCacheStats` / `clearCache` | Report/clear the in-memory resource cache. |
 | `getDigNodeStatus` | Probe whether a local dig-node is reachable; report the chosen base. |
 | `recordLedgerEntry` / `getShieldLedger` | DIG Shields per-resource proof ledger (§10). |
 | `getControlStatus` | DIG Control Panel status (manage vs install) (§11). |
@@ -238,11 +242,16 @@ shape.
 Deprecated (kept for backward compatibility, MUST continue to be handled):
 `navigateToDataUrl`, `getDataUrl`.
 
+Removed in `MESSAGE_PROTOCOL_VERSION` 2 (#43 / #41 SoC audit — the extension does not cache
+resolved content): `preloadResources`, `getCacheStats`, `clearCache`. An implementation MUST
+NOT reintroduce a content-caching action.
+
 ### 7.2 Loader response envelope
 
 The loader actions (`proxyRequest`, `convertDigUrl`, `getDataUrl`) return, on failure, the
 coded envelope `{ success: false, code: <DIG_ERR_*>, message: <human string> }` (§9). On
-success `proxyRequest` returns `{ success: true, data: <dataUrl>, contentType, cached, verified? }`.
+success `proxyRequest` returns `{ success: true, data: <dataUrl>, contentType, verified? }`.
+There is no `cached` field — the response never reflects a cache hit, because there is no cache.
 
 ### 7.3 Page↔extension provider bridge (`BRIDGE`)
 
@@ -267,17 +276,30 @@ This is the machine-readable self-description; it is also emitted at build time 
 
 ## 8. Node-resolution ladder & configuration
 
-The extension resolves the content RPC endpoint preferring the user's own machine, falling
-back to the hosted read tier.
+The extension resolves the content RPC endpoint per the ecosystem-wide client→node resolution
+order: **explicit config > `dig.local` > `localhost` > the hosted read tier**. An
+explicitly-configured node always wins; absent one, the extension prefers the user's own
+machine, falling back to the hosted read tier only when no local node is reachable.
 
 ### 8.1 Local dig-node candidates (`server-config.mjs`)
 
-`digNodeCandidates(host)` returns the ordered try-list
-`['http://dig.local', 'http://localhost:<port>']`:
+`digNodeCandidates(host)` returns the ordered try-list, computed from the parsed
+`{ url, port }` (§8.3):
 
-1. `http://dig.local` (port 80, branded) — tried FIRST.
-2. `http://localhost:<port>` — the always-on fallback (`<port>` from the configured
-   `server.host`, default **8080**).
+1. **An explicitly-configured custom host wins ENTIRELY.** When `url` names something other
+   than a standard local alias (`localhost`, `127.0.0.1`, `::1`, `dig.local` — case-insensitive),
+   the try-list is the single candidate `['http://<url>:<port>']`; `dig.local` and `localhost`
+   are NOT probed. This is the override precedence: a configured node is a deliberate choice
+   and MUST actually be contacted, never silently ignored in favor of the local-alias ladder.
+2. **Otherwise** (no host configured, or one of the local aliases) the ladder is
+   `['http://dig.local', 'http://localhost:<port>']`:
+   - `http://dig.local` (port 80, branded) — tried FIRST.
+   - `http://localhost:<port>` — the always-on fallback (`<port>` from the configured
+     `server.host`, default **8080**).
+
+An implementation MUST NOT destructure only `{ port }` from the parsed host and discard `url` —
+doing so silently drops a configured custom host and is a conformance defect (the historical
+bug this SPEC section closes: #43 / #41 SoC audit).
 
 `probeDigNode(baseUrl, {fetch, timeoutMs})` MUST use a `no-cors` GET with a short timeout
 (default 1500 ms) and treat ANY resolved fetch (even opaque) as reachable; a thrown/aborted
@@ -287,13 +309,16 @@ fetch is unreachable. `resolveDigNode(host)` returns the first reachable candida
 
 `getRpcEndpoint()` MUST:
 
-1. Resolve a local dig-node (§8.1), briefly caching the result (default TTL 10 s), and use its
-   JSON-RPC POST root (trailing slash) when reachable.
+1. Resolve a local dig-node (§8.1 — a configured custom host, or the `dig.local`/`localhost`
+   ladder), briefly caching the resolved base URL (default TTL 10 s), and use its JSON-RPC POST
+   root (trailing slash) when reachable.
 2. Otherwise fall back to the hosted endpoint from `digRpcEndpoint`, defaulting to
    `https://rpc.dig.net/`.
 
-The cache MUST be invalidated immediately when `server.host` / `server.url` / `server.port`
-change.
+This is the client→node resolution order, in full: **explicit `server.host` override >
+`dig.local` > `localhost:<port>` > `digRpcEndpoint` (default `rpc.dig.net`)**. The 10 s
+endpoint-resolution memo MUST be invalidated immediately when `server.host` / `server.url` /
+`server.port` change; it caches WHICH endpoint answered, never resolved/decrypted content.
 
 ### 8.3 User-facing custom node (mandatory)
 
@@ -301,7 +326,8 @@ The extension MUST expose a first-class, persisted way for the user to set a cus
 
 - `server.host` (options page) — the local dig-node host (`host`, `host:port`, or
   `http(s)://host[:port]`), parsed by `parseServerHost` into `{ url, port }` with an
-  out-of-range/absent port falling back to 8080.
+  out-of-range/absent port falling back to 8080. A value naming something other than a local
+  alias (§8.1) overrides the `dig.local`/`localhost` ladder entirely.
 - `digRpcEndpoint` (options page) — the hosted fallback endpoint, overriding `rpc.dig.net`.
 
 A configured value takes precedence over the auto-defaults for its tier.
@@ -429,7 +455,7 @@ extension MUST NOT diverge from it.
 
 | Setting | Storage key / source | Default | Effect |
 |---|---|---|---|
-| Local dig-node host | `server.host` | `localhost:8080` | localhost fallback endpoint; `dig.local` is always tried first |
+| Local dig-node host | `server.host` | `localhost:8080` | a local-alias host (`localhost`/`dig.local`) keeps the `dig.local`-first ladder; a genuinely custom host wins ENTIRELY over that ladder (§8.1) |
 | Hosted RPC endpoint | `digRpcEndpoint` | `https://rpc.dig.net/` | fallback when no local node is reachable |
 | Resolution on/off | popup (`toggleExtension`) | on | disables `chia://` resolution |
 | WalletConnect project id | build-time env `WALLETCONNECT_PROJECT_ID` → `dist/wallet-wc.js`; options-page override | none | WalletConnect relay project id |
@@ -450,6 +476,9 @@ extension MUST NOT diverge from it.
 - **Privacy-preferring endpoint** — the user's local dig-node is preferred over the hosted
   gateway; the gateway is the fallback, not the default (§8).
 - **Read-only** — the extension performs no on-chain spends and serves no content to peers.
+- **No content cache** — the extension does not persist or memory-cache resolved/decrypted
+  content; every `proxyRequest`/`convertDigUrl` call re-fetches, re-verifies, and re-decrypts.
+  Caching (and any node-config UI) is a dig-node responsibility, never the extension's (§1).
 
 ---
 

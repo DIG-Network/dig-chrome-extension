@@ -1,23 +1,26 @@
 // DIG Extension Middleware System
 // Implements all fallback strategies in priority order
 
-// Cache for RPC host configuration
-let cachedRpcHost = 'localhost:80';
+// Cache for RPC host configuration. Default MUST match the dig-node's actual default port
+// (8080 — server-config.mjs DEFAULT_DIG_NODE_PORT), not the http-standard 80. Content scripts
+// are classic (non-module) scripts and can't `import` the shared constant, so it's a literal
+// here — keep it in lockstep with server-config.mjs.
+let cachedRpcHost = 'localhost:8080';
 
 // Get RPC host from storage (async)
 async function updateRpcHostCache() {
   try {
     if (typeof chrome !== 'undefined' && chrome.storage) {
       const result = await chrome.storage.local.get(['server.host', 'server.url', 'server.port']);
-      
-      let newRpcHost = 'localhost:80';
-      
+
+      let newRpcHost = 'localhost:8080';
+
       if (result['server.host']) {
         newRpcHost = result['server.host'];
       } else if (result['server.url'] || result['server.port']) {
         // Fallback to old format
         const url = result['server.url'] || 'localhost';
-        const port = result['server.port'] || 80;
+        const port = result['server.port'] || 8080;
         newRpcHost = `${url}:${port}`;
       }
       
@@ -61,126 +64,6 @@ if (typeof chrome !== 'undefined' && chrome.storage) {
       }
     }
   });
-}
-
-// ============================================================================
-// Priority 4: Resource Caching Middleware
-// ============================================================================
-
-// Memory cache with TTL
-class MemoryCache {
-  constructor(ttl = 300000) { // 5 minutes default
-    this.cache = new Map();
-    this.ttl = ttl;
-  }
-
-  get(key) {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    
-    if (Date.now() - entry.timestamp > this.ttl) {
-      this.cache.delete(key);
-      return null;
-    }
-    
-    return entry.data;
-  }
-
-  set(key, data) {
-    this.cache.set(key, {
-      data,
-      timestamp: Date.now()
-    });
-  }
-
-  clear() {
-    this.cache.clear();
-  }
-
-  size() {
-    return this.cache.size;
-  }
-}
-
-// IndexedDB cache for offline access
-class IndexedDBCache {
-  constructor() {
-    this.dbName = 'dig-resources';
-    this.version = 1;
-    this.storeName = 'resources';
-    this.db = null;
-  }
-
-  async init() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, this.version);
-      
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
-      };
-      
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-        if (!db.objectStoreNames.contains(this.storeName)) {
-          const store = db.createObjectStore(this.storeName, { keyPath: 'url' });
-          store.createIndex('timestamp', 'timestamp', { unique: false });
-        }
-      };
-    });
-  }
-
-  async get(url) {
-    if (!this.db) await this.init();
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readonly');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.get(url);
-      
-      request.onsuccess = () => {
-        const result = request.result;
-        if (result && Date.now() - result.timestamp < 86400000) { // 24 hours
-          resolve(result.data);
-        } else {
-          resolve(null);
-        }
-      };
-      
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async set(url, data) {
-    if (!this.db) await this.init();
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.put({
-        url,
-        data,
-        timestamp: Date.now()
-      });
-      
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async clear() {
-    if (!this.db) await this.init();
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.clear();
-      
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
 }
 
 // ============================================================================
@@ -367,22 +250,17 @@ function injectFallback(element, digUrl) {
 
 class DigResourceLoader {
   constructor() {
-    this.memoryCache = new MemoryCache();
-    this.indexedDBCache = new IndexedDBCache();
     this.requestQueue = new RequestQueue();
     this.circuitBreaker = new CircuitBreaker();
     this.errorHandlers = new Map();
     this.loadHandlers = new Map();
   }
 
-  // Initialize caches
-  async init() {
-    try {
-      await this.indexedDBCache.init();
-    } catch (error) {
-      console.warn('DIG Extension: IndexedDB cache init failed', error);
-    }
-  }
+  // No-op: kept so any surviving `.init()` call site doesn't need to change. The extension
+  // used to warm a memory + IndexedDB content cache here; it no longer caches resolved
+  // content at all (caching is a dig-node job — #43 / #41 SoC audit decision 3), so there is
+  // nothing to initialize.
+  async init() {}
 
   // Convert chia:// URL - ALL chia:// URLs now use RPC via background script
   // This function returns a placeholder that will be replaced by proxyResource
@@ -424,31 +302,7 @@ class DigResourceLoader {
     });
   }
 
-  // Strategy 2: Check memory cache
-  async getFromMemoryCache(digUrl) {
-    const cached = this.memoryCache.get(digUrl);
-    if (cached) {
-      return { success: true, strategy: 'memory-cache', data: cached };
-    }
-    throw new Error('Not in memory cache');
-  }
-
-  // Strategy 3: Check IndexedDB cache
-  async getFromIndexedDBCache(digUrl) {
-    try {
-      const cached = await this.indexedDBCache.get(digUrl);
-      if (cached) {
-        // Also update memory cache
-        this.memoryCache.set(digUrl, cached);
-        return { success: true, strategy: 'indexeddb-cache', data: cached };
-      }
-      throw new Error('Not in IndexedDB cache');
-    } catch (error) {
-      throw new Error('IndexedDB cache error: ' + error.message);
-    }
-  }
-
-  // Strategy 4: Proxy with retry
+  // Strategy 2: Proxy with retry
   async proxyWithRetry(digUrl) {
     return retryWithBackoff(
       () => this.proxyResource(digUrl),
@@ -461,7 +315,7 @@ class DigResourceLoader {
     }));
   }
 
-  // Strategy 5: Redirect/URL conversion
+  // Strategy 3: Redirect/URL conversion
   async redirectResource(digUrl) {
     const localhostUrl = this.convertDigUrl(digUrl);
     return {
@@ -471,41 +325,22 @@ class DigResourceLoader {
     };
   }
 
-  // Main load function with all strategies
+  // Main load function with all strategies. Every call re-fetches via the background worker —
+  // the extension does not cache resolved content (caching is a dig-node job; #43 / #41 SoC
+  // audit decision 3).
   async loadResource(element, attribute, digUrl, priority = 0) {
     const strategies = [
-      // Strategy 1: Memory cache (fastest)
-      () => this.getFromMemoryCache(digUrl),
-      
-      // Strategy 2: IndexedDB cache
-      () => this.getFromIndexedDBCache(digUrl),
-      
-      // Strategy 3: Proxy through background worker (with circuit breaker)
+      // Strategy 1: Proxy through background worker (with circuit breaker)
       () => this.circuitBreaker.execute(() => this.proxyResource(digUrl))
-        .then(response => {
-          // Cache the result
-          const blob = response.data;
-          this.memoryCache.set(digUrl, blob);
-          this.indexedDBCache.set(digUrl, blob).catch(() => {
-            // Ignore cache errors
-          });
-          return { success: true, strategy: 'proxy', data: response };
-        }),
-      
-      // Strategy 4: Proxy with retry
-      () => this.proxyWithRetry(digUrl)
-        .then(response => {
-          // Cache the result
-          const blob = response.data.data;
-          this.memoryCache.set(digUrl, blob);
-          this.indexedDBCache.set(digUrl, blob).catch(() => {});
-          return response;
-        }),
-      
-      // Strategy 5: Redirect/URL conversion
+        .then(response => ({ success: true, strategy: 'proxy', data: response })),
+
+      // Strategy 2: Proxy with retry
+      () => this.proxyWithRetry(digUrl),
+
+      // Strategy 3: Redirect/URL conversion
       () => this.redirectResource(digUrl),
-      
-      // Strategy 6: Fallback content
+
+      // Strategy 4: Fallback content
       () => {
         injectFallback(element, digUrl);
         return { success: true, strategy: 'fallback', data: null };
@@ -663,9 +498,8 @@ class DigResourceLoader {
   }
 }
 
-// Export singleton instance
+// Export singleton instance. init() is currently a no-op (no cache to initialize) but is
+// still called/awaited-safe for forward compatibility with any future non-caching setup step.
 const digResourceLoader = new DigResourceLoader();
-digResourceLoader.init().catch(() => {
-  // Ignore init errors, will fallback to memory cache only
-});
+digResourceLoader.init().catch(() => {});
 

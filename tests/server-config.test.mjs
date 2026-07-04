@@ -13,12 +13,17 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import {
   DEFAULT_DIG_NODE_HOST,
   DEFAULT_DIG_NODE_PORT,
   parseServerHost,
   formatServerHost,
 } from '../server-config.mjs';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('default dig-node host is localhost:8080 (the dig-node port)', () => {
   assert.equal(DEFAULT_DIG_NODE_HOST, 'localhost:8080');
@@ -58,4 +63,20 @@ test('formatServerHost renders url:port', () => {
 test('round-trips parse → format', () => {
   const { url, port } = parseServerHost('localhost:8080');
   assert.equal(formatServerHost(url, port), 'localhost:8080');
+});
+
+// ---- Port-default unification (#43 / #41 audit) --------------------------------------------
+//
+// REGRESSION: middleware.js and content.js are classic (non-module) content scripts and can't
+// `import` DEFAULT_DIG_NODE_PORT from this module, so they carried their OWN hardcoded literal
+// default of `localhost:80` (the http-standard port) — disagreeing with the dig-node's actual
+// default port 8080 used everywhere else (background.js, options.js, this module). Fixed by
+// updating the literals to `8080`; this test pins the source text so it can't silently drift
+// back to `:80`.
+test('middleware.js and content.js default the RPC host to the dig-node port (8080, not 80)', () => {
+  for (const file of ['middleware.js', 'content.js']) {
+    const src = readFileSync(join(ROOT, file), 'utf8');
+    assert.ok(!/localhost:80['"`]/.test(src), `${file} must not default to the stale localhost:80`);
+    assert.match(src, /localhost:8080/, `${file} must default to localhost:8080 (the dig-node port)`);
+  }
 });
