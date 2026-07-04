@@ -1,0 +1,50 @@
+name: ci
+
+# PR quality gate for the DIG browser extension (Node stack). Runs on every PR to main
+# (and on pushes to main): install -> lint -> typecheck -> tests + >=80% coverage -> build.
+# Job `name:`s are the required-check contexts the branch protection enforces — keep stable.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test + coverage (Node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci || npm install
+      # No lint/typecheck script is defined yet — --if-present makes these no-op until added.
+      - run: npm run lint --if-present
+      - run: npm run typecheck --if-present
+      # node --test under c8; .c8rc.json gates lines/branches/functions/statements at >=80%
+      # (check-coverage: true) — a run below the floor FAILS the job.
+      - run: npm run test:coverage
+
+  build:
+    name: build (Node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci || npm install
+      # node build.js — vendors WalletConnect (esbuild) + bundles the injected provider into dist/.
+      # No project id needed here (the plain build leaves the default empty); build:zip + secret
+      # live in deploy.yml.
+      - run: npm run build
