@@ -23,8 +23,9 @@ name: publish-chrome-web-store
 # Mint the refresh token with: https://github.com/fregante/chrome-webstore-upload-keys
 
 on:
-  push:
-    tags: ["v*"]
+  # Chrome Web Store is NOT hooked up yet — publishing is MANUAL (workflow_dispatch) until store creds
+  # exist. The user-installable release ARCHIVE (.zip to download, unpack, and load unpacked) is built
+  # and attached to the GitHub Release by deploy.yml on the version tag (CLAUDE.md §3.6).
   workflow_dispatch:
     inputs:
       trusted_testers:
