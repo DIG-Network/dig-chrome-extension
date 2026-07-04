@@ -3,8 +3,8 @@
 // The popup keeps only product-level controls: the verified-status line + wallet panel
 // (in popup-wallet.js), an "open a chia:// address" box, an on/off toggle for chia://
 // resolution, the ecosystem funnels, and a link to DIG settings (the options page). All
-// developer/config controls — the dig-node host, the upstream RPC endpoint, the local
-// cache — live on the options page (the one settings home), reached via "DIG settings".
+// developer/config controls — the dig-node host, the upstream RPC endpoint — live on the
+// options page (the one settings home), reached via "DIG settings".
 
 // Ecosystem funnel destinations. Kept in sync with links.mjs (the shared source of
 // truth); popup.js is loaded as a classic script and cannot `import`, so the values are

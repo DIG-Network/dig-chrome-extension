@@ -40,8 +40,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
   const handled = [
     'toggleExtension', 'convertDigUrl', 'navigateToDigUrl', 'navigateToDataUrl',
     'getDataUrl', 'updateServerConfig', 'reportError', 'reportSuccess', 'navigate',
-    'preloadResources', 'proxyRequest', 'walletRpc', 'reportVerification', 'getVerification',
-    'getCacheStats', 'clearCache', 'getDigNodeStatus', 'walletConsent',
+    'proxyRequest', 'walletRpc', 'reportVerification', 'getVerification',
+    'getDigNodeStatus', 'walletConsent',
     // Shield action (per-resource proof ledger) + Control Panel (node management view):
     'recordLedgerEntry', 'getShieldLedger', 'getControlStatus',
     'addSearchEngine', 'getDefaultSearchEngine', 'isDigSearchDefault', 'updateSearchConfig',
