@@ -93,12 +93,12 @@ All configuration lives on the **options page** (`options.html` / `options.js`),
 from the popup's **"DIG settings"** link. The popup itself stays a product surface (no
 config controls).
 
-- **Local content cache** — usage + clear (in-memory, per session; MV3 has no on-disk cap
-  slider equivalent to the native browser's dig-node config).
 - **dig-node host** (`server.host`) — point the extension at a local **dig-node** to resolve
   `chia://` content locally instead of the hosted RPC. Default **`localhost:8080`** (the
-  dig-node port), with a reachability check. (One name, one default, one parser, shared via
-  `server-config.mjs`.)
+  dig-node port), with a reachability check. An explicitly-configured custom host wins
+  ENTIRELY over the `dig.local`/`localhost` ladder. (One name, one default, one parser,
+  shared via `server-config.mjs`.) The extension does not cache resolved content — every read
+  re-verifies and re-decrypts; caching is a dig-node job.
 - **DIG RPC endpoint** — the upstream used when no dig-node is configured (`rpc.dig.net`).
   Verification + decryption always happen on this device regardless.
 - **Wallet** — the WalletConnect / Reown project id used to pair Sage.
@@ -123,7 +123,7 @@ config controls).
 | DIG Home (new tab) | `newtab.html`, `newtab.css`, `newtab.js`, `apps.mjs` | App directory + omnibox |
 | Popup | `popup.html`, `popup.js`, `popup-wallet.js`, `popup.css` | Product surface: verified line, wallet, open chia://, settings link |
 | Viewer | `dig-viewer.html`, `dig-viewer.js` | Renders verified content; branded loading/error states |
-| Settings | `options.html`, `options.js`, `options.css` | The one settings home: cache, dig-node host, RPC, wallet |
+| Settings | `options.html`, `options.js`, `options.css` | The one settings home: dig-node host, RPC, wallet |
 | Background SW | `background.js` | Intercept + verify + decrypt; badges; error pages |
 | Shared modules | `links.mjs`, `dig-urn.mjs`, `server-config.mjs`, `error-page.mjs`, `wallet-broker.mjs`, `wallet-methods.mjs` | Single sources of truth (links, URN parsing, dig-node host, error page, wallet consent/methods) |
 

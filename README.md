@@ -37,9 +37,10 @@ Home, injects a `window.chia` wallet, and shows a verified badge.
     dig-node control contract exactly. The mutating control surface is gated by an on-disk control
     token an MV3 extension can't read, so full node management deep-links to the native DIG Browser;
     when no local node is present, reads transparently fall back to `rpc.dig.net` (stated honestly).
-- **DIG settings** (options page): local cache usage/clear, the dig-node host
-  (`localhost:8080`) with a "dig-node not running" affordance, the upstream RPC endpoint,
-  and the WalletConnect project id.
+- **DIG settings** (options page): the dig-node host (`localhost:8080`, or an explicitly
+  configured custom host that wins entirely over the auto ladder) with a "dig-node not
+  running" affordance, the upstream RPC endpoint, and the WalletConnect project id. The
+  extension does not cache resolved content — caching is a dig-node job.
 
 > Some native-browser features are **impossible in MV3** and stay browser-only: network-stack
 > `chia://` scheme interception (the extension renders via an in-extension viewer instead),

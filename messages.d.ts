@@ -8,9 +8,9 @@ export const MESSAGE_PROTOCOL_VERSION: number;
 /** Every chrome.runtime `message.action` the background service worker routes. */
 export type Action =
   | 'proxyRequest' | 'convertDigUrl' | 'navigateToDigUrl' | 'navigateToDataUrl' | 'getDataUrl'
-  | 'preloadResources' | 'navigate' | 'toggleExtension' | 'updateServerConfig' | 'updateRpcHost'
-  | 'walletRpc' | 'walletConsent' | 'reportVerification' | 'getVerification' | 'getCacheStats'
-  | 'clearCache' | 'getDigNodeStatus' | 'reportError' | 'reportSuccess' | 'addSearchEngine'
+  | 'navigate' | 'toggleExtension' | 'updateServerConfig' | 'updateRpcHost'
+  | 'walletRpc' | 'walletConsent' | 'reportVerification' | 'getVerification'
+  | 'getDigNodeStatus' | 'reportError' | 'reportSuccess' | 'addSearchEngine'
   | 'getDefaultSearchEngine' | 'isDigSearchDefault' | 'updateSearchConfig' | 'getCapabilities';
 
 export const ACTIONS: Readonly<Record<Action, Action>>;

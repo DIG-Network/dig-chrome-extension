@@ -7,10 +7,8 @@
 <title>DIG settings</title>
 <!--
   DIG settings (options page) — the ONE settings home. All developer/config controls live
-  here (the popup is the product surface). Mirrors the native DIG Browser's
-  chrome://settings DIG section as closely as MV3 allows:
-    - Local DIG content cache: usage + clear (no on-disk cap slider — MV3 has no equivalent
-      to the browser's dig-node config; see the parity matrix).
+  here (the popup is the product surface). The extension is a pure RPC consumer — it does
+  NOT cache resolved content (caching is a dig-node job; see #43 / #41 SoC audit):
     - dig-node host: the local DIG node the extension resolves chia:// through (server.host),
       with a "dig-node not running" affordance.
     - DIG RPC endpoint: the upstream used when no dig-node is configured (rpc.dig.net).
@@ -27,18 +25,6 @@
         <p class="sub">Configure how this browser resolves the DIG Network.</p>
       </div>
     </header>
-
-    <!-- Local cache -->
-    <section class="card">
-      <h2>Local content cache</h2>
-      <p class="desc">Verified chia:// content this extension has fetched is cached in memory for
-        this session to speed up repeat loads. It clears when the browser restarts.</p>
-      <div class="row">
-        <span class="stat" id="cacheStat" data-testid="cache-stat">—</span>
-        <button id="clearCacheBtn" class="btn" data-testid="clear-cache">Clear cache</button>
-      </div>
-      <p class="note" id="cacheNote"></p>
-    </section>
 
     <!-- dig-node -->
     <section class="card">

@@ -723,37 +723,6 @@ chrome.runtime.onStartup.addListener(() => {
   removeStaleRedirectRules();
 });
 
-// Cache for pre-loaded resources
-const resourceCache = new Map();
-
-// Pre-load chia:// resources when page loads
-// Now just stores server URLs instead of data URLs
-async function preloadResources(digUrls) {
-  const endpoint = await getRpcEndpoint();
-  const results = await Promise.allSettled(
-    digUrls.map(async (digUrl) => {
-      const cacheKey = endpoint + '|' + digUrl;
-      if (resourceCache.has(cacheKey)) {
-        return { url: digUrl, cached: true, data: resourceCache.get(cacheKey) };
-      }
-
-      // Use RPC to get data URL — pass the already-resolved endpoint so the cache
-      // key and the fetch agree on the same endpoint (no TOCTOU race).
-      try {
-        const rpcResult = await fetchContentViaRPC(digUrl, endpoint);
-        const cachedData = { dataUrl: rpcResult.dataUrl, url: rpcResult.dataUrl };
-        resourceCache.set(cacheKey, cachedData);
-        return { url: digUrl, cached: false, data: cachedData };
-      } catch (error) {
-        console.error(`Failed to preload ${digUrl} via RPC:`, error);
-        return { url: digUrl, error: error.message };
-      }
-    })
-  );
-  
-  return results.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason });
-}
-
 // Error and success reporting storage
 const errorReports = [];
 const successReports = [];
@@ -935,9 +904,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     
     chrome.storage.local.set(storageData).then(() => {
-      // Clear resource cache so new requests use new config
-      resourceCache.clear();
-      console.log('DIG Extension: Resource cache cleared, RPC host updated to:', storageData['server.host']);
+      console.log('DIG Extension: RPC host updated to:', storageData['server.host']);
 
       // Notify all tabs to update their RPC host cache
       chrome.tabs.query({}, (tabs) => {
@@ -999,22 +966,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
   
-  if (message.action === 'preloadResources') {
-    // Pre-load multiple chia:// resources
-    preloadResources(message.urls || [])
-      .then(results => {
-        sendResponse({ success: true, results });
-      })
-      .catch(error => {
-        sendResponse({ error: error.message });
-      });
-    return true; // Keep channel open for async response
-  }
-  
   if (message.action === 'proxyRequest') {
-    // Proxy a chia:// request through the background service worker
-    // PRIMARY: Use RPC to fetch content
-    // FALLBACK: Use content server for legacy/test URLs
+    // Proxy a chia:// request through the background service worker. Every call re-fetches,
+    // re-verifies, and re-decrypts — the extension does NOT cache resolved content (caching is
+    // a dig-node job; see #43 / #41 SoC audit decision 3).
     const digUrl = message.url;
     if (!digUrl || !digUrl.startsWith('chia://')) {
       // Coded envelope: keep the friendly message for humans, add a stable machine code.
@@ -1022,30 +977,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false;
     }
 
-    // Resolve the endpoint ONCE so the cache key and the fetch agree on the same
-    // value even if the user changes the setting mid-request (TOCTOU fix).
-    const endpointP = getRpcEndpoint();
-    const cacheKeyP = endpointP.then(ep => ep + '|' + digUrl);
-    const checkAndRespond = async () => {
-      const cacheKey = await cacheKeyP;
-      if (resourceCache.has(cacheKey)) {
-        const cached = resourceCache.get(cacheKey);
-        sendResponse({
-          success: true,
-          data: cached.data,
-          contentType: cached.contentType,
-          cached: true
-        });
-        return true; // handled
-      }
-      return false; // not in cache
-    };
-
-    // Fetch via RPC or content server
     (async () => {
-      if (await checkAndRespond()) return;
-      const endpoint = await endpointP;
-      const cacheKey = endpoint + '|' + digUrl;
+      const endpoint = await getRpcEndpoint();
       try {
         // Parse URN to determine if we should use RPC
         const urnString = digUrl.replace(/^chia:\/\//, '');
@@ -1063,14 +996,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const contentTypeMatch = dataUrl.match(/^data:([^;]+)/);
           const contentType = contentTypeMatch ? contentTypeMatch[1] : 'application/octet-stream';
 
-          // Cache the result keyed by endpoint+url
-          resourceCache.set(cacheKey, { data: dataUrl, contentType });
-
           sendResponse({
             success: true,
             data: dataUrl,
             contentType: contentType,
-            cached: false,
             verified: !!rpcResult.verified
           });
           return;
@@ -1084,13 +1013,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const contentTypeMatch = dataUrl.match(/^data:([^;]+)/);
           const contentType = contentTypeMatch ? contentTypeMatch[1] : 'application/octet-stream';
 
-          resourceCache.set(cacheKey, { data: dataUrl, contentType });
-          
           sendResponse({
             success: true,
             data: dataUrl,
-            contentType: contentType,
-            cached: false
+            contentType: contentType
           });
           return;
         } catch (rpcError) {
@@ -1160,25 +1086,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     })();
     return true;
-  }
-
-  // Options page: report + clear the in-memory resource cache (the extension's local
-  // DIG content cache). Mirrors the native browser's DIG cache section (cap/usage/clear),
-  // scoped to what MV3 exposes (no on-disk cap slider — see the parity matrix).
-  if (message.action === 'getCacheStats') {
-    let bytes = 0;
-    try {
-      for (const v of resourceCache.values()) {
-        if (v && typeof v.data === 'string') bytes += v.data.length;
-      }
-    } catch { /* ignore */ }
-    sendResponse({ entries: resourceCache.size, approxBytes: bytes });
-    return false;
-  }
-  if (message.action === 'clearCache') {
-    try { resourceCache.clear(); sendResponse({ success: true }); }
-    catch (e) { sendResponse({ success: false, error: e.message }); }
-    return false;
   }
 
   // Popup: is a local dig-node reachable? Resolves the dig.local → localhost:port try-list
