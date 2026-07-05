@@ -399,7 +399,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `8`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `9`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -414,6 +414,9 @@ and `sendStatus` (poll confirmation) (§18.8). `6` (#56) added `getActivity` (§
 it to the offscreen vault, which reconstructs the transaction ledger from coinset. `7` (#56) added the
 trade-offer actions — `makeOffer`, `inspectOffer`, `prepareTrade`, `confirmTrade` (§18.10). `8` (#56)
 added the NFT / Collectibles actions — `listNfts`, `prepareNftTransfer`, `confirmNftTransfer` (§18.11).
+`9` (#56 §5.5) made `walletRpc` route to the self-custody wallet when one exists (connect + reads → the
+offscreen vault; sign/message → the approval window) and added the approval-window channel
+`dappApprovalList` + `dappApprovalResolve` (§18.12).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -429,8 +432,9 @@ shape.
 | `toggleExtension` | Toggle `chia://` resolution on/off. |
 | `updateServerConfig` | Persist the dig-node/RPC host config. |
 | `updateRpcHost` | Background→content broadcast that the RPC host changed. |
-| `walletRpc` | Broker one `window.chia` CHIP-0002 RPC (per-origin gated). |
+| `walletRpc` | Route one `window.chia` CHIP-0002 RPC: to the self-custody wallet when one exists (connect + reads → the offscreen vault; sign/message → the approval window), else the WalletConnect → Sage broker (per-origin gated). |
 | `walletConsent` | Popup approves/revokes a dapp origin for wallet access. |
+| `dappApprovalList` / `dappApprovalResolve` | Approval-window channel (§18.12): read the pending dApp signing-request queue (decoded summaries) / return the user's approve-reject decision. |
 | `reportVerification` / `getVerification` | Record/read the active tab's verification state. |
 | `getDigNodeStatus` | Probe whether a local dig-node is reachable; report the chosen base. |
 | `recordLedgerEntry` / `getShieldLedger` | DIG Shields per-resource proof ledger (§10). |
@@ -992,3 +996,39 @@ the recipient can rediscover it). The decrypted key never leaves the offscreen v
   `confirmSend` broadcast path (an NFT transfer is a coin spend). It is the ONLY place the transfer is
   pushed (the user-approved step); confirmation is polled via the shared `sendStatus`. Mainnet-only
   (signed with the mainnet AGG_SIG_ME genesis).
+
+### 18.12 dApp `window.chia` requests & the SW-summoned approval window (§5.5)
+
+A webpage's injected `window.chia` provider reaches the wallet as a `walletRpc` message (§7.3). When a
+self-custody wallet EXISTS, `walletRpc` routes to the custody wallet (`dapp-approval.mjs`); otherwise it
+falls back to the WalletConnect → Sage broker (§12) unchanged. The committed page origin (the SW prefers
+the unspoofable `sender.origin`) gates every request.
+
+- **Consent (`chip0002_connect`).** Reuses the per-origin consent store (`wallet.origins`): an
+  unapproved origin is recorded pending + returns `202` (the provider polls while the user approves
+  out-of-band); an approved origin returns `{ address, network }` from the offscreen vault (or a
+  `401`-class error when the wallet is locked). Every non-connect method REQUIRES an already-approved
+  origin (else `401`).
+- **Reads** (`chip0002_getPublicKeys`, `chia_getAddress`, `chip0002_chainId`) route straight to the
+  offscreen vault — no approval window (nothing is authorized). `getPublicKeys` returns the wallet's
+  synthetic public keys (both HD schemes, deduped).
+- **Signing** (`chip0002_signCoinSpends`) and **message signing** (`chip0002_signMessage`,
+  `chia_signMessageByAddress`) are APPROVAL-GATED. The SW enqueues the request and SUMMONS a dedicated
+  approval window via `chrome.windows.create` (NOT `action.openPopup`, which needs a user gesture the
+  background lacks). The `walletRpc` response stays pending until the user decides; a keepalive port
+  (`dapp-approval-keepalive`) from the window keeps the MV3 SW + the offscreen vault alive through review.
+- **The decoded summary is derived FROM THE BUILT SPEND** (§5.5 tamper resistance), never from
+  page-supplied text: `decodeDappSpend` (offscreen) reconstructs the coin spends, runs each
+  puzzle+solution, and reports the inputs/outputs (classified self-vs-external against the wallet's own
+  HD puzzle-hash set), the reserved fee (Σ inputs − Σ outputs; trustworthy when every input is the
+  wallet's own standard XCH), and the required signers (+ how many the wallet can satisfy). A message
+  request shows the exact bytes to be signed. A locked wallet is flagged `needsUnlock` (the window shows
+  the unlock gate, never a fabricated summary); an undecodable request is flagged `decodeError` (only
+  Reject is offered).
+- **Approve → the offscreen vault signs** (`signDappSpend` reuses the §18.7 signer; `signMessage`
+  BLS-signs the raw message bytes) and the `walletRpc` promise resolves with the aggregated signature
+  (the dApp broadcasts — the extension does NOT push a dApp-signed bundle). **Reject** resolves with a
+  `4001`-class user-rejection error. The key never leaves the offscreen document.
+- **Queue.** Multiple requests queue; the window reviews one at a time and self-closes when the queue
+  drains. Unsupported (known but not-yet-wired) wallet methods return an honest `501`, never a silent
+  sign. The provider's bridge timeout (120 s) bounds how long a request may await a decision.

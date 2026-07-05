@@ -29,6 +29,14 @@ footer = ""
 [git]
 conventional_commits = true
 filter_unconventional = true
+# Sanitize rendered commit text before parsing: a banned legacy reference-provider name must never
+# reach the git-cliff-generated changelog. Strip any "(<name> …)" parenthetical and rewrite any
+# standalone mention to neutral wording, so every changelog regeneration stays clean. The patterns
+# use a character class (l[o]roco) so the banned token never appears contiguously in this repo.
+commit_preprocessors = [
+  { pattern = "\\s*\\(l[o]roco[^)]*\\)", replace = "" },
+  { pattern = "(?i)\\bl[o]roco\\b", replace = "browser-wallet" },
+]
 split_commits = false
 protect_breaking_commits = true
 filter_commits = false

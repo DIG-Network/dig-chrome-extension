@@ -80,7 +80,7 @@ test('STATE_CHANGING_METHODS is a subset of the supported surface', () => {
   }
 });
 
-// ─── Goby / CHIP-0002 / Sage-WC2 compatibility (loroco window.chia parity) ──────
+// ─── Goby / CHIP-0002 / Sage-WC2 compatibility (window.chia parity) ──────
 // A dApp built for Goby (dexie.space, tibetswap, …) or Sage's WC2 API calls bare
 // method names that don't map 1:1 to `chip0002_<name>` — e.g. `transfer` is Sage's
 // `chia_send`, `createOffer` is `chia_createOffer`. normalizeMethod must route these
