@@ -443,7 +443,7 @@ async function generateAgentSurface() {
 // The MAIN-world injected provider entry (imports @dignetwork/chia-provider's buildProvider and
 // wraps it with the extension's postMessage transport). esbuild inlines the package into a single
 // IIFE — the MAIN world has no ES import at runtime.
-const PROVIDER_ENTRY = path.join(__dirname, 'dig-provider.entry.mjs');
+const PROVIDER_ENTRY = path.join(SRC_DIR, 'entries', 'dig-provider.entry.ts');
 const PROVIDER_OUT = path.join(DIST_DIR, 'dig-provider.js');
 
 // Guard: the bundled injected provider must be a self-contained IIFE (no runtime import/require)
@@ -559,7 +559,7 @@ async function bundleQr() {
 // cross-origin script, so the interceptor MUST be a single self-contained IIFE that dig-viewer.js
 // inlines into the frame document. esbuild bundles store-interceptor.entry.mjs (which imports the
 // unit-tested store-refs.mjs) into dist/store-interceptor.js with the pure logic inlined.
-const STORE_INTERCEPTOR_SRC = path.join(__dirname, 'store-interceptor.entry.mjs');
+const STORE_INTERCEPTOR_SRC = path.join(SRC_DIR, 'entries', 'store-interceptor.entry.ts');
 const STORE_INTERCEPTOR_OUT = path.join(DIST_DIR, 'store-interceptor.js');
 
 async function bundleStoreInterceptor() {
@@ -573,6 +573,8 @@ async function bundleStoreInterceptor() {
     target: ['chrome111'],
     legalComments: 'none',
     minify: false,
+    // Resolve `#shared/*` to the repo-root shared .mjs (store-refs) so it inlines into the IIFE.
+    alias: { '#shared': __dirname },
   });
   const out = fs.readFileSync(STORE_INTERCEPTOR_OUT, 'utf8');
   // Must be self-contained (store-refs inlined; no surviving ES import) and must NOT contain a
