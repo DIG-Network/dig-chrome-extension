@@ -20,11 +20,12 @@ const EXIT = Object.freeze({ SUCCESS: 0, VALIDATION_FAILED: 2, BUILD_STEP_FAILED
 
 const EXTENSION_FILES = [
   'manifest.json',
-  'popup.html',
-  'popup.css',
-  'popup.js',
-  // Popup controller (module side): 4-tab routing + wallet + shield + control + resolver config.
-  'popup-wallet.js',
+  // NB: the popup + full-page wallet UI (popup.html / app.html + their JS/CSS) are now the React
+  // shell BUILT BY VITE into dist-web/ and copied into dist/ by buildWebApp() below — NOT the old
+  // hand-written popup.html/popup.css/popup.js/popup-wallet.js (superseded by #56, kept in-repo as
+  // history + for the legacy node-test suite, but no longer shipped). The pure view-models below
+  // are still copied because the vanilla service worker imports them at runtime; the React bundle
+  // inlines its own copies via the #shared/* alias.
   // Pure popup view-models (tab routing, wallet number/validation logic, §5.3 resolve verdict).
   'tabs.mjs',
   'wallet-view.mjs',
@@ -272,6 +273,44 @@ function copyFiles() {
   log('\n✓ All files copied to dist/', 'green');
 }
 
+// Recursively copy a directory tree (src → dest), creating dirs as needed.
+function copyDirRecursive(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, entry.name);
+    const d = path.join(dest, entry.name);
+    if (entry.isDirectory()) copyDirRecursive(s, d);
+    else fs.copyFileSync(s, d);
+  }
+}
+
+const WEB_OUT_DIR = path.join(__dirname, 'dist-web');
+
+/**
+ * Build the React shell (popup + full-page app) with Vite and copy its output into dist/. This
+ * emits the SHIPPED popup.html + app.html (with hashed, self-hosted asset references) plus the
+ * bundled JS/CSS + vendored fonts. Plain Vite (not CRXJS) is used ONLY for the React pages so
+ * build.js keeps owning the hand-tuned MV3 service worker, content scripts, injected provider,
+ * WalletConnect vendoring, store interceptor, and the --zip release path unchanged.
+ */
+function buildWebApp() {
+  log('\n⚛️  Building React shell (Vite: popup.html + app.html)...', 'blue');
+  // Resolve vite's CLI entry via its package.json (its `exports` map doesn't expose ./bin/vite.js
+  // to require.resolve, but ./package.json is exported — build the bin path from its dir).
+  const viteBin = path.join(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js');
+  execSync(`node "${viteBin}" build`, { stdio: JSON_MODE ? 'ignore' : 'inherit', cwd: __dirname });
+  if (!fs.existsSync(WEB_OUT_DIR)) {
+    throw new Error('Vite build produced no dist-web/ output.');
+  }
+  copyDirRecursive(WEB_OUT_DIR, DIST_DIR);
+  for (const page of ['popup.html', 'app.html']) {
+    if (!fs.existsSync(path.join(DIST_DIR, page))) {
+      throw new Error(`React build missing ${page} in dist/ — the Vite multi-entry input changed?`);
+    }
+  }
+  log('✓ Built + copied React shell (popup.html, app.html, assets, fonts)', 'green');
+}
+
 function createZip() {
   log('\n📦 Creating zip file...', 'blue');
   
@@ -314,7 +353,7 @@ function createZip() {
  */
 function injectAppVersion() {
   const version = require('./package.json').version;
-  for (const page of ['popup.html', 'control.html']) {
+  for (const page of ['popup.html', 'app.html', 'control.html']) {
     const dest = path.join(DIST_DIR, page);
     if (!fs.existsSync(dest)) continue;
     const src = fs.readFileSync(dest, 'utf8');
@@ -586,6 +625,9 @@ async function main() {
 
   // Copy files
   copyFiles();
+
+  // Build the React shell (popup.html + app.html) with Vite and copy it into dist/.
+  buildWebApp();
 
   // Stamp the extension version (from package.json) into the HTML pages so every frontend surfaces
   // its build in all three §6.7 forms: a visible footer, <meta name="app-version">, and (via the
