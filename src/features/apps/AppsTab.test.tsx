@@ -1,33 +1,68 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { screen, fireEvent, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { screen } from '@testing-library/react';
 import { AppsTab } from '@/features/apps/AppsTab';
 import { renderWithProviders } from '@/test/harness';
+import { STORE_CACHE_KEY } from '@/features/apps/storeCatalog';
 
-afterEach(() => {
-  vi.useRealTimers();
-});
+const CATALOG = {
+  generatedAt: '2026-07-05T00:00:00Z',
+  version: '0.5.0',
+  apps: [
+    { slug: 'chia-offer', name: 'Chia-Offer', icon: 'https://explore.dig.net/catalog/chia-offer/icon-512.png', link: 'https://chia-offer.on.dig.net/', category: 'tools', featured: true, accentColor: '#3aaa35' },
+    { slug: 'hashtunes', name: 'HashTunes', icon: 'https://explore.dig.net/catalog/hashtunes/icon-512.png', link: 'https://hashtunes.on.dig.net/', category: 'tools', featured: false, accentColor: '#fb81ed' },
+  ],
+};
 
-describe('AppsTab', () => {
-  it('starts loading and embeds the explore.dig.net /apps iframe', () => {
+/** Stub chrome.storage.local so the SWR cache read/write is inert unless a test seeds it. */
+function stubStorage(seed?: Record<string, unknown>) {
+  const mem: Record<string, unknown> = { ...seed };
+  (chrome as unknown as { storage: unknown }).storage = {
+    local: {
+      get: vi.fn(async (key: string) => (key in mem ? { [key]: mem[key] } : {})),
+      set: vi.fn(async (obj: Record<string, unknown>) => { Object.assign(mem, obj); }),
+    },
+  };
+  return mem;
+}
+
+beforeEach(() => stubStorage());
+afterEach(() => vi.restoreAllMocks());
+
+describe('AppsTab launcher', () => {
+  it('renders a native icon grid from /store.json (featured first), no iframe', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => CATALOG })));
     renderWithProviders(<AppsTab />);
-    expect(screen.getByTestId('apps-loading')).toBeInTheDocument();
-    expect(screen.getByTestId('apps-frame').getAttribute('src')).toBe('https://explore.dig.net/apps');
+
+    expect(await screen.findByTestId('apps-launcher')).toBeInTheDocument();
+    expect(screen.getByTestId('app-tile-chia-offer')).toBeInTheDocument();
+    expect(screen.getByTestId('app-tile-hashtunes')).toBeInTheDocument();
+    // The tile links to the app's absolute launch URL, and there is NO iframe.
+    expect(screen.getByTestId('app-tile-chia-offer').getAttribute('href')).toBe('https://chia-offer.on.dig.net/');
+    expect(screen.queryByTestId('apps-frame')).not.toBeInTheDocument();
+    // Icon uses the remote absolute URL.
+    const img = screen.getByTestId('app-icon-chia-offer').querySelector('img');
+    expect(img?.getAttribute('src')).toBe('https://explore.dig.net/catalog/chia-offer/icon-512.png');
   });
 
-  it('goes ready when the iframe loads', () => {
+  it('shows an error + retry when the store is unavailable and no cache exists', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     renderWithProviders(<AppsTab />);
-    fireEvent.load(screen.getByTestId('apps-frame'));
-    expect(screen.queryByTestId('apps-loading')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('apps-error')).toBeInTheDocument();
+    expect(screen.getByTestId('apps-retry')).toBeInTheDocument();
   });
 
-  it('shows the error + retry state after the load timeout', () => {
-    vi.useFakeTimers();
+  it('falls back to the cached catalog offline (stale-while-revalidate) and flags it', async () => {
+    stubStorage({ [STORE_CACHE_KEY]: { apps: CATALOG.apps, at: Date.now() } });
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     renderWithProviders(<AppsTab />);
-    act(() => {
-      vi.advanceTimersByTime(13000);
-    });
-    expect(screen.getByTestId('apps-error')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('apps-retry'));
-    expect(screen.getByTestId('apps-loading')).toBeInTheDocument();
+    expect(await screen.findByTestId('apps-launcher')).toBeInTheDocument();
+    expect(screen.getByTestId('app-tile-chia-offer')).toBeInTheDocument();
+    expect(screen.getByTestId('apps-offline')).toBeInTheDocument();
+  });
+
+  it('shows an empty state when the catalog has no apps', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ apps: [] }) })));
+    renderWithProviders(<AppsTab />);
+    expect(await screen.findByTestId('apps-empty')).toBeInTheDocument();
   });
 });

@@ -453,21 +453,94 @@ h2.dig-heading {
   }
 }
 
-/* ── apps iframe ── */
-.dig-appsframe {
-  width: 100%;
-  height: 100%;
-  min-height: 420px;
-  border: 0;
-  border-radius: var(--dig-radius);
-  background: var(--dig-bg-raised);
-}
+/* ── apps launcher (#65 — native mobile-OS dApp grid) ── */
 .dig-appswrap {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--dig-gap-sm);
   min-height: 440px;
+}
+.dig-launcher {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 14px 6px;
+}
+.dig-app-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 2px;
+  text-decoration: none;
+  color: var(--dig-text);
+  border-radius: var(--dig-radius-sm);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.dig-app-tile:hover,
+.dig-app-tile:focus-visible {
+  background: var(--dig-bg-elev);
+  transform: translateY(-2px);
+  outline: none;
+}
+.dig-app-tile:focus-visible .dig-app-icon {
+  outline: 2px solid var(--dig-accent);
+  outline-offset: 2px;
+}
+/* Squircle icon with a soft accent glow behind it (the app's brand tint). */
+.dig-app-icon {
+  --tile-accent: var(--dig-accent);
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border-radius: 30%;
+  overflow: hidden;
+  background: var(--dig-bg-elev);
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--tile-accent) 70%, transparent), inset 0 0 0 1px var(--dig-border);
+  display: grid;
+  place-items: center;
+}
+.dig-app-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.dig-app-label {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.dig-app-tile--skeleton {
+  pointer-events: none;
+}
+.dig-app-tile--skeleton .dig-app-icon {
+  box-shadow: none;
+}
+.dig-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dig-app-tile {
+    transition: none;
+  }
 }
 
 /* ── misc rows ── */
