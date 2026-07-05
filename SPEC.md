@@ -29,6 +29,11 @@ The extension delivers the DIG Network experience on any Chromium browser:
 4. **DIG Control Panel** — detect a local dig-node and expose manage-vs-install actions.
 5. **DIG Home / omnibox / search** — a new-tab surface and a `dig`-keyword omnibox.
 
+The primary surface is a **dark-themed 4-tab popup** (§2.1): **Resolver · Wallet · Shield ·
+Control Panel** (§2.1). It carries an **Explore DIG Network** action → `explore.dig.net`, a
+bug-report funnel → `bugreport.dig.net` (repo + version scoped), and exposes the extension's
+version in three forms for build attribution (§2.2).
+
 All content verification and decryption happen **client-side**. The extension is a **pure
 RPC-consumer read client** in the DIG ecosystem: it does not write stores, spend on-chain, run
 P2P/DHT/gossip/sync, or cache resolved content. The client-side verify+decrypt path (§5, §6) is
@@ -63,6 +68,37 @@ re-decrypts (§15).
 
 An implementation targeting a browser without MV3 module service workers MUST provide an
 equivalent long-lived module context able to instantiate WASM.
+
+### 2.1 Popup UI surface (4 tabs)
+
+The popup (`popup.html`, `popup.js` classic + `popup-wallet.js` module) is a dark-themed
+**ARIA `tablist` of four tabs**, in this order (`tabs.mjs` is the source of truth for the set,
+order, default, and hash deep-link):
+
+1. **Resolver** (default) — open a `chia://` address, an on/off resolution toggle, the §5.3
+   "Resolving via" verdict (`resolve-status.mjs` over the `getDigNodeStatus` probe: custom >
+   `dig.local` > `localhost` > `rpc.dig.net`), and a custom-node override that persists to
+   `server.host` (which wins over the ladder, §8.1).
+2. **Wallet** — WalletConnect → Sage: aggregate HD balances (XCH + `$DIG` CAT via CHIP-0002
+   `getAssetBalance`), Receive (address + copy), Send (`chia_send`; validation + unit conversion
+   in `wallet-view.mjs`), and Activity (`chia_getTransactions` → `activityViewModel`).
+3. **Shield** — the active tab's verification verdict + per-resource proof ledger (§10).
+4. **Control Panel** — manage a detected local dig-node, else pitch installing one with a link to
+   the full-page onboarding landing `control.html` (§11).
+
+- Exactly one panel is shown at a time via the `[hidden]` attribute; the active tab reflects
+  `aria-selected` + a roving `tabindex`, and the tablist is arrow-key navigable.
+- A `#wallet`/`#shield`/`#control`/`#resolver` location hash deep-links the opening tab.
+- The Shield + Control tabs carry a machine-readable status dot (`data-verified` / `data-node`);
+  the Control panel carries `data-mode` (`manage`|`install`). Every primary control has a stable
+  `data-testid`.
+
+### 2.2 App version exposure (§6.7)
+
+Every popup + full page MUST surface the extension version (from `package.json`, injected at
+build time in place of the `__APP_VERSION__` placeholder) in three forms: a visible footer
+(`#appVersion`), a `<meta name="app-version">` tag, and the `window.__APP_VERSION__` global. The
+bug-report funnel appends this version so a report records the build it came from.
 
 ---
 
@@ -439,9 +475,14 @@ extension MUST NOT diverge from it.
 ## 13. Build contract (`build.js`)
 
 - `node build.js` validates required source files and copies them into `dist/`, esbuild-bundles
-  `dig-provider.entry.mjs` → `dist/dig-provider.js`, vendors the WalletConnect SignClient into
-  `dist/vendor/`, injects the build-time WalletConnect project id into `dist/wallet-wc.js`, and
-  emits `dist/agent-surface.json`.
+  `dig-provider.entry.mjs` → `dist/dig-provider.js`, esbuild-bundles `wallet-methods.mjs` into a
+  self-contained ESM (inlining `@dignetwork/chia-provider` — browsers + MV3 SWs cannot resolve the
+  bare specifier, so the raw re-export would break every consumer's module graph), vendors the
+  WalletConnect SignClient into `dist/vendor/`, injects the build-time WalletConnect project id
+  into `dist/wallet-wc.js`, injects the `package.json` version into the `__APP_VERSION__`
+  placeholder of `popup.html` + `control.html` (§2.2), and emits `dist/agent-surface.json`.
+- The bundled `dist/wallet-methods.mjs` MUST retain the same named exports and contain NO surviving
+  bare `@dignetwork/*` import; the build fails loudly otherwise.
 - `node build.js --zip` additionally produces a versioned `.zip` for distribution.
 - `node build.js --json` emits one JSON result on stdout (machine mode), prose on stderr.
 - Exit codes: `0` success · `2` a required source file is missing (validation) · `3` a build
