@@ -21,6 +21,8 @@ export const TAGS = [
   'Address',
   // Self-custody NFTs / Collectibles (#56).
   'Collectibles',
+  // Self-custody dApp approval queue (#56 §5.5): the pending window.chia signing requests.
+  'DappApprovals',
 ] as const;
 
 /**

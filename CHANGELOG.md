@@ -161,6 +161,6 @@ This project adheres to [Semantic Versioning](https://semver.org) and
 - Demote to a product surface; brand the viewer; $DIG + verified label
 
 ### Window.chia
-- Goby/CHIP-0002/Sage-WC2 compatibility (loroco parity)
+- Goby/CHIP-0002/Sage-WC2 compatibility
 
 
