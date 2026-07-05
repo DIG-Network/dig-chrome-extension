@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.12.0] - 2026-07-05
+
+### Features
+- XCH send construction core — build + decode + simulator-validated (#56) (#14)
+
 ## [1.11.0] - 2026-07-05
 
 ### Features
