@@ -135,7 +135,7 @@
           </div>
         </div>
 
-        <!-- Connected: balances + Receive/Send/Activity subtabs. -->
+        <!-- Connected: balance headline + Assets/Send/Receive/Activity/Offers subtabs. -->
         <div class="wallet-connected" id="walletConnected" hidden>
           <div class="wallet-balances" id="walletBalances">
             <div class="wallet-bal">
@@ -149,24 +149,36 @@
           </div>
 
           <nav class="wallet-subtabs" role="tablist" aria-label="Wallet views">
-            <button class="wallet-subtab" type="button" role="tab" data-view="receive"
-                    aria-selected="true" data-testid="wallet-subtab-receive">Receive</button>
+            <button class="wallet-subtab" type="button" role="tab" data-view="assets"
+                    aria-selected="true" data-testid="wallet-subtab-assets">Assets</button>
             <button class="wallet-subtab" type="button" role="tab" data-view="send"
                     aria-selected="false" data-testid="wallet-subtab-send">Send</button>
+            <button class="wallet-subtab" type="button" role="tab" data-view="receive"
+                    aria-selected="false" data-testid="wallet-subtab-receive">Receive</button>
             <button class="wallet-subtab" type="button" role="tab" data-view="activity"
                     aria-selected="false" data-testid="wallet-subtab-activity">Activity</button>
+            <button class="wallet-subtab" type="button" role="tab" data-view="offers"
+                    aria-selected="false" data-testid="wallet-subtab-offers">Offers</button>
           </nav>
 
-          <!-- Receive: the wallet's address + copy. -->
-          <div class="wallet-view" id="walletReceive" data-testid="wallet-receive">
-            <p class="wallet-view-hint">Your Chia receive address:</p>
-            <div class="wallet-address-row">
-              <code class="wallet-address" id="walletAddress" data-testid="wallet-address">—</code>
-              <button id="walletAddressCopy" class="icon-button" title="Copy address" data-testid="wallet-address-copy">⧉</button>
-            </div>
+          <!-- Assets: every balance (XCH + $DIG + tracked CATs) + track-a-token by asset id. -->
+          <div class="wallet-view" id="walletAssets" data-testid="wallet-assets">
+            <ul class="asset-list" id="assetList" aria-label="Your assets"></ul>
+            <p class="wallet-view-hint" id="assetsNote"></p>
+            <form class="add-token" id="addTokenForm" data-testid="add-token-form">
+              <span class="field-label">Track a token</span>
+              <input type="text" id="addTokenId" class="field-input" placeholder="asset id (0x… 32-byte TAIL)"
+                     autocomplete="off" data-testid="add-token-id" aria-label="Token asset id">
+              <div class="add-token-row">
+                <input type="text" id="addTokenName" class="field-input" placeholder="name (optional)"
+                       autocomplete="off" data-testid="add-token-name" aria-label="Token name">
+                <button type="submit" id="addTokenSubmit" class="wallet-btn wallet-btn-primary" data-testid="add-token-submit">Add</button>
+              </div>
+              <p class="wallet-note" id="addTokenNote" role="status"></p>
+            </form>
           </div>
 
-          <!-- Send: asset + recipient + amount → chia_send (Sage approves each spend). -->
+          <!-- Send: asset (XCH/$DIG/CAT) + recipient + amount + fee → chia_send (Sage signs). -->
           <form class="wallet-view" id="walletSend" data-testid="wallet-send" hidden>
             <label class="field">
               <span class="field-label">Asset</span>
@@ -185,19 +197,94 @@
               <input type="text" id="sendAmount" class="field-input" placeholder="0.0"
                      inputmode="decimal" autocomplete="off" data-testid="send-amount" aria-label="Amount to send">
             </label>
-            <button type="submit" id="sendSubmit" class="wallet-btn wallet-btn-primary" data-testid="send-submit">Send</button>
+            <label class="field">
+              <span class="field-label">Fee (XCH, optional)</span>
+              <input type="text" id="sendFee" class="field-input" placeholder="0"
+                     inputmode="decimal" autocomplete="off" data-testid="send-fee" aria-label="Network fee in XCH">
+            </label>
+            <button type="submit" id="sendSubmit" class="wallet-btn wallet-btn-primary" data-testid="send-submit">Review &amp; send</button>
             <p class="wallet-note" id="sendNote" role="status"></p>
           </form>
 
-          <!-- Activity: recent transactions (best-effort via chia_getTransactions). -->
+          <!-- Receive: the wallet's address + scannable QR + copy. -->
+          <div class="wallet-view" id="walletReceive" data-testid="wallet-receive" hidden>
+            <p class="wallet-view-hint">Scan or copy your Chia receive address:</p>
+            <div class="wallet-qr" id="walletQr" data-testid="receive-qr" aria-label="Receive address QR code"></div>
+            <div class="wallet-address-row">
+              <code class="wallet-address" id="walletAddress" data-testid="wallet-address">—</code>
+              <button id="walletAddressCopy" class="icon-button" title="Copy address" data-testid="wallet-address-copy">⧉</button>
+            </div>
+            <a id="receiveExplorer" class="inline-link" href="#" target="_blank" rel="noopener"
+               data-testid="receive-explorer" hidden>View on SpaceScan ↗</a>
+          </div>
+
+          <!-- Activity: recent transactions (chia_getTransactions) with fee/status + SpaceScan links. -->
           <div class="wallet-view" id="walletActivity" data-testid="wallet-activity" hidden>
             <ul class="activity-list" id="activityList"></ul>
             <p class="wallet-view-hint" id="activityNote">Loading activity…</p>
+            <div class="wallet-pager" id="activityPager" hidden>
+              <button id="activityNewer" class="wallet-btn" data-testid="activity-newer">← Newer</button>
+              <span class="wallet-page-label" id="activityPageLabel">Page 1</span>
+              <button id="activityOlder" class="wallet-btn" data-testid="activity-older">Older →</button>
+            </div>
+          </div>
+
+          <!-- Offers: make / inspect + take / cancel, brokered to Sage. -->
+          <div class="wallet-view" id="walletOffers" data-testid="wallet-offers" hidden>
+            <!-- Make an offer -->
+            <form class="offer-block" id="offerMakeForm" data-testid="offer-make">
+              <span class="field-label">Make an offer</span>
+              <div class="offer-leg">
+                <span class="offer-leg-label">You give</span>
+                <div class="offer-leg-row">
+                  <select id="offerGiveAsset" class="field-input" data-testid="offer-give-asset" aria-label="Asset you give"></select>
+                  <input type="text" id="offerGiveAmount" class="field-input" placeholder="amount"
+                         inputmode="decimal" autocomplete="off" data-testid="offer-give-amount" aria-label="Amount you give">
+                </div>
+              </div>
+              <div class="offer-leg">
+                <span class="offer-leg-label">You receive</span>
+                <div class="offer-leg-row">
+                  <select id="offerGetAsset" class="field-input" data-testid="offer-get-asset" aria-label="Asset you receive"></select>
+                  <input type="text" id="offerGetAmount" class="field-input" placeholder="amount"
+                         inputmode="decimal" autocomplete="off" data-testid="offer-get-amount" aria-label="Amount you receive">
+                </div>
+              </div>
+              <button type="submit" id="offerMakeSubmit" class="wallet-btn wallet-btn-primary" data-testid="offer-make-submit">Build offer</button>
+              <div class="offer-result" id="offerMakeResult" hidden>
+                <textarea class="offer-string" id="offerMakeString" readonly aria-label="Built offer string"></textarea>
+                <button type="button" id="offerMakeCopy" class="wallet-btn wallet-btn-ghost" data-testid="offer-make-copy">Copy offer</button>
+              </div>
+              <p class="wallet-note" id="offerMakeNote" role="status"></p>
+            </form>
+
+            <!-- Inspect + take an offer -->
+            <div class="offer-block" data-testid="offer-take">
+              <span class="field-label">Inspect &amp; take an offer</span>
+              <textarea id="offerTakeString" class="offer-string" placeholder="paste an offer1… string"
+                        autocomplete="off" data-testid="offer-take-string" aria-label="Offer to inspect or take"></textarea>
+              <div class="offer-actions">
+                <button type="button" id="offerInspectBtn" class="wallet-btn" data-testid="offer-inspect">Inspect</button>
+                <button type="button" id="offerTakeBtn" class="wallet-btn wallet-btn-primary" data-testid="offer-take-submit">Take offer</button>
+              </div>
+              <div class="offer-summary" id="offerSummary"></div>
+              <p class="wallet-note" id="offerTakeNote" role="status"></p>
+            </div>
+
+            <!-- Cancel an offer -->
+            <div class="offer-block" data-testid="offer-cancel">
+              <span class="field-label">Cancel an offer</span>
+              <textarea id="offerCancelString" class="offer-string" placeholder="paste the offer1… string to cancel"
+                        autocomplete="off" data-testid="offer-cancel-string" aria-label="Offer to cancel"></textarea>
+              <button type="button" id="offerCancelBtn" class="wallet-btn" data-testid="offer-cancel-submit">Cancel this offer</button>
+              <p class="wallet-note" id="offerCancelNote" role="status"></p>
+            </div>
           </div>
 
           <div class="wallet-actions">
             <button id="walletDisconnectBtn" class="wallet-btn" data-testid="wallet-disconnect">Disconnect</button>
             <a id="getDigLink" class="wallet-btn wallet-btn-ghost" href="#" title="Get $DIG on TibetSwap" data-testid="get-dig">Get $DIG ↗</a>
+            <a id="walletSettingsLink" class="wallet-btn wallet-btn-ghost" href="#" title="Wallet settings (WalletConnect project id + node)" data-testid="wallet-settings">Settings ↗</a>
           </div>
         </div>
 

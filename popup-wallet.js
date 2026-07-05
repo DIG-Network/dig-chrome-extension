@@ -27,8 +27,18 @@ import {
   toBaseUnits,
   activityViewModel,
 } from './wallet-view.mjs';
+import {
+  assetDescriptors,
+  sendAssetOptions,
+  resolveSendAsset,
+  addWatchedCat,
+  removeWatchedCat,
+  parseWatchedCats,
+} from './wallet-assets.mjs';
+import { validateOfferString, buildOfferParams, offerSummaryViewModel } from './wallet-offers.mjs';
+import { qrSvg } from './qr.mjs';
 import { resolveViaStatus } from './resolve-status.mjs';
-import { DIG_ASSET_ID } from './links.mjs';
+import { DIG_ASSET_ID, spaceScanAddressUrl } from './links.mjs';
 
 // Full native DIG Browser releases — the Control Panel deep-links here for token-gated node
 // management the extension can't drive under MV3 (no filesystem access to the control token).
@@ -181,9 +191,11 @@ async function refreshWalletPanel() {
     state.classList.add('connected');
     if (disconnected) disconnected.hidden = true;
     if (connected) connected.hidden = false;
-    const addr = $('walletAddress');
-    if (addr) addr.textContent = conn.address || '—';
+    renderReceive(conn.address);
+    populateSendAssets();
+    populateOfferAssets();
     refreshBalances();
+    showWalletView(currentWalletView);
   } else {
     state.textContent = 'Not connected';
     state.classList.remove('connected');
@@ -192,41 +204,146 @@ async function refreshWalletPanel() {
   }
 }
 
+// Small DOM helper: create an element with a class + text.
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+// The user's tracked CATs live in chrome.storage.local (client-only, like the native wallet's
+// localStorage.digCats) — Sage returns AGGREGATE balances, so tracking is just "which assets to
+// query + show".
+const WATCHED_CATS_KEY = 'wallet.watchedCats';
+
+async function getWatchedCats() {
+  try {
+    const o = await chrome.storage.local.get(WATCHED_CATS_KEY);
+    return parseWatchedCats(o[WATCHED_CATS_KEY]);
+  } catch { return []; }
+}
+
+async function saveWatchedCats(list) {
+  try { await chrome.storage.local.set({ [WATCHED_CATS_KEY]: list }); } catch { /* ignore */ }
+}
+
+// Headline balances (XCH + $DIG) — Sage's wallet-wide aggregate confirmed balance.
 async function refreshBalances() {
   const xch = $('walletXch');
   const dig = $('walletDig');
   if (xch) xch.textContent = '…';
   if (dig) dig.textContent = '…';
-  // XCH: the wallet's aggregate confirmed balance.
   try {
     const xchBal = await wc.request('chip0002_getAssetBalance', { type: null, assetId: null });
     if (xch) xch.textContent = formatAssetBalance(xchBal, 'xch');
   } catch { if (xch) xch.textContent = '—'; }
-  // $DIG CAT balance — query the DIG TAIL so the row shows a real number, or an honest em dash.
   try {
     const digBal = await wc.request('chip0002_getAssetBalance', { type: 'cat', assetId: DIG_ASSET_ID });
     if (dig) dig.textContent = formatAssetBalance(digBal, 'dig');
   } catch { if (dig) dig.textContent = '—'; }
 }
 
-// Wallet subviews (Receive / Send / Activity) — one shown at a time.
-const WALLET_VIEWS = Object.freeze({ receive: 'walletReceive', send: 'walletSend', activity: 'walletActivity' });
+// Wallet subviews (Assets / Send / Receive / Activity / Offers) — one shown at a time.
+const WALLET_VIEWS = Object.freeze({
+  assets: 'walletAssets', send: 'walletSend', receive: 'walletReceive',
+  activity: 'walletActivity', offers: 'walletOffers',
+});
+let currentWalletView = 'assets';
 
 function showWalletView(view) {
+  currentWalletView = view;
   for (const [v, id] of Object.entries(WALLET_VIEWS)) {
-    const el = $(id);
-    if (el) el.hidden = v !== view;
+    const e = $(id);
+    if (e) e.hidden = v !== view;
   }
   document.querySelectorAll('.wallet-subtab').forEach((b) => {
     b.setAttribute('aria-selected', b.getAttribute('data-view') === view ? 'true' : 'false');
   });
-  if (view === 'activity') loadActivity();
+  if (view === 'assets') loadAssets();
+  else if (view === 'activity') { _txPage = 0; loadActivity(); }
+  else if (view === 'offers') populateOfferAssets();
 }
 
 function setupWalletSubtabs() {
   document.querySelectorAll('.wallet-subtab').forEach((b) => {
     b.addEventListener('click', () => showWalletView(b.getAttribute('data-view')));
   });
+}
+
+// ---- Assets view: full balance list (XCH + $DIG + tracked CATs) + track-a-token ----
+
+async function loadAssets() {
+  const list = $('assetList');
+  const note = $('assetsNote');
+  if (!list) return;
+  const cats = await getWatchedCats();
+  const rows = assetDescriptors(cats);
+  list.innerHTML = '';
+  if (note) note.textContent = '';
+  for (const row of rows) {
+    const li = el('li', 'asset-item');
+    li.setAttribute('data-asset', row.key === 'cat' ? row.assetId : row.key);
+    const badge = el('span', 'asset-badge', row.ticker === '$DIG' ? 'Ð' : row.ticker === 'XCH' ? '✕' : '◈');
+    const meta = el('div', 'asset-meta');
+    meta.append(el('span', 'asset-ticker', row.ticker === 'CAT' ? row.name : row.ticker));
+    if (row.key === 'cat') meta.append(el('span', 'asset-id', `${row.assetId.slice(0, 8)}…${row.assetId.slice(-6)}`));
+    const value = el('span', 'asset-value', '…');
+    li.append(badge, meta, value);
+    if (row.key === 'cat') {
+      const rm = el('button', 'asset-remove', '×');
+      rm.title = 'Stop tracking this token';
+      rm.setAttribute('aria-label', `Stop tracking ${row.name}`);
+      rm.addEventListener('click', async () => {
+        await saveWatchedCats(removeWatchedCat(cats, row.assetId));
+        loadAssets();
+      });
+      li.append(rm);
+    }
+    list.appendChild(li);
+    // Fill the balance (Sage aggregate), leaving an honest em dash on failure.
+    wc.request('chip0002_getAssetBalance', { type: row.type, assetId: row.assetId })
+      .then((bal) => { value.textContent = formatAssetBalance(bal, row.decimals); })
+      .catch(() => { value.textContent = '—'; });
+  }
+}
+
+async function onAddToken(e) {
+  if (e) e.preventDefault();
+  const idInput = $('addTokenId');
+  const nameInput = $('addTokenName');
+  const note = $('addTokenNote');
+  const setNote = (m, err) => { if (note) { note.textContent = m || ''; note.className = 'wallet-note' + (err ? ' error' : ''); } };
+  const cats = await getWatchedCats();
+  const res = addWatchedCat(cats, idInput ? idInput.value : '', nameInput ? nameInput.value : '');
+  if (!res.ok) { setNote(res.error, true); return; }
+  await saveWatchedCats(res.list);
+  if (idInput) idInput.value = '';
+  if (nameInput) nameInput.value = '';
+  setNote('Token added.');
+  populateSendAssets();
+  populateOfferAssets();
+  loadAssets();
+}
+
+// ---- Send view ----
+
+function fillAssetSelect(select, options, preserve) {
+  if (!select) return;
+  const prev = preserve ? select.value : '';
+  select.innerHTML = '';
+  for (const opt of options) {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    select.appendChild(o);
+  }
+  if (prev && options.some((o) => o.value === prev)) select.value = prev;
+}
+
+async function populateSendAssets() {
+  const cats = await getWatchedCats();
+  fillAssetSelect($('sendAsset'), sendAssetOptions(cats), true);
 }
 
 function setSendNote(msg, isError) {
@@ -238,60 +355,204 @@ function setSendNote(msg, isError) {
 
 async function submitSend(e) {
   if (e) e.preventDefault();
-  const asset = ($('sendAsset') && $('sendAsset').value) || 'xch';
+  const value = ($('sendAsset') && $('sendAsset').value) || 'xch';
   const address = ($('sendAddress') && $('sendAddress').value ? $('sendAddress').value : '').trim();
   const amount = ($('sendAmount') && $('sendAmount').value ? $('sendAmount').value : '').trim();
-  const { ok, errors } = validateSendForm({ address, amount, asset });
-  if (!ok) { setSendNote(errors.address || errors.amount, true); return; }
+  const feeStr = ($('sendFee') && $('sendFee').value ? $('sendFee').value : '').trim();
+  const { ok, errors } = validateSendForm({ address, amount, fee: feeStr });
+  if (!ok) { setSendNote(errors.address || errors.amount || errors.fee, true); return; }
+  const cats = await getWatchedCats();
+  const asset = resolveSendAsset(value, cats);
+  if (!asset) { setSendNote('Pick a valid asset to send.', true); return; }
   let base;
-  try { base = toBaseUnits(amount, asset); } catch (err) { setSendNote(err.message, true); return; }
-  const assetId = asset === 'dig' ? DIG_ASSET_ID : null;
-  setSendNote('Confirm the transaction in Sage…');
+  let feeMojos = 0;
   try {
-    await wc.request('chia_send', { assetId, amount: base, address, fee: 0 });
+    base = toBaseUnits(amount, asset.decimals);
+    if (feeStr && Number(feeStr) > 0) feeMojos = toBaseUnits(feeStr, 12);
+  } catch (err) { setSendNote((err && err.message) || 'Enter a valid amount.', true); return; }
+  setSendNote(`Confirm sending ${amount} ${asset.ticker} in Sage…`);
+  try {
+    await wc.request('chia_send', { assetId: asset.assetId, amount: base, address, fee: feeMojos });
     setSendNote('Sent. It will appear in Activity once confirmed.');
     if ($('sendAddress')) $('sendAddress').value = '';
     if ($('sendAmount')) $('sendAmount').value = '';
+    if ($('sendFee')) $('sendFee').value = '';
   } catch (err) {
     setSendNote((err && err.message) || 'Send failed.', true);
   }
 }
 
+// ---- Receive view (address + QR + explorer) ----
+
+function renderReceive(address) {
+  const addr = $('walletAddress');
+  if (addr) addr.textContent = address || '—';
+  const qr = $('walletQr');
+  if (qr) {
+    if (address) qr.innerHTML = qrSvg(address, 168);
+    else qr.textContent = 'Connect a wallet to see your address.';
+  }
+  const link = $('receiveExplorer');
+  if (link) {
+    const url = spaceScanAddressUrl(address);
+    if (url) { link.href = url; link.hidden = false; } else { link.hidden = true; }
+  }
+}
+
+// ---- Activity view (paged history with fee/status + SpaceScan links) ----
+
+let _txPage = 0;
+
 async function loadActivity() {
   const list = $('activityList');
   const note = $('activityNote');
+  const pager = $('activityPager');
   if (!list) return;
   if (note) note.textContent = 'Loading activity…';
   let raw = null;
   try {
-    raw = await wc.request('chia_getTransactions', {});
+    raw = await wc.request('chia_getTransactions', { page: _txPage });
   } catch {
     list.innerHTML = '';
     if (note) note.textContent = 'Activity is unavailable — reconnect Sage and try again.';
+    if (pager) pager.hidden = true;
     return;
   }
   const vm = activityViewModel(raw, { digAssetId: DIG_ASSET_ID });
   list.innerHTML = '';
-  if (!vm.length) { if (note) note.textContent = 'No activity yet.'; return; }
-  if (note) note.textContent = '';
-  for (const it of vm) {
-    const li = document.createElement('li');
-    li.className = 'activity-item ' + it.direction;
-    const dir = document.createElement('span');
-    dir.className = 'activity-dir';
-    dir.textContent = it.direction === 'out' ? '↑' : '↓';
-    const main = document.createElement('div');
-    main.className = 'activity-main';
-    const amt = document.createElement('span');
-    amt.className = 'activity-amount';
-    const ticker = it.asset === 'xch' ? 'XCH' : it.asset === 'dig' ? '$DIG' : 'CAT';
-    amt.textContent = `${it.direction === 'out' ? '−' : '+'}${it.amountLabel} ${ticker}`;
-    const time = document.createElement('span');
-    time.className = 'activity-time';
-    time.textContent = it.timeLabel || '';
-    main.append(amt, time);
-    li.append(dir, main);
-    list.appendChild(li);
+  if (!vm.length) {
+    if (note) note.textContent = _txPage > 0 ? 'No older activity.' : 'No activity yet.';
+  } else {
+    if (note) note.textContent = '';
+    for (const it of vm) list.appendChild(renderActivityItem(it));
+  }
+  if (pager) {
+    pager.hidden = false;
+    const label = $('activityPageLabel');
+    if (label) label.textContent = `Page ${_txPage + 1}`;
+    const newer = $('activityNewer');
+    const older = $('activityOlder');
+    if (newer) newer.disabled = _txPage === 0;
+    if (older) older.disabled = vm.length === 0;
+  }
+}
+
+function renderActivityItem(it) {
+  const li = el('li', 'activity-item ' + it.direction);
+  li.append(el('span', 'activity-dir', it.direction === 'out' ? '↑' : '↓'));
+  const main = el('div', 'activity-main');
+  const ticker = it.asset === 'xch' ? 'XCH' : it.asset === 'dig' ? '$DIG' : 'CAT';
+  main.append(el('span', 'activity-amount', `${it.direction === 'out' ? '−' : '+'}${it.amountLabel} ${ticker}`));
+  const sub = el('div', 'activity-sub');
+  if (it.timeLabel) sub.append(el('span', 'activity-time', it.timeLabel));
+  sub.append(el('span', 'activity-status ' + (it.confirmed ? 'ok' : 'pend'), it.statusLabel));
+  if (it.feeLabel) sub.append(el('span', 'activity-fee', `fee ${it.feeLabel}`));
+  main.append(sub);
+  if (it.memo) main.append(el('span', 'activity-memo', it.memo));
+  li.append(main);
+  if (it.spaceScanUrl) {
+    const link = el('a', 'activity-link', '↗');
+    link.href = it.spaceScanUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.title = 'View on SpaceScan';
+    li.append(link);
+  }
+  return li;
+}
+
+// ---- Offers view (make / inspect + take / cancel) ----
+
+async function populateOfferAssets() {
+  const cats = await getWatchedCats();
+  const opts = sendAssetOptions(cats);
+  fillAssetSelect($('offerGiveAsset'), opts, true);
+  fillAssetSelect($('offerGetAsset'), opts, true);
+}
+
+function setOfferNote(id, msg, isError) {
+  const n = $(id);
+  if (!n) return;
+  n.textContent = msg || '';
+  n.className = 'wallet-note' + (isError ? ' error' : '');
+}
+
+async function onOfferMake(e) {
+  if (e) e.preventDefault();
+  const cats = await getWatchedCats();
+  const res = buildOfferParams({
+    giveValue: ($('offerGiveAsset') && $('offerGiveAsset').value) || 'xch',
+    giveAmount: ($('offerGiveAmount') && $('offerGiveAmount').value ? $('offerGiveAmount').value : '').trim(),
+    getValue: ($('offerGetAsset') && $('offerGetAsset').value) || 'xch',
+    getAmount: ($('offerGetAmount') && $('offerGetAmount').value ? $('offerGetAmount').value : '').trim(),
+    watchedCats: cats,
+  });
+  if (!res.ok) { setOfferNote('offerMakeNote', res.error, true); return; }
+  setOfferNote('offerMakeNote', 'Building the offer in Sage…');
+  try {
+    const r = await wc.request('chia_createOffer', res.params);
+    const offerStr = typeof r === 'string' ? r : (r && (r.offer || r.offerString || r.offer_string)) || '';
+    const wrap = $('offerMakeResult');
+    const box = $('offerMakeString');
+    if (offerStr && wrap && box) { wrap.hidden = false; box.value = offerStr; }
+    setOfferNote('offerMakeNote', offerStr ? 'Offer built — copy + share it.' : 'Offer created.');
+  } catch (err) {
+    setOfferNote('offerMakeNote', (err && err.message) || 'Could not build the offer.', true);
+  }
+}
+
+async function onOfferInspect() {
+  const offer = ($('offerTakeString') && $('offerTakeString').value ? $('offerTakeString').value : '').trim();
+  const v = validateOfferString(offer);
+  if (!v.ok) { setOfferNote('offerTakeNote', v.error, true); return; }
+  setOfferNote('offerTakeNote', 'Reading the offer…');
+  const box = $('offerSummary');
+  try {
+    const raw = await wc.request('chia_getOfferSummary', { offer });
+    const cats = await getWatchedCats();
+    if (box) box.innerHTML = renderOfferSummary(offerSummaryViewModel(raw, { watchedCats: cats }));
+    setOfferNote('offerTakeNote', '');
+  } catch (err) {
+    if (box) box.innerHTML = '';
+    setOfferNote('offerTakeNote', (err && err.message) || 'Could not read the offer.', true);
+  }
+}
+
+function renderOfferSummary(vm) {
+  const leg = (title, items) => {
+    const rows = items.length
+      ? items.map((i) => `<div class="offer-sum-row"><span>${i.amountLabel}</span><span>${i.ticker}</span></div>`).join('')
+      : '<div class="offer-sum-row muted">—</div>';
+    return `<div class="offer-sum-leg"><div class="offer-sum-title">${title}</div>${rows}</div>`;
+  };
+  const fee = vm.feeLabel ? `<div class="offer-sum-fee">Fee ${vm.feeLabel}</div>` : '';
+  return `<div class="offer-sum">${leg('You give', vm.offered)}${leg('You get', vm.requested)}${fee}</div>`;
+}
+
+async function onOfferTake() {
+  const offer = ($('offerTakeString') && $('offerTakeString').value ? $('offerTakeString').value : '').trim();
+  const v = validateOfferString(offer);
+  if (!v.ok) { setOfferNote('offerTakeNote', v.error, true); return; }
+  setOfferNote('offerTakeNote', 'Confirm taking this offer in Sage…');
+  try {
+    await wc.request('chia_takeOffer', { offer, fee: 0 });
+    setOfferNote('offerTakeNote', 'Offer taken — it will settle once confirmed.');
+  } catch (err) {
+    setOfferNote('offerTakeNote', (err && err.message) || 'Could not take the offer.', true);
+  }
+}
+
+async function onOfferCancel() {
+  const offer = ($('offerCancelString') && $('offerCancelString').value ? $('offerCancelString').value : '').trim();
+  const v = validateOfferString(offer);
+  if (!v.ok) { setOfferNote('offerCancelNote', v.error, true); return; }
+  setOfferNote('offerCancelNote', 'Confirm cancelling this offer in Sage…');
+  try {
+    await wc.request('chia_cancelOffer', { offer, fee: 0 });
+    setOfferNote('offerCancelNote', 'Offer cancelled.');
+    if ($('offerCancelString')) $('offerCancelString').value = '';
+  } catch (err) {
+    setOfferNote('offerCancelNote', (err && err.message) || 'Could not cancel the offer.', true);
   }
 }
 
@@ -366,6 +627,39 @@ function setupWalletActions() {
     });
   }
   if (sendForm) sendForm.addEventListener('submit', submitSend);
+
+  // Assets: track-a-token form.
+  const addTokenForm = $('addTokenForm');
+  if (addTokenForm) addTokenForm.addEventListener('submit', onAddToken);
+
+  // Activity: pagination.
+  const newer = $('activityNewer');
+  const older = $('activityOlder');
+  if (newer) newer.addEventListener('click', () => { if (_txPage > 0) { _txPage -= 1; loadActivity(); } });
+  if (older) older.addEventListener('click', () => { _txPage += 1; loadActivity(); });
+
+  // Offers: make / inspect / take / cancel + copy.
+  const offerMakeForm = $('offerMakeForm');
+  if (offerMakeForm) offerMakeForm.addEventListener('submit', onOfferMake);
+  const offerCopy = $('offerMakeCopy');
+  if (offerCopy) offerCopy.addEventListener('click', () => {
+    const box = $('offerMakeString');
+    if (box && box.value) { copyToClipboard(box.value); box.select(); }
+  });
+  const inspectBtn = $('offerInspectBtn');
+  if (inspectBtn) inspectBtn.addEventListener('click', onOfferInspect);
+  const takeBtn = $('offerTakeBtn');
+  if (takeBtn) takeBtn.addEventListener('click', onOfferTake);
+  const cancelBtn = $('offerCancelBtn');
+  if (cancelBtn) cancelBtn.addEventListener('click', onOfferCancel);
+
+  // Wallet settings → the options page (WalletConnect project id + custom node live there).
+  const settingsLink = $('walletSettingsLink');
+  if (settingsLink) settingsLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
+    else chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
+  });
 }
 
 // ============================================================================
