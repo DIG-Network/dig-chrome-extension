@@ -78,11 +78,13 @@ const EXTENSION_FILES = [
   // NB: the injected window.chia provider (dist/dig-provider.js) is NOT plain-copied — it is
   // BUNDLED from dig-provider.entry.mjs + @dignetwork/chia-provider by bundleProvider() below,
   // so the injected surface is the shared package's, never a hand-copied divergent one.
-  'dig-viewer.html',
-  'dig-viewer.js',
-  // Pure store-reference classifier/resolver (#55) — imported by dig-viewer.js (the parent side of
-  // the in-page store interceptor bridge). The DOM-glue interceptor itself is BUNDLED below from
-  // store-interceptor.entry.mjs into dist/store-interceptor.js (not plain-copied).
+  //
+  // The DIG Viewer page dig-viewer.html + its TS entry src/entries/dig-viewer.ts is BUILT BY VITE
+  // into dist-web/ and copied into dist/ by buildWebApp() below (Vite emits dig-viewer.html now).
+  // The SW still opens it via getURL('dig-viewer.html') (filename unchanged).
+  // Pure store-reference classifier/resolver (#55) — imported by the dig-viewer entry (the parent
+  // side of the in-page store interceptor bridge). The DOM-glue interceptor itself is BUNDLED below
+  // from store-interceptor.entry.mjs into dist/store-interceptor.js (not plain-copied).
   'store-refs.mjs',
   // dig-client WASM (ES module + binary) — required for client-side decryption in the module SW
   'dig_client.js',
@@ -301,12 +303,12 @@ function buildWebApp() {
     throw new Error('Vite build produced no dist-web/ output.');
   }
   copyDirRecursive(WEB_OUT_DIR, DIST_DIR);
-  for (const page of ['popup.html', 'app.html', 'offscreen.html', 'approval.html', 'welcome.html', 'options.html']) {
+  for (const page of ['popup.html', 'app.html', 'offscreen.html', 'approval.html', 'welcome.html', 'options.html', 'dig-viewer.html']) {
     if (!fs.existsSync(path.join(DIST_DIR, page))) {
       throw new Error(`React build missing ${page} in dist/ — the Vite multi-entry input changed?`);
     }
   }
-  log('✓ Built + copied React shell (popup.html, app.html, offscreen.html, approval.html, welcome.html, options.html, assets, fonts)', 'green');
+  log('✓ Built + copied React shell (popup.html, app.html, offscreen.html, approval.html, welcome.html, options.html, dig-viewer.html, assets, fonts)', 'green');
 }
 
 function createZip() {

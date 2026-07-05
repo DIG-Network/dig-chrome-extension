@@ -55,6 +55,11 @@ export default defineConfig({
         welcome: resolve(rootDir, 'welcome.html'),
         // DIG settings (options_ui) — vanilla-TS extension page, same rationale as welcome.
         options: resolve(rootDir, 'options.html'),
+        // DIG Viewer (chia:// content render) — the SW redirects chia:// navigations to it via
+        // getURL('dig-viewer.html'). A vanilla-TS extension page (no React), built by Vite so its
+        // TS entry can import the shared #shared/* view-models (error-page / messages / dig-urn /
+        // error-codes / store-refs) it renders + bridges with.
+        digViewer: resolve(rootDir, 'dig-viewer.html'),
       },
     },
   },

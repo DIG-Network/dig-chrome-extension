@@ -245,3 +245,107 @@ declare module '#shared/dig-node-status.mjs' {
   /** True when a raw failure message indicates a local dig-node is required but unreachable. */
   export function isDigNodeRequiredError(rawMessage: string | null | undefined): boolean;
 }
+
+declare module '#shared/error-page.mjs' {
+  /** Internal failure-string patterns that must never be shown to a user. */
+  export const INTERNAL_LEAK_PATTERNS: readonly RegExp[];
+  /** Map a raw failure message to a friendly, non-leaking, plain-language cause. */
+  export function friendlyCause(rawMessage: string | null | undefined): string;
+  /** Build the full HTML document for the branded, white-theme chia:// error page. */
+  export function buildErrorPageHtml(opts?: {
+    url?: string;
+    rawMessage?: string;
+    homeUrl?: string;
+    installPrompt?: { installLabel: string; installUrl: string };
+  }): string;
+}
+
+declare module '#shared/error-codes.mjs' {
+  /** The catalogued chia:// loader error codes (mirror docs.dig.net error-codes.json). */
+  export type DigErrorCode =
+    | 'DIG_ERR_PROOF_MISMATCH'
+    | 'DIG_ERR_DECRYPT_TAG'
+    | 'DIG_ERR_NOT_FOUND'
+    | 'DIG_ERR_NETWORK'
+    | 'DIG_ERR_INVALID_URN'
+    | 'DIG_ERR_DIGNODE_REQUIRED';
+  export const DIG_ERR: Readonly<Record<DigErrorCode, DigErrorCode>>;
+  /** The canonical cross-surface `dig-loader` subset (exactly the four shared codes). */
+  export const DIG_LOADER_CODES: readonly DigErrorCode[];
+  export interface ErrorCatalogueEntry {
+    code: DigErrorCode;
+    message: string;
+    canonical: boolean;
+  }
+  export const ERROR_CATALOGUE: readonly ErrorCatalogueEntry[];
+  /** Classify a raw failure (string or Error) into a stable DigErrorCode. */
+  export function classifyError(input: string | Error | null | undefined): DigErrorCode;
+  export interface CodedError {
+    success: false;
+    code: DigErrorCode;
+    message: string;
+  }
+  /** Build a `{ success:false, code, message }` envelope, classifying unless `codeOverride` is given. */
+  export function makeError(input: string | Error | null | undefined, codeOverride?: DigErrorCode): CodedError;
+}
+
+declare module '#shared/dig-urn.mjs' {
+  /** A parsed Digstore URN; a null `roothash` references the store's latest capsule. */
+  export interface ParsedUrn {
+    chain: string;
+    storeId: string;
+    roothash: string | null;
+    resourceKey: string;
+    salt: string | null;
+  }
+  /** Parse a URN (with or without `chia://` / `urn:dig:` prefix). Returns null if invalid. */
+  export function parseURN(urnString: string): ParsedUrn | null;
+  /** Fully URL-decode a URN read from a query param (decodes percent-escapes until stable). */
+  export function decodeUrnParam(raw: string | null | undefined): string;
+  /** Resolve a hostname + path (dig.local / localhost / 127.0.0.1) to a URN string, or null. */
+  export function resolveHostToURN(hostname: string, pathname: string): string | null;
+  export function encodeStoreId(storeId: string): string;
+  export function decodeStoreId(encoded: string): string;
+  export function urnToContentServerUrl(urn: string, options?: { host?: string; port?: number }): string | null;
+  export function hexToInt(hex: string): bigint;
+  export function intToBase36(bigInt: bigint): string;
+  export function base36ToInt(base36: string): bigint;
+  export function intToHex(bigInt: bigint, length?: number): string;
+}
+
+declare module '#shared/store-refs.mjs' {
+  /** A resolved store reference: a capsule (`storeId`[:`root`]) + a resource key (+ optional salt). */
+  export interface StoreRef {
+    storeId: string;
+    root?: string | null;
+    resourceKey?: string;
+    salt?: string | null;
+  }
+  /** A parsed absolute DIG reference (`chia://` / `urn:dig:chia:`). */
+  export interface ParsedDigRef {
+    storeId: string;
+    root: string | null;
+    resourceKey: string;
+    salt: string | null;
+  }
+  /** Context for {@link classifyReference}: the current capsule + the current document's key. */
+  export interface ClassifyContext {
+    cfg?: { storeId?: string; root?: string | null; salt?: string | null } | null;
+    baseKey?: string;
+    pageOrigin?: string | null;
+  }
+  /** How the interceptor must treat a single reference. */
+  export type ClassifiedRef =
+    | { kind: 'urn'; ref: StoreRef & { storeId: string; resourceKey: string } }
+    | { kind: 'relative'; ref: StoreRef & { storeId: string; resourceKey: string } }
+    | { kind: 'external' };
+  export function stripQueryHash(p: unknown): string;
+  export function normalizePath(path: unknown): string;
+  export function resolveRelativeResourceKey(baseKey: string, ref: string): string;
+  export function parseDigRef(raw: unknown): ParsedDigRef | null;
+  export function classifyReference(rawRef: unknown, ctx?: ClassifyContext): ClassifiedRef;
+  /** Build the `chia://` URL the background `proxyRequest` reads, from a resolved ref. */
+  export function buildDigUrl(ref: StoreRef): string;
+  /** Infer a MIME type from a resource key's extension (mirror of the on.dig.net contentType map). */
+  export function contentType(resourceKey: string): string;
+}

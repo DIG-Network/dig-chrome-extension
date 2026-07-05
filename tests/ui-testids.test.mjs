@@ -57,8 +57,10 @@ test('dig-viewer.html exposes data-testid + ARIA on the verify banner and error 
   assert.match(html, /data-verified=/, 'banner should carry data-verified');
 });
 
-test('dig-viewer.js surfaces the machine error code as document data-dig-error', () => {
-  const js = read('dig-viewer.js');
+test('dig-viewer entry surfaces the machine error code as document data-dig-error', () => {
+  // The viewer entry is now a built TypeScript source under src/entries/ (converted from the
+  // legacy root dig-viewer.js; Vite builds it into dist/ — see vite.config.ts + build.js).
+  const js = read('src/entries/dig-viewer.ts');
   assert.match(js, /data-dig-error/, 'viewer must expose the error code as a data-* attribute');
   assert.match(js, /data-dig-verified/, 'viewer must expose the verification verdict as a data-* attribute');
   assert.match(js, /response\.code/, 'viewer must pass through the coded envelope code');
