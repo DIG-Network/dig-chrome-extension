@@ -57,8 +57,8 @@ test('dig-viewer.html exposes data-testid + ARIA on the verify banner and error 
   assert.match(html, /data-verified=/, 'banner should carry data-verified');
 });
 
-test('dig-viewer.js surfaces the machine error code as document data-dig-error', () => {
-  const js = read('dig-viewer.js');
+test('the dig-viewer entry surfaces the machine error code as document data-dig-error', () => {
+  const js = read('src/entries/dig-viewer.ts');
   assert.match(js, /data-dig-error/, 'viewer must expose the error code as a data-* attribute');
   assert.match(js, /data-dig-verified/, 'viewer must expose the verification verdict as a data-* attribute');
   assert.match(js, /response\.code/, 'viewer must pass through the coded envelope code');

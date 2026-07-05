@@ -78,11 +78,15 @@ const EXTENSION_FILES = [
   // NB: the injected window.chia provider (dist/dig-provider.js) is NOT plain-copied — it is
   // BUNDLED from dig-provider.entry.mjs + @dignetwork/chia-provider by bundleProvider() below,
   // so the injected surface is the shared package's, never a hand-copied divergent one.
+  // dig-viewer.html is plain-copied; its script dist/dig-viewer.js is NOT — it is BUNDLED from the
+  // TypeScript entry src/entries/dig-viewer.ts by bundleDigViewer() below (the #shared/* view-models
+  // inlined), to the SAME output path, so manifest.json + the background.js dig-viewer navigation
+  // are unaffected.
   'dig-viewer.html',
-  'dig-viewer.js',
-  // Pure store-reference classifier/resolver (#55) — imported by dig-viewer.js (the parent side of
-  // the in-page store interceptor bridge). The DOM-glue interceptor itself is BUNDLED below from
-  // store-interceptor.entry.mjs into dist/store-interceptor.js (not plain-copied).
+  // Pure store-reference classifier/resolver (#55) — imported by the dig-viewer entry (the parent
+  // side of the in-page store interceptor bridge) AND the in-page interceptor. The DOM-glue
+  // interceptor itself is BUNDLED below from store-interceptor.entry.mjs into
+  // dist/store-interceptor.js (not plain-copied).
   'store-refs.mjs',
   // dig-client WASM (ES module + binary) — required for client-side decryption in the module SW
   'dig_client.js',
@@ -591,6 +595,45 @@ async function bundleStoreInterceptor() {
   log('✓ Bundled: store-interceptor.js (self-contained IIFE, store-refs inlined)', 'green');
 }
 
+// The DIG Viewer page entry (dig-viewer.html) is a TypeScript source under src/entries/. esbuild
+// bundles it into dist/dig-viewer.js as a single self-contained ES module, inlining the shared
+// `#shared/*` view-models (error-page / error-codes / dig-urn / store-refs / messages). The output
+// path is IDENTICAL to the legacy plain-copied dig-viewer.js, so manifest.json's
+// web_accessible_resources + background.js's chrome.runtime.getURL('dig-viewer.html') navigation
+// are unaffected. The `#shared` alias points at the repo root (where the shared .mjs live).
+const DIG_VIEWER_SRC = path.join(SRC_DIR, 'entries', 'dig-viewer.ts');
+const DIG_VIEWER_OUT = path.join(DIST_DIR, 'dig-viewer.js');
+
+async function bundleDigViewer() {
+  log('\n🖼️  Bundling DIG Viewer entry (src/entries/dig-viewer.ts → dist/dig-viewer.js)...', 'blue');
+  await esbuild.build({
+    entryPoints: [DIG_VIEWER_SRC],
+    outfile: DIG_VIEWER_OUT,
+    bundle: true,
+    format: 'esm', // dig-viewer.html loads it as <script type="module">
+    platform: 'browser',
+    target: ['chrome111'],
+    legalComments: 'none',
+    minify: false,
+    // Resolve `#shared/*` to the repo-root shared .mjs (the same alias Vite + tsconfig use).
+    alias: { '#shared': __dirname },
+  });
+  const out = fs.readFileSync(DIG_VIEWER_OUT, 'utf8');
+  // Must be self-contained: the #shared view-models inlined, no surviving alias or .mjs import.
+  if (/#shared/.test(out)) {
+    throw new Error('Bundled dig-viewer.js still references #shared — the alias did not resolve/inline.');
+  }
+  if (/from\s+['"][^'"]*\.mjs['"]/.test(out)) {
+    throw new Error('Bundled dig-viewer.js still has a surviving .mjs import — a shared module did not inline.');
+  }
+  for (const needle of ['Verified on Chia', 'read-result']) {
+    if (!out.includes(needle)) {
+      throw new Error(`Bundled dig-viewer.js is missing "${needle}" — the viewer did not bundle correctly.`);
+    }
+  }
+  log('✓ Bundled: dig-viewer.js (self-contained ESM, #shared view-models inlined)', 'green');
+}
+
 /** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
 async function vendorWalletConnect() {
   log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
@@ -650,6 +693,10 @@ async function main() {
   // Bundle the in-page store interceptor (#55) into dist/store-interceptor.js as a self-contained
   // IIFE (store-refs.mjs inlined) so dig-viewer can inline it into the sandboxed store frame.
   await bundleStoreInterceptor();
+
+  // Bundle the DIG Viewer page entry from its TypeScript source (src/entries/dig-viewer.ts) into
+  // dist/dig-viewer.js — same output path as the legacy plain copy, #shared view-models inlined.
+  await bundleDigViewer();
 
   // Inject the shared WalletConnect project id into dist/wallet-wc.js (build-time only;
   // never a committed source literal, never logged).

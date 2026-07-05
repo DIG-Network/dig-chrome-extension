@@ -1,23 +1,60 @@
-// DIG Viewer — fetches chia:// content via the background SW and renders it in an iframe.
-// Loaded as an ES module so it can import the shared branded error page.
-import { friendlyCause } from './error-page.mjs';
-// Stable action names (no raw string literals) + the catalogued loader error codes so the
-// viewer exposes a machine-readable failure discriminant alongside the friendly human copy.
-import { ACTIONS } from './messages.mjs';
-import { classifyError, DIG_ERR } from './error-codes.mjs';
+/**
+ * DIG Viewer entry (dig-viewer.html) — fetches chia:// content via the background service worker
+ * and renders it in a sandboxed iframe, showing the verified/failed banner and the branded,
+ * non-leaking error page. Built by esbuild into `dist/dig-viewer.js` (see build.js) so the shared
+ * `#shared/*` view-models are inlined into a single self-contained module the page loads directly.
+ *
+ * Pure DOM + chrome.* glue (no meaningful branch logic of its own — the decision cores live in the
+ * unit-tested `#shared/*` modules), which is why it lives under `src/entries/` (coverage-excluded).
+ */
+import { friendlyCause } from '#shared/error-page.mjs';
+// Stable action names (no raw string literals) + the catalogued loader error codes so the viewer
+// exposes a machine-readable failure discriminant alongside the friendly human copy.
+import { ACTIONS } from '#shared/messages.mjs';
+import { classifyError, DIG_ERR, type DigErrorCode } from '#shared/error-codes.mjs';
 // Shared URN parser — derive the capsule (storeId:rootHash) + resource path so the per-resource
 // proof verdict can be recorded into the DIG Shields ledger (#134).
-import { parseURN, decodeUrnParam } from './dig-urn.mjs';
+import { parseURN, decodeUrnParam } from '#shared/dig-urn.mjs';
 // Build the chia:// URL for a resolved store reference — used to serve the in-page interceptor's
 // relative-asset reads (#55) back through the background proxyRequest (the §5.3 node ladder).
-import { buildDigUrl } from './store-refs.mjs';
+import { buildDigUrl, type StoreRef } from '#shared/store-refs.mjs';
 
 // One canonical verified label across popup / viewer / toolbar.
 const VERIFIED_LABEL = 'Verified on Chia';
 const VERIFIED_TOOLTIP = 'Merkle-proven against the on-chain root and decrypted on this device';
 
+/** The `proxyRequest` response envelope the background service worker replies with. */
+interface ProxyResponse {
+  success?: boolean;
+  data?: string;
+  contentType?: string;
+  verified?: boolean;
+  code?: DigErrorCode;
+  error?: string;
+}
+
+/** A message posted from the sandboxed store frame's in-page interceptor to this page. */
+interface DigFrameMessage {
+  __dig?: boolean;
+  type?: 'read' | 'ready' | 'nav' | 'entry-error' | 'nav-error';
+  id?: unknown;
+  ref?: StoreRef;
+  verified?: boolean;
+  urn?: string;
+  message?: string;
+  code?: DigErrorCode;
+}
+
+/** The capsule config handed to the in-page interceptor via `window.__DIG_CFG`. */
+interface FrameConfig {
+  storeId: string;
+  root: string;
+  salt: string | null;
+  entryKey: string;
+}
+
 // Show the verified / verification-failed banner (mirrors the popup line + toolbar badge).
-function showVerifyBanner(verified) {
+function showVerifyBanner(verified: boolean): void {
   const banner = document.getElementById('verifyBanner');
   const text = document.getElementById('verifyText');
   const close = document.getElementById('verifyClose');
@@ -48,7 +85,7 @@ function showVerifyBanner(verified) {
 // cause (so internal strings like "decoy or wrong key" never reach the user). The stable
 // machine code (DIG_ERR_*) is exposed as a document data-* attribute + on the mount so an
 // agent can branch on the failure kind without scraping the human copy.
-function showError(url, rawMessage, code) {
+function showError(url: string, rawMessage: string | null | undefined, code?: DigErrorCode): void {
   const loading = document.getElementById('loading');
   const mount = document.getElementById('errorMount');
   if (loading) loading.style.display = 'none';
@@ -116,13 +153,17 @@ function showError(url, rawMessage, code) {
 // Report a resource's verification verdict to the background SW (sets the toolbar badge) and
 // record it into the active tab's DIG Shields proof ledger (#134). Best-effort; the ledger never
 // re-verifies — the verdict is the loader's. `urnStr` is a chia:// / bare URN for the resource.
-function recordVerification(verified, urnStr) {
+function recordVerification(verified: boolean, urnStr: string): void {
   try {
     chrome.runtime.sendMessage(
       { action: ACTIONS.reportVerification, verified, urn: urnStr },
-      () => { void chrome.runtime.lastError; }
+      () => {
+        void chrome.runtime.lastError;
+      },
     );
-  } catch (e) { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
   try {
     const parsed = parseURN(String(urnStr).replace(/^chia:\/\//, ''));
     if (parsed) {
@@ -138,29 +179,37 @@ function recordVerification(verified, urnStr) {
           // proof is available, so the ledger honestly records none.
           executionProofStatus: '',
         },
-        () => { void chrome.runtime.lastError; }
+        () => {
+          void chrome.runtime.lastError;
+        },
       );
     }
-  } catch (e) { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 // Serve ONE store read for the in-page interceptor (#55): resolve the ref to its chia:// URL and
 // proxy it through the background (the §5.3 node ladder + verify + decrypt), replying to the
 // requesting frame with a `data:` URL. This is the extension's analogue of the *.on.dig.net loader
 // SW's fetch handler — a store's relative asset request routed back to the node as a capsule read.
-function serveRead(source, id, ref) {
-  const reply = (payload) => {
-    try { source.postMessage({ __dig: true, type: 'read-result', id, ...payload }, '*'); } catch (e) { /* frame gone */ }
+function serveRead(source: Window, id: unknown, ref: StoreRef | undefined): void {
+  const reply = (payload: Record<string, unknown>): void => {
+    try {
+      source.postMessage({ __dig: true, type: 'read-result', id, ...payload }, '*');
+    } catch {
+      /* frame gone */
+    }
   };
-  let url;
+  let url: string;
   try {
     if (!ref || !ref.storeId) throw new Error('missing store');
     url = buildDigUrl(ref);
-  } catch (e) {
+  } catch {
     reply({ ok: false, code: DIG_ERR.DIG_ERR_INVALID_URN, message: 'Invalid store reference' });
     return;
   }
-  chrome.runtime.sendMessage({ action: ACTIONS.proxyRequest, url }, (response) => {
+  chrome.runtime.sendMessage({ action: ACTIONS.proxyRequest, url }, (response: ProxyResponse | undefined) => {
     if (chrome.runtime.lastError) {
       reply({ ok: false, code: DIG_ERR.DIG_ERR_NETWORK, message: chrome.runtime.lastError.message });
       return;
@@ -180,7 +229,7 @@ function serveRead(source, id, ref) {
 // Build the sandboxed store-frame document: an opaque-origin `data:` document (isolated from the
 // extension — no chrome.* access) that boots the in-page interceptor with the capsule config. The
 // interceptor requests the entry + every relative asset back through this page's message bridge.
-function storeFrameDoc(cfg, interceptorSrc) {
+function storeFrameDoc(cfg: FrameConfig, interceptorSrc: string): string {
   const cfgJson = JSON.stringify(cfg);
   const html =
     '<!doctype html><html><head><meta charset="utf-8">' +
@@ -192,7 +241,7 @@ function storeFrameDoc(cfg, interceptorSrc) {
   return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
 }
 
-async function init() {
+async function init(): Promise<void> {
   const urlParams = new URLSearchParams(window.location.search);
   // URLSearchParams decodes the value ONCE; some navigation paths encode the chia:// URL twice, so
   // fully decode until stable (a valid URN has no literal '%') — otherwise a still-encoded value
@@ -212,7 +261,7 @@ async function init() {
     showError(digUrl, 'This address may not exist.', DIG_ERR.DIG_ERR_INVALID_URN);
     return;
   }
-  const cfg = {
+  const cfg: FrameConfig = {
     storeId: parsed.storeId,
     root: parsed.roothash || 'latest',
     salt: parsed.salt || null,
@@ -221,10 +270,10 @@ async function init() {
 
   // Load the interceptor bundle (self-contained IIFE) so it can be inlined into the opaque frame —
   // an opaque `data:` document cannot import a module or fetch a cross-origin script.
-  let interceptorSrc;
+  let interceptorSrc: string;
   try {
     interceptorSrc = await (await fetch(chrome.runtime.getURL('store-interceptor.js'))).text();
-  } catch (e) {
+  } catch {
     showError(digUrl, 'Failed to fetch', DIG_ERR.DIG_ERR_NETWORK);
     return;
   }
@@ -232,13 +281,13 @@ async function init() {
   const iframe = document.createElement('iframe');
 
   // Bridge: serve the interceptor's reads + react to its lifecycle notifications.
-  const onMessage = (event) => {
+  const onMessage = (event: MessageEvent): void => {
     if (event.source !== iframe.contentWindow) return; // only our store frame
-    const d = event.data;
+    const d = event.data as DigFrameMessage | null;
     if (!d || d.__dig !== true) return;
     switch (d.type) {
       case 'read':
-        serveRead(event.source, d.id, d.ref);
+        serveRead(event.source as Window, d.id, d.ref);
         break;
       case 'ready':
         // The entry document rendered — reveal it, drop the spinner, record the entry verdict.
@@ -271,7 +320,9 @@ async function init() {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', () => {
+    void init();
+  });
 } else {
-  init();
+  void init();
 }

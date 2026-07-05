@@ -232,6 +232,68 @@ declare module '#shared/server-config.mjs' {
   ): Promise<string | null>;
 }
 
+declare module '#shared/error-page.mjs' {
+  /** Map a raw failure message to a friendly, non-leaking, plain-language cause. */
+  export function friendlyCause(rawMessage: string | null | undefined): string;
+  /** Build the full HTML document for the branded chia:// error page. */
+  export function buildErrorPageHtml(opts?: {
+    url?: string;
+    rawMessage?: string;
+    homeUrl?: string;
+    installPrompt?: { installLabel: string; installUrl: string };
+  }): string;
+}
+
+declare module '#shared/error-codes.mjs' {
+  /** The catalogued chia:// loader error codes (mirrors docs.dig.net `dig-loader`). */
+  export type DigErrorCode =
+    | 'DIG_ERR_PROOF_MISMATCH'
+    | 'DIG_ERR_DECRYPT_TAG'
+    | 'DIG_ERR_NOT_FOUND'
+    | 'DIG_ERR_NETWORK'
+    | 'DIG_ERR_INVALID_URN'
+    | 'DIG_ERR_DIGNODE_REQUIRED';
+  export const DIG_ERR: Readonly<Record<DigErrorCode, DigErrorCode>>;
+  /** Classify a raw failure (string or Error) into a stable DigErrorCode. */
+  export function classifyError(input: string | Error | null | undefined): DigErrorCode;
+  export interface CodedError {
+    success: false;
+    code: DigErrorCode;
+    message: string;
+  }
+  /** Build a `{ success:false, code, message }` envelope, classifying unless `codeOverride` is given. */
+  export function makeError(input: string | Error | null | undefined, codeOverride?: DigErrorCode): CodedError;
+}
+
+declare module '#shared/dig-urn.mjs' {
+  /** A parsed Digstore URN — `roothash` null references the store's latest capsule. */
+  export interface ParsedUrn {
+    chain: string;
+    storeId: string;
+    roothash: string | null;
+    resourceKey: string;
+    salt: string | null;
+  }
+  /** Parse a URN (with or without `chia://` / `urn:dig:` prefix). Returns null if invalid. */
+  export function parseURN(urnString: string): ParsedUrn | null;
+  /** Fully URL-decode a URN read from a query param (decodes percent-escapes until stable). */
+  export function decodeUrnParam(raw: string | null | undefined): string;
+}
+
+declare module '#shared/store-refs.mjs' {
+  /** A resolved store reference: a capsule (`storeId`[:`root`]) + a resource key (+ optional salt). */
+  export interface StoreRef {
+    storeId: string;
+    root?: string | null;
+    resourceKey?: string;
+    salt?: string | null;
+  }
+  /** Build the `chia://` URL the background `proxyRequest` reads, from a resolved ref. */
+  export function buildDigUrl(ref: StoreRef): string;
+  /** Infer a MIME type from a resource key's extension. */
+  export function contentType(resourceKey: string): string;
+}
+
 declare module '#shared/dig-node-status.mjs' {
   /** The DIG node installer/download URL surfaced when no local node is reachable. */
   export const DIG_INSTALLER_URL: string;
