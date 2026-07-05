@@ -63,6 +63,18 @@ export const en: Record<string, string> = {
   'custody.error.invalidPhrase': "That doesn't look like a valid recovery phrase.",
   'custody.error.wrongWord': "That word doesn't match — check your backup and try again.",
   'custody.error.unlockFailed': 'Unlock failed. Check your password and try again.',
+  // balances / receive / chain (#56 item 3)
+  'custody.privacy.title': 'A note on balances',
+  'custody.privacy.body':
+    'To show your balances, the wallet asks a public chain provider (coinset.org) about your addresses. That operator can see which addresses belong to this wallet. You can point at your own node below.',
+  'custody.privacy.ack': 'Got it',
+  'custody.balances.cached': 'Showing your last known balances — reconnecting…',
+  'custody.chain.label': 'Chain node (advanced)',
+  'custody.chain.hint': 'Leave blank to use the default (coinset.org). Enter your own coinset-compatible node for more privacy.',
+  'custody.chain.save': 'Save chain node',
+  'custody.chain.saved': 'Saved',
+  'custody.soon.activity': 'Activity history is coming with self-custody sending.',
+  'custody.soon.trade': 'Trading is coming with self-custody signing.',
 
   // ── wallet: segmented + shared ──
   'wallet.view.home': 'Home',

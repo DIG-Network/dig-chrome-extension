@@ -11,21 +11,29 @@ import { Home } from '@/features/wallet/Home';
 import { Activity } from '@/features/wallet/Activity';
 import { Trade } from '@/features/wallet/Trade';
 import { CustodyGate } from '@/features/wallet/custody/CustodyGate';
+import { CustodyWallet } from '@/features/wallet/custody/CustodyWallet';
+import { selectIsUnlocked } from '@/features/wallet/walletSlice';
 
 const SEG_OPTIONS = WALLET_VIEWS.map((v) => ({ value: v, labelId: `wallet.view.${v}` }));
 
 /**
  * The Wallet tab. The self-custody {@link CustodyGate} lands FIRST (§18.3, full Sage replacement):
- * no wallet → onboarding/CTA, locked → unlock, unlocked → the Balances & Intents body below. The
- * body ({@link WalletBody}) is a child so its Sage-broker queries only mount when the gate reaches
- * it (unlocked, or the "use Sage instead" path).
+ * no wallet → onboarding/CTA, locked → unlock, unlocked → the wallet body. When a self-custody
+ * wallet is unlocked the body is the custody-backed {@link CustodyWallet} (balances from the
+ * offscreen HD scan); the Sage-broker {@link WalletBody} remains for the "use Sage instead" path.
  */
 export function WalletTab() {
   return (
     <CustodyGate>
-      <WalletBody />
+      <WalletRouter />
     </CustodyGate>
   );
+}
+
+/** Route the unlocked surface: custody-backed wallet when self-custody is unlocked, else Sage body. */
+function WalletRouter() {
+  const isCustody = useAppSelector(selectIsUnlocked);
+  return isCustody ? <CustodyWallet /> : <WalletBody />;
 }
 
 /**

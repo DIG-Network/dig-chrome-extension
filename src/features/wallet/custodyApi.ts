@@ -29,6 +29,12 @@ export interface UnlockResult {
 export interface RevealResult {
   mnemonic: string;
 }
+/** A scanned balance snapshot (base units): XCH mojos + per-CAT (asset id → base units). */
+export interface CustodyBalances {
+  balances: { xch: number; cats: Record<string, number> };
+  /** True when this is the last cached snapshot returned because a fresh scan failed. */
+  cached?: boolean;
+}
 
 export const custodyApi = api.injectEndpoints({
   endpoints: (build) => ({
@@ -64,6 +70,16 @@ export const custodyApi = api.injectEndpoints({
     revealPhrase: build.mutation<RevealResult, { password: string }>({
       query: (arg) => ({ action: ACTIONS.revealPhrase, ...arg }),
     }),
+
+    getReceiveAddress: build.query<{ address: string }, void>({
+      query: () => ({ action: ACTIONS.getReceiveAddress }),
+      providesTags: ['Address'],
+    }),
+
+    getCustodyBalances: build.query<CustodyBalances, void>({
+      query: () => ({ action: ACTIONS.getCustodyBalances }),
+      providesTags: ['Balances'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -75,4 +91,6 @@ export const {
   useUnlockWalletMutation,
   useLockWalletMutation,
   useRevealPhraseMutation,
+  useGetReceiveAddressQuery,
+  useGetCustodyBalancesQuery,
 } = custodyApi;

@@ -20,6 +20,19 @@ export const SETTINGS_KEY = 'wallet.settings';
 export const ACTIVE_WALLET_KEY = 'wallet.activeId';
 /** `chrome.storage.session` key: the NON-SECRET unlock-expiry timestamp (ms). Never key material. */
 export const UNLOCK_EXPIRY_KEY = 'wallet.unlockExpiry';
+/** `chrome.storage.local` key: cached last balance scan (non-secret) for cached-first paint. */
+export const BALANCES_CACHE_KEY = 'walletCache.balances';
+
+/** The default public coinset chain source (extensions bypass its CORS). */
+export const DEFAULT_COINSET_URL = 'https://api.coinset.org';
+/** HD scan gap limit per scheme for balance scans. */
+export const SCAN_GAP_LIMIT = 20;
+
+/** Resolve the chain RPC URL: an explicit `settings.chainRpcUrl` override wins, else coinset.org. */
+export function resolveCoinsetUrl(settings) {
+  const url = settings && typeof settings.chainRpcUrl === 'string' ? settings.chainRpcUrl.trim() : '';
+  return url || DEFAULT_COINSET_URL;
+}
 
 /** Default auto-lock TTL: 10 minutes (§5.5), user-configurable via `settings.unlockTtlMinutes`. */
 export const DEFAULT_UNLOCK_TTL_MINUTES = 10;
@@ -42,6 +55,8 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'lockWallet',
   'revealPhrase',
   'getLockState',
+  'getReceiveAddress',
+  'getCustodyBalances',
 ]);
 
 /** True if `action` is a custody action the SW routes to the offscreen vault. */
