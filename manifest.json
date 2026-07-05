@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DIG Network Extension",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "The DIG Network on any browser: chia:// resolution (verified + decrypted), a full Chia wallet, DIG Shields, and node control — in a dark 4-tab popup.",
   "host_permissions": [
     "http://localhost/*",

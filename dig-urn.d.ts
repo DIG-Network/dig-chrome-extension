@@ -16,6 +16,12 @@ export interface ParsedUrn {
 /** Parse a URN (with or without `chia://` / `urn:dig:` prefix). Returns null if invalid. */
 export function parseURN(urnString: string): ParsedUrn | null;
 
+/**
+ * Fully URL-decode a URN read from a query param, decoding percent-escapes until stable (a valid
+ * URN has no literal `%`). Recovers a URN that was encoded more than once by a navigation path.
+ */
+export function decodeUrnParam(raw: string | null | undefined): string;
+
 /** Resolve a hostname + path (dig.local / localhost / 127.0.0.1) to a URN string, or null. */
 export function resolveHostToURN(hostname: string, pathname: string): string | null;
 
