@@ -66,7 +66,7 @@ describe('App shell', () => {
     await userEvent.click(screen.getByTestId('tab-wallet'));
     await screen.findByTestId('custody-wallet');
     await userEvent.click(screen.getByTestId('seg-activity'));
-    expect(await screen.findByTestId('custody-activity-soon')).toBeInTheDocument();
+    expect(await screen.findByTestId('custody-activity')).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('seg-trade'));
     expect(await screen.findByTestId('custody-trade-soon')).toBeInTheDocument();
   });

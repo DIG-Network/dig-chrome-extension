@@ -31,6 +31,7 @@ import {
   ACTIVE_WALLET_KEY,
   UNLOCK_EXPIRY_KEY,
   BALANCES_CACHE_KEY,
+  ACTIVITY_CACHE_KEY,
   LOCK_STATE,
   SCAN_GAP_LIMIT,
   isCustodyAction,
@@ -898,6 +899,21 @@ async function handleCustodyAction(message) {
     case ACTIONS.sendStatus: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       return callVault({ op: 'sendStatus', coinId: message.coinId, coinsetUrl });
+    }
+    case ACTIONS.getActivity: {
+      // Read-only ledger reconstruction. Full scan (v1: correct over incremental — a coin created
+      // before a cursor can be spent after it); cached to walletCache.activity for cached-first paint.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const { [WATCHED_CATS_KEY]: watchedRaw } = await chrome.storage.local.get(WATCHED_CATS_KEY);
+      const watchedCats = parseWatchedCats(watchedRaw).map((c) => c.assetId);
+      const res = await callVault({ op: 'getActivity', watchedCats, coinsetUrl });
+      if (res && res.success !== false && Array.isArray(res.events)) {
+        await chrome.storage.local.set({ [ACTIVITY_CACHE_KEY]: { events: res.events, cursorHeight: res.cursorHeight || 0, at: Date.now() } });
+        return { events: res.events, cursorHeight: res.cursorHeight || 0, cached: false };
+      }
+      const { [ACTIVITY_CACHE_KEY]: cache } = await chrome.storage.local.get(ACTIVITY_CACHE_KEY);
+      if (cache && Array.isArray(cache.events)) return { events: cache.events, cursorHeight: cache.cursorHeight || 0, cached: true };
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'activity scan failed' };
     }
     default:
       return { success: false, code: 'CUSTODY_ERROR', message: 'unknown custody action' };

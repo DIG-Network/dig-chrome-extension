@@ -25,6 +25,7 @@ function fakeChain(map: Record<string, number>): ChainClient {
     pushSpendBundle: async () => ({ success: true }),
     coinConfirmed: async () => false,
     getCoinSpend: async () => null,
+    coinRecords: async () => [],
   };
 }
 

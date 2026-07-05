@@ -77,6 +77,7 @@ describe('prepareXchSend → signAndBundle (Simulator-validated)', () => {
       },
       coinConfirmed: async () => true,
       getCoinSpend: async () => null,
+      coinRecords: async () => [],
     };
 
     const prepared = await prepareXchSend(flow(), chain, {
@@ -100,6 +101,7 @@ function simChain(sim: SimHandle): ChainClient {
   return {
     totalUnspent: async () => 0,
     unspentCoins: async (phs) => phs.flatMap((h) => sim.unspentCoins(chia.fromHex(h), false)),
+    coinRecords: async () => [],
     getCoinSpend: async (idHex) => sim.coinSpend(chia.fromHex(idHex)) ?? null,
     pushSpendBundle: async (bundle) => {
       sim.newTransaction(bundle);
