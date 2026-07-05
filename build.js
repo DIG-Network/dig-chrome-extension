@@ -303,12 +303,12 @@ function buildWebApp() {
     throw new Error('Vite build produced no dist-web/ output.');
   }
   copyDirRecursive(WEB_OUT_DIR, DIST_DIR);
-  for (const page of ['popup.html', 'app.html']) {
+  for (const page of ['popup.html', 'app.html', 'offscreen.html']) {
     if (!fs.existsSync(path.join(DIST_DIR, page))) {
       throw new Error(`React build missing ${page} in dist/ — the Vite multi-entry input changed?`);
     }
   }
-  log('✓ Built + copied React shell (popup.html, app.html, assets, fonts)', 'green');
+  log('✓ Built + copied React shell (popup.html, app.html, offscreen.html, assets, fonts)', 'green');
 }
 
 function createZip() {

@@ -23,7 +23,19 @@ import { buildErrorPageHtml } from './error-page.mjs';
 // Aligned with docs.dig.net static/error-codes.json `dig-loader` surface.
 import { DIG_ERR, makeError } from './error-codes.mjs';
 // The versioned message catalogue: the frozen ACTIONS enum + getCapabilities self-description.
-import { ACTIONS, buildCapabilities } from './messages.mjs';
+import { ACTIONS, buildCapabilities, OFFSCREEN_TARGET } from './messages.mjs';
+// Self-custody session logic (#56): the offscreen-vault coordination decisions (pure; no chrome.*).
+import {
+  KEYSTORE_KEY,
+  SETTINGS_KEY,
+  ACTIVE_WALLET_KEY,
+  UNLOCK_EXPIRY_KEY,
+  LOCK_STATE,
+  isCustodyAction,
+  resolveTtlMinutes,
+  computeUnlockExpiry,
+  deriveLockState,
+} from './custody-session.mjs';
 // dig-node install prompt + "dig-node required" error mapping (universal installer link).
 import { digNodeInstallPrompt, isDigNodeRequiredError } from './dig-node-status.mjs';
 
@@ -727,8 +739,162 @@ chrome.runtime.onStartup.addListener(() => {
 const errorReports = [];
 const successReports = [];
 
+// ─── Self-custody offscreen vault coordination (#56) ──────────────────────────────────────────
+// The decrypted wallet key lives ONLY in the long-lived offscreen document (§5.1). The SW never
+// holds it — it creates the offscreen doc on demand, forwards custody requests to the vault, owns
+// storage (the encrypted DIGWX1 blob + the non-secret unlock-expiry), and enforces auto-lock
+// (idle / TTL / all-windows-close). Pure decisions come from custody-session.mjs.
+const OFFSCREEN_URL = 'offscreen.html';
+const AUTO_LOCK_ALARM = 'dig-wallet-autolock';
+let creatingOffscreen = null;
+
+async function hasOffscreenDocument() {
+  try {
+    if (chrome.offscreen && chrome.offscreen.hasDocument) return await chrome.offscreen.hasDocument();
+    if (chrome.runtime.getContexts) {
+      const ctx = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+      return Array.isArray(ctx) && ctx.length > 0;
+    }
+  } catch { /* fall through */ }
+  return false;
+}
+
+async function ensureOffscreenDocument() {
+  if (await hasOffscreenDocument()) return;
+  if (creatingOffscreen) { await creatingOffscreen; return; }
+  creatingOffscreen = chrome.offscreen.createDocument({
+    url: OFFSCREEN_URL,
+    reasons: ['WORKERS'],
+    justification: 'Hold the self-custody wallet key in memory and run Argon2id + AES-GCM decryption off the ephemeral service worker.',
+  });
+  try { await creatingOffscreen; } catch { /* another caller may have created it */ } finally { creatingOffscreen = null; }
+}
+
+/** Forward one request to the offscreen keystore vault (creating the doc if needed). */
+async function callVault(request) {
+  await ensureOffscreenDocument();
+  return chrome.runtime.sendMessage({ target: OFFSCREEN_TARGET, request });
+}
+
+/** Ask the vault (only if it exists) whether it currently holds a decrypted key. */
+async function vaultHasKey() {
+  if (!(await hasOffscreenDocument())) return false;
+  try {
+    const res = await chrome.runtime.sendMessage({ target: OFFSCREEN_TARGET, request: { op: 'getVaultState' } });
+    return !!(res && res.hasKey);
+  } catch { return false; }
+}
+
+async function readKeystore() {
+  const out = await chrome.storage.local.get(KEYSTORE_KEY);
+  return out[KEYSTORE_KEY] || null;
+}
+
+async function readWalletSettings() {
+  const out = await chrome.storage.local.get(SETTINGS_KEY);
+  return out[SETTINGS_KEY] || {};
+}
+
+/** Start (or extend) the unlock window: persist the non-secret expiry + arm the auto-lock alarm. */
+async function startUnlockWindow() {
+  const ttl = resolveTtlMinutes(await readWalletSettings());
+  const expiry = computeUnlockExpiry(Date.now(), ttl);
+  await chrome.storage.session.set({ [UNLOCK_EXPIRY_KEY]: expiry });
+  try { chrome.alarms.create(AUTO_LOCK_ALARM, { periodInMinutes: 1 }); } catch { /* alarms unavailable */ }
+  return expiry;
+}
+
+/** Tell the vault to zeroize + drop the key and clear the unlock window. */
+async function lockVaultNow() {
+  try { if (await hasOffscreenDocument()) await chrome.runtime.sendMessage({ target: OFFSCREEN_TARGET, request: { op: 'lockWallet' } }); } catch { /* best effort */ }
+  await chrome.storage.session.remove(UNLOCK_EXPIRY_KEY);
+  try { chrome.alarms.clear(AUTO_LOCK_ALARM); } catch { /* ignore */ }
+}
+
+/** Compute the tri-state lock snapshot the UI reads; also enforces a lapsed TTL (locks the vault). */
+async function getLockStateSnapshot() {
+  const [record, sess, active, hasKey] = await Promise.all([
+    readKeystore(),
+    chrome.storage.session.get(UNLOCK_EXPIRY_KEY),
+    chrome.storage.local.get(ACTIVE_WALLET_KEY),
+    vaultHasKey(),
+  ]);
+  const unlockExpiry = sess[UNLOCK_EXPIRY_KEY] || null;
+  const lockState = deriveLockState({ hasKeystore: !!record, hasKeyInVault: hasKey, unlockExpiry, now: Date.now() });
+  if (record && hasKey && lockState === LOCK_STATE.LOCKED) await lockVaultNow(); // TTL lapsed
+  return { lockState, activeWalletId: active[ACTIVE_WALLET_KEY] || null, unlockExpiry };
+}
+
+/** Handle one custody action end-to-end (SW ↔ offscreen ↔ storage). Returns the reply payload. */
+async function handleCustodyAction(message) {
+  switch (message.action) {
+    case ACTIONS.getLockState:
+      return getLockStateSnapshot();
+    case ACTIONS.lockWallet:
+      await lockVaultNow();
+      return { lockState: LOCK_STATE.LOCKED };
+    case ACTIONS.createWallet: {
+      const res = await callVault({ op: 'createWallet', password: message.password, label: message.label, strong: message.strong });
+      if (!res || res.success === false) return res || { success: false, code: 'CUSTODY_ERROR', message: 'create failed' };
+      await chrome.storage.local.set({ [KEYSTORE_KEY]: res.record, [ACTIVE_WALLET_KEY]: message.label || 'main' });
+      await startUnlockWindow();
+      return { lockState: LOCK_STATE.UNLOCKED, mnemonic: res.mnemonic, usedFallback: res.usedFallback };
+    }
+    case ACTIONS.importWallet: {
+      const res = await callVault({ op: 'importWallet', mnemonic: message.mnemonic, password: message.password, label: message.label, strong: message.strong });
+      if (!res || res.success === false) return res || { success: false, code: 'CUSTODY_ERROR', message: 'import failed' };
+      await chrome.storage.local.set({ [KEYSTORE_KEY]: res.record, [ACTIVE_WALLET_KEY]: message.label || 'main' });
+      await startUnlockWindow();
+      return { lockState: LOCK_STATE.UNLOCKED, usedFallback: res.usedFallback };
+    }
+    case ACTIONS.unlockWallet: {
+      const record = await readKeystore();
+      if (!record) return { success: false, code: 'NO_WALLET', message: 'no wallet to unlock' };
+      const res = await callVault({ op: 'unlockWallet', password: message.password, record });
+      if (!res || res.success === false) return res || { success: false, code: 'UNLOCK_FAILED', message: 'unlock failed' };
+      await startUnlockWindow();
+      return { lockState: LOCK_STATE.UNLOCKED, usedFallback: res.usedFallback };
+    }
+    case ACTIONS.revealPhrase: {
+      const record = await readKeystore();
+      if (!record) return { success: false, code: 'NO_WALLET', message: 'no wallet' };
+      return callVault({ op: 'revealPhrase', password: message.password, record });
+    }
+    default:
+      return { success: false, code: 'CUSTODY_ERROR', message: 'unknown custody action' };
+  }
+}
+
+// Auto-lock: TTL sweep (alarm) + OS idle/lock → drop the key from the vault.
+try {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm && alarm.name === AUTO_LOCK_ALARM) {
+      (async () => {
+        const sess = await chrome.storage.session.get(UNLOCK_EXPIRY_KEY);
+        const expiry = sess[UNLOCK_EXPIRY_KEY];
+        if (!expiry || Date.now() >= expiry) await lockVaultNow();
+      })();
+    }
+  });
+} catch { /* alarms unavailable */ }
+try {
+  chrome.idle.onStateChanged.addListener((state) => {
+    if (state === 'idle' || state === 'locked') lockVaultNow();
+  });
+} catch { /* idle unavailable */ }
+
 // Listen for messages from content script to proxy requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Messages the SW forwards to the offscreen vault are handled by the offscreen document, not here.
+  if (message && message.target === OFFSCREEN_TARGET) return false;
+  // Self-custody keystore ops (#56) → coordinate the offscreen vault + storage + unlock window.
+  if (message && isCustodyAction(message.action)) {
+    (async () => {
+      try { sendResponse(await handleCustodyAction(message)); }
+      catch { try { sendResponse({ success: false, code: 'CUSTODY_ERROR', message: 'custody op failed' }); } catch { /* port closed */ } }
+    })();
+    return true; // async
+  }
   if (message.action === 'toggleExtension') {
     // State is updated in popup.js; no redirect rules to update (all content via RPC)
     console.log('Extension toggled:', message.enabled);

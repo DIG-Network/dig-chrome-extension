@@ -8,7 +8,18 @@ export interface ThunkExtra {
 }
 
 /** RTK Query cache tags — mutations invalidate, queries provide (§6.4 tag-driven cache). */
-export const TAGS = ['Connection', 'Balances', 'Activity', 'Offers', 'NodeStatus', 'Shield', 'Control'] as const;
+export const TAGS = [
+  'Connection',
+  'Balances',
+  'Activity',
+  'Offers',
+  'NodeStatus',
+  'Shield',
+  'Control',
+  // Self-custody (#56): lock state + derived receive addresses.
+  'LockState',
+  'Address',
+] as const;
 
 /**
  * The single RTK Query API slice. Endpoints are split per feature via `injectEndpoints` so each

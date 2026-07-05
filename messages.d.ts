@@ -11,9 +11,14 @@ export type Action =
   | 'navigate' | 'toggleExtension' | 'updateServerConfig' | 'updateRpcHost'
   | 'walletRpc' | 'walletConsent' | 'reportVerification' | 'getVerification'
   | 'getDigNodeStatus' | 'reportError' | 'reportSuccess' | 'addSearchEngine'
-  | 'getDefaultSearchEngine' | 'isDigSearchDefault' | 'updateSearchConfig' | 'getCapabilities';
+  | 'getDefaultSearchEngine' | 'isDigSearchDefault' | 'updateSearchConfig' | 'getCapabilities'
+  // Self-custody wallet (#56): keystore ops the SW routes to the offscreen vault.
+  | 'createWallet' | 'importWallet' | 'unlockWallet' | 'lockWallet' | 'revealPhrase' | 'getLockState';
 
 export const ACTIONS: Readonly<Record<Action, Action>>;
+
+/** Discriminator on messages the SW forwards to the offscreen keystore vault. */
+export const OFFSCREEN_TARGET: 'dig-offscreen';
 
 /** The window.postMessage bridge protocol between the injected provider and the content script. */
 export const BRIDGE: Readonly<{ WALLET_REQUEST: 'DIG_WALLET_REQUEST'; WALLET_RESPONSE: 'DIG_WALLET_RESPONSE' }>;

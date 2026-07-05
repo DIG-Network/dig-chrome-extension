@@ -40,6 +40,8 @@ export default defineConfig({
       input: {
         popup: resolve(rootDir, 'popup.html'),
         app: resolve(rootDir, 'app.html'),
+        // The offscreen keystore vault document (#56) — created by the SW via chrome.offscreen.
+        offscreen: resolve(rootDir, 'offscreen.html'),
       },
     },
   },
