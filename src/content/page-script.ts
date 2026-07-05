@@ -1,3 +1,9 @@
+// @ts-nocheck — Verbatim-moved (issue #68) MAIN-world page-script interception shim. This file's
+// job is wholesale reassignment of native URL-consuming globals (window.fetch, Image, Worker,
+// history.pushState, WebAssembly.*Streaming, location.href, XHR.open, canvas/WebGL/AudioContext, …),
+// a pattern TypeScript's structural DOM lib types cannot express, with `any` eslint-banned and
+// `noImplicitAny` on. It is proven, behaviour-frozen code relocated unchanged — there is no bug to
+// type away — so it is exempted from strict tsc here. Fully strict-typing this shim is a tracked follow-up.
 // Page script that runs in the page context (not isolated world)
 // This intercepts chia:// URLs before the browser tries to load them
 

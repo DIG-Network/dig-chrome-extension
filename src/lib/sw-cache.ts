@@ -13,28 +13,45 @@
  * This module owns only the pure mechanism — key derivation, a bounded LRU, and the epoch map.
  * The service worker (background.js) wires it to `chrome.storage` + the broker transport, and
  * the popup/app store wires the epoch broadcast to `invalidateTags`. Kept pure so it is unit
- * tested under `node --test` with no browser.
+ * tested with no browser.
  */
 
 /**
  * Deterministic cache key for a read request. Stable across argument key ordering so two callers
  * that pass the same params in a different property order share one cache entry.
- *
- * @param {string} action the read action name (e.g. 'walletRead')
- * @param {unknown} [params] JSON-serialisable request params
- * @returns {string}
  */
-export function cacheKey(action, params) {
+export function cacheKey(action: string, params?: unknown): string {
   return `${String(action)}::${stableStringify(params)}`;
 }
 
 /** JSON.stringify with object keys sorted recursively (arrays keep order). */
-export function stableStringify(value) {
+export function stableStringify(value: unknown): string {
   if (value === undefined) return 'null';
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
-  const keys = Object.keys(value).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
+}
+
+/** Options for a {@link WalletCache}. */
+export interface WalletCacheOptions {
+  max?: number;
+  now?: () => number;
+}
+
+/** Options for a single {@link WalletCache.set}. */
+export interface WalletCacheSetOptions {
+  tag?: string;
+  ttlMs?: number;
+}
+
+interface CacheEntry {
+  value: unknown;
+  tag: string;
+  epoch: number;
+  at: number;
+  ttlMs: number;
 }
 
 /**
@@ -46,27 +63,23 @@ export function stableStringify(value) {
  * evicted first).
  */
 export class WalletCache {
-  /** @param {{max?:number, now?:() => number}} [opts] */
-  constructor({ max = 64, now = () => Date.now() } = {}) {
+  private readonly max: number;
+  private readonly _now: () => number;
+  private readonly _entries = new Map<string, CacheEntry>();
+  private readonly _epochs = new Map<string, number>();
+
+  constructor({ max = 64, now = () => Date.now() }: WalletCacheOptions = {}) {
     this.max = Math.max(1, max | 0);
     this._now = now;
-    /** @type {Map<string,{value:unknown, tag:string, epoch:number, at:number, ttlMs:number}>} */
-    this._entries = new Map();
-    /** @type {Map<string,number>} tag → current epoch */
-    this._epochs = new Map();
   }
 
   /** Current epoch for a tag (0 if never bumped). */
-  epochOf(tag) {
+  epochOf(tag: string): number {
     return this._epochs.get(String(tag)) || 0;
   }
 
-  /**
-   * Bump a tag's epoch, invalidating every entry cached under it. Returns the NEW epoch.
-   * @param {string} tag
-   * @returns {number}
-   */
-  bumpEpoch(tag) {
+  /** Bump a tag's epoch, invalidating every entry cached under it. Returns the NEW epoch. */
+  bumpEpoch(tag: string): number {
     const t = String(tag);
     const next = this.epochOf(t) + 1;
     this._epochs.set(t, next);
@@ -76,10 +89,8 @@ export class WalletCache {
   /**
    * Read a live (non-stale, current-epoch) entry, or `undefined` on miss. A hit is refreshed to
    * most-recently-used. A stale/expired/superseded entry is dropped and reported as a miss.
-   * @param {string} key
-   * @returns {unknown|undefined}
    */
-  get(key) {
+  get(key: string): unknown {
     const e = this._entries.get(key);
     if (!e) return undefined;
     const expired = e.ttlMs > 0 && this._now() - e.at > e.ttlMs;
@@ -97,11 +108,8 @@ export class WalletCache {
   /**
    * Store a read result under `key`, tagged `tag`, valid for `ttlMs` (0 = no TTL). Evicts the LRU
    * entry when over capacity.
-   * @param {string} key
-   * @param {unknown} value
-   * @param {{tag?:string, ttlMs?:number}} [opts]
    */
-  set(key, value, { tag = 'default', ttlMs = 0 } = {}) {
+  set(key: string, value: unknown, { tag = 'default', ttlMs = 0 }: WalletCacheSetOptions = {}): void {
     if (this._entries.has(key)) this._entries.delete(key);
     this._entries.set(key, {
       value,
@@ -111,18 +119,18 @@ export class WalletCache {
       ttlMs: Math.max(0, ttlMs | 0),
     });
     while (this._entries.size > this.max) {
-      const oldest = this._entries.keys().next().value;
+      const oldest = this._entries.keys().next().value as string;
       this._entries.delete(oldest);
     }
   }
 
   /** Drop every cached entry (epochs are preserved so in-flight invalidations still hold). */
-  clear() {
+  clear(): void {
     this._entries.clear();
   }
 
   /** Current number of live entries (for tests/diagnostics). */
-  get size() {
+  get size(): number {
     return this._entries.size;
   }
 }

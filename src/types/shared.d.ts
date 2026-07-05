@@ -143,16 +143,6 @@ declare module '#shared/wallet-offers.mjs' {
   ): { offered: OfferLeg[]; requested: OfferLeg[]; fee: number; feeLabel: string };
 }
 
-declare module '#shared/resolve-status.mjs' {
-  export const HOSTED_GATEWAY: string;
-  export const RESOLVE_TIERS: readonly string[];
-  export function isCustomHost(customHost: string): boolean;
-  export function resolveViaStatus(
-    status?: { reachable?: boolean; base?: string | null },
-    opts?: { customHost?: string },
-  ): { tier: 'custom' | 'dig.local' | 'localhost' | 'rpc.dig.net'; label: string; endpoint: string };
-}
-
 declare module '#shared/dig-control.mjs' {
   export const HOSTED_RPC_FALLBACK: string;
   export const CONTROL_METHODS: readonly string[];

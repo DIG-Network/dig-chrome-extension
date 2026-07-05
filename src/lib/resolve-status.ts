@@ -11,24 +11,45 @@
  * can never silently drift from the §5.3 contract. The popup renderer is thin glue over it.
  */
 
+/** The §5.3 resolution tier that answered (or the hosted-gateway fallback). */
+export type ResolveTier = 'custom' | 'dig.local' | 'localhost' | 'rpc.dig.net';
+
+/** The "Resolving via" verdict the Resolver tab renders. */
+export interface ResolveVia {
+  tier: ResolveTier;
+  label: string;
+  endpoint: string;
+}
+
+/** The relevant subset of a `getDigNodeStatus` probe response. */
+export interface DigNodeStatus {
+  reachable?: boolean;
+  base?: string | null;
+}
+
 /** The hosted DIG gateway — the §5.3 FINAL fallback when no local node is reachable. */
 export const HOSTED_GATEWAY = 'rpc.dig.net';
 
 /** The §5.3 tiers, most-preferred first. `custom` (explicit override) wins over all others. */
-export const RESOLVE_TIERS = Object.freeze(['custom', 'dig.local', 'localhost', 'rpc.dig.net']);
+export const RESOLVE_TIERS: readonly ResolveTier[] = Object.freeze([
+  'custom',
+  'dig.local',
+  'localhost',
+  'rpc.dig.net',
+]);
 
 /** Local host aliases that mean "the standard local node ladder", not a genuine custom override. */
 const LOCAL_ALIAS_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'dig.local']);
 
 /** Strip an http(s):// scheme (and any trailing slash) from a base URL, leaving `host[:port]`. */
-function hostOf(base) {
+function hostOf(base: string | null | undefined): string {
   return String(base || '')
     .replace(/^https?:\/\//i, '')
     .replace(/\/+$/, '');
 }
 
 /** True when `customHost` names a genuine custom node (not blank, not a local alias). */
-export function isCustomHost(customHost) {
+export function isCustomHost(customHost: string): boolean {
   const host = hostOf(customHost).split(':')[0].toLowerCase();
   return !!host && !LOCAL_ALIAS_HOSTS.has(host);
 }
@@ -38,12 +59,11 @@ export function isCustomHost(customHost) {
  * custom host. The tier is derived primarily from the reachable `base` (the probe already applied
  * the §5.3 ladder, so `base` names whichever tier won); when no node is reachable, the read path
  * uses the hosted gateway.
- *
- * @param {{reachable?:boolean, base?:string|null}} [status] the `getDigNodeStatus` response
- * @param {{customHost?:string}} [opts] the configured `server.host` (to name a custom tier)
- * @returns {{tier:'custom'|'dig.local'|'localhost'|'rpc.dig.net', label:string, endpoint:string}}
  */
-export function resolveViaStatus({ reachable = false, base = null } = {}, { customHost = '' } = {}) {
+export function resolveViaStatus(
+  { reachable = false, base = null }: DigNodeStatus = {},
+  { customHost = '' }: { customHost?: string } = {},
+): ResolveVia {
   if (reachable && base) {
     const host = hostOf(base);
     const bare = host.split(':')[0].toLowerCase();

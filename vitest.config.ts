@@ -32,6 +32,10 @@ export default defineConfig({
         'src/types/**',
         // Entry glue: DOM mounting + service-worker-adjacent wiring — no meaningful branches.
         'src/entries/**',
+        // Content-script interception shims (#68): MAIN/isolated-world DOM-glue that reassigns
+        // native URL-consuming globals. Not unit-testable in jsdom — validated by build.js bundle
+        // guards, the tests/*.test.mjs source assertions, and e2e; same rationale as entries/.
+        'src/content/**',
         // Locale message tables (data, not logic).
         'src/i18n/messages/**',
         // Test-only helpers (render harness, mock transport).

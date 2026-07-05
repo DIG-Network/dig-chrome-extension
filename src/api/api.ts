@@ -29,7 +29,7 @@ export const TAGS = [
  * The single RTK Query API slice. Endpoints are split per feature via `injectEndpoints` so each
  * feature owns its own query/mutation surface. Server/broker cache lives HERE (never duplicated
  * into a slice); cross-document convergence is handled by the SW cache + broadcast invalidation
- * (the pure `sw-cache.mjs` mechanism) in later wiring — Phase 0 ships the seam.
+ * (the pure `@/lib/sw-cache` mechanism) in later wiring — Phase 0 ships the seam.
  */
 export const api = createApi({
   reducerPath: 'api',
