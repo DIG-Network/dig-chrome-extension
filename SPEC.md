@@ -839,3 +839,17 @@ bespoke crypto crate is required, for own OR foreign (dApp-supplied) spends:
   the wasm simulator (a reconstructed signature is accepted by `Simulator.newTransaction`).
 - This module BUILDS + VALIDATES signatures only; broadcasting a spend is a separate, per-signature
   user-approved step (§5.5). Mainnet spends are never auto-broadcast in tests.
+
+### 18.8 Spend construction (Send)
+
+An XCH send is built with the `Spends`/`Action` driver in the offscreen vault:
+
+- Add the wallet's unspent XCH coins, `apply([Action.send(Id.xch(), recipient, amount), Action.fee])`
+  to select coins, then provide each selected coin's standard inner spend
+  (`standardSpend(syntheticKey, delegatedSpend(conditions))`) keyed by the coin's puzzle hash —
+  `MISSING_KEY` if the wallet doesn't own a selected coin — and finalize to the coin spends.
+- **The confirmation summary is decoded FROM THE BUILT SPEND** (§5.5): the CREATE_COINs are read
+  back into `sent` (to the recipient) + `change` (the rest); the fee is the applied fee. The summary
+  is never taken from caller/page text (tamper resistance).
+- The built coin spends are signed via §18.7, aggregated into a `SpendBundle`, and broadcast via
+  coinset `pushTx` ONLY after user approval. Proven consensus-valid against the wasm simulator.
