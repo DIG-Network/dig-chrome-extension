@@ -1,20 +1,13 @@
 /**
- * Pure tests for the Resolver tab's node-status view-model (resolve-status.mjs).
+ * Pure tests for the Resolver tab's node-status view-model (resolve-status.ts).
  *
  * These pin the §5.3 client→node ladder verdict (custom > dig.local > localhost > rpc.dig.net)
  * as a display label, so the Resolver tab's "Resolving via" line can never drift from the
  * resolution contract. The popup renderer is thin glue over these tested pure functions.
- *
- * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import {
-  HOSTED_GATEWAY,
-  RESOLVE_TIERS,
-  isCustomHost,
-  resolveViaStatus,
-} from '../resolve-status.mjs';
+import { HOSTED_GATEWAY, RESOLVE_TIERS, isCustomHost, resolveViaStatus } from '@/lib/resolve-status';
 
 test('RESOLVE_TIERS is the §5.3 order, custom first, hosted last', () => {
   assert.deepEqual([...RESOLVE_TIERS], ['custom', 'dig.local', 'localhost', 'rpc.dig.net']);

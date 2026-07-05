@@ -33,7 +33,6 @@ const EXTENSION_FILES = [
   'wallet-offers.mjs',
   // QR renderer for the Receive view (bundled below to inline qrcode-generator for the browser).
   'qr.mjs',
-  'resolve-status.mjs',
   'dig-urn.mjs',
   // Shared dig-node host config (one parser/default for the server.host key + the
   // dig.local→localhost resolution order) + the branded, plain-language chia:// error
