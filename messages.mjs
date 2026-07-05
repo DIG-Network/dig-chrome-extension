@@ -35,8 +35,11 @@ import { DIG_ERR } from './error-codes.mjs';
  *
  * v5 (#56 send): added `prepareSend` (build + decode summary), `confirmSend` (sign + broadcast, the
  * approved step), and `sendStatus` (poll confirmation) — routed to the offscreen vault.
+ *
+ * v6 (#56 activity): added `getActivity` — the SW routes it to the offscreen vault, which
+ * reconstructs the transaction ledger from coinset (coin-diff → decode → classify → net).
  */
-export const MESSAGE_PROTOCOL_VERSION = 5;
+export const MESSAGE_PROTOCOL_VERSION = 6;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -82,6 +85,7 @@ export const ACTIONS = Object.freeze({
   prepareSend: 'prepareSend',
   confirmSend: 'confirmSend',
   sendStatus: 'sendStatus',
+  getActivity: 'getActivity',
   // ── verification + node status ──
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
@@ -243,6 +247,11 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Poll whether a broadcast send has confirmed (an input coin is now recorded spent).',
     request: '{ action, coinId:string }',
     response: '{ confirmed:boolean } | { success:false, code, message }',
+  },
+  [ACTIONS.getActivity]: {
+    summary: 'Reconstruct the transaction ledger (read-only) from coinset in the offscreen vault: coin-diff (both HD schemes, incl. spent) → decode → classify (XCH/CAT/trade) → net + counterparty. Cached to walletCache.activity; incremental from a height cursor.',
+    request: '{ action }',
+    response: "{ events:[{ id, kind:'sent'|'received'|'trade', asset, amount, counterparty, height, timestamp, coinId }], cursorHeight:number } | { success:false, code, message }",
   },
   [ACTIONS.reportVerification]: {
     summary: 'Viewer reports the Merkle-verification result for rendered chia:// content.',

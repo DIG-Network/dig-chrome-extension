@@ -1,6 +1,7 @@
 import { api } from '@/api/api';
 import { ACTIONS } from '#shared/messages.mjs';
 import type { LockState } from '@/features/wallet/walletSlice';
+import type { ActivityEvent } from '@/offscreen/activity';
 
 /**
  * Self-custody endpoints (#56) — these route over the SW seam (`chromeBaseQuery` →
@@ -99,6 +100,13 @@ export const custodyApi = api.injectEndpoints({
     sendStatus: build.query<{ confirmed: boolean }, { coinId: string }>({
       query: (arg) => ({ action: ACTIONS.sendStatus, ...arg }),
     }),
+
+    // Reconstruct the transaction ledger (read-only). Named distinctly from walletApi's Sage
+    // `getActivity` to avoid an endpoint-name collision on the shared api slice. Cached-first via SW.
+    getCustodyActivity: build.query<{ events: ActivityEvent[]; cursorHeight: number; cached?: boolean }, void>({
+      query: () => ({ action: ACTIONS.getActivity }),
+      providesTags: ['Activity'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -115,4 +123,5 @@ export const {
   usePrepareSendMutation,
   useConfirmSendMutation,
   useLazySendStatusQuery,
+  useGetCustodyActivityQuery,
 } = custodyApi;

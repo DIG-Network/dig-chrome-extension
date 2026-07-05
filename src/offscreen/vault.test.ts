@@ -235,4 +235,19 @@ describe('Vault send ops', () => {
     const res = await v.handle({ op: 'prepareSend', amount: '1000' }, { ...deps, chia, chain });
     expect(res.code).toBe('BAD_REQUEST');
   });
+
+  it('getActivity returns events (empty for an unused wallet) via the indexer', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain } = sendChain(); // coinRecords → [] → no events
+    const res = await v.handle({ op: 'getActivity' }, { ...deps, chia, chain });
+    expect(res.success).toBe(true);
+    expect(res.events).toEqual([]);
+    expect(typeof res.cursorHeight).toBe('number');
+  });
+
+  it('getActivity is LOCKED without a held key', async () => {
+    const { chain } = sendChain();
+    const res = await new Vault().handle({ op: 'getActivity' }, { ...deps, chia, chain });
+    expect(res.code).toBe('LOCKED');
+  });
 });

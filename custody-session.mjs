@@ -22,6 +22,8 @@ export const ACTIVE_WALLET_KEY = 'wallet.activeId';
 export const UNLOCK_EXPIRY_KEY = 'wallet.unlockExpiry';
 /** `chrome.storage.local` key: cached last balance scan (non-secret) for cached-first paint. */
 export const BALANCES_CACHE_KEY = 'walletCache.balances';
+/** `chrome.storage.local` key: cached activity ledger + height cursor (non-secret). */
+export const ACTIVITY_CACHE_KEY = 'walletCache.activity';
 
 /** The default public coinset chain source (extensions bypass its CORS). */
 export const DEFAULT_COINSET_URL = 'https://api.coinset.org';
@@ -60,6 +62,7 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'prepareSend',
   'confirmSend',
   'sendStatus',
+  'getActivity',
 ]);
 
 /** True if `action` is a custody action the SW routes to the offscreen vault. */
