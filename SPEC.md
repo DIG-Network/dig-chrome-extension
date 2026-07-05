@@ -855,3 +855,8 @@ An XCH send is built with the `Spends`/`Action` driver in the offscreen vault:
   is never taken from caller/page text (tamper resistance).
 - The built coin spends are signed via §18.7, aggregated into a `SpendBundle`, and broadcast via
   coinset `pushTx` ONLY after user approval. Proven consensus-valid against the wasm simulator.
+- **CAT sends** reuse the same prepare/confirm/approval/poll flow (`prepareSend` with an `assetId`).
+  The wallet's CAT coins are reconstructed with their lineage proofs by computing the CAT puzzle
+  hashes over the keyring, fetching those coins, and parsing each parent's spend
+  (`Puzzle.parseChildCats`); XCH coins are added to cover the fee; the driver builds via
+  `Action.send(Id.existing(assetId), …)`. Amounts use the CAT's decimals; the fee is XCH.
