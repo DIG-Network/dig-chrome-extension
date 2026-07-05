@@ -20,6 +20,14 @@ export interface ChainCoinSpend {
   puzzleReveal: Uint8Array;
   solution: Uint8Array;
 }
+/** A coin record with created/spent metadata (for the activity indexer). */
+export interface ChainCoinRecord {
+  coin: ChainCoin & { amount: bigint };
+  spent: boolean;
+  confirmedHeight: number;
+  spentHeight: number;
+  timestamp: number;
+}
 /** An opaque wasm `SpendBundle` to broadcast. */
 export interface ChainSpendBundle {
   toBytes(): Uint8Array;
@@ -37,6 +45,8 @@ export interface ChainClient {
   coinConfirmed(coinIdHex: string): Promise<boolean>;
   /** A coin's spend (puzzle + solution) — the parent spend, for CAT lineage reconstruction. */
   getCoinSpend(coinIdHex: string): Promise<ChainCoinSpend | null>;
+  /** Coin records (incl. spent, from `startHeight`) at the given puzzle hashes — for activity. */
+  coinRecords(puzzleHashesHex: string[], opts?: { includeSpent?: boolean; startHeight?: number }): Promise<ChainCoinRecord[]>;
 }
 
 /** The default public coinset gateway (extensions bypass its CORS). */
@@ -55,7 +65,11 @@ interface WasmRpcClient {
     startHeight: number | undefined,
     endHeight: number | undefined,
     includeSpentCoins: boolean | undefined,
-  ): Promise<{ success: boolean; error?: string; coinRecords?: Array<{ coin: ChainCoin & { amount: bigint } }> }>;
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    coinRecords?: Array<{ coin: ChainCoin & { amount: bigint }; spent: boolean; confirmedBlockIndex: number; spentBlockIndex: number; timestamp: bigint }>;
+  }>;
   getCoinRecordByName(name: Uint8Array): Promise<{ success: boolean; coinRecord?: { spent: boolean; spentBlockIndex?: number } }>;
   pushTx(spendBundle: ChainSpendBundle): Promise<{ success: boolean; error?: string; status?: string }>;
   getPuzzleAndSolution(coinId: Uint8Array, height?: number): Promise<{ success: boolean; coinSolution?: ChainCoinSpend }>;
@@ -104,6 +118,25 @@ export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = D
     async getCoinSpend(coinIdHex) {
       const res = await rpc.getPuzzleAndSolution(chia.fromHex(coinIdHex));
       return res.success && res.coinSolution ? res.coinSolution : null;
+    },
+    async coinRecords(puzzleHashesHex, opts) {
+      const out: ChainCoinRecord[] = [];
+      const includeSpent = opts?.includeSpent ?? true;
+      for (let i = 0; i < puzzleHashesHex.length; i += COINSET_BATCH) {
+        const phBytes = puzzleHashesHex.slice(i, i + COINSET_BATCH).map((h) => chia.fromHex(h));
+        const res = await rpc.getCoinRecordsByPuzzleHashes(phBytes, opts?.startHeight, undefined, includeSpent);
+        if (!res.success) throw new Error(res.error || 'coinset query failed');
+        for (const r of res.coinRecords ?? []) {
+          out.push({
+            coin: r.coin,
+            spent: r.spent,
+            confirmedHeight: r.confirmedBlockIndex,
+            spentHeight: r.spentBlockIndex,
+            timestamp: Number(r.timestamp),
+          });
+        }
+      }
+      return out;
     },
   };
 }

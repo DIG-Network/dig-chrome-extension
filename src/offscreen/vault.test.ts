@@ -139,6 +139,7 @@ describe('Vault balance + address ops', () => {
     pushSpendBundle: async () => ({ success: true }),
     coinConfirmed: async () => false,
     getCoinSpend: async () => null,
+    coinRecords: async () => [],
   });
 
   it('derives the pooled receive address for the held wallet', async () => {
@@ -194,6 +195,7 @@ describe('Vault send ops', () => {
       pushSpendBundle: async () => ({ success: true }),
       coinConfirmed: async () => true,
     getCoinSpend: async () => null,
+    coinRecords: async () => [],
     };
     return { chain, recipient };
   }
