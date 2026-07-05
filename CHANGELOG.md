@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.16.0] - 2026-07-05
+
+### Features
+- Trade offers — make/inspect/take/cancel with two-party simulator proof (#56) (#18)
+
 ## [1.15.0] - 2026-07-05
 
 ### Features
