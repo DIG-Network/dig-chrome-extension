@@ -1,6 +1,6 @@
 {
   "name": "dig-browser-extension",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
   "types": "messages.d.ts",
@@ -34,6 +34,9 @@
     "@fontsource/space-grotesk": "^5.2.10",
     "@fontsource/space-mono": "^5.2.9",
     "@reduxjs/toolkit": "^2.5.0",
+    "@scure/bip39": "^1.6.0",
+    "chia-wallet-sdk-wasm": "^0.33.0",
+    "hash-wasm": "^4.12.0",
     "qrcode-generator": "^1.5.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

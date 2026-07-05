@@ -665,3 +665,75 @@ An implementation conforms to this SPEC iff it:
 The test suite (`node --test tests/`, coverage-gated ≥ 80% via c8 / `.c8rc.json`) pins these
 contracts; a change that breaks a pinned contract without updating this SPEC in the same unit
 of work is incomplete.
+
+8. Derives self-custody wallet keys per §18.1 (both hardened AND unhardened, byte-identical to
+   `dig-l1-wallet` for a given seed) and stores keys only as the §18.2 `DIGWX1` encrypted record.
+
+---
+
+## 18. Self-custody wallet (#56)
+
+The extension MAY hold its OWN keys and sign locally, as a self-custodial wallet ALONGSIDE the
+Sage-broker path (§12). This is the PRIMARY wallet for any balance — a full Sage replacement — with
+the WalletConnect→Sage transport kept as a secondary connect/import path. The decrypted key and the
+signer live ONLY in a long-lived offscreen document (never the service worker, never `chrome.storage`
+beyond the encrypted blob); §18.3+ specify that lifecycle. This section is the normative contract for
+the custody CRYPTO CORE — key derivation (§18.1) and the at-rest keystore (§18.2).
+
+### 18.1 Key derivation (normative)
+
+For a given BIP-39 mnemonic the extension MUST reproduce the SAME wallet as `dig-l1-wallet` / Sage.
+The chain is, step for step:
+
+```
+mnemonic → seed = mnemonic.to_seed("")            (BIP-39, EMPTY passphrase — the Chia convention)
+         → master = SecretKey.fromSeed(seed)       (= chia_rs SecretKey::from_seed)
+         → account = master.deriveUnhardenedPath([12381,8444,2,index])   (= master_to_wallet_unhardened)
+                   | master.deriveHardenedPath([12381,8444,2,index])     (= master_to_wallet_hardened)
+         → synthetic = account.deriveSynthetic()   (= DeriveSynthetic::derive_synthetic)
+         → puzzleHash = standardPuzzleHash(synthetic.publicKey())   (= StandardArgs::curry_tree_hash)
+         → address = Address(puzzleHash, "xch").encode()            (CHIP-0002 bech32m)
+```
+
+- The BIP-39 passphrase is ALWAYS the empty string; it is NOT configurable.
+- Entropy is 256 bits → a 24-word English mnemonic. The extension persists the ENTROPY (not the
+  seed/scalar), so "reveal recovery phrase" regenerates the exact 24 words byte-for-byte.
+- A wallet MUST derive and scan BOTH the unhardened and the hardened path forms, each to its own gap
+  limit. Scanning only one scheme would make funds on the other scheme's addresses invisible.
+- The extension MUST NOT use `dig-keystore`'s `L1WalletBls` sign path (it double-derives — a latent
+  upstream inconsistency).
+- Conformance is pinned by a golden parity fixture (`src/lib/keystore/derive.golden.json`) of the
+  canonical all-zeros-entropy mnemonic (`abandon … art`): identical synthetic pubkey + puzzle hash +
+  `xch1…` address across the extension, `dig-l1-wallet`, and Sage, for BOTH schemes across MULTIPLE
+  indexes. The fixture's BIP-39 seed equals the published all-zeros test vector (`408b285c…80840`),
+  anchoring the chain to a public vector.
+
+### 18.2 At-rest keystore — `DIGWX1` v1
+
+The wallet entropy is stored ONLY as an encrypted `DIGWX1` record under `chrome.storage.local`
+(`wallet.keystore`). No plaintext secret is ever written to any storage area.
+
+- **KDF:** Argon2id (via the in-package `hash-wasm`) at the DEFAULT cost 64 MiB / 3 iterations /
+  4 lanes (a STRONG 256 MiB preset is offered for high-value wallets), with a fresh 16-byte random
+  salt. A `kdf.id` field allows versioned migration.
+- **Cipher:** AES-256-GCM (native WebCrypto), fresh 12-byte nonce, 128-bit tag. The record HEADER —
+  `{version, magic, full kdf params, cipher id + nonce}` — is bound as GCM AAD, so tampering with any
+  KDF param, the salt, or the nonce fails the tag CLOSED with no separate MAC.
+- **Key handle:** the derived AES key is a NON-EXTRACTABLE `CryptoKey` (`extractable:false`), never
+  serialized.
+- **PBKDF2 fallback (bounded, never silent):** PBKDF2-HMAC-SHA-512 (≥600 000 iters, `kdf.id=pbkdf2`)
+  engages ONLY when the Argon2 wasm fails to instantiate; the wallet surfaces a warning and schedules
+  forced re-encryption to Argon2 on the next unlock.
+- **Error opacity:** any decrypt failure (wrong password OR tampered blob) collapses to a single
+  opaque `UNLOCK_FAILED`; only a structurally-invalid record yields `BAD_RECORD`.
+- **Record shape** (base64 fields):
+  ```json
+  { "version":1, "magic":"DIGWX1",
+    "kdf":{ "id":"argon2id","memKiB":65536,"iters":3,"lanes":4,"salt":"<b64 16B>" },
+    "cipher":{ "id":"aes-256-gcm","nonce":"<b64 12B>" },
+    "ciphertext":"<b64 entropy‖tag>", "createdAt":<ms>, "label":"<optional>" }
+  ```
+- **Additive versioning:** newer readers keep decoding every prior `version`/`kdf.id`; ids are never
+  removed or repurposed.
+
+Fresh salt + nonce are drawn on every (re)encryption; RNG is `crypto.getRandomValues`.
