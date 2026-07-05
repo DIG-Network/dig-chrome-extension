@@ -39,6 +39,13 @@ export interface ChainClient {
   totalUnspent(puzzleHashesHex: string[]): Promise<number>;
   /** The UNSPENT coins at the given puzzle hashes (for coin selection). */
   unspentCoins(puzzleHashesHex: string[]): Promise<ChainCoin[]>;
+  /**
+   * The UNSPENT coins HINTED to the given inner puzzle hashes (coinset `get_coin_records_by_hints`).
+   * NFT/singleton coins carry the recipient's p2 hash as a hint, so this is how the wallet finds its
+   * NFTs (their outer puzzle hash is the singleton puzzle, not the p2 hash). Optional: a fake chain in
+   * a test that never lists NFTs may omit it (the NFT engine throws `HINT_LOOKUP_UNAVAILABLE`).
+   */
+  coinsByHints?(hintsHex: string[]): Promise<ChainCoin[]>;
   /** Broadcast a signed spend bundle (REAL — only reached on explicit user approval). */
   pushSpendBundle(bundle: ChainSpendBundle): Promise<{ success: boolean; error?: string }>;
   /** True once the coin (an input we spent) is recorded spent — i.e. the send confirmed. */
@@ -69,6 +76,16 @@ interface WasmRpcClient {
     success: boolean;
     error?: string;
     coinRecords?: Array<{ coin: ChainCoin & { amount: bigint }; spent: boolean; confirmedBlockIndex: number; spentBlockIndex: number; timestamp: bigint }>;
+  }>;
+  getCoinRecordsByHints(
+    hints: Uint8Array[],
+    startHeight: number | undefined,
+    endHeight: number | undefined,
+    includeSpentCoins: boolean | undefined,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    coinRecords?: Array<{ coin: ChainCoin & { amount: bigint } }>;
   }>;
   getCoinRecordByName(name: Uint8Array): Promise<{ success: boolean; coinRecord?: { spent: boolean; spentBlockIndex?: number } }>;
   pushTx(spendBundle: ChainSpendBundle): Promise<{ success: boolean; error?: string; status?: string }>;
@@ -103,6 +120,16 @@ export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = D
         const phBytes = puzzleHashesHex.slice(i, i + COINSET_BATCH).map((h) => chia.fromHex(h));
         const res = await rpc.getCoinRecordsByPuzzleHashes(phBytes, undefined, undefined, false);
         if (!res.success) throw new Error(res.error || 'coinset query failed');
+        for (const r of res.coinRecords ?? []) coins.push(r.coin);
+      }
+      return coins;
+    },
+    async coinsByHints(hintsHex) {
+      const coins: ChainCoin[] = [];
+      for (let i = 0; i < hintsHex.length; i += COINSET_BATCH) {
+        const hintBytes = hintsHex.slice(i, i + COINSET_BATCH).map((h) => chia.fromHex(h));
+        const res = await rpc.getCoinRecordsByHints(hintBytes, undefined, undefined, false);
+        if (!res.success) throw new Error(res.error || 'coinset hint query failed');
         for (const r of res.coinRecords ?? []) coins.push(r.coin);
       }
       return coins;

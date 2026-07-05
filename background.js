@@ -934,6 +934,21 @@ async function handleCustodyAction(message) {
       if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'trade failed' };
     }
+    case ACTIONS.listNfts: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'listNfts', gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.prepareNftTransfer: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareNftTransfer', launcherId: message.launcherId, recipient: message.recipient, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.confirmNftTransfer: {
+      // The ONLY place a prepared NFT transfer is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft transfer failed' };
+    }
     default:
       return { success: false, code: 'CUSTODY_ERROR', message: 'unknown custody action' };
   }

@@ -67,6 +67,9 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'inspectOffer',
   'prepareTrade',
   'confirmTrade',
+  'listNfts',
+  'prepareNftTransfer',
+  'confirmNftTransfer',
 ]);
 
 /** True if `action` is a custody action the SW routes to the offscreen vault. */

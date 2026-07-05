@@ -46,6 +46,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'createWallet', 'importWallet', 'unlockWallet', 'lockWallet', 'revealPhrase', 'getLockState',
     'getReceiveAddress', 'getCustodyBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity',
     'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade',
+    // NFTs / Collectibles (#56): list + transfer routed to the offscreen vault:
+    'listNfts', 'prepareNftTransfer', 'confirmNftTransfer',
     // Shield action (per-resource proof ledger) + Control Panel (node management view):
     'recordLedgerEntry', 'getShieldLedger', 'getControlStatus',
     'addSearchEngine', 'getDefaultSearchEngine', 'isDigSearchDefault', 'updateSearchConfig',
