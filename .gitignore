@@ -1,5 +1,7 @@
 # Build output
 dist/
+# Vite build output for the React shell (popup.html + app.html), copied into dist/ by build.js.
+dist-web/
 *.zip
 
 # Vendored WalletConnect SignClient — a generated, same-origin ESM bundle (~440 KB) emitted

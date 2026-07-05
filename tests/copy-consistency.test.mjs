@@ -32,11 +32,9 @@ test('welcome.html upsell uses the chia:// content-open scheme (no user-facing d
   assert.match(html, /native\s+chia:\/\//, 'welcome upsell should say native chia://');
 });
 
-test('popup.html full-browser upsell uses the chia:// content-open scheme', () => {
-  const html = read('popup.html');
-  assert.ok(!/native\s+dig:\/\//.test(html), 'popup upsell must not say native dig://');
-  assert.match(html, /native\s+chia:\/\//, 'popup upsell should say native chia://');
-});
+// NOTE (#56): the popup is now the React shell (src/); its copy goes through react-intl catalogs
+// (src/i18n) rather than literal popup.html strings, so the popup-specific copy assertions here are
+// superseded by the Vitest suite. The welcome + new-tab pages remain vanilla HTML and are asserted.
 
 test('newtab.html says "Built on Chia" (one phrase, not "Powered by Chia")', () => {
   const html = read('newtab.html');
@@ -55,7 +53,7 @@ test('newtab.html footer surfaces the canonical org Discord', () => {
 });
 
 test('the hub wordmark is canonical DIGHUb (not DIGHub) on the product pages', () => {
-  for (const f of ['welcome.html', 'popup.html', 'newtab.html']) {
+  for (const f of ['welcome.html', 'newtab.html']) {
     const html = read(f);
     assert.ok(!/DIGHub\b/.test(html), `${f} must use DIGHUb, not DIGHub`);
   }
