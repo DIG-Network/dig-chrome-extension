@@ -74,6 +74,39 @@ function decodeStoreId(encoded) {
 }
 
 /**
+ * Fully URL-decode a URN read from a query parameter.
+ *
+ * The dig-viewer receives the URN as `?urn=<value>` and reads it with `URLSearchParams`, which
+ * decodes exactly ONCE. But several navigation entry points (address bar, link click, the
+ * `chia://` protocol-error path, the search/omnibox redirect) can hand the background a
+ * percent-encoded `chia://` URL, which is then `encodeURIComponent`'d AGAIN into the viewer URL —
+ * so after the single `URLSearchParams` decode the value is still `chia%3A%2F%2F…` and `parseURN`
+ * rejects it (the page appears to "not load"). This decodes percent-escapes until the value is
+ * stable, recovering the real URN regardless of how many times it was encoded.
+ *
+ * SAFE by construction: a well-formed DIG URN contains NO literal `%`, so decoding only continues
+ * while a `%XX` escape remains — it can never corrupt a valid URN. Bounded iterations + a guarded
+ * `decodeURIComponent` mean malformed input (e.g. a lone `%`) is returned unchanged, never thrown.
+ *
+ * @param {string} raw - the (possibly multiply-encoded) urn param value
+ * @returns {string} the fully-decoded URN (empty string for non-string input)
+ */
+function decodeUrnParam(raw) {
+  let v = typeof raw === 'string' ? raw : '';
+  for (let i = 0; i < 5 && /%[0-9a-fA-F]{2}/.test(v); i++) {
+    let dec;
+    try {
+      dec = decodeURIComponent(v);
+    } catch {
+      break; // malformed escape (e.g. a lone '%') — leave the value as-is
+    }
+    if (dec === v) break; // stable — nothing more to decode
+    v = dec;
+  }
+  return v;
+}
+
+/**
  * Parse URN: urn:dig:{chain}:{storeId}:{roothash}/{resourceKey}[?salt=<hex>]
  *
  * Single shared parser for every consumer in the extension — the Node test server
@@ -265,6 +298,7 @@ function urnToContentServerUrl(urn, options = {}) {
 // of parseURN / the base36 helpers anywhere in the extension.
 export {
   parseURN,
+  decodeUrnParam,
   resolveHostToURN,
   encodeStoreId,
   decodeStoreId,

@@ -255,9 +255,13 @@ interception; because MV3 cannot register a page service worker onto the rendere
 extension uses an equivalent IN-PAGE interceptor (parity with the on.dig.net loader's Tier-2
 in-page path):
 
-1. The viewer renders store HTML inside a SANDBOXED, opaque-origin `data:` frame (isolated from
-   the extension — the frame has no `chrome.*` access and holds no keys). The frame boots the
-   interceptor with the entry capsule config `{ storeId, root, salt, entryKey }`.
+1. The viewer reads the entry URN from its `?urn=` query parameter and MUST fully URL-decode it
+   (decode percent-escapes until stable — a valid URN has no literal `%`), because some navigation
+   paths encode the `chia://` URL more than once and `URLSearchParams` decodes only once; a
+   still-encoded value would fail `parseURN` and never load. It then renders store HTML inside a
+   SANDBOXED, opaque-origin `data:` frame (isolated from the extension — the frame has no `chrome.*`
+   access and holds no keys) that boots the interceptor with the entry capsule config
+   `{ storeId, root, salt, entryKey }`.
 2. The interceptor patches `window.fetch` + `XMLHttpRequest` and rewrites DOM `src`/`href` on
    injection and on mutation. Each reference is classified as:
    - a **relative** ref — resolved against the CURRENT document's resource key into the same

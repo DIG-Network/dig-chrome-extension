@@ -7,7 +7,7 @@ import { ACTIONS } from './messages.mjs';
 import { classifyError, DIG_ERR } from './error-codes.mjs';
 // Shared URN parser — derive the capsule (storeId:rootHash) + resource path so the per-resource
 // proof verdict can be recorded into the DIG Shields ledger (#134).
-import { parseURN } from './dig-urn.mjs';
+import { parseURN, decodeUrnParam } from './dig-urn.mjs';
 // Build the chia:// URL for a resolved store reference — used to serve the in-page interceptor's
 // relative-asset reads (#55) back through the background proxyRequest (the §5.3 node ladder).
 import { buildDigUrl } from './store-refs.mjs';
@@ -194,7 +194,10 @@ function storeFrameDoc(cfg, interceptorSrc) {
 
 async function init() {
   const urlParams = new URLSearchParams(window.location.search);
-  const urn = urlParams.get('urn');
+  // URLSearchParams decodes the value ONCE; some navigation paths encode the chia:// URL twice, so
+  // fully decode until stable (a valid URN has no literal '%') — otherwise a still-encoded value
+  // like `chia%3A%2F%2F…` fails parseURN and the page never loads.
+  const urn = decodeUrnParam(urlParams.get('urn'));
   const loading = document.getElementById('loading');
   const digUrl = urn && (urn.startsWith('chia://') ? urn : `chia://${urn}`);
 
