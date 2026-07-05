@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.27.0] - 2026-07-05
+
+### Refactor
+- **entry:** Build DIG Home (new tab) as a TS entry under src/ (#33)
+
 ## [1.26.0] - 2026-07-05
 
 ### Refactor
