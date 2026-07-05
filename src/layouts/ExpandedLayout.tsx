@@ -19,6 +19,7 @@ export function ExpandedLayout({ surface }: { surface: Surface }) {
   const dispatch = useAppDispatch();
   const tab = useAppSelector((s) => s.ui.tab);
   const walletView = useAppSelector((s) => s.ui.walletView);
+  const networkView = useAppSelector((s) => s.ui.networkView);
 
   const openSettings = () => {
     if (!hasRuntime()) return;
@@ -39,7 +40,7 @@ export function ExpandedLayout({ surface }: { surface: Surface }) {
             type="button"
             className="dig-btn dig-btn--ghost"
             data-testid="popout-fullview"
-            onClick={() => void popOutToFullpage(routeToHash(tab, walletView), true)}
+            onClick={() => void popOutToFullpage(routeToHash(tab, walletView, networkView), true)}
           >
             ⤢ {intl.formatMessage({ id: 'shell.popout' })}
           </button>

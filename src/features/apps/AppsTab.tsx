@@ -1,9 +1,9 @@
-import { FormattedMessage, useIntl } from 'react-intl';
+import { FormattedMessage } from 'react-intl';
 import { EXPLORE_URL } from '#shared/links.mjs';
 import { ExternalLink } from '@/components/ExternalLink';
 import { FourState } from '@/components/FourState';
 import { useGetStoreCatalogQuery } from '@/features/apps/appsApi';
-import type { StoreApp } from '@/features/apps/storeCatalog';
+import { AppLauncherGrid, AppLauncherSkeleton } from '@/features/apps/AppLauncherGrid';
 
 /**
  * The Apps tab (#65) — the extension's OWN native dApp launcher (no iframe). It fetches
@@ -13,7 +13,6 @@ import type { StoreApp } from '@/features/apps/storeCatalog';
  * skeleton / error+retry / empty / success). A "browse the full store" affordance is always present.
  */
 export function AppsTab() {
-  const intl = useIntl();
   const { data, isLoading, isError, refetch, isFetching } = useGetStoreCatalogQuery();
   const apps = data?.apps ?? [];
 
@@ -43,15 +42,9 @@ export function AppsTab() {
         loadingId="apps.loading"
         errorId="apps.error"
         emptyId="apps.empty"
-        skeleton={<div className="dig-launcher" aria-hidden="true">{Array.from({ length: 6 }, (_, i) => <div key={i} className="dig-app-tile dig-app-tile--skeleton"><div className="dig-app-icon dig-skeleton" /><div className="dig-skeleton" style={{ height: 10, width: '70%', margin: '6px auto 0' }} /></div>)}</div>}
+        skeleton={<AppLauncherSkeleton />}
       >
-        <ul className="dig-launcher" data-testid="apps-launcher" aria-label={intl.formatMessage({ id: 'apps.title' })}>
-          {apps.map((app) => (
-            <li key={app.slug}>
-              <AppTile app={app} intl={intl} />
-            </li>
-          ))}
-        </ul>
+        <AppLauncherGrid apps={apps} />
       </FourState>
 
       {isFetching && !isLoading && (
@@ -60,28 +53,5 @@ export function AppsTab() {
         </span>
       )}
     </section>
-  );
-}
-
-/** One launcher icon: squircle icon tinted by the app's accent, its name, tap → open the app. */
-function AppTile({ app, intl }: { app: StoreApp; intl: ReturnType<typeof useIntl> }) {
-  const tint = app.accentColor;
-  return (
-    <ExternalLink
-      href={app.link}
-      className="dig-app-tile"
-      testid={`app-tile-${app.slug}`}
-      closePopup
-    >
-      <span
-        className="dig-app-icon"
-        data-testid={`app-icon-${app.slug}`}
-        style={tint ? ({ ['--tile-accent' as string]: tint }) : undefined}
-      >
-        <img src={app.icon} alt="" loading="lazy" draggable={false} />
-      </span>
-      <span className="dig-app-label">{app.name}</span>
-      <span className="dig-visually-hidden">{intl.formatMessage({ id: 'apps.open' }, { name: app.name })}</span>
-    </ExternalLink>
   );
 }

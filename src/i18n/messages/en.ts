@@ -13,12 +13,28 @@ export const en: Record<string, string> = {
   'shell.version': 'Version {version}',
   'shell.language': 'Language',
 
-  // ── tabs ──
+  // ── tabs (mobile-OS bottom nav) ──
+  'tab.home': 'Home',
   'tab.resolver': 'Resolver',
   'tab.wallet': 'Wallet',
   'tab.shield': 'Shield',
   'tab.control': 'Control',
   'tab.apps': 'Apps',
+  'tab.network': 'Network',
+  // ── Network screen (groups resolver/shield/control) ──
+  'network.view.resolver': 'Resolver',
+  'network.view.shield': 'Shield',
+  'network.view.control': 'Node',
+  // ── mobile-OS Home ──
+  'home.wallet.open': 'Open your wallet',
+  'home.apps.seeAll': 'See all',
+  'home.status.title': 'Status',
+  'home.status.lock.unlocked': 'Unlocked',
+  'home.status.lock.locked': 'Locked',
+  'home.status.lock.none': 'No wallet',
+  'home.status.node.local': 'Local node',
+  'home.status.node.gateway': 'Public gateway',
+  'home.activity.empty': 'No recent activity',
 
   // ── generic four-state ──
   'state.loading': 'Loading…',

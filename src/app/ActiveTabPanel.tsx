@@ -1,21 +1,31 @@
 import { useAppSelector } from '@/app/hooks';
 import { tabPanelId, tabTestId, type Tab } from '@/app/tabs';
-import { ResolverTab } from '@/features/resolver/ResolverTab';
+import { HomeScreen } from '@/features/home/HomeScreen';
 import { WalletTab } from '@/features/wallet/WalletTab';
-import { ShieldTab } from '@/features/shield/ShieldTab';
-import { ControlTab } from '@/features/control/ControlTab';
 import { AppsTab } from '@/features/apps/AppsTab';
+import { NetworkScreen } from '@/features/network/NetworkScreen';
 
-/** Render the active top-shell tab's content in an ARIA tabpanel. Shared by both layouts. */
+/**
+ * Render the active mobile-OS screen in an ARIA tabpanel. The `key={tab}` remounts on switch so the
+ * app-open transition (CSS `dig-screen-enter`) plays each time you open a screen. Shared by both
+ * layouts (compact phone + expanded tablet/desktop-OS).
+ */
 export function ActiveTabPanel() {
   const tab: Tab = useAppSelector((s) => s.ui.tab);
   return (
-    <div id={tabPanelId(tab)} role="tabpanel" aria-labelledby={tabTestId(tab)} tabIndex={0} data-active-tab={tab}>
-      {tab === 'resolver' && <ResolverTab />}
+    <div
+      key={tab}
+      id={tabPanelId(tab)}
+      role="tabpanel"
+      aria-labelledby={tabTestId(tab)}
+      tabIndex={0}
+      data-active-tab={tab}
+      className="dig-screen"
+    >
+      {tab === 'home' && <HomeScreen />}
       {tab === 'wallet' && <WalletTab />}
-      {tab === 'shield' && <ShieldTab />}
-      {tab === 'control' && <ControlTab />}
       {tab === 'apps' && <AppsTab />}
+      {tab === 'network' && <NetworkScreen />}
     </div>
   );
 }

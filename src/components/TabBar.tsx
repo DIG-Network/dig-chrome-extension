@@ -1,19 +1,18 @@
 import { FormattedMessage } from 'react-intl';
 import { TABS, tabPanelId, tabTestId, type Tab } from '@/app/tabs';
 
-/** Glyph + copy id for each top-shell tab. Glyphs are emoji (self-contained, no icon font). */
+/** Glyph + copy id for each bottom-nav screen. Glyphs are emoji (self-contained, no icon font). */
 const TAB_META: Record<Tab, { glyph: string; labelId: string }> = {
-  resolver: { glyph: '🧭', labelId: 'tab.resolver' },
+  home: { glyph: '🏠', labelId: 'tab.home' },
   wallet: { glyph: '👛', labelId: 'tab.wallet' },
-  shield: { glyph: '🛡️', labelId: 'tab.shield' },
-  control: { glyph: '🎛️', labelId: 'tab.control' },
   apps: { glyph: '🧩', labelId: 'tab.apps' },
+  network: { glyph: '🌐', labelId: 'tab.network' },
 };
 
 /**
- * The top-shell tab set, rendered as an ARIA tablist. `orientation` chooses the compact bottom bar
- * vs the expanded sidebar (same component, both surfaces). Each tab is a `role="tab"` with a stable
- * `data-testid` and controls its panel.
+ * The mobile-OS navigation, rendered as an ARIA tablist. `orientation` chooses the compact phone
+ * bottom bar vs the expanded (tablet/desktop-OS) side rail — same component, both surfaces. Each
+ * screen is a `role="tab"` with a stable `data-testid`, a squircle glyph, and its label.
  */
 export function TabBar({
   active,
@@ -28,7 +27,7 @@ export function TabBar({
     <nav
       className={orientation === 'bottom' ? 'dig-tabbar' : 'dig-sidebar-tabs'}
       role="tablist"
-      aria-label="DIG extension sections"
+      aria-label="DIG sections"
       aria-orientation={orientation === 'sidebar' ? 'vertical' : 'horizontal'}
     >
       {TABS.map((tab) => {
@@ -50,7 +49,9 @@ export function TabBar({
             <span className="dig-tab-glyph" aria-hidden="true">
               {meta.glyph}
             </span>
-            <FormattedMessage id={meta.labelId} />
+            <span className="dig-tab-label">
+              <FormattedMessage id={meta.labelId} />
+            </span>
           </button>
         );
       })}
