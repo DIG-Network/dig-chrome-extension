@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.4.1] - 2026-07-05
+
+### CI
+- Attach release zip from repo-root path (was dist/*.zip, matched nothing) (#5)
+
 ## [1.4.0] - 2026-07-05
 
 ### Features
