@@ -399,7 +399,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `7`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `8`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -412,7 +412,8 @@ SW→offscreen messages (those messages are handled by the offscreen document; t
 added `prepareSend` (build + decode summary), `confirmSend` (sign + broadcast — the approved step),
 and `sendStatus` (poll confirmation) (§18.8). `6` (#56) added `getActivity` (§18.9): the SW routes
 it to the offscreen vault, which reconstructs the transaction ledger from coinset. `7` (#56) added the
-trade-offer actions — `makeOffer`, `inspectOffer`, `prepareTrade`, `confirmTrade` (§18.10).
+trade-offer actions — `makeOffer`, `inspectOffer`, `prepareTrade`, `confirmTrade` (§18.10). `8` (#56)
+added the NFT / Collectibles actions — `listNfts`, `prepareNftTransfer`, `confirmNftTransfer` (§18.11).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -957,4 +958,37 @@ assets MUST differ.
   back to self, invalidating the offer (its settlement coins can no longer be created).
 - `prepareTrade` builds + signs but does NOT broadcast; the signed bundle is held under a pending id;
   `confirmTrade` is the ONLY place a trade is pushed (the user-approved step). Offers are mainnet-only
+  (signed with the mainnet AGG_SIG_ME genesis).
+
+### 18.11 NFTs / Collectibles
+
+NFTs are read and transferred from `chia-wallet-sdk-wasm` primitives so the spends match the canonical
+`chia-sdk-driver` construction byte-for-byte (they interoperate with Sage / dexie). The transfer money
+path is proven consensus-valid by a Simulator test (mint → list → transfer → assert the NFT moves and
+the recipient can rediscover it). The decrypted key never leaves the offscreen vault.
+
+- **Discovery model.** An NFT is a singleton whose OUTER coin puzzle hash is the singleton/ownership
+  puzzle — NOT the wallet's inner (p2/standard) puzzle hash — so it is NOT found by a puzzle-hash scan.
+  The transfer that delivered it HINTS the recipient's inner p2 puzzle hash, so the wallet finds its NFT
+  coins via coinset `get_coin_records_by_hints` over its derived inner puzzle hashes (both HD schemes,
+  to the scan gap limit). For each hinted unspent coin, the PARENT spend is fetched and
+  `Puzzle.parseChildNft(parentCoin, parentSolution)` reconstructs the child `Nft` (parallel to
+  `Puzzle.parseChildCats` for CATs). A coin is one of the wallet's NFTs iff the reconstructed child IS
+  that coin and its `info.p2PuzzleHash` is one of the wallet's derived inner puzzle hashes.
+- **LIST** (`listNfts`, read-only): returns, per NFT, `{ launcherId, coinId, p2PuzzleHash, collectionId
+  (the current-owner DID hex, or null), editionNumber, editionTotal, royaltyBasisPoints,
+  royaltyPuzzleHash, dataUris, dataHash, metadataUris, metadataHash, licenseUris }` — deduped by
+  launcher id. `collectionId` groups NFTs minted under the same DID; the collectibles UI groups by it.
+- **Same-allocator invariant (MUST).** The reconstructed `Nft` carries a `metadata` CLVM `Program`
+  bound to the `Clvm` allocator that produced it. It MUST be reconstructed in the SAME `Clvm` that the
+  `Spends` driver later consumes (`addNft`), else the wasm traps (`unreachable`) on a cross-arena handle.
+- **PREPARE** (`prepareNftTransfer`, no broadcast): reconstruct the target NFT (by launcher id) in the
+  driver's `Clvm`, `Spends.addNft(nft)`, add XCH coins for the fee, then
+  `Action.send(Id.existing(launcherId), destP2, 1, memos)` — a singleton is amount `1`; `memos` carries
+  the recipient's inner p2 puzzle hash as the create-coin hint so the recipient can discover it. Insert a
+  standard inner spend for each pending coin. The unsigned coin spends are held under a pending id with
+  the decoded summary `{ launcherId, recipientPuzzleHashHex, fee, coinCount }`.
+- **CONFIRM** (`confirmNftTransfer`): signs + broadcasts the held spend — reusing the vault's
+  `confirmSend` broadcast path (an NFT transfer is a coin spend). It is the ONLY place the transfer is
+  pushed (the user-approved step); confirmation is polled via the shared `sendStatus`. Mainnet-only
   (signed with the mainnet AGG_SIG_ME genesis).

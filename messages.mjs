@@ -42,8 +42,13 @@ import { DIG_ERR } from './error-codes.mjs';
  * v7 (#56 trade): added `makeOffer` (build a shareable `offer1…`), `inspectOffer` (decode a
  * two-sided summary), `prepareTrade` (build + sign a take/cancel, held for approval), and
  * `confirmTrade` (broadcast the approved trade) — routed to the offscreen vault.
+ *
+ * v8 (#56 NFTs/Collectibles): added `listNfts` (discover the wallet's NFTs by hint, both HD schemes),
+ * `prepareNftTransfer` (build + hold an NFT transfer for approval), and `confirmNftTransfer`
+ * (sign + broadcast the approved transfer — reuses the vault's `confirmSend` broadcast path) —
+ * routed to the offscreen vault; poll confirmation via the shared `sendStatus`.
  */
-export const MESSAGE_PROTOCOL_VERSION = 7;
+export const MESSAGE_PROTOCOL_VERSION = 8;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -94,6 +99,10 @@ export const ACTIONS = Object.freeze({
   inspectOffer: 'inspectOffer',
   prepareTrade: 'prepareTrade',
   confirmTrade: 'confirmTrade',
+  // ── self-custody NFTs / Collectibles (#56): routed to the offscreen vault ──
+  listNfts: 'listNfts',
+  prepareNftTransfer: 'prepareNftTransfer',
+  confirmNftTransfer: 'confirmNftTransfer',
   // ── verification + node status ──
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
@@ -278,6 +287,21 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.confirmTrade]: {
     summary: 'BROADCAST a previously-prepared trade (the approved step — the only place a trade is pushed). Returns an input coin id to poll.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.listNfts]: {
+    summary: "List the wallet's NFTs (Collectibles) — the offscreen vault derives both HD schemes, finds coins hinted to its inner puzzle hashes (coinset get_coin_records_by_hints), and reconstructs each NFT from its parent spend. Read-only.",
+    request: '{ action }',
+    response: "{ nfts:[{ launcherId, coinId, p2PuzzleHash, collectionId, editionNumber, editionTotal, royaltyBasisPoints, royaltyPuzzleHash, dataUris, dataHash, metadataUris, metadataHash, licenseUris }] } | { success:false, code, message }",
+  },
+  [ACTIONS.prepareNftTransfer]: {
+    summary: "Build (not sign/broadcast) a transfer of the wallet's NFT to another address in the offscreen vault; hold it under a pending id and return the decoded summary to approve. The recipient's p2 puzzle hash is carried as the create-coin hint.",
+    request: '{ action, launcherId:string /* hex */, recipient:string /* xch1… */, fee?:string /* mojos */ }',
+    response: '{ pendingId:string, nftSummary:{ launcherId, recipientPuzzleHashHex, fee, coinCount } } | { success:false, code:\'NFT_NOT_FOUND\'|..., message }',
+  },
+  [ACTIONS.confirmNftTransfer]: {
+    summary: 'Sign + BROADCAST a previously-prepared NFT transfer (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },

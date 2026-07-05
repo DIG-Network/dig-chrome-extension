@@ -14,7 +14,9 @@ import { CustodyGate } from '@/features/wallet/custody/CustodyGate';
 import { CustodyWallet } from '@/features/wallet/custody/CustodyWallet';
 import { selectIsUnlocked } from '@/features/wallet/walletSlice';
 
-const SEG_OPTIONS = WALLET_VIEWS.map((v) => ({ value: v, labelId: `wallet.view.${v}` }));
+// The Sage-broker body has no offscreen custody vault, so Collectibles (a self-custody surface) is
+// excluded here — it lives only in the custody-backed body (CustodyWallet).
+const SEG_OPTIONS = WALLET_VIEWS.filter((v) => v !== 'collectibles').map((v) => ({ value: v, labelId: `wallet.view.${v}` }));
 
 /**
  * The Wallet tab. The self-custody {@link CustodyGate} lands FIRST (§18.3, full Sage replacement):

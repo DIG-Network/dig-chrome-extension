@@ -19,6 +19,8 @@ export const TAGS = [
   // Self-custody (#56): lock state + derived receive addresses.
   'LockState',
   'Address',
+  // Self-custody NFTs / Collectibles (#56).
+  'Collectibles',
 ] as const;
 
 /**
