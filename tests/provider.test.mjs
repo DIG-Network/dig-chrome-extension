@@ -117,12 +117,12 @@ test('request throws an error carrying a standard code on a 4xx', async () => {
   );
 });
 
-test('the injected provider entry (dig-provider.entry.mjs) derives window.chia from the shared package', () => {
+test('the injected provider entry (src/entries/dig-provider.entry.ts) derives window.chia from the shared package', () => {
   // The injected provider is no longer a hand-copied IIFE — it is BUNDLED from
   // @dignetwork/chia-provider (the single source of truth). Guard that the entry actually wires
   // buildProvider from the package and supplies the extension's postMessage transport, so the
   // injected surface can never drift from the package (the old duplication caused exactly that).
-  const entry = readFileSync(join(__dirname, '..', 'dig-provider.entry.mjs'), 'utf8');
+  const entry = readFileSync(join(__dirname, '..', 'src', 'entries', 'dig-provider.entry.ts'), 'utf8');
   assert.match(entry, /from ['"]@dignetwork\/chia-provider['"]/, 'entry must import from @dignetwork/chia-provider');
   assert.match(entry, /buildProvider/, 'entry must call the package buildProvider');
   assert.match(entry, /window\.chia\s*=\s*buildProvider/, 'window.chia must be the package buildProvider output');
@@ -136,7 +136,7 @@ test('build.js bundles dist/dig-provider.js as a self-contained IIFE carrying th
   // bundle can never ship a stub.
   const esbuild = await import('esbuild');
   const out = await esbuild.build({
-    entryPoints: [join(__dirname, '..', 'dig-provider.entry.mjs')],
+    entryPoints: [join(__dirname, '..', 'src', 'entries', 'dig-provider.entry.ts')],
     bundle: true,
     format: 'iife',
     platform: 'browser',
