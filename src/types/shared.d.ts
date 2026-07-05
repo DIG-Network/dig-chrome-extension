@@ -14,6 +14,8 @@ declare module '#shared/messages.mjs' {
   export const MESSAGE_PROTOCOL_VERSION: number;
   export const ACTIONS: Readonly<Record<string, string>>;
   export const BRIDGE: Readonly<Record<string, string>>;
+  /** Discriminator on SW→offscreen-vault messages (#56). */
+  export const OFFSCREEN_TARGET: string;
   export function isKnownAction(action: string): boolean;
   export function buildCapabilities(extensionVersion?: string): {
     version: string;

@@ -1,9 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { api, type ThunkExtra } from '@/api/api';
 import { uiReducer } from '@/features/ui/uiSlice';
+import { walletReducer } from '@/features/wallet/walletSlice';
 import { wcTransport, type WalletTransport } from '@/features/wallet/transport';
 // Register feature endpoints (side-effect imports wire them into the single api slice).
 import '@/features/wallet/walletApi';
+import '@/features/wallet/custodyApi';
 import '@/features/resolver/resolverApi';
 import '@/features/shield/shieldApi';
 import '@/features/control/controlApi';
@@ -19,6 +21,7 @@ export function createStore(transport: WalletTransport = wcTransport) {
     reducer: {
       [api.reducerPath]: api.reducer,
       ui: uiReducer,
+      wallet: walletReducer,
     },
     middleware: (getDefault) =>
       getDefault({ thunk: { extraArgument: extra } }).concat(api.middleware),

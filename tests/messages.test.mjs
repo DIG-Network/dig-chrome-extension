@@ -42,6 +42,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'getDataUrl', 'updateServerConfig', 'reportError', 'reportSuccess', 'navigate',
     'proxyRequest', 'walletRpc', 'reportVerification', 'getVerification',
     'getDigNodeStatus', 'walletConsent',
+    // Self-custody wallet (#56): keystore ops routed to the offscreen vault:
+    'createWallet', 'importWallet', 'unlockWallet', 'lockWallet', 'revealPhrase', 'getLockState',
     // Shield action (per-resource proof ledger) + Control Panel (node management view):
     'recordLedgerEntry', 'getShieldLedger', 'getControlStatus',
     'addSearchEngine', 'getDefaultSearchEngine', 'isDigSearchDefault', 'updateSearchConfig',

@@ -25,8 +25,22 @@ import { DIG_ERR } from './error-codes.mjs';
  *
  * v2 (#43 / #41 SoC audit): removed `preloadResources`, `getCacheStats`, and `clearCache` —
  * the extension no longer caches resolved content (caching is a dig-node job).
+ *
+ * v3 (#56 self-custody): added the custody actions (`createWallet`, `importWallet`,
+ * `unlockWallet`, `lockWallet`, `revealPhrase`, `getLockState`) the SW routes to the offscreen
+ * keystore vault, plus the `OFFSCREEN_TARGET` discriminator for SW→offscreen messages.
  */
-export const MESSAGE_PROTOCOL_VERSION = 2;
+export const MESSAGE_PROTOCOL_VERSION = 3;
+
+/**
+ * Discriminator on messages the service worker forwards to the offscreen keystore vault
+ * (`chrome.runtime.sendMessage({ target: OFFSCREEN_TARGET, op, ... })`). The offscreen document's
+ * listener handles ONLY messages carrying this target; the SW's own `onMessage` listener ignores
+ * them (they are round-trips to the vault, not requests for the SW). The decrypted key lives ONLY
+ * in the offscreen document — these messages carry passwords IN and public results / the once-shown
+ * mnemonic OUT, never the persisted key.
+ */
+export const OFFSCREEN_TARGET = 'dig-offscreen';
 
 /**
  * Frozen enum of every `message.action` the extension routes over chrome.runtime. Each key
@@ -50,6 +64,13 @@ export const ACTIONS = Object.freeze({
   // ── wallet (window.chia broker) ──
   walletRpc: 'walletRpc',
   walletConsent: 'walletConsent',
+  // ── self-custody wallet (#56): keystore ops the SW routes to the offscreen vault ──
+  createWallet: 'createWallet',
+  importWallet: 'importWallet',
+  unlockWallet: 'unlockWallet',
+  lockWallet: 'lockWallet',
+  revealPhrase: 'revealPhrase',
+  getLockState: 'getLockState',
   // ── verification + node status ──
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
@@ -151,6 +172,41 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Popup approves/revokes a dapp origin for wallet access.',
     request: '{ action, origin:string, approved:boolean }',
     response: '{ success:boolean, error?:string }',
+  },
+  [ACTIONS.createWallet]: {
+    summary:
+      'Create a new self-custody wallet: generate a 24-word recovery phrase, encrypt its entropy (DIGWX1) in the offscreen vault, persist the encrypted blob, and start the unlock TTL.',
+    request: '{ action, password:string, label?:string, strong?:boolean }',
+    response:
+      "{ lockState:'unlocked', mnemonic:string /* shown ONCE for backup, never stored */, address?:string } | { success:false, code, message }",
+  },
+  [ACTIONS.importWallet]: {
+    summary:
+      'Import a wallet from a 24-word recovery phrase: validate the BIP-39 checksum, encrypt its entropy (DIGWX1) in the offscreen vault, persist the blob, and start the unlock TTL.',
+    request: '{ action, mnemonic:string, password:string, label?:string, strong?:boolean }',
+    response: "{ lockState:'unlocked' } | { success:false, code:'INVALID_MNEMONIC'|..., message }",
+  },
+  [ACTIONS.unlockWallet]: {
+    summary:
+      'Unlock the wallet: the offscreen vault runs Argon2id + AES-GCM decrypt and holds the entropy in memory; the SW sets the session unlock-expiry. Errors collapse to one opaque UNLOCK_FAILED.',
+    request: '{ action, password:string }',
+    response: "{ lockState:'unlocked', usedFallback?:boolean } | { success:false, code:'UNLOCK_FAILED', message }",
+  },
+  [ACTIONS.lockWallet]: {
+    summary: 'Lock the wallet: the offscreen vault zeroizes + drops the decrypted key; the SW clears the unlock-expiry.',
+    request: '{ action }',
+    response: "{ lockState:'locked' }",
+  },
+  [ACTIONS.revealPhrase]: {
+    summary:
+      'Reveal the 24-word recovery phrase for backup. Re-runs the FULL password unlock (never from the TTL window); the phrase is returned for one-time display, never stored.',
+    request: '{ action, password:string }',
+    response: '{ mnemonic:string } | { success:false, code:\'UNLOCK_FAILED\', message }',
+  },
+  [ACTIONS.getLockState]: {
+    summary: "Report the wallet lock state: 'none' (no wallet), 'locked' (wallet exists, key not in memory / TTL expired), or 'unlocked'.",
+    request: '{ action }',
+    response: "{ lockState:'none'|'locked'|'unlocked', activeWalletId?:string, unlockExpiry?:number }",
   },
   [ACTIONS.reportVerification]: {
     summary: 'Viewer reports the Merkle-verification result for rendered chia:// content.',
