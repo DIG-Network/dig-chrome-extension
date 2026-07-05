@@ -14,7 +14,7 @@ export type Action =
   | 'getDefaultSearchEngine' | 'isDigSearchDefault' | 'updateSearchConfig' | 'getCapabilities'
   // Self-custody wallet (#56): keystore ops the SW routes to the offscreen vault.
   | 'createWallet' | 'importWallet' | 'unlockWallet' | 'lockWallet' | 'revealPhrase' | 'getLockState'
-  | 'getReceiveAddress' | 'getCustodyBalances' | 'prepareSend' | 'confirmSend' | 'sendStatus';
+  | 'getReceiveAddress' | 'getCustodyBalances' | 'prepareSend' | 'confirmSend' | 'sendStatus' | 'getActivity';
 
 export const ACTIONS: Readonly<Record<Action, Action>>;
 

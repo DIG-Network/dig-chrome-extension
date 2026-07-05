@@ -56,12 +56,21 @@ describe('CustodyWallet', () => {
     expect(await screen.findByTestId('balances-cached')).toBeInTheDocument();
   });
 
-  it('shows "coming soon" for activity + trade sub-views', async () => {
-    mockSw((m) => (m.action === 'getReceiveAddress' ? { address: 'xch1receive' } : { balances: { xch: 0, cats: {} } }));
+  it('renders the activity ledger on the activity sub-view, "coming soon" for trade', async () => {
+    mockSw((m) => {
+      if (m.action === 'getReceiveAddress') return { address: 'xch1receive' };
+      if (m.action === 'getActivity') return { events: [], cursorHeight: 0 };
+      return { balances: { xch: 0, cats: {} } };
+    });
     const store = createStore();
     store.dispatch(setWalletView('activity'));
     renderWithProviders(<CustodyWallet />, { store });
-    expect(await screen.findByTestId('custody-activity-soon')).toBeInTheDocument();
+    expect(await screen.findByTestId('custody-activity')).toBeInTheDocument();
+
+    const store2 = createStore();
+    store2.dispatch(setWalletView('trade'));
+    renderWithProviders(<CustodyWallet />, { store: store2 });
+    expect(await screen.findByTestId('custody-trade-soon')).toBeInTheDocument();
   });
 
   it('hides the chain-node setting by default (everyday tier)', async () => {

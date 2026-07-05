@@ -34,6 +34,7 @@ import { scanBalances, receiveAddress, type ScanWasm, type BalanceScan } from '@
 import type { ChainClient } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
+import { indexActivity, type ActivityWasm, type ActivityEvent } from '@/offscreen/activity';
 
 /** The keystore operations the vault handles (mirrors the SW custody actions). */
 export type VaultOp =
@@ -47,7 +48,8 @@ export type VaultOp =
   | 'scanBalances'
   | 'prepareSend'
   | 'confirmSend'
-  | 'sendStatus';
+  | 'sendStatus'
+  | 'getActivity';
 
 /** A request forwarded from the SW to the vault. `record` is the persisted DIGWX1 blob for ops that need it. */
 export interface VaultRequest {
@@ -73,6 +75,8 @@ export interface VaultRequest {
   /** confirmSend/sendStatus: the pending-send id / an input coin id (hex). */
   pendingId?: string;
   coinId?: string;
+  /** getActivity: resume the incremental scan from this block height. */
+  sinceHeight?: number;
 }
 
 /** The vault's reply. Never carries the persisted key; `mnemonic` is for one-time display only. */
@@ -100,6 +104,9 @@ export interface VaultResponse {
   spentCoinId?: string;
   /** sendStatus: whether the spend has confirmed on-chain. */
   confirmed?: boolean;
+  /** getActivity: the reconstructed ledger events + the height cursor for the next incremental scan. */
+  events?: ActivityEvent[];
+  cursorHeight?: number;
 }
 
 /** Test/DI seam. `chia` + `chain` power derivation + the balance scan (offscreen-only at runtime). */
@@ -168,6 +175,8 @@ export class Vault {
           return await this.confirmSend(req, deps);
         case 'sendStatus':
           return await this.sendStatus(req, deps);
+        case 'getActivity':
+          return await this.getActivity(req, deps);
         default:
           return { success: false, code: 'BAD_REQUEST', message: `unknown vault op` };
       }
@@ -308,5 +317,19 @@ export class Vault {
     if (!deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
     if (!req.coinId) return { success: false, code: 'BAD_REQUEST', message: 'coinId required' };
     return { success: true, confirmed: await deps.chain.coinConfirmed(req.coinId) };
+  }
+
+  /** Reconstruct the transaction ledger (read-only) from `sinceHeight` for an incremental scan. */
+  private async getActivity(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const idx = await indexActivity(deps.chia as unknown as ActivityWasm, deps.chain, {
+      seed,
+      ...(req.watchedCats ? { watchedCats: req.watchedCats } : {}),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      ...(req.sinceHeight ? { sinceHeight: req.sinceHeight } : {}),
+    });
+    return { success: true, events: idx.events, cursorHeight: idx.cursorHeight };
   }
 }

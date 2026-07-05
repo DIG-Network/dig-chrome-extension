@@ -35,6 +35,7 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'prepareSend',
       'confirmSend',
       'sendStatus',
+      'getActivity',
     ].sort(),
   );
 });

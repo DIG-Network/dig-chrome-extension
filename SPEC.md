@@ -354,7 +354,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `5`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `6`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -365,7 +365,8 @@ SW→offscreen messages (those messages are handled by the offscreen document; t
 `onMessage` listener ignores them). `4` (#56) added `getReceiveAddress` + `getCustodyBalances`
 (§18.6): the SW forwards them to the offscreen vault, which derives and scans coinset. `5` (#56)
 added `prepareSend` (build + decode summary), `confirmSend` (sign + broadcast — the approved step),
-and `sendStatus` (poll confirmation) (§18.8).
+and `sendStatus` (poll confirmation) (§18.8). `6` (#56) added `getActivity` (§18.9): the SW routes
+it to the offscreen vault, which reconstructs the transaction ledger from coinset.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -786,6 +787,7 @@ custody requests, owns storage, and enforces auto-lock.
 | `wallet.activeId` | `storage.local` | no | active wallet id (multi-wallet switcher) |
 | `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, `chainRpcUrl`, `chainPrivacyAck`, fee default…) |
 | `walletCache.balances` | `storage.local` | no | last balance scan (`{ balances, at }`) for cached-first paint |
+| `walletCache.activity` | `storage.local` | no | last activity ledger (`{ events, cursorHeight, at }`) for cached-first paint |
 | `wallet.unlockExpiry` | `storage.session` | no | non-secret unlock-expiry timestamp (ms); never key material |
 
 `storage.sync` is NEVER used for any wallet key (it would exfiltrate the encrypted seed).
@@ -860,3 +862,20 @@ An XCH send is built with the `Spends`/`Action` driver in the offscreen vault:
   hashes over the keyring, fetching those coins, and parsing each parent's spend
   (`Puzzle.parseChildCats`); XCH coins are added to cover the fee; the driver builds via
   `Action.send(Id.existing(assetId), …)`. Amounts use the CAT's decimals; the fee is XCH.
+
+### 18.9 Activity indexer
+
+There is no transaction-history endpoint, so the ledger is reconstructed (read-only) in the offscreen
+vault (`getActivity`):
+
+- Derive the HD puzzle hashes (both schemes) + the watched-CAT puzzle hashes; fetch their coin
+  records INCLUDING spent (`getCoinRecordsByPuzzleHashes`).
+- **RECEIVED** = a coin created to us whose parent is NOT one of our coins (our own change is skipped).
+- **SENT / TRADE** = a coin of ours that was spent → decode its spend's CREATE_COINs
+  (`getPuzzleAndSolution`); outputs to others = sent (recipient resolved to an address), outputs to
+  the settlement puzzle hash = a trade. The first coin carries the outputs (§18.8), so multi-coin
+  sends dedupe naturally.
+- Classification covers XCH + watched CATs + offer-settlement trades; the events normalize to
+  human-sentence rows + SpaceScan links. Results are cached (`walletCache.activity`) for cached-first
+  paint; the height cursor is persisted for a future incremental scan (v1 re-scans fully for
+  correctness — a coin created before a cursor may be spent after it).

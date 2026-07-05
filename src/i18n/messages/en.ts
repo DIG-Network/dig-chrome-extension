@@ -109,6 +109,14 @@ export const en: Record<string, string> = {
   'activity.status.confirmed': 'Confirmed',
   'activity.status.pending': 'Pending',
   'activity.viewOnSpaceScan': 'View on SpaceScan',
+  // custody activity indexer (#56)
+  'activity.line.sent': 'Sent {amount} {ticker}',
+  'activity.line.received': 'Received {amount} {ticker}',
+  'activity.line.traded': 'Traded {amount} {ticker}',
+  'activity.line.to': 'to {who}',
+  'activity.receipt.to': 'To',
+  'activity.receipt.height': 'Block',
+  'activity.receipt.coin': 'Coin ID',
 
   // ── wallet: send ──
   'send.title': 'Send',

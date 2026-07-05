@@ -139,6 +139,7 @@ describe('Vault balance + address ops', () => {
     pushSpendBundle: async () => ({ success: true }),
     coinConfirmed: async () => false,
     getCoinSpend: async () => null,
+    coinRecords: async () => [],
   });
 
   it('derives the pooled receive address for the held wallet', async () => {
@@ -194,6 +195,7 @@ describe('Vault send ops', () => {
       pushSpendBundle: async () => ({ success: true }),
       coinConfirmed: async () => true,
     getCoinSpend: async () => null,
+    coinRecords: async () => [],
     };
     return { chain, recipient };
   }
@@ -232,5 +234,20 @@ describe('Vault send ops', () => {
     const { chain } = sendChain();
     const res = await v.handle({ op: 'prepareSend', amount: '1000' }, { ...deps, chia, chain });
     expect(res.code).toBe('BAD_REQUEST');
+  });
+
+  it('getActivity returns events (empty for an unused wallet) via the indexer', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain } = sendChain(); // coinRecords → [] → no events
+    const res = await v.handle({ op: 'getActivity' }, { ...deps, chia, chain });
+    expect(res.success).toBe(true);
+    expect(res.events).toEqual([]);
+    expect(typeof res.cursorHeight).toBe('number');
+  });
+
+  it('getActivity is LOCKED without a held key', async () => {
+    const { chain } = sendChain();
+    const res = await new Vault().handle({ op: 'getActivity' }, { ...deps, chia, chain });
+    expect(res.code).toBe('LOCKED');
   });
 });
