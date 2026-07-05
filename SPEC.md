@@ -826,9 +826,14 @@ custody requests, owns storage, and enforces auto-lock.
 - **auto-lock triggers (all lock the vault + clear the window):** explicit lock; a `chrome.alarms`
   minute sweep once the TTL lapses; `chrome.idle` reporting `idle`/`locked`; all-windows-close (the
   offscreen document tears down, dropping the in-memory key).
-- **lock state.** `getLockState` derives `none` (no keystore blob) / `locked` (blob present but the
-  vault holds no key, or the TTL lapsed) / `unlocked` (blob + key held + fresh TTL), and locks the
-  vault if it finds a key past a lapsed TTL.
+- **lock state.** `getLockState` derives the snapshot PURELY from persisted storage — `none` (no
+  keystore blob) / `locked` (blob present but the unlock window is absent or lapsed) / `unlocked`
+  (blob + a fresh unlock window) — with NO round-trip to the offscreen vault, so it ALWAYS resolves
+  immediately. A no-wallet user (who has no offscreen document at all) resolves instantly to `none`
+  → onboarding, never blocking on a vault that will never answer. Auto-lock (the TTL sweep alarm +
+  `chrome.idle`) independently zeroizes the vault and clears the unlock window when the TTL lapses,
+  so a lapsed window reads as `locked` without a vault call; the SW spawns the offscreen document
+  only to unlock / use the key, never to read state.
 
 ### 18.4 Storage schema (custody)
 

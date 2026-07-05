@@ -38,7 +38,7 @@ import {
   resolveTtlMinutes,
   resolveCoinsetUrl,
   computeUnlockExpiry,
-  deriveLockState,
+  computeLockSnapshot,
 } from './custody-session.mjs';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from './wallet-assets.mjs';
@@ -790,15 +790,6 @@ async function callVault(request) {
   return chrome.runtime.sendMessage({ target: OFFSCREEN_TARGET, request });
 }
 
-/** Ask the vault (only if it exists) whether it currently holds a decrypted key. */
-async function vaultHasKey() {
-  if (!(await hasOffscreenDocument())) return false;
-  try {
-    const res = await chrome.runtime.sendMessage({ target: OFFSCREEN_TARGET, request: { op: 'getVaultState' } });
-    return !!(res && res.hasKey);
-  } catch { return false; }
-}
-
 async function readKeystore() {
   const out = await chrome.storage.local.get(KEYSTORE_KEY);
   return out[KEYSTORE_KEY] || null;
@@ -825,18 +816,26 @@ async function lockVaultNow() {
   try { chrome.alarms.clear(AUTO_LOCK_ALARM); } catch { /* ignore */ }
 }
 
-/** Compute the tri-state lock snapshot the UI reads; also enforces a lapsed TTL (locks the vault). */
+/**
+ * Compute the tri-state lock snapshot the UI reads, PURELY from persisted storage — the encrypted
+ * keystore blob (storage.local) + the non-secret unlock-expiry (storage.session). It does NOT
+ * round-trip to the offscreen vault, so it ALWAYS resolves immediately; a no-wallet user (with no
+ * offscreen document) resolves instantly to `none` → onboarding, instead of hanging on "Loading
+ * wallet" (#68). Auto-lock (TTL sweep alarm + idle) independently zeroizes the vault when the
+ * unlock window lapses, so a lapsed TTL reads as `locked` here without needing a vault call.
+ */
 async function getLockStateSnapshot() {
-  const [record, sess, active, hasKey] = await Promise.all([
+  const [record, sess, active] = await Promise.all([
     readKeystore(),
     chrome.storage.session.get(UNLOCK_EXPIRY_KEY),
     chrome.storage.local.get(ACTIVE_WALLET_KEY),
-    vaultHasKey(),
   ]);
-  const unlockExpiry = sess[UNLOCK_EXPIRY_KEY] || null;
-  const lockState = deriveLockState({ hasKeystore: !!record, hasKeyInVault: hasKey, unlockExpiry, now: Date.now() });
-  if (record && hasKey && lockState === LOCK_STATE.LOCKED) await lockVaultNow(); // TTL lapsed
-  return { lockState, activeWalletId: active[ACTIVE_WALLET_KEY] || null, unlockExpiry };
+  return computeLockSnapshot({
+    hasKeystore: !!record,
+    activeWalletId: active[ACTIVE_WALLET_KEY] || null,
+    unlockExpiry: sess[UNLOCK_EXPIRY_KEY] || null,
+    now: Date.now(),
+  });
 }
 
 /** Handle one custody action end-to-end (SW ↔ offscreen ↔ storage). Returns the reply payload. */
