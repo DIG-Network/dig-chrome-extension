@@ -215,3 +215,33 @@ declare module '#shared/dig-ledger.mjs' {
 declare module '#shared/qr.mjs' {
   export function qrSvg(text: string, size?: number): string;
 }
+
+declare module '#shared/server-config.mjs' {
+  /** The dig-node default port (8080). */
+  export const DEFAULT_DIG_NODE_PORT: number;
+  /** The default dig-node host string (`localhost:8080`). */
+  export const DEFAULT_DIG_NODE_HOST: string;
+  /** Parse a user-entered host (`host` / `host:port` / `http(s)://host[:port]`) into `{ url, port }`. */
+  export function parseServerHost(host: string): { url: string; port: number };
+  /** Render a `{ url, port }` back into a canonical host string. */
+  export function formatServerHost(url: string, port: number): string;
+  /** Resolve the reachable dig-node base URL for `host` (custom → dig.local → localhost), or `null`. */
+  export function resolveDigNode(
+    host: string,
+    opts?: { timeoutMs?: number; fetch?: typeof fetch },
+  ): Promise<string | null>;
+}
+
+declare module '#shared/dig-node-status.mjs' {
+  /** The DIG node installer/download URL surfaced when no local node is reachable. */
+  export const DIG_INSTALLER_URL: string;
+  /** Stable, plain-language prompt shown when a local dig-node isn't reachable. */
+  export function digNodeInstallPrompt(): {
+    title: string;
+    body: string;
+    installLabel: string;
+    installUrl: string;
+  };
+  /** True when a raw failure message indicates a local dig-node is required but unreachable. */
+  export function isDigNodeRequiredError(rawMessage: string | null | undefined): boolean;
+}

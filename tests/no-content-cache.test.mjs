@@ -14,7 +14,7 @@
  *     violation than the audit's literal line refs).
  *   - content.js: writes into either of the above caches, and the page-preload pass that only
  *     existed to warm them.
- *   - options.html / options.js: the "Local content cache" usage/clear UI.
+ *   - options.html / src/entries/options.ts: the "Local content cache" usage/clear UI.
  *   - messages.mjs: the `getCacheStats` / `clearCache` / `preloadResources` catalogued actions.
  *
  * The client-side verify+decrypt path (the shared `dig_client` wasm — retrievalKey/deriveKey/
@@ -63,9 +63,9 @@ test('options.html has no "Local content cache" section or cache testids', () =>
   assert.ok(!/Local content cache/i.test(html), 'options.html must not describe a local content cache');
 });
 
-test('options.js has no cache stat/clear handlers', () => {
-  const src = read('options.js');
-  assert.ok(!/getCacheStats|clearCache|refreshCache/.test(src), 'options.js must not manage a content cache');
+test('src/entries/options.ts has no cache stat/clear handlers', () => {
+  const src = read('src/entries/options.ts');
+  assert.ok(!/getCacheStats|clearCache|refreshCache/.test(src), 'the options entry must not manage a content cache');
 });
 
 test('messages.mjs catalogues no cache-related actions', () => {
