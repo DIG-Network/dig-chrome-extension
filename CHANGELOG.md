@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.28.0] - 2026-07-05
+
+### Refactor
+- **entry:** Build the injected provider + store interceptor as TS entries (#34)
+
 ## [1.27.0] - 2026-07-05
 
 ### Refactor
