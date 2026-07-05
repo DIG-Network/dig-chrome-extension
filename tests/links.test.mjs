@@ -26,10 +26,23 @@ import {
   DISCORD_URL,
   DIG_BROWSER_URL,
   RESOURCE_LINKS,
+  SPACESCAN_URL,
+  spaceScanCoinUrl,
+  spaceScanAddressUrl,
 } from '../links.mjs';
 
 test('hub URL points at hub.dig.net', () => {
   assert.equal(HUB_URL, 'https://hub.dig.net');
+});
+
+test('SpaceScan explorer links use the canonical mainnet host + 0x-prefixed coin ids', () => {
+  assert.equal(SPACESCAN_URL, 'https://www.spacescan.io');
+  assert.equal(spaceScanCoinUrl('abc123'), 'https://www.spacescan.io/coin/0xabc123');
+  assert.equal(spaceScanCoinUrl('0xABC123'), 'https://www.spacescan.io/coin/0xABC123');
+  assert.equal(spaceScanCoinUrl(''), null);
+  assert.equal(spaceScanCoinUrl(null), null);
+  assert.equal(spaceScanAddressUrl('xch1abc'), 'https://www.spacescan.io/address/xch1abc');
+  assert.equal(spaceScanAddressUrl(''), null);
 });
 
 test('DIG Network URL points at dig.net', () => {

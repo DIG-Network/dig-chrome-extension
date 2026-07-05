@@ -279,10 +279,11 @@ a { color: inherit; text-decoration: none; }
 .wallet-bal-label { font-size: 10px; font-weight: 700; color: var(--dig-muted); letter-spacing: 0.04em; }
 .wallet-bal-value { font-size: 16px; font-weight: 700; }
 
-.wallet-subtabs { display: flex; gap: 4px; background: var(--dig-surface-2); border-radius: var(--pill); padding: 3px; }
+.wallet-subtabs { display: flex; gap: 3px; background: var(--dig-surface-2); border-radius: var(--pill); padding: 3px; }
 .wallet-subtab {
   flex: 1; cursor: pointer; border: 0; background: transparent; color: var(--dig-muted);
-  font-size: 12px; font-weight: 600; border-radius: var(--pill); padding: 7px 8px; transition: background 0.15s ease, color 0.15s ease;
+  font-size: 11px; font-weight: 600; border-radius: var(--pill); padding: 7px 4px; white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 .wallet-subtab[aria-selected="true"] { background: var(--dig-purple); color: #fff; }
 
@@ -325,6 +326,80 @@ select.field-input { appearance: none; }
 .connreq-btn { cursor: pointer; border: 0; border-radius: 6px; padding: 6px 10px; font-size: 11.5px; font-weight: 700; }
 .connreq-allow { background: var(--dig-green); color: #06251b; }
 .connreq-deny { background: var(--dig-surface); color: var(--dig-muted); border: 1px solid var(--dig-border); }
+
+/* Assets view — the full token list + track-a-token. */
+.asset-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.asset-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+  background: var(--dig-surface-2); border: 1px solid var(--dig-border); border-radius: var(--r);
+}
+.asset-badge {
+  width: 26px; height: 26px; border-radius: 8px; flex: none; display: grid; place-items: center;
+  font-size: 13px; font-weight: 700; color: #fff; background: var(--grad);
+}
+.asset-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.asset-ticker { font-size: 13px; font-weight: 700; }
+.asset-id { font-size: 10px; color: var(--dig-faint); font-family: 'SF Mono', Menlo, Consolas, monospace; }
+.asset-value { font-size: 14px; font-weight: 700; white-space: nowrap; }
+.asset-remove {
+  flex: none; width: 22px; height: 22px; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1;
+  background: transparent; color: var(--dig-faint); border: 1px solid var(--dig-border);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.asset-remove:hover { color: var(--dig-red); border-color: var(--dig-red); }
+.add-token { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.add-token-row { display: flex; gap: 6px; }
+.add-token-row .field-input { flex: 1; min-width: 0; }
+.add-token-row .wallet-btn { flex: 0 0 auto; }
+
+/* Receive view — QR. */
+.wallet-qr {
+  align-self: center; width: 168px; height: 168px; padding: 8px; border-radius: var(--r);
+  background: #fff; display: grid; place-items: center;
+}
+.wallet-qr svg { display: block; width: 100%; height: 100%; }
+
+/* Activity view — richer rows + pager. */
+.activity-sub { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 2px; }
+.activity-status { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: var(--pill); }
+.activity-status.ok { color: var(--dig-green); background: rgba(56, 225, 176, 0.12); }
+.activity-status.pend { color: var(--dig-amber); background: rgba(255, 180, 84, 0.14); }
+.activity-fee { font-size: 10.5px; color: var(--dig-faint); }
+.activity-memo { font-size: 11px; color: var(--dig-muted); margin-top: 3px; word-break: break-word; }
+.activity-link {
+  flex: none; align-self: flex-start; color: var(--dig-purple-2); font-size: 14px; font-weight: 700;
+  text-decoration: none; padding: 2px 4px;
+}
+.activity-link:hover { color: var(--dig-text); }
+.wallet-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.wallet-pager .wallet-btn { flex: 0 0 auto; padding: 7px 12px; }
+.wallet-page-label { font-size: 11.5px; color: var(--dig-muted); font-weight: 600; }
+
+/* Offers view — make / inspect + take / cancel. */
+.offer-block {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--dig-surface-2); border: 1px solid var(--dig-border); border-radius: var(--r); margin-bottom: 10px;
+}
+.offer-block:last-child { margin-bottom: 0; }
+.offer-leg { display: flex; flex-direction: column; gap: 4px; }
+.offer-leg-label { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dig-faint); }
+.offer-leg-row { display: flex; gap: 6px; }
+.offer-leg-row .field-input { flex: 1; min-width: 0; }
+.offer-string {
+  width: 100%; min-height: 60px; resize: vertical; font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10.5px; padding: 8px 9px; border-radius: var(--r); color: var(--dig-text);
+  background: var(--dig-bg); border: 1px solid var(--dig-border); word-break: break-all;
+}
+.offer-string:focus { border-color: var(--dig-purple); outline: none; }
+.offer-actions { display: flex; gap: 6px; }
+.offer-actions .wallet-btn { flex: 1; }
+.offer-result { display: flex; flex-direction: column; gap: 6px; }
+.offer-sum { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; padding: 10px; background: var(--dig-bg); border: 1px solid var(--dig-border); border-radius: var(--r); }
+.offer-sum-leg { display: flex; flex-direction: column; gap: 3px; }
+.offer-sum-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dig-faint); }
+.offer-sum-row { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 600; }
+.offer-sum-row.muted { color: var(--dig-faint); font-weight: 500; }
+.offer-sum-fee { font-size: 11px; color: var(--dig-muted); padding-top: 6px; border-top: 1px solid var(--dig-border); }
 
 /* ----------------------------------------------------------------- shield --- */
 .shield-panel { gap: 12px; }

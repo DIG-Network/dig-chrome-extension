@@ -18,6 +18,7 @@ import {
   pickBalance,
   formatXch,
   formatDig,
+  formatBaseUnits,
   formatAssetBalance,
   toBaseUnits,
   shortenAddress,
@@ -79,6 +80,21 @@ test('toBaseUnits converts a human amount string to the asset base unit (integer
   assert.equal(toBaseUnits('0.0015', 'dig'), 2); // 1.5 base units → 2
 });
 
+test('toBaseUnits also accepts a decimals number (for arbitrary CATs / fees)', () => {
+  assert.equal(toBaseUnits('1', 12), 1_000_000_000_000);
+  assert.equal(toBaseUnits('2', 3), 2000);
+  assert.equal(toBaseUnits('0.001', 12), 1_000_000_000); // fee in XCH → mojos
+  assert.throws(() => toBaseUnits('0', 3));
+});
+
+test('formatBaseUnits renders an integer at N decimals, trimming zeros; null → em dash', () => {
+  assert.equal(formatBaseUnits(1_000_000_000_000, 12), '1');
+  assert.equal(formatBaseUnits(2500, 3), '2.5');
+  assert.equal(formatBaseUnits(0, 3), '0');
+  assert.equal(formatBaseUnits(null, 12), '—');
+  assert.equal(formatBaseUnits('nan', 3), '—');
+});
+
 test('toBaseUnits throws on non-positive / non-numeric input', () => {
   assert.throws(() => toBaseUnits('0', 'xch'));
   assert.throws(() => toBaseUnits('-1', 'xch'));
@@ -109,6 +125,19 @@ test('validateSendForm requires an xch1 address and a positive amount', () => {
   assert.ok(noAddr.errors.address);
 });
 
+test('validateSendForm accepts a blank/zero fee and rejects a negative/non-numeric fee', () => {
+  const ok = validateSendForm({ address: 'xch1qqqqqqrealish', amount: '1', fee: '' });
+  assert.equal(ok.ok, true);
+  const okZero = validateSendForm({ address: 'xch1qqqqqqrealish', amount: '1', fee: '0' });
+  assert.equal(okZero.ok, true);
+  const neg = validateSendForm({ address: 'xch1qqqqqqrealish', amount: '1', fee: '-1' });
+  assert.equal(neg.ok, false);
+  assert.ok(neg.errors.fee);
+  const nan = validateSendForm({ address: 'xch1qqqqqqrealish', amount: '1', fee: 'abc' });
+  assert.equal(nan.ok, false);
+  assert.ok(nan.errors.fee);
+});
+
 test('activityViewModel normalises Sage tx shapes to a capped, newest-first list', () => {
   const raw = {
     transactions: [
@@ -131,4 +160,25 @@ test('activityViewModel tolerates empty / missing input', () => {
   assert.deepEqual(activityViewModel(null), []);
   assert.deepEqual(activityViewModel({}), []);
   assert.deepEqual(activityViewModel([]), []);
+});
+
+test('activityViewModel attaches a SpaceScan link, fee, and status per item', () => {
+  const raw = {
+    transactions: [
+      {
+        name: '0xabc123', type: 'OUTGOING', amount: 1_000_000_000_000,
+        created_at_time: 100, fee: 500, confirmed: true,
+      },
+      { name: 'def456', type: 'INCOMING', amount: 2000, assetId: 'a406', createdAtTime: 200, confirmed: false },
+    ],
+  };
+  const vm = activityViewModel(raw, { digAssetId: 'a406' });
+  // newest first: def456 (t=200) before abc123 (t=100)
+  assert.equal(vm[0].id, 'def456');
+  assert.equal(vm[0].statusLabel, 'Pending');
+  assert.match(vm[0].spaceScanUrl, /spacescan\.io\/coin\/0xdef456$/);
+  assert.equal(vm[1].id, '0xabc123');
+  assert.equal(vm[1].statusLabel, 'Confirmed');
+  assert.match(vm[1].spaceScanUrl, /spacescan\.io\/coin\/0xabc123$/);
+  assert.ok(vm[1].feeLabel.includes('0.0000000005')); // 500 mojos fee in XCH
 });

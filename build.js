@@ -28,6 +28,11 @@ const EXTENSION_FILES = [
   // Pure popup view-models (tab routing, wallet number/validation logic, §5.3 resolve verdict).
   'tabs.mjs',
   'wallet-view.mjs',
+  // Wallet asset registry + tracked-CAT list, and the offers (make/inspect/take/cancel) model.
+  'wallet-assets.mjs',
+  'wallet-offers.mjs',
+  // QR renderer for the Receive view (bundled below to inline qrcode-generator for the browser).
+  'qr.mjs',
   'resolve-status.mjs',
   // Full-page DIG Control Panel onboarding landing (opened when no local node is detected).
   'control.html',
@@ -479,6 +484,35 @@ async function bundleWalletMethods() {
   log('✓ Bundled: wallet-methods.mjs (self-contained ESM, browser-safe)', 'green');
 }
 
+// qr.mjs imports the `qrcode-generator` package (a BARE specifier browsers + MV3 can't resolve).
+// Bundle it to a self-contained ESM at build time (esbuild inlines the package while preserving the
+// `qrSvg` export), so the popup's `import './qr.mjs'` resolves in the browser with no source change.
+const QR_SRC = path.join(__dirname, 'qr.mjs');
+const QR_OUT = path.join(DIST_DIR, 'qr.mjs');
+
+async function bundleQr() {
+  log('\n🔳 Bundling qr.mjs (inline qrcode-generator for the browser)...', 'blue');
+  await esbuild.build({
+    entryPoints: [QR_SRC],
+    outfile: QR_OUT,
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: ['chrome111'],
+    legalComments: 'none',
+    minify: false,
+    allowOverwrite: true,
+  });
+  const out = fs.readFileSync(QR_OUT, 'utf8');
+  if (/from\s+['"]qrcode-generator['"]/.test(out)) {
+    throw new Error('dist/qr.mjs still has a bare qrcode-generator import — the package did not inline.');
+  }
+  if (!out.includes('qrSvg')) {
+    throw new Error('Bundled qr.mjs is missing the qrSvg export.');
+  }
+  log('✓ Bundled: qr.mjs (self-contained ESM, browser-safe)', 'green');
+}
+
 /** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
 async function vendorWalletConnect() {
   log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
@@ -527,6 +561,10 @@ async function main() {
   // Bundle wallet-methods.mjs so its @dignetwork/chia-provider re-export resolves in the browser +
   // MV3 SW (bare specifiers don't). Must run AFTER copyFiles (which places the raw copy).
   await bundleWalletMethods();
+
+  // Bundle qr.mjs so its qrcode-generator import resolves in the browser (bare specifier). Runs
+  // AFTER copyFiles (which places the raw copy) so the inlined bundle overwrites it.
+  await bundleQr();
 
   // Inject the shared WalletConnect project id into dist/wallet-wc.js (build-time only;
   // never a committed source literal, never logged).

@@ -10,8 +10,11 @@
  *   - unit conversion: XCH mojos ÷ 1e12, $DIG base units ÷ 1000 (DIG has 3 decimals);
  *   - tolerant balance-field extraction across Sage's varied getAssetBalance response casings;
  *   - human-amount → base-unit conversion for chia_send;
- *   - send-form validation, address shortening, and the activity list view model.
+ *   - send-form validation, address shortening, and the activity list view model
+ *     (each item carrying a SpaceScan coin link + fee + confirmed/pending status).
  */
+
+import { spaceScanCoinUrl } from './links.mjs';
 
 /** 1 XCH = 1e12 mojos. */
 export const XCH_MOJOS_PER_UNIT = 1_000_000_000_000;
@@ -19,14 +22,19 @@ export const XCH_MOJOS_PER_UNIT = 1_000_000_000_000;
 /** 1 $DIG = 1000 base units (the DIG CAT has 3 decimals). */
 export const DIG_BASE_UNITS_PER_UNIT = 1000;
 
-/** Base units per whole unit, by asset key (`'xch'` | `'dig'`). */
-function perUnit(asset) {
-  return asset === 'xch' ? XCH_MOJOS_PER_UNIT : DIG_BASE_UNITS_PER_UNIT;
+/**
+ * Decimal places for an asset — accepts either a decimals NUMBER (arbitrary CAT / fee) or an
+ * asset KEY (`'xch'` → 12, anything else → 3, the Chia CAT convention). This lets the same
+ * formatters serve XCH, $DIG, and any tracked CAT.
+ */
+function decimals(assetOrDecimals) {
+  if (typeof assetOrDecimals === 'number') return assetOrDecimals;
+  return assetOrDecimals === 'xch' ? 12 : 3;
 }
 
-/** Decimal places shown, by asset key. */
-function decimals(asset) {
-  return asset === 'xch' ? 12 : 3;
+/** Base units per whole unit for an asset key or decimals number. */
+function perUnit(assetOrDecimals) {
+  return 10 ** decimals(assetOrDecimals);
 }
 
 /** Trim trailing zeros (and a bare trailing dot) from a fixed-decimal string. */
@@ -61,46 +69,53 @@ export function pickBalance(resp) {
   return null;
 }
 
-/** Format a base-unit integer for `asset` to a trimmed human string; `null` → em dash. */
-function formatUnits(value, asset) {
+/**
+ * Format a base-unit integer to a trimmed human string at `decimalsOrAsset` places (a decimals
+ * NUMBER, or an asset KEY — `'xch'`→12, else 3). `null`/non-finite → em dash (never a false `0`).
+ * @param {number|string|null} value base units
+ * @param {number|string} decimalsOrAsset decimals count or asset key
+ * @returns {string}
+ */
+export function formatBaseUnits(value, decimalsOrAsset) {
   if (value == null) return '—';
   const n = Number(value);
   if (!Number.isFinite(n)) return '—';
-  return trimZeros((n / perUnit(asset)).toFixed(decimals(asset)));
+  return trimZeros((n / perUnit(decimalsOrAsset)).toFixed(decimals(decimalsOrAsset)));
 }
 
 /** Format mojos as XCH (÷1e12, trailing zeros trimmed); `null` → `'—'`. */
 export function formatXch(mojos) {
-  return formatUnits(mojos, 'xch');
+  return formatBaseUnits(mojos, 'xch');
 }
 
 /** Format $DIG base units as $DIG (÷1000, 3 dp trimmed); `null` → `'—'`. */
 export function formatDig(baseUnits) {
-  return formatUnits(baseUnits, 'dig');
+  return formatBaseUnits(baseUnits, 'dig');
 }
 
 /**
- * Format a raw getAssetBalance response for `asset` (`'xch'`|`'dig'`) to a display string.
- * Unknown/unavailable → `'—'`.
+ * Format a raw getAssetBalance response for an asset key (`'xch'`|`'dig'`|`'cat'`) or a decimals
+ * number to a display string. Unknown/unavailable → `'—'`.
  */
-export function formatAssetBalance(resp, asset) {
+export function formatAssetBalance(resp, decimalsOrAsset) {
   const bal = pickBalance(resp);
   if (bal == null) return '—';
-  return formatUnits(bal, asset);
+  return formatBaseUnits(bal, decimalsOrAsset);
 }
 
 /**
- * Convert a human amount string to the asset's base unit (integer mojos / $DIG base units) for
- * `chia_send`. Rounds to the nearest base unit (no fractional mojos).
+ * Convert a human amount string to base units (integer mojos / CAT base units) for `chia_send`
+ * / offer legs. `decimalsOrAsset` is a decimals NUMBER or an asset KEY. Rounds to the nearest
+ * base unit (no fractional mojos).
  *
  * @throws if the amount is missing, non-numeric, or not strictly positive.
  */
-export function toBaseUnits(amountStr, asset) {
+export function toBaseUnits(amountStr, decimalsOrAsset) {
   const n = Number(String(amountStr == null ? '' : amountStr).trim());
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error('Enter a positive amount');
   }
-  return Math.round(n * perUnit(asset));
+  return Math.round(n * perUnit(decimalsOrAsset));
 }
 
 /** Abbreviate a long address to `head…tail`; short/empty addresses pass through unchanged. */
@@ -112,13 +127,14 @@ export function shortenAddress(addr, head = 10, tail = 8) {
 
 /**
  * Validate the send form. Returns `{ ok, errors }` where `errors` carries per-field messages
- * for `address` and/or `amount`. A valid Chia address is a bech32 `xch1…`; the amount must be
- * a strictly-positive finite number.
+ * for `address`, `amount`, and/or `fee`. A valid Chia address is a bech32 `xch1…`; the amount
+ * must be a strictly-positive finite number. The fee is OPTIONAL — blank/absent is treated as
+ * 0 — but when present it must be a non-negative finite number (an XCH fee, always in XCH).
  *
- * @param {{address?:string, amount?:string, asset?:string}} form
- * @returns {{ok:boolean, errors:{address?:string, amount?:string}}}
+ * @param {{address?:string, amount?:string, asset?:string, fee?:string}} form
+ * @returns {{ok:boolean, errors:{address?:string, amount?:string, fee?:string}}}
  */
-export function validateSendForm({ address, amount } = {}) {
+export function validateSendForm({ address, amount, fee } = {}) {
   const errors = {};
   const addr = String(address || '').trim();
   if (!/^xch1[0-9a-z]{6,}$/i.test(addr)) {
@@ -127,6 +143,13 @@ export function validateSendForm({ address, amount } = {}) {
   const n = Number(String(amount == null ? '' : amount).trim());
   if (!Number.isFinite(n) || n <= 0) {
     errors.amount = 'Enter a positive amount';
+  }
+  const feeStr = String(fee == null ? '' : fee).trim();
+  if (feeStr !== '') {
+    const f = Number(feeStr);
+    if (!Number.isFinite(f) || f < 0) {
+      errors.fee = 'Fee must be zero or more';
+    }
   }
   return { ok: Object.keys(errors).length === 0, errors };
 }
@@ -171,14 +194,31 @@ function txTimestamp(item) {
   return t < 1e12 ? t * 1000 : t;
 }
 
+/** The durable coin/tx id from a tx item's varied id fields, or `null` if none is present. */
+function txRawId(item) {
+  const id = item.name || item.id || item.transactionId || item.tx_id || item.coinId || item.coin_id;
+  return id ? String(id) : null;
+}
+
+/** True if a tx item reports itself confirmed (tolerating several conventions). */
+function txConfirmed(item) {
+  if (item.confirmed === true) return true;
+  if (item.confirmed === false) return false;
+  const h = Number(item.confirmedAtHeight ?? item.confirmed_at_height ?? item.confirmed_height ?? 0);
+  return Number.isFinite(h) && h > 0;
+}
+
 /**
  * Normalise a chia_getTransactions response into a capped, newest-first activity list the UI can
- * render directly. Best-effort across Sage's tx shapes; unknown fields degrade gracefully.
+ * render directly. Best-effort across Sage's tx shapes; unknown fields degrade gracefully. Each
+ * item carries a SpaceScan coin link, an XCH fee label, and a confirmed/pending status so the
+ * Activity view can show full detail (parity with the native DIG Browser wallet's history).
  *
  * @param {any} raw the raw response (array, `{transactions}`, or `{data}`)
  * @param {{digAssetId?:string, max?:number}} [opts]
- * @returns {Array<{id:string, direction:'in'|'out', asset:string, amountLabel:string,
- *   timeLabel:string, timestamp:number, memo:string}>}
+ * @returns {Array<{id:string, rawId:string|null, direction:'in'|'out', asset:string,
+ *   amountLabel:string, timeLabel:string, timestamp:number, memo:string, feeLabel:string,
+ *   statusLabel:string, confirmed:boolean, spaceScanUrl:string|null}>}
  */
 export function activityViewModel(raw, { digAssetId = '', max = 100 } = {}) {
   const items = txList(raw);
@@ -186,14 +226,22 @@ export function activityViewModel(raw, { digAssetId = '', max = 100 } = {}) {
     const asset = txAsset(item, digAssetId);
     const amount = Number(item.amount);
     const timestamp = txTimestamp(item);
+    const rawId = txRawId(item);
+    const fee = Number(item.fee);
+    const confirmed = txConfirmed(item);
     return {
-      id: String(item.name || item.id || item.transactionId || item.tx_id || i),
+      id: rawId || String(i),
+      rawId,
       direction: txDirection(item),
       asset,
-      amountLabel: Number.isFinite(amount) ? formatUnits(Math.abs(amount), asset === 'xch' ? 'xch' : 'dig') : '—',
+      amountLabel: Number.isFinite(amount) ? formatBaseUnits(Math.abs(amount), asset === 'xch' ? 'xch' : 'dig') : '—',
       timeLabel: timestamp ? new Date(timestamp).toLocaleString() : '',
       timestamp,
       memo: String((Array.isArray(item.memos) && item.memos[0]) || item.memo || ''),
+      feeLabel: Number.isFinite(fee) && fee > 0 ? `${formatXch(fee)} XCH` : '',
+      confirmed,
+      statusLabel: confirmed ? 'Confirmed' : 'Pending',
+      spaceScanUrl: spaceScanCoinUrl(rawId),
     };
   });
   vm.sort((a, b) => b.timestamp - a.timestamp);

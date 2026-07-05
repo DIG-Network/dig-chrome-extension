@@ -79,9 +79,29 @@ order, default, and hash deep-link):
    "Resolving via" verdict (`resolve-status.mjs` over the `getDigNodeStatus` probe: custom >
    `dig.local` > `localhost` > `rpc.dig.net`), and a custom-node override that persists to
    `server.host` (which wins over the ladder, §8.1).
-2. **Wallet** — WalletConnect → Sage: aggregate HD balances (XCH + `$DIG` CAT via CHIP-0002
-   `getAssetBalance`), Receive (address + copy), Send (`chia_send`; validation + unit conversion
-   in `wallet-view.mjs`), and Activity (`chia_getTransactions` → `activityViewModel`).
+2. **Wallet** — a full Chia wallet brokered over WalletConnect → Sage, at parity with the native
+   DIG Browser wallet within MV3 limits (the extension holds no keys and never signs; every write
+   is handed to Sage to sign). All balances are Sage's wallet-wide AGGREGATE (across every HD
+   address) — the extension does NOT enumerate addresses. Five subviews (one shown at a time):
+   - **Assets** (default) — every balance (XCH + `$DIG` + each tracked CAT) via CHIP-0002
+     `getAssetBalance` (`{type,assetId}`), plus track/untrack a CAT by its 32-byte TAIL. The
+     tracked-CAT list persists in `chrome.storage.local` `wallet.watchedCats`; a tracked CAT uses
+     the Chia CAT convention of 3 decimals (`wallet-assets.mjs`).
+   - **Send** — asset picker (XCH / `$DIG` / any tracked CAT) + recipient + amount + optional XCH
+     fee → `chia_send` (`{assetId, amount, address, fee}`; `assetId:null` for XCH). Validation +
+     per-asset unit conversion in `wallet-view.mjs`.
+   - **Receive** — the address + a scannable QR (`qr.mjs`, black-on-white SVG) + copy + a SpaceScan
+     address link.
+   - **Activity** — paged history via `chia_getTransactions` (`{page}`) → `activityViewModel`, each
+     item carrying direction, amount, fee, confirmed/pending status, memo, and a SpaceScan coin link.
+   - **Offers** — make (`chia_createOffer` `{offerAssets, requestAssets, fee}`), inspect
+     (`chia_getOfferSummary` `{offer}` → `offerSummaryViewModel`), take (`chia_takeOffer`), and
+     cancel (`chia_cancelOffer`) a pasted `offer1…` string (`wallet-offers.mjs`).
+   Every subview renders the four states (loading / error / empty / success). WalletConnect pairing,
+   per-origin dapp consent, and Disconnect live in the tab; WalletConnect project id + custom node
+   config live in the options page (linked from the tab). Key custody, local signing, NFT/DID/store
+   management, and the advanced `dig_*` coin types are NOT replicable in an MV3 extension (Sage owns
+   the keys) and are out of scope.
 3. **Shield** — the active tab's verification verdict + per-resource proof ledger (§10).
 4. **Control Panel** — manage a detected local dig-node, else pitch installing one with a link to
    the full-page onboarding landing `control.html` (§11).
