@@ -63,6 +63,10 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'confirmSend',
   'sendStatus',
   'getActivity',
+  'makeOffer',
+  'inspectOffer',
+  'prepareTrade',
+  'confirmTrade',
 ]);
 
 /** True if `action` is a custody action the SW routes to the offscreen vault. */

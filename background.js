@@ -915,6 +915,25 @@ async function handleCustodyAction(message) {
       if (cache && Array.isArray(cache.events)) return { events: cache.events, cursorHeight: cache.cursorHeight || 0, cached: true };
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'activity scan failed' };
     }
+    case ACTIONS.makeOffer: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'makeOffer', offered: message.offered, requested: message.requested, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.inspectOffer: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'inspectOffer', offerStr: message.offerStr, coinsetUrl });
+    }
+    case ACTIONS.prepareTrade: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareTrade', offerStr: message.offerStr, tradeKind: message.tradeKind, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.confirmTrade: {
+      // The ONLY place a prepared trade is broadcast — reached only after the user approves in the UI.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmTrade', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'trade failed' };
+    }
     default:
       return { success: false, code: 'CUSTODY_ERROR', message: 'unknown custody action' };
   }

@@ -70,7 +70,7 @@ describe('CustodyWallet', () => {
     const store2 = createStore();
     store2.dispatch(setWalletView('trade'));
     renderWithProviders(<CustodyWallet />, { store: store2 });
-    expect(await screen.findByTestId('custody-trade-soon')).toBeInTheDocument();
+    expect(await screen.findByTestId('custody-trade')).toBeInTheDocument();
   });
 
   it('hides the chain-node setting by default (everyday tier)', async () => {

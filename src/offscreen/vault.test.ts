@@ -251,3 +251,87 @@ describe('Vault send ops', () => {
     expect(res.code).toBe('LOCKED');
   });
 });
+
+describe('Vault trade ops', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  async function unlockedZerosWallet(): Promise<Vault> {
+    const v = new Vault();
+    await v.handle({ op: 'importWallet', password: PW, mnemonic: golden.mnemonic }, deps);
+    return v;
+  }
+
+  // A chain that funds the golden index-0 address and accepts pushes (offer signatures/settlement are
+  // proven end-to-end in offers.test.ts; here we exercise the vault orchestration + wire conversion).
+  function tradeChain() {
+    const wasm = chia as unknown as { Simulator: new () => { newCoin(ph: Uint8Array, a: bigint): unknown }; fromHex(h: string): Uint8Array };
+    const ph0 = golden.unhardened[0].puzzleHashHex;
+    const coin = new wasm.Simulator().newCoin(wasm.fromHex(ph0), 5_000_000_000_000n);
+    const chain: ChainClient = {
+      totalUnspent: async () => 0,
+      unspentCoins: async (phs) => (phs.includes(ph0) ? [coin as never] : []),
+      pushSpendBundle: async () => ({ success: true }),
+      coinConfirmed: async () => true,
+      getCoinSpend: async () => null,
+      coinRecords: async () => [],
+    };
+    return chain;
+  }
+  const CAT = 'aa'.repeat(32);
+  const offerXchForCat = { offered: { asset: { kind: 'xch' as const }, amount: '100000000000' }, requested: { asset: { kind: 'cat' as const, assetId: CAT }, amount: '250' } };
+
+  it('makeOffer builds an offer1… string + two-sided summary; inspectOffer round-trips it', async () => {
+    const v = await unlockedZerosWallet();
+    const chain = tradeChain();
+    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, gapLimit: 2 }, { ...deps, chia, chain });
+    expect(made.success).toBe(true);
+    expect(made.offer?.startsWith('offer1')).toBe(true);
+    expect(made.offerSummary?.offered[0]).toEqual({ asset: { kind: 'xch' }, amount: '100000000000' });
+
+    const seen = await v.handle({ op: 'inspectOffer', offerStr: made.offer! }, { ...deps, chia, chain });
+    expect(seen.success).toBe(true);
+    expect(seen.offerSummary?.offered[0]).toEqual({ asset: { kind: 'xch' }, amount: '100000000000' });
+    expect(seen.offerSummary?.requested[0].asset).toEqual({ kind: 'cat', assetId: CAT });
+    expect(seen.offerSummary?.requested[0].amount).toBe('250');
+  });
+
+  it('prepareTrade(cancel) → confirmTrade broadcasts a self-spend; a second confirm is NO_PENDING', async () => {
+    const v = await unlockedZerosWallet();
+    const chain = tradeChain();
+    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, gapLimit: 2 }, { ...deps, chia, chain });
+    const prep = await v.handle({ op: 'prepareTrade', offerStr: made.offer!, tradeKind: 'cancel', gapLimit: 2 }, { ...deps, chia, chain });
+    expect(prep.success).toBe(true);
+    expect(prep.pendingId).toBeTruthy();
+    const conf = await v.handle({ op: 'confirmTrade', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(conf.success).toBe(true);
+    expect(conf.spentCoinId).toBeTruthy();
+    const again = await v.handle({ op: 'confirmTrade', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(again.code).toBe('NO_PENDING');
+  });
+
+  it('lock clears pending trades', async () => {
+    const v = await unlockedZerosWallet();
+    const chain = tradeChain();
+    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, gapLimit: 2 }, { ...deps, chia, chain });
+    const prep = await v.handle({ op: 'prepareTrade', offerStr: made.offer!, tradeKind: 'cancel', gapLimit: 2 }, { ...deps, chia, chain });
+    v.lock();
+    const conf = await v.handle({ op: 'confirmTrade', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(conf.code).toBe('NO_PENDING');
+  });
+
+  it('guards: BAD_REQUEST / LOCKED / CHAIN_UNAVAILABLE / WASM_UNAVAILABLE / NO_PENDING', async () => {
+    const v = await unlockedZerosWallet();
+    const chain = tradeChain();
+    expect((await v.handle({ op: 'makeOffer', gapLimit: 2 }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
+    expect((await v.handle({ op: 'inspectOffer' }, { ...deps, chia })).code).toBe('BAD_REQUEST');
+    expect((await v.handle({ op: 'prepareTrade', tradeKind: 'take' }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
+    expect((await v.handle({ op: 'makeOffer', ...offerXchForCat }, { ...deps, chia })).code).toBe('CHAIN_UNAVAILABLE');
+    expect((await v.handle({ op: 'inspectOffer', offerStr: 'offer1x' }, { ...deps })).code).toBe('WASM_UNAVAILABLE');
+    expect((await v.handle({ op: 'confirmTrade', pendingId: 'nope' }, { ...deps, chia, chain })).code).toBe('NO_PENDING');
+    // LOCKED: a fresh (no key) vault can't make an offer.
+    expect((await new Vault().handle({ op: 'makeOffer', ...offerXchForCat }, { ...deps, chia, chain })).code).toBe('LOCKED');
+  });
+});
