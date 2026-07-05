@@ -54,10 +54,9 @@ const EXTENSION_FILES = [
   // the React shell (#shared/* alias), the background SW, and the dig-viewer.
   'dig-control.mjs',
   'dig-ledger.mjs',
-  // Ecosystem funnel: shared link constants + first-run welcome page.
+  // Ecosystem funnel: shared link constants. (The first-run welcome page welcome.html + its TS
+  // entry src/entries/welcome.ts is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.)
   'links.mjs',
-  'welcome.html',
-  'welcome.js',
   // DIG Home (new-tab override) — ported from the native DIG Browser NTP.
   'newtab.html',
   'newtab.css',
@@ -304,12 +303,12 @@ function buildWebApp() {
     throw new Error('Vite build produced no dist-web/ output.');
   }
   copyDirRecursive(WEB_OUT_DIR, DIST_DIR);
-  for (const page of ['popup.html', 'app.html', 'offscreen.html', 'approval.html']) {
+  for (const page of ['popup.html', 'app.html', 'offscreen.html', 'approval.html', 'welcome.html']) {
     if (!fs.existsSync(path.join(DIST_DIR, page))) {
       throw new Error(`React build missing ${page} in dist/ — the Vite multi-entry input changed?`);
     }
   }
-  log('✓ Built + copied React shell (popup.html, app.html, offscreen.html, approval.html, assets, fonts)', 'green');
+  log('✓ Built + copied React shell (popup.html, app.html, offscreen.html, approval.html, welcome.html, assets, fonts)', 'green');
 }
 
 function createZip() {
