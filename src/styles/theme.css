@@ -1,0 +1,585 @@
+/*
+ * DIG extension shell theme — the DIG PRODUCT theme: a clean WHITE ground with the DIG violet→
+ * magenta accent (#7A3DFF → #C13DE0) and Space Grotesk / Space Mono, matching hub.dig.net /
+ * xchtip and SYSTEM.md canonical branding. One design language across ALL tabs (resolver, wallet,
+ * shield, control, apps) and both surfaces (popup + app.html). Palette lives in CSS variables
+ * (never baked into markup) so the surface stays theme-portable and agent-friendly; generous,
+ * consistent spacing between headings and content (§6.5). Self-contained — no remote assets (MV3
+ * CSP is `script-src 'self'`); the display/mono families fall back to the system stack until the
+ * Space Grotesk/Space Mono woff2 are vendored in-package (fast-follow).
+ */
+:root {
+  --dig-bg: #ffffff;
+  --dig-bg-raised: #faf9fd;
+  --dig-bg-elev: #f3f1fa;
+  --dig-border: #e8e4f3;
+  --dig-border-strong: #d8d2ec;
+  --dig-text: #191327;
+  --dig-text-dim: #565073;
+  --dig-text-faint: #8b86a4;
+  --dig-accent: #7a3dff;
+  --dig-accent-2: #c13de0;
+  --dig-accent-ink: #5b23d6;
+  --dig-accent-soft: rgba(122, 61, 255, 0.1);
+  --dig-good: #14b981;
+  --dig-warn: #d98a00;
+  --dig-bad: #e23b52;
+  --dig-radius: 16px;
+  --dig-radius-sm: 10px;
+  --dig-gap: 16px;
+  --dig-gap-sm: 10px;
+  --dig-gap-lg: 24px;
+  --dig-shadow: 0 1px 2px rgba(25, 19, 39, 0.05), 0 8px 24px rgba(25, 19, 39, 0.05);
+  --dig-display:
+    'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --dig-mono: 'Space Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--dig-bg);
+  color: var(--dig-text);
+  font-family: var(--dig-display);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dig-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.dig-app[data-surface='popup'] {
+  width: 372px;
+  min-height: 560px;
+}
+.dig-app[data-surface='fullpage'] {
+  min-height: 100vh;
+}
+
+/* ── header ── */
+.dig-header {
+  display: flex;
+  align-items: center;
+  gap: var(--dig-gap-sm);
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--dig-border);
+  background: var(--dig-bg);
+}
+.dig-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.dig-brand-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: linear-gradient(120deg, var(--dig-accent), var(--dig-accent-2));
+  flex: none;
+}
+.dig-header h1 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.2px;
+}
+.dig-header .dig-spacer {
+  flex: 1;
+}
+.dig-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--dig-radius-sm);
+  border: 1px solid var(--dig-border);
+  background: var(--dig-bg);
+  color: var(--dig-text-dim);
+  cursor: pointer;
+  font-size: 15px;
+}
+.dig-iconbtn:hover {
+  color: var(--dig-accent);
+  border-color: var(--dig-border-strong);
+}
+
+/* ── content ── */
+.dig-main {
+  flex: 1;
+  padding: 18px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dig-gap);
+  overflow-y: auto;
+}
+.dig-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--dig-text-faint);
+  margin: 0 0 10px;
+}
+h2.dig-heading {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  letter-spacing: 0.2px;
+}
+
+/* ── card ── */
+.dig-card {
+  background: var(--dig-bg);
+  border: 1px solid var(--dig-border);
+  border-radius: var(--dig-radius);
+  padding: 18px;
+  box-shadow: var(--dig-shadow);
+}
+.dig-card + .dig-card {
+  margin-top: var(--dig-gap);
+}
+
+/* ── buttons ── */
+.dig-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-radius: var(--dig-radius-sm);
+  border: 1px solid var(--dig-border-strong);
+  background: var(--dig-bg);
+  color: var(--dig-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dig-btn:hover:not(:disabled) {
+  border-color: var(--dig-accent);
+  color: var(--dig-accent-ink);
+}
+.dig-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dig-btn--primary {
+  background: linear-gradient(120deg, var(--dig-accent), var(--dig-accent-2));
+  border-color: transparent;
+  color: #fff;
+}
+.dig-btn--primary:hover:not(:disabled) {
+  color: #fff;
+  filter: brightness(1.05);
+}
+.dig-btn--block {
+  width: 100%;
+}
+.dig-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.dig-actionbar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--dig-gap-sm);
+}
+
+/* ── inputs ── */
+.dig-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--dig-gap);
+}
+.dig-field label {
+  font-size: 12px;
+  color: var(--dig-text-dim);
+  font-weight: 600;
+}
+.dig-input,
+.dig-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--dig-radius-sm);
+  border: 1px solid var(--dig-border-strong);
+  background: var(--dig-bg);
+  color: var(--dig-text);
+  font: inherit;
+}
+.dig-input:focus,
+.dig-select:focus,
+.dig-btn:focus-visible,
+.dig-iconbtn:focus-visible,
+.dig-tab:focus-visible,
+.dig-seg-btn:focus-visible,
+.dig-link:focus-visible {
+  outline: 2px solid var(--dig-accent);
+  outline-offset: 2px;
+}
+.dig-error-text {
+  color: var(--dig-bad);
+  font-size: 12px;
+}
+.dig-mono {
+  font-family: var(--dig-mono);
+}
+
+/* ── segmented control (wallet Home/Activity/Trade) ── */
+.dig-seg {
+  display: inline-flex;
+  padding: 3px;
+  gap: 3px;
+  background: var(--dig-bg-elev);
+  border: 1px solid var(--dig-border);
+  border-radius: var(--dig-radius-sm);
+}
+.dig-seg-btn {
+  padding: 7px 15px;
+  border: none;
+  background: transparent;
+  color: var(--dig-text-dim);
+  border-radius: 7px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dig-seg-btn[aria-selected='true'] {
+  background: var(--dig-bg);
+  color: var(--dig-accent-ink);
+  box-shadow: var(--dig-shadow);
+}
+
+/* ── bottom tab bar (compact 5-tab shell) ── */
+.dig-tabbar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-top: 1px solid var(--dig-border);
+  background: var(--dig-bg);
+}
+.dig-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 4px;
+  border: none;
+  background: transparent;
+  color: var(--dig-text-faint);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+.dig-tab[aria-selected='true'] {
+  color: var(--dig-accent-ink);
+}
+.dig-tab[aria-selected='true'] .dig-tab-glyph {
+  color: var(--dig-accent);
+}
+.dig-tab-glyph {
+  font-size: 17px;
+}
+
+/* ── sidebar (expanded app.html) ── */
+.dig-shell-expanded {
+  display: grid;
+  grid-template-columns: 236px 1fr;
+  min-height: 100vh;
+}
+.dig-sidebar {
+  border-right: 1px solid var(--dig-border);
+  background: var(--dig-bg-raised);
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dig-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px 18px;
+  font-weight: 700;
+  font-size: 16px;
+}
+.dig-sidebar .dig-tab {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
+  font-size: 13px;
+  padding: 11px 12px;
+  border-radius: var(--dig-radius-sm);
+  width: 100%;
+}
+.dig-sidebar .dig-tab[aria-selected='true'] {
+  background: var(--dig-accent-soft);
+}
+.dig-content-wide {
+  padding: 30px 36px;
+  max-width: 780px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dig-gap);
+}
+
+/* ── asset rows ── */
+.dig-asset {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-top: 1px solid var(--dig-border);
+}
+.dig-asset:first-child {
+  border-top: none;
+}
+.dig-asset-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--dig-accent-soft);
+  color: var(--dig-accent-ink);
+  font-weight: 700;
+  font-size: 12px;
+}
+.dig-asset-main {
+  flex: 1;
+  min-width: 0;
+}
+.dig-asset-name {
+  font-weight: 600;
+}
+.dig-asset-sub {
+  color: var(--dig-text-faint);
+  font-size: 12px;
+}
+.dig-asset-amt {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--dig-mono);
+}
+.dig-asset-fiat {
+  color: var(--dig-text-faint);
+  font-size: 12px;
+}
+
+/* ── portfolio hero ── */
+.dig-hero {
+  text-align: center;
+  padding: 10px 0 6px;
+}
+.dig-hero-label {
+  color: var(--dig-text-dim);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.dig-hero-value {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 6px 0 2px;
+  letter-spacing: 0.3px;
+  font-family: var(--dig-mono);
+}
+
+/* ── status pill ── */
+.dig-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--dig-border-strong);
+  color: var(--dig-text-dim);
+  background: var(--dig-bg);
+}
+.dig-pill[data-tone='good'] {
+  color: var(--dig-good);
+  border-color: color-mix(in srgb, var(--dig-good) 45%, transparent);
+}
+.dig-pill[data-tone='warn'] {
+  color: var(--dig-warn);
+  border-color: color-mix(in srgb, var(--dig-warn) 45%, transparent);
+}
+.dig-pill[data-tone='bad'] {
+  color: var(--dig-bad);
+  border-color: color-mix(in srgb, var(--dig-bad) 45%, transparent);
+}
+
+/* ── four-state helpers ── */
+.dig-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--dig-text-dim);
+}
+.dig-skeleton {
+  height: 46px;
+  border-radius: var(--dig-radius-sm);
+  background: linear-gradient(90deg, var(--dig-bg-elev), var(--dig-bg-raised), var(--dig-bg-elev));
+  background-size: 200% 100%;
+  animation: dig-shimmer 1.3s ease-in-out infinite;
+}
+.dig-skeleton + .dig-skeleton {
+  margin-top: 10px;
+}
+@keyframes dig-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dig-skeleton {
+    animation: none;
+  }
+}
+
+/* ── apps iframe ── */
+.dig-appsframe {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border: 0;
+  border-radius: var(--dig-radius);
+  background: var(--dig-bg-raised);
+}
+.dig-appswrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dig-gap-sm);
+  min-height: 440px;
+}
+
+/* ── misc rows ── */
+.dig-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  border-top: 1px solid var(--dig-border);
+}
+.dig-row:first-child {
+  border-top: none;
+}
+.dig-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.dig-muted {
+  color: var(--dig-text-faint);
+  font-size: 12px;
+}
+.dig-link {
+  color: var(--dig-accent-ink);
+  cursor: pointer;
+  background: none;
+  border: none;
+  font: inherit;
+  padding: 0;
+  text-decoration: none;
+}
+.dig-link:hover {
+  text-decoration: underline;
+}
+.dig-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dig-footer {
+  padding: 10px 18px 14px;
+  color: var(--dig-text-faint);
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--dig-border);
+}
+
+/* ── sheet / modal (Send · Receive) ── */
+.dig-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(25, 19, 39, 0.42);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 40;
+}
+@media (min-width: 640px) {
+  .dig-sheet-backdrop {
+    align-items: center;
+  }
+}
+.dig-sheet {
+  width: 100%;
+  max-width: 460px;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: var(--dig-bg);
+  border: 1px solid var(--dig-border);
+  border-radius: var(--dig-radius) var(--dig-radius) 0 0;
+  box-shadow: 0 -8px 40px rgba(25, 19, 39, 0.18);
+  padding: 18px;
+}
+@media (min-width: 640px) {
+  .dig-sheet {
+    border-radius: var(--dig-radius);
+  }
+}
+.dig-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.dig-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dig-qr-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--dig-border);
+  border-radius: var(--dig-radius-sm);
+  width: fit-content;
+  margin: 0 auto 12px;
+}
+
+/* Screen-reader-only utility for skip links + labels. */
+.dig-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -56,69 +56,116 @@ re-decrypts (§15).
   `wasm-bindgen` ES module using `import.meta.url` and MUST NOT be loaded via
   `importScripts()`.
 - `content_security_policy.extension_pages` MUST permit `'wasm-unsafe-eval'` (WASM
-  instantiation) and MUST restrict `script-src`/`object-src` to `'self'`.
+  instantiation) and MUST restrict `script-src`/`object-src` to `'self'`. It MUST additionally
+  declare an explicit `connect-src` enumerating every network egress (the chain host(s)
+  `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT-price host `api.dexie.space`,
+  `api.bugreport.dig.net`, and the WalletConnect relay), a `frame-src 'self'
+  https://explore.dig.net` (the Apps tab embed, §2.4), `font-src 'self'` (the vendored Space
+  Grotesk / Space Mono woff2), and `img-src 'self' data:`.
 - Content scripts (`middleware.js`, then `content.js`) run at `document_start`,
   `all_frames: true`, matching `<all_urls>`.
 - The injected provider (`dist/dig-provider.js`) and the page fetch bridge (`page-script.js`)
   are `web_accessible_resources` injected into the page's MAIN world.
 - Required permissions: `storage`, `webNavigation`, `tabs`, `declarativeNetRequest`,
-  `scripting`, `omnibox`, `search`, `notifications`. Host permissions MUST include the local
-  node hosts (`localhost`, `127.0.0.1`, `dig.local`, `*.dig.local`) and the hosted read tier
-  (`rpc.dig.net`, `*.dig.net`).
+  `scripting`, `omnibox`, `search`, `notifications`, `offscreen`, `idle` (the last two reserved
+  for the Phase-1 offscreen-document key custody + `chrome.idle` auto-lock). Host permissions
+  MUST include the local node hosts (`localhost`, `127.0.0.1`, `dig.local`, `*.dig.local`), the
+  hosted read tier (`rpc.dig.net`, `*.dig.net`), the wallet chain source (`coinset.org`), the
+  CAT-price host (`api.dexie.space`), the bug-report service (`api.bugreport.dig.net`), and the
+  dApp-store embed (`explore.dig.net`).
 
 An implementation targeting a browser without MV3 module service workers MUST provide an
 equivalent long-lived module context able to instantiate WASM.
 
-### 2.1 Popup UI surface (4 tabs)
+### 2.1 UI shell — one React app, two surfaces, five tabs
 
-The popup (`popup.html`, `popup.js` classic + `popup-wallet.js` module) is a dark-themed
-**ARIA `tablist` of four tabs**, in this order (`tabs.mjs` is the source of truth for the set,
-order, default, and hash deep-link):
+The UI is a **single React + TypeScript application** (`src/`) mounted by **two HTML entry
+points**, built by Vite into `dist-web/` and copied into `dist/` (§13):
 
-1. **Resolver** (default) — open a `chia://` address, an on/off resolution toggle, the §5.3
+- **`popup.html`** → `App surface="popup"` — the compact toolbar popup ("mobile"), a bottom
+  `tablist` + an in-wallet segmented control.
+- **`app.html`** → `App surface="fullpage"` — the full-page tab ("desktop"): the SAME app + route
+  tree, hosting ALL tabs; at ≥960px it renders the expanded sidebar layout, degrading to compact
+  in a narrow window (`useLayoutMode`).
+
+The top shell is an **ARIA `tablist` of five tabs** (`src/app/tabs.ts` is the source of truth for
+the set, order, default, and hash deep-link). Tabs are ordered **wallet-first** per the
+ladder-of-needs IA — visual order `Wallet · Apps · Resolver · Shield · Control` — and the
+**default landing is Wallet**. (A fuller `Wallet · Apps · Network` grouping, where a single Network
+tab hosts a `Resolver | Shield | Node` segmented control with `#resolver|#shield|#control` kept as
+`#network/*` aliases, is a planned fast-follow.) The tabs, described in role order:
+
+1. **Resolver** — open a `chia://` address, an on/off resolution toggle, the §5.3
    "Resolving via" verdict (`resolve-status.mjs` over the `getDigNodeStatus` probe: custom >
    `dig.local` > `localhost` > `rpc.dig.net`), and a custom-node override that persists to
    `server.host` (which wins over the ladder, §8.1).
-2. **Wallet** — a full Chia wallet brokered over WalletConnect → Sage, at parity with the native
-   DIG Browser wallet within MV3 limits (the extension holds no keys and never signs; every write
-   is handed to Sage to sign). All balances are Sage's wallet-wide AGGREGATE (across every HD
-   address) — the extension does NOT enumerate addresses. Five subviews (one shown at a time):
-   - **Assets** (default) — every balance (XCH + `$DIG` + each tracked CAT) via CHIP-0002
-     `getAssetBalance` (`{type,assetId}`), plus track/untrack a CAT by its 32-byte TAIL. The
-     tracked-CAT list persists in `chrome.storage.local` `wallet.watchedCats`; a tracked CAT uses
-     the Chia CAT convention of 3 decimals (`wallet-assets.mjs`).
-   - **Send** — asset picker (XCH / `$DIG` / any tracked CAT) + recipient + amount + optional XCH
-     fee → `chia_send` (`{assetId, amount, address, fee}`; `assetId:null` for XCH). Validation +
-     per-asset unit conversion in `wallet-view.mjs`.
-   - **Receive** — the address + a scannable QR (`qr.mjs`, black-on-white SVG) + copy + a SpaceScan
-     address link.
-   - **Activity** — paged history via `chia_getTransactions` (`{page}`) → `activityViewModel`, each
-     item carrying direction, amount, fee, confirmed/pending status, memo, and a SpaceScan coin link.
-   - **Offers** — make (`chia_createOffer` `{offerAssets, requestAssets, fee}`), inspect
-     (`chia_getOfferSummary` `{offer}` → `offerSummaryViewModel`), take (`chia_takeOffer`), and
-     cancel (`chia_cancelOffer`) a pasted `offer1…` string (`wallet-offers.mjs`).
-   Every subview renders the four states (loading / error / empty / success). WalletConnect pairing,
-   per-origin dapp consent, and Disconnect live in the tab; WalletConnect project id + custom node
-   config live in the options page (linked from the tab). Key custody, local signing, NFT/DID/store
-   management, and the advanced `dig_*` coin types are NOT replicable in an MV3 extension (Sage owns
-   the keys) and are out of scope.
-3. **Shield** — the active tab's verification verdict + per-resource proof ledger (§10).
-4. **Control Panel** — manage a detected local dig-node, else pitch installing one with a link to
-   the full-page onboarding landing `control.html` (§11).
+2. **Wallet** (default landing) — a Chia wallet brokered over WalletConnect → Sage (Phase 0 holds NO keys and never
+   signs; every write is handed to Sage). All balances are Sage's wallet-wide AGGREGATE (across
+   every HD address). The wallet is a **Balances & Intents** UX with a Home/Activity/Trade
+   segmented control:
+   - **Home** — portfolio hero (Phase 0 shows the XCH balance + an honest "fiat unavailable"
+     `≈ $—`; no fabricated fiat/delta), a Send · Receive · Trade action bar, the assets list
+     (XCH + `$DIG` + each tracked CAT via CHIP-0002 `getAssetBalance`), and recent activity.
+     Send/Receive open a shared bottom-sheet/modal (`Sheet`); tracked CATs persist in
+     `chrome.storage.local` `wallet.watchedCats` (`wallet-assets.mjs`).
+   - **Activity** — history via `chia_getTransactions` → `activityViewModel` (direction, amount,
+     fee, confirmed/pending status, SpaceScan coin link). Phase 2 replaces the source with a real
+     coin-diff indexer.
+   - **Trade** — make (`chia_createOffer`) + take (`chia_takeOffer`) a `offer1…` string
+     (`wallet-offers.mjs`).
+   Connect/pairing (WalletConnect QR), the connected-address chip, and Disconnect live in the tab;
+   the WalletConnect project id + custom node config live in the options page. Key custody, local
+   signing, NFTs/DIDs, address book, and coin control are Phase 1+ (added behind the same shell as
+   feature modules) and out of Phase-0 scope.
+3. **Shield** — the active tab's verification verdict + per-resource proof ledger (§10),
+   `getShieldLedger` → `dig-ledger.mjs` grouping.
+4. **Control** — manage a detected local dig-node, else pitch installing one (`getControlStatus`
+   → `dig-control.mjs` `controlPanelViewModel`); full token-gated management deep-links to the DIG
+   Browser (§11). Carries `data-mode` (`manage`|`install`).
+5. **Apps** (§2.4) — the curated DIG dApp store embedded in-window.
 
-- Exactly one panel is shown at a time via the `[hidden]` attribute; the active tab reflects
-  `aria-selected` + a roving `tabindex`, and the tablist is arrow-key navigable.
-- A `#wallet`/`#shield`/`#control`/`#resolver` location hash deep-links the opening tab.
-- The Shield + Control tabs carry a machine-readable status dot (`data-verified` / `data-node`);
-  the Control panel carries `data-mode` (`manage`|`install`). Every primary control has a stable
-  `data-testid`.
+- Each tab is a `role="tab"` with `aria-selected` + a roving `tabindex` and a stable `data-testid`
+  (`tab-<name>`); the active tab's content is a `role="tabpanel"`.
+- A `#<tab>` (or `#wallet/<view>`) location hash deep-links the opening tab + wallet sub-view; the
+  route is kept in sync with the hash so **⤢ pop-out** (`popup` surface only) opens `app.html`
+  carrying the current route (singleton — an existing tab is focused, not duplicated).
+- Every async surface renders the four states (loading / error / empty / success — `FourState`);
+  all copy flows through **react-intl** (`src/i18n`, the 14-locale ecosystem set; Phase 0 ships a
+  complete `en` catalog with the others falling back to English); a footer language selector
+  persists the choice to `wallet.settings.locale`.
 
-### 2.2 App version exposure (§6.7)
+### 2.2 State & data architecture
 
-Every popup + full page MUST surface the extension version (from `package.json`, injected at
-build time in place of the `__APP_VERSION__` placeholder) in three forms: a visible footer
-(`#appVersion`), a `<meta name="app-version">` tag, and the `window.__APP_VERSION__` global. The
-bug-report funnel appends this version so a report records the build it came from.
+- **Redux Toolkit + RTK Query**, one store per document (`src/app/store.ts`). The `walletApi`
+  slice (`src/api/api.ts`) owns all broker/chain reads/writes with tag-based cache invalidation.
+- **`chromeBaseQuery`** (`src/api/baseQuery.ts`) is the service-worker seam: it speaks
+  `chrome.runtime.sendMessage` (a `messages.mjs` ACTIONS envelope) instead of `fetch`, so the
+  background SW stays the authority for the resolver/shield/control endpoints. Wallet endpoints use
+  an injectable **transport** (`src/features/wallet/transport.ts`, the WalletConnect→Sage backend
+  in Phase 0) via `queryFn`.
+- **Cross-document convergence** (§3.4 of the design): durable client state lives in
+  `chrome.storage.local`; a `chrome.storage.onChanged` → store bridge (`src/app/storageSync.ts`)
+  re-hydrates settings and turns a connection change or a `walletCache.epoch.<tag>` bump into an
+  RTK Query `invalidateTags`, so the popup + `app.html` converge. The SW-authoritative read cache
+  is the pure `sw-cache.mjs` mechanism (bounded epoch-aware LRU; wired into the SW in a later phase).
+
+### 2.3 App version exposure (§6.7)
+
+Every entry MUST surface the extension version (from `package.json`, injected at build time in
+place of the `__APP_VERSION__` placeholder — in the HTML `<meta>` by `build.js`, in the JS bundle
+by Vite `define`) in three forms: a visible footer (`data-testid="app-version"`, `vX.Y.Z`), a
+`<meta name="app-version">` tag, and the `window.__APP_VERSION__` global. The embedded
+`<BugReportButton repo="dig-chrome-extension">` auto-detects it so a report records its build.
+
+### 2.4 Apps tab — explore.dig.net embed (#59)
+
+The Apps tab embeds the curated DIG dApp store (`https://explore.dig.net/apps`) in-window via an
+iframe on BOTH surfaces; explore.dig.net's own responsive breakpoint renders the mobile launcher
+at the popup's narrow width and the full desktop store in the wide `app.html` surface, so the
+iframe MUST fill its container. explore.dig.net sends no `frame-ancestors` block, so it embeds
+directly (the CSP adds `frame-src https://explore.dig.net`). The tab renders four states (loading
+until the iframe `load` fires or a timeout; error + retry that reloads the frame; success) and
+always offers an "open in a new tab" affordance.
 
 ---
 
@@ -533,16 +580,20 @@ extension MUST NOT diverge from it.
 
 ## 13. Build contract (`build.js`)
 
-- `node build.js` validates required source files and copies them into `dist/`, esbuild-bundles
-  `dig-provider.entry.mjs` → `dist/dig-provider.js`, esbuild-bundles `wallet-methods.mjs` into a
+- `node build.js` validates required source files and copies them into `dist/`, **builds the React
+  UI shell with Vite** (`vite build` → `dist-web/{popup.html,app.html,assets/*}` incl. the vendored
+  Space Grotesk / Space Mono woff2, then copies `dist-web/*` into `dist/` — plain Vite is used ONLY
+  for the React pages so `build.js` keeps owning the SW/content/provider/vendoring/zip path
+  unchanged), esbuild-bundles `dig-provider.entry.mjs` → `dist/dig-provider.js`, esbuild-bundles
+  `wallet-methods.mjs` into a
   self-contained ESM (inlining `@dignetwork/chia-provider` — browsers + MV3 SWs cannot resolve the
   bare specifier, so the raw re-export would break every consumer's module graph), esbuild-bundles
   `store-interceptor.entry.mjs` → `dist/store-interceptor.js` (a self-contained IIFE with the
   unit-tested `store-refs.mjs` inlined, since the opaque store frame can neither import a module nor
   fetch a cross-origin script — §5.3), vendors the WalletConnect SignClient into `dist/vendor/`,
   injects the build-time WalletConnect project id into `dist/wallet-wc.js`, injects the
-  `package.json` version into the `__APP_VERSION__` placeholder of `popup.html` + `control.html`
-  (§2.2), and emits `dist/agent-surface.json`.
+  `package.json` version into the `__APP_VERSION__` placeholder of `popup.html` + `app.html` +
+  `control.html` (§2.3), and emits `dist/agent-surface.json`.
 - The bundled `dist/wallet-methods.mjs` MUST retain the same named exports and contain NO surviving
   bare `@dignetwork/*` import; the build fails loudly otherwise.
 - `node build.js --zip` additionally produces a versioned `.zip` for distribution.
