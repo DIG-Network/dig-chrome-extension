@@ -785,3 +785,18 @@ custody requests, owns storage, and enforces auto-lock.
 | `wallet.unlockExpiry` | `storage.session` | no | non-secret unlock-expiry timestamp (ms); never key material |
 
 `storage.sync` is NEVER used for any wallet key (it would exfiltrate the encrypted seed).
+
+### 18.5 Custody UI & landing
+
+The wallet surface lands on a state-driven custody gate BEFORE the balances view:
+
+- **no wallet** (`lockState=none`): the fullscreen surface (`app.html`) runs the full onboarding flow
+  (create → back up the recovery phrase behind the accessible reveal → confirm one word, OR import a
+  phrase); the compact popup shows a single CTA card that opens fullscreen onboarding. A secondary
+  "use a Sage wallet instead" path keeps the WalletConnect broker reachable (self-custody is PRIMARY).
+- **locked**: a password unlock screen.
+- **unlocked**: the wallet (Balances & Intents).
+
+The recovery-phrase reveal MUST be accessible (§5.6): tap-to-reveal, a screen-reader-navigable
+numbered word list, an explicit Copy that AUTO-CLEARS the clipboard after a short delay, and an
+auto-hide of the on-screen phrase. The phrase is shown once for backup and never persisted.
