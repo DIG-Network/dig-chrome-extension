@@ -69,7 +69,7 @@ export function CustodyWallet() {
       </div>
 
       {walletView === 'home' && sending && (
-        <SendPanel spendableMojos={balances.data?.balances.xch ?? null} onClose={() => setSending(false)} />
+        <SendPanel assets={assets} onClose={() => setSending(false)} />
       )}
 
       {walletView === 'home' && !sending && (

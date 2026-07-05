@@ -32,7 +32,7 @@ import {
 } from '@/lib/keystore/bip39';
 import { scanBalances, receiveAddress, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
 import type { ChainClient } from '@/offscreen/chain';
-import { prepareXchSend, signAndBundle, type SendFlowWasm } from '@/offscreen/sendFlow';
+import { prepareXchSend, prepareCatSend, signAndBundle, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
 
 /** The keystore operations the vault handles (mirrors the SW custody actions). */
@@ -68,6 +68,8 @@ export interface VaultRequest {
   /** Send: amount + fee in base units (mojos), as decimal strings. */
   amount?: string;
   fee?: string;
+  /** Send: a CAT asset id (TAIL hex) for a token send; omitted/`'xch'` = native XCH. */
+  assetId?: string;
   /** confirmSend/sendStatus: the pending-send id / an input coin id (hex). */
   pendingId?: string;
   coinId?: string;
@@ -262,13 +264,23 @@ export class Vault {
     const seed = await this.heldSeed();
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const chia = deps.chia as unknown as SendFlowWasm;
-    const prepared = await prepareXchSend(chia, deps.chain, {
-      seed,
-      recipient: req.recipient,
-      amount: BigInt(req.amount),
-      fee: BigInt(req.fee ?? '0'),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
-    });
+    const isCat = !!req.assetId && req.assetId.toLowerCase() !== 'xch';
+    const prepared = isCat
+      ? await prepareCatSend(chia, deps.chain, {
+          seed,
+          assetId: req.assetId as string,
+          recipient: req.recipient,
+          amount: BigInt(req.amount),
+          fee: BigInt(req.fee ?? '0'),
+          ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+        })
+      : await prepareXchSend(chia, deps.chain, {
+          seed,
+          recipient: req.recipient,
+          amount: BigInt(req.amount),
+          fee: BigInt(req.fee ?? '0'),
+          ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+        });
     const pendingId = crypto.randomUUID();
     const inputCoinIds = prepared.coinSpends.map((cs) => chia.toHex(cs.coin.coinId()).replace(/^0x/i, '').toLowerCase());
     this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });

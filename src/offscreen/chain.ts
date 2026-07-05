@@ -7,9 +7,18 @@
 
 import type { ChiaWasm } from '@/lib/keystore/derive';
 
-/** An opaque wasm `Coin` (has `coinId()`); the send builder consumes these directly. */
+/** A wasm `Coin` (id + fields the CAT lineage reconstruction needs). */
 export interface ChainCoin {
   coinId(): Uint8Array;
+  parentCoinInfo: Uint8Array;
+  puzzleHash: Uint8Array;
+  amount: bigint;
+}
+/** A wasm `CoinSpend` (a parent's spend) for CAT lineage reconstruction. */
+export interface ChainCoinSpend {
+  coin: ChainCoin;
+  puzzleReveal: Uint8Array;
+  solution: Uint8Array;
 }
 /** An opaque wasm `SpendBundle` to broadcast. */
 export interface ChainSpendBundle {
@@ -26,6 +35,8 @@ export interface ChainClient {
   pushSpendBundle(bundle: ChainSpendBundle): Promise<{ success: boolean; error?: string }>;
   /** True once the coin (an input we spent) is recorded spent — i.e. the send confirmed. */
   coinConfirmed(coinIdHex: string): Promise<boolean>;
+  /** A coin's spend (puzzle + solution) — the parent spend, for CAT lineage reconstruction. */
+  getCoinSpend(coinIdHex: string): Promise<ChainCoinSpend | null>;
 }
 
 /** The default public coinset gateway (extensions bypass its CORS). */
@@ -47,6 +58,7 @@ interface WasmRpcClient {
   ): Promise<{ success: boolean; error?: string; coinRecords?: Array<{ coin: ChainCoin & { amount: bigint } }> }>;
   getCoinRecordByName(name: Uint8Array): Promise<{ success: boolean; coinRecord?: { spent: boolean; spentBlockIndex?: number } }>;
   pushTx(spendBundle: ChainSpendBundle): Promise<{ success: boolean; error?: string; status?: string }>;
+  getPuzzleAndSolution(coinId: Uint8Array, height?: number): Promise<{ success: boolean; coinSolution?: ChainCoinSpend }>;
 }
 export interface RpcCapableWasm extends ChiaWasm {
   fromHex(value: string): Uint8Array;
@@ -88,6 +100,10 @@ export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = D
     async coinConfirmed(coinIdHex) {
       const res = await rpc.getCoinRecordByName(chia.fromHex(coinIdHex));
       return !!(res.success && res.coinRecord && res.coinRecord.spent);
+    },
+    async getCoinSpend(coinIdHex) {
+      const res = await rpc.getPuzzleAndSolution(chia.fromHex(coinIdHex));
+      return res.success && res.coinSolution ? res.coinSolution : null;
     },
   };
 }
