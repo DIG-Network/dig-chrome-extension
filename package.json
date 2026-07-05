@@ -1,6 +1,6 @@
 {
   "name": "dig-browser-extension",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
   "types": "messages.d.ts",
@@ -19,7 +19,8 @@
     "server:install": "cd server && npm install",
     "server:stub": "node stub-server.js",
     "generate-icons": "node generate-icons.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "screenshots": "playwright test"
   },
   "keywords": [
     "dig-network",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.61.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",

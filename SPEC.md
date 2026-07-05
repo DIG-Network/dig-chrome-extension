@@ -78,31 +78,30 @@ re-decrypts (§15).
 An implementation targeting a browser without MV3 module service workers MUST provide an
 equivalent long-lived module context able to instantiate WASM.
 
-### 2.1 UI shell — one React app, two surfaces, five tabs
+### 2.1 UI shell — one React app, two surfaces, a mobile-OS (#65)
 
 The UI is a **single React + TypeScript application** (`src/`) mounted by **two HTML entry
-points**, built by Vite into `dist-web/` and copied into `dist/` (§13):
+points**, built by Vite into `dist-web/` and copied into `dist/` (§13), presented as a **mobile OS**:
 
-- **`popup.html`** → `App surface="popup"` — the compact toolbar popup ("mobile"), a bottom
-  `tablist` + an in-wallet segmented control.
-- **`app.html`** → `App surface="fullpage"` — the full-page tab ("desktop"): the SAME app + route
-  tree, hosting ALL tabs; at ≥960px it renders the expanded sidebar layout, degrading to compact
-  in a narrow window (`useLayoutMode`).
+- **`popup.html`** → `App surface="popup"` — a **compact phone**: a status-bar-feel header, ONE
+  scrolling content area, and a **STICKY phone bottom nav** pinned to the viewport bottom (only the
+  content scrolls; the nav is always visible; the scroll area reserves bottom padding = nav height +
+  `env(safe-area-inset-bottom)`). A soft DIG violet→magenta ambient wallpaper sits behind the chrome;
+  switching screens plays a mobile-OS app-open transition.
+- **`app.html`** → `App surface="fullpage"` — a **tablet/desktop-OS**: the SAME app + route tree in
+  the expanded sidebar-rail layout at ≥960px (a wider multi-column widget board), degrading to the
+  compact phone in a narrow window (`useLayoutMode`).
 
-The top shell is an **ARIA `tablist` of five tabs** (`src/app/tabs.ts` is the source of truth for
-the set, order, default, and hash deep-link). Tabs are ordered **wallet-first** per the
-ladder-of-needs IA — visual order `Wallet · Apps · Resolver · Shield · Control` — and the
-**default landing is Wallet**. (A fuller `Wallet · Apps · Network` grouping, where a single Network
-tab hosts a `Resolver | Shield | Node` segmented control with `#resolver|#shield|#control` kept as
-`#network/*` aliases, is a planned fast-follow.) The tabs, described in role order:
+The nav is an **ARIA `tablist` of four screens** (`src/app/tabs.ts` is the source of truth for the
+set, order, default, and hash deep-link) following the Fable **Home · Wallet · Apps · Network**
+grouping; the **default landing is Home**. Every surface stays reachable:
 
-1. **Resolver** — open a `chia://` address, an on/off resolution toggle, the §5.3
-   "Resolving via" verdict (`resolve-status.mjs` over the `getDigNodeStatus` probe: custom >
-   `dig.local` > `localhost` > `rpc.dig.net`), and a custom-node override that persists to
-   `server.host` (which wins over the ladder, §8.1).
-2. **Wallet** (default landing) — a Chia wallet brokered over WalletConnect → Sage (Phase 0 holds NO keys and never
-   signs; every write is handed to Sage). All balances are Sage's wallet-wide AGGREGATE (across
-   every HD address). The wallet is a **Balances & Intents** UX with a Home/Activity/Trade
+0. **Home** (default landing) — the mobile-OS launcher above the nav: a glanceable wallet-balance
+   widget (→ Wallet), Send · Receive · Trade quick-action tiles (→ the wallet on the right sub-view),
+   the native dApp launcher grid (§2.4, first N + "see all" → Apps), and status widgets (lock state,
+   local-node/gateway status → Network, a recent-activity peek → the ledger). Four states drive the
+   launcher; the wallet widgets degrade gracefully when the wallet is locked/absent.
+1. **Wallet** — the self-custody wallet (§18); a **Balances & Intents** UX with a Home/Activity/Trade
    segmented control:
    - **Home** — portfolio hero (Phase 0 shows the XCH balance + an honest "fiat unavailable"
      `≈ $—`; no fabricated fiat/delta), a Send · Receive · Trade action bar, the assets list
@@ -118,18 +117,26 @@ tab hosts a `Resolver | Shield | Node` segmented control with `#resolver|#shield
    the WalletConnect project id + custom node config live in the options page. Key custody, local
    signing, NFTs/DIDs, address book, and coin control are Phase 1+ (added behind the same shell as
    feature modules) and out of Phase-0 scope.
-3. **Shield** — the active tab's verification verdict + per-resource proof ledger (§10),
-   `getShieldLedger` → `dig-ledger.mjs` grouping.
-4. **Control** — manage a detected local dig-node, else pitch installing one (`getControlStatus`
-   → `dig-control.mjs` `controlPanelViewModel`); full token-gated management deep-links to the DIG
-   Browser (§11). Carries `data-mode` (`manage`|`install`).
-5. **Apps** (§2.4) — the curated DIG dApp store as a native in-extension launcher.
+2. **Apps** (§2.4) — the curated DIG dApp store as a native in-extension launcher.
+3. **Network** — the Fable grouping that hosts the three ambient/pull-on-failure surfaces behind one
+   nav item via a `Resolver | Shield | Node` segmented sub-control (`ui.networkView`):
+   - **Resolver** — open a `chia://` address, an on/off resolution toggle, the §5.3 "Resolving via"
+     verdict (`resolve-status.mjs` over the `getDigNodeStatus` probe: custom > `dig.local` >
+     `localhost` > `rpc.dig.net`), and a custom-node override that persists to `server.host`.
+   - **Shield** — the active tab's verification verdict + per-resource proof ledger (§10),
+     `getShieldLedger` → `dig-ledger.mjs` grouping.
+   - **Node** (control) — manage a detected local dig-node, else pitch installing one
+     (`getControlStatus` → `dig-control.mjs`); full token-gated management deep-links to the DIG
+     Browser (§11).
 
 - Each tab is a `role="tab"` with `aria-selected` + a roving `tabindex` and a stable `data-testid`
-  (`tab-<name>`); the active tab's content is a `role="tabpanel"`.
-- A `#<tab>` (or `#wallet/<view>`) location hash deep-links the opening tab + wallet sub-view; the
-  route is kept in sync with the hash so **⤢ pop-out** (`popup` surface only) opens `app.html`
-  carrying the current route (singleton — an existing tab is focused, not duplicated).
+  (`tab-<name>`, where name ∈ `home|wallet|apps|network`); the active screen's content is a
+  `role="tabpanel"`, rendered with `key={tab}` so the app-open transition replays on switch.
+- A `#<tab>` / `#wallet/<view>` / `#network/<view>` location hash deep-links the opening screen + its
+  sub-view. **Legacy `#resolver`/`#shield`/`#control` deep-links still resolve** (→ the Network
+  screen on that sub-view) for back-compat with the pop-out + external links. The route is kept in
+  sync with the hash so **⤢ pop-out** (`popup` surface only) opens `app.html` carrying the current
+  route (singleton — an existing tab is focused, not duplicated).
 - Every async surface renders the four states (loading / error / empty / success — `FourState`);
   all copy flows through **react-intl** (`src/i18n`, the 14-locale ecosystem set; Phase 0 ships a
   complete `en` catalog with the others falling back to English); a footer language selector

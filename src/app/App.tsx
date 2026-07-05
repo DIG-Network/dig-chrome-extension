@@ -32,6 +32,7 @@ function Shell({ surface }: { surface: Surface }) {
   const mode = useLayoutMode(surface);
   const tab = useAppSelector((s) => s.ui.tab);
   const walletView = useAppSelector((s) => s.ui.walletView);
+  const networkView = useAppSelector((s) => s.ui.networkView);
 
   // Boot: publish version (§6.7) + install the storage→store bridge (§3.4).
   useEffect(() => {
@@ -53,7 +54,7 @@ function Shell({ surface }: { surface: Surface }) {
 
   // Keep the hash in sync with the route so ⤢ pop-out carries the current place.
   useEffect(() => {
-    const next = routeToHash(tab, walletView);
+    const next = routeToHash(tab, walletView, networkView);
     if (location.hash !== next) {
       try {
         history.replaceState(null, '', next);
@@ -61,7 +62,7 @@ function Shell({ surface }: { surface: Surface }) {
         location.hash = next;
       }
     }
-  }, [tab, walletView]);
+  }, [tab, walletView, networkView]);
 
   return (
     <>

@@ -57,20 +57,42 @@ body {
 }
 .dig-app[data-surface='popup'] {
   width: 372px;
-  min-height: 560px;
+}
+/* Compact = a phone: a fixed viewport where only the content scrolls and the nav bar stays pinned. */
+.dig-app[data-layout='compact'] {
+  position: relative;
+  height: 600px;
+  overflow: hidden;
 }
 .dig-app[data-surface='fullpage'] {
   min-height: 100vh;
 }
+/* Mobile-OS wallpaper: a soft DIG violet→magenta ambient depth behind the phone chrome. */
+.dig-app[data-layout='compact']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 60% at 15% -5%, color-mix(in srgb, var(--dig-accent) 16%, transparent), transparent 60%),
+    radial-gradient(120% 55% at 100% 0%, color-mix(in srgb, var(--dig-accent-2) 14%, transparent), transparent 55%);
+}
+.dig-app[data-layout='compact'] > * {
+  position: relative;
+  z-index: 1;
+}
 
-/* ── header ── */
+/* ── header (mobile-OS status-bar feel: pinned, translucent, blurred) ── */
 .dig-header {
   display: flex;
   align-items: center;
   gap: var(--dig-gap-sm);
   padding: 14px 18px;
   border-bottom: 1px solid var(--dig-border);
-  background: var(--dig-bg);
+  background: color-mix(in srgb, var(--dig-bg) 82%, transparent);
+  backdrop-filter: blur(12px);
+  flex: none;
 }
 .dig-brand {
   display: flex;
@@ -112,7 +134,7 @@ body {
   border-color: var(--dig-border-strong);
 }
 
-/* ── content ── */
+/* ── content (the only scroll container on the phone; nav stays pinned below) ── */
 .dig-main {
   flex: 1;
   padding: 18px 18px 20px;
@@ -120,6 +142,11 @@ body {
   flex-direction: column;
   gap: var(--dig-gap);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* Compact: leave room so content never hides behind the sticky bottom nav (+ safe-area inset). */
+.dig-app[data-layout='compact'] .dig-main {
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
 }
 .dig-section-title {
   font-size: 12px;
@@ -258,34 +285,49 @@ h2.dig-heading {
   box-shadow: var(--dig-shadow);
 }
 
-/* ── bottom tab bar (compact 5-tab shell) ── */
+/* ── phone bottom nav (STICKY: pinned to the viewport bottom, always visible + tappable) ── */
 .dig-tabbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  flex: none;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--dig-border);
-  background: var(--dig-bg);
+  background: color-mix(in srgb, var(--dig-bg) 85%, transparent);
+  backdrop-filter: blur(14px);
 }
 .dig-tab {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 9px 4px;
+  gap: 4px;
+  padding: 7px 4px;
   border: none;
+  border-radius: 14px;
   background: transparent;
   color: var(--dig-text-faint);
   cursor: pointer;
   font-size: 10px;
   font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease;
 }
+.dig-tab:hover {
+  color: var(--dig-text-dim);
+}
+/* Active screen = a squircle pill highlight, like a phone nav. */
 .dig-tab[aria-selected='true'] {
   color: var(--dig-accent-ink);
+  background: var(--dig-accent-soft);
 }
 .dig-tab[aria-selected='true'] .dig-tab-glyph {
-  color: var(--dig-accent);
+  transform: translateY(-1px) scale(1.08);
 }
 .dig-tab-glyph {
-  font-size: 17px;
+  font-size: 19px;
+  transition: transform 0.15s ease;
 }
 
 /* ── sidebar (expanded app.html) ── */
@@ -655,4 +697,163 @@ h2.dig-heading {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ── mobile-OS screen open transition (#65) ── */
+.dig-screen {
+  animation: dig-screen-enter 0.22s ease both;
+}
+@keyframes dig-screen-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── mobile-OS Home (#65 — launcher widgets + app icons) ── */
+.dig-home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dig-gap);
+}
+.dig-home-board {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+/* Wide (tablet/desktop-OS): a broader widget board. */
+.dig-content-wide .dig-home-board {
+  grid-template-columns: repeat(4, 1fr);
+}
+.dig-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 14px;
+  border: 1px solid var(--dig-border);
+  border-radius: var(--dig-radius);
+  background: color-mix(in srgb, var(--dig-bg) 88%, transparent);
+  box-shadow: var(--dig-shadow);
+  color: var(--dig-text);
+  cursor: pointer;
+  font: inherit;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+button.dig-widget:hover,
+button.dig-widget:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--dig-border-strong);
+  outline: none;
+}
+button.dig-widget:focus-visible {
+  outline: 2px solid var(--dig-accent);
+  outline-offset: 2px;
+}
+.dig-widget-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dig-text-faint);
+}
+.dig-widget-value {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.dig-widget-value--muted {
+  font-size: 15px;
+  color: var(--dig-accent-ink);
+}
+/* The balance widget spans the full board width (the phone's hero glance). */
+.dig-widget--balance {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--dig-accent) 12%, var(--dig-bg)), color-mix(in srgb, var(--dig-accent-2) 10%, var(--dig-bg)));
+}
+.dig-quickactions {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  gap: 8px;
+  padding: 10px;
+  cursor: default;
+}
+.dig-quickaction {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 4px;
+  border: none;
+  border-radius: var(--dig-radius-sm);
+  background: var(--dig-bg-elev);
+  color: var(--dig-text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.dig-quickaction:hover,
+.dig-quickaction:focus-visible {
+  background: var(--dig-accent-soft);
+  color: var(--dig-accent-ink);
+  outline: none;
+}
+.dig-quickaction-glyph {
+  font-size: 18px;
+}
+.dig-status-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dig-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--dig-border);
+  background: var(--dig-bg-elev);
+  color: var(--dig-text-dim);
+}
+.dig-pill--btn {
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+.dig-pill--ok {
+  color: #1f7a3d;
+  border-color: color-mix(in srgb, #1f7a3d 30%, transparent);
+  background: color-mix(in srgb, #1f7a3d 10%, transparent);
+}
+.dig-pill--warn {
+  color: var(--dig-accent-ink);
+  border-color: var(--dig-accent-soft);
+  background: var(--dig-accent-soft);
+}
+.dig-activitypeek-list {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+.dig-home-launcher {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dig-screen {
+    animation: none;
+  }
+  .dig-widget,
+  .dig-quickaction {
+    transition: none;
+  }
 }

@@ -25,10 +25,17 @@ beforeEach(() => {
       if (msg?.action === 'getLockState') reply = { lockState: 'unlocked' };
       else if (msg?.action === 'getCustodyBalances') reply = { balances: { xch: 2_510_000_000_000, cats: {} } };
       else if (msg?.action === 'getReceiveAddress') reply = { address: 'xch1qqqqcustodyreceiveaddressqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzz' };
+      else if (msg?.action === 'getActivity') reply = { events: [], cursorHeight: 0 };
+      else if (msg?.action === 'getDigNodeStatus') reply = { reachable: false, base: null };
       if (cb) cb(reply);
       return Promise.resolve(reply);
     },
   );
+  // The mobile-OS Home (the default screen) fetches explore's /store.json directly — stub it.
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true,
+    json: async () => ({ apps: [{ slug: 'chia-offer', name: 'Chia-Offer', icon: 'https://explore.dig.net/catalog/chia-offer/icon-512.png', link: 'https://chia-offer.on.dig.net/', category: 'tools', featured: true }] }),
+  })));
 });
 afterEach(() => {
   window.matchMedia = original;
@@ -36,15 +43,25 @@ afterEach(() => {
 });
 
 describe('App shell', () => {
-  it('renders the 5-tab shell wallet-first (wallet default) + versioned footer', async () => {
+  it('renders the mobile-OS bottom nav (Home · Wallet · Apps · Network), Home default + versioned footer', async () => {
     renderApp('popup', makeTransport());
-    for (const t of ['wallet', 'apps', 'resolver', 'shield', 'control']) {
+    for (const t of ['home', 'wallet', 'apps', 'network']) {
       expect(screen.getByTestId(`tab-${t}`)).toBeInTheDocument();
     }
-    // Wallet is the default landing; the unlocked self-custody wallet renders its balances body.
-    expect(await screen.findByTestId('custody-wallet')).toBeInTheDocument();
+    // Home is the default landing (the mobile-OS launcher).
+    expect(await screen.findByTestId('home-screen')).toBeInTheDocument();
     expect(screen.getByTestId('app-version')).toHaveTextContent('v0.0.0-test');
     expect(screen.getByTestId('popout-fullview')).toBeInTheDocument();
+  });
+
+  it('Home shows the wallet-balance widget + quick actions + dApp launcher', async () => {
+    renderApp('popup', makeTransport());
+    expect(await screen.findByTestId('home-balance')).toBeInTheDocument();
+    expect(screen.getByTestId('home-quickactions')).toBeInTheDocument();
+    expect(await screen.findByTestId('home-apps-grid')).toBeInTheDocument();
+    // The balance widget → Wallet screen.
+    await userEvent.click(screen.getByTestId('home-balance'));
+    expect(await screen.findByTestId('custody-wallet')).toBeInTheDocument();
   });
 
   it('shows the custody portfolio + scanned assets on the wallet tab', async () => {
@@ -85,11 +102,15 @@ describe('App shell', () => {
     expect(screen.queryByTestId('apps-frame')).not.toBeInTheDocument();
   });
 
-  it('renders the resolver, shield, and control tabs', async () => {
+  it('groups resolver/shield/control under the Network screen (every surface reachable)', async () => {
     renderApp('popup', makeTransport());
-    await userEvent.click(screen.getByTestId('tab-shield'));
+    await userEvent.click(screen.getByTestId('tab-network'));
+    // Network defaults to the resolver sub-view.
+    expect(await screen.findByTestId('network-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('resolver-panel')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('seg-shield'));
     expect(await screen.findByTestId('shield-panel')).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('tab-control'));
+    await userEvent.click(screen.getByTestId('seg-control'));
     expect(await screen.findByTestId('control-panel')).toBeInTheDocument();
   });
 
