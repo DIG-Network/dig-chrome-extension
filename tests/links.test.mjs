@@ -9,9 +9,6 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import {
   HUB_URL,
   DIG_NETWORK_URL,
@@ -59,13 +56,6 @@ test('Explore URL points at explore.dig.net (the curated dApp store)', () => {
 
 test('bug-report URL points at bugreport.dig.net', () => {
   assert.equal(BUGREPORT_URL, 'https://bugreport.dig.net');
-});
-
-test('popup.js mirrors the Explore + bug-report funnel URLs verbatim (classic script can\'t import)', () => {
-  const root = dirname(dirname(fileURLToPath(import.meta.url)));
-  const popup = readFileSync(join(root, 'popup.js'), 'utf8');
-  assert.ok(popup.includes(EXPLORE_URL), 'popup.js must reference explore.dig.net');
-  assert.ok(popup.includes(BUGREPORT_URL), 'popup.js must reference bugreport.dig.net');
 });
 
 test('Get-$DIG URL points at TibetSwap', () => {
@@ -139,17 +129,3 @@ test('every RESOURCE_LINKS entry has a label, an https url, and is external', ()
   }
 });
 
-// popup.js is a classic script (can't `import`) so it mirrors RESOURCE_LINKS inline. This
-// guards the two from drifting: the popup's labels MUST match links.mjs verbatim (so e.g. the
-// $DIG sigil can never be present in one surface and missing in the other).
-test('popup.js RESOURCE_LINKS labels mirror links.mjs verbatim', () => {
-  const root = dirname(dirname(fileURLToPath(import.meta.url)));
-  const popup = readFileSync(join(root, 'popup.js'), 'utf8');
-  for (const link of RESOURCE_LINKS) {
-    assert.match(
-      popup,
-      new RegExp(`id:\\s*'${link.id}',\\s*label:\\s*'${link.label.replace(/\$/g, '\\$')}'`),
-      `popup.js must mirror RESOURCE_LINKS "${link.id}" label "${link.label}"`,
-    );
-  }
-});

@@ -2,7 +2,7 @@
  * Tests for the shared dig-node host config (server-config.mjs).
  *
  * Before unification, three surfaces disagreed on the SAME storage key `server.host`:
- *   - popup.js   → "RPC Host", default `localhost:80`
+ *   - the old vanilla popup → "RPC Host", default `localhost:80`
  *   - options.js → "Companion host", default `localhost:8080`
  *   - background → getServerConfig fallback defaulted to port 80
  * This module is the single source of truth: ONE name (the dig-node host), ONE default

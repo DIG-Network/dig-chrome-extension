@@ -20,12 +20,11 @@ const EXIT = Object.freeze({ SUCCESS: 0, VALIDATION_FAILED: 2, BUILD_STEP_FAILED
 
 const EXTENSION_FILES = [
   'manifest.json',
-  // NB: the popup + full-page wallet UI (popup.html / app.html + their JS/CSS) are now the React
-  // shell BUILT BY VITE into dist-web/ and copied into dist/ by buildWebApp() below — NOT the old
-  // hand-written popup.html/popup.css/popup.js/popup-wallet.js (superseded by #56, kept in-repo as
-  // history + for the legacy node-test suite, but no longer shipped). The pure view-models below
-  // are still copied because the vanilla service worker imports them at runtime; the React bundle
-  // inlines its own copies via the #shared/* alias.
+  // NB: the popup + full-page wallet UI (popup.html / app.html) are the React shell BUILT BY VITE
+  // into dist-web/ and copied into dist/ by buildWebApp() below. The old hand-written vanilla popup
+  // (popup.js / popup-wallet.js / popup.css) was superseded by the React shell (#56) and has been
+  // removed. The pure view-models below are still copied because the vanilla service worker imports
+  // them at runtime; the React bundle inlines its own copies via the #shared/* alias.
   // Pure popup view-models (tab routing, wallet number/validation logic, §5.3 resolve verdict).
   'tabs.mjs',
   'wallet-view.mjs',
@@ -52,7 +51,7 @@ const EXTENSION_FILES = [
   'messages.mjs',
   // DIG Control Panel (dig://control parity) decision logic + the DIG Shields per-resource
   // proof ledger (#134, byte-mirror of the browser's dig/shields/dig_ledger.mjs). Imported by
-  // the popup (popup-wallet.js), the background SW, and the dig-viewer.
+  // the React shell (#shared/* alias), the background SW, and the dig-viewer.
   'dig-control.mjs',
   'dig-ledger.mjs',
   // Ecosystem funnel: shared link constants + first-run welcome page.

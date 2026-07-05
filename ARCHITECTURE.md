@@ -50,7 +50,7 @@ pinned digest before any crypto runs — a mismatch fails closed.
 | `content.js` | Content script — rewrites `chia://` resource references (img/script/link/srcset/etc.) on every page |
 | `middleware.js` | Content script — fallback-strategy ordering for resolving `chia://` requests |
 | `page-script.js` | Injected into the page (main world) to intercept `chia://` before the browser fetches it |
-| `popup.html` / `popup.css` / `popup.js` / `popup-wallet.js` | Toolbar popup — leads with the three actions (**Wallet · Shield · Control Panel**, mirroring the native browser toolbar); `popup-wallet.js` owns the toolbar switcher + the wallet panel + the DIG Shields proof-ledger panel + the Control Panel (driven by `dig-control.mjs` / `dig-ledger.mjs`). Open a `chia://` address + the resolution toggle + ecosystem funnels round it out. |
+| `popup.html` + `app.html` (React shell, `src/entries/popup.tsx` / `app.tsx`) | Toolbar popup + full-page wallet — the React/TypeScript shell built by Vite (Wallet · Shield · Control Panel · Apps, mobile-OS layout). Owns the wallet, the DIG Shields proof-ledger, the Control Panel (via `dig-control.mjs` / `dig-ledger.mjs`), open-`chia://`, the resolution toggle, and ecosystem funnels. (The old hand-written vanilla popup `popup.js` / `popup-wallet.js` / `popup.css` was superseded by this React shell and removed.) |
 | `dig-viewer.html` / `dig-viewer.js` | Standalone viewer iframe that fetches + embeds DIG content via the SW |
 | `src/favicon.png`, `src/logo.png` | Extension icon + popup logo |
 
