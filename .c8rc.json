@@ -10,7 +10,8 @@
     "dist/**",
     "server/**",
     "**/*.d.ts",
-    "dig-provider.entry.mjs"
+    "dig-provider.entry.mjs",
+    "store-interceptor.entry.mjs"
   ],
   "reporter": ["text", "text-summary"],
   "check-coverage": true,
