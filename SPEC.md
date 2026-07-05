@@ -821,3 +821,21 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
 - **Caching.** The last scan is cached (`walletCache.balances`, non-secret); a transient scan failure
   returns the cached snapshot flagged `cached` (cached-first paint).
 - **Receive.** The pooled receive address is index 0, unhardened (`getReceiveAddress`).
+
+### 18.7 Spend signing
+
+Signing runs in the offscreen vault (it holds the key) using the shipped `chia-wallet-sdk-wasm` — NO
+bespoke crypto crate is required, for own OR foreign (dApp-supplied) spends:
+
+- **Required signatures** are reconstructed from ANY coin spends by running each puzzle against its
+  solution and parsing the output conditions (`Program.run().value.toList()` +
+  `parseAggSigMe()` / `parseAggSigUnsafe()`).
+- **The signed message** for an AGG_SIG_ME is `rawMessage ‖ coinId ‖ AGG_SIG_ME_ADDITIONAL_DATA`
+  (the network genesis — mainnet `ccd5bb…`); AGG_SIG_UNSAFE signs the raw message unchanged.
+- Each is signed with the matching key (raw or its synthetic form — `SecretKey.sign`) and combined
+  with `Signature.aggregate`. A required signer with no matching key fails loudly (`MISSING_KEY`)
+  rather than producing an invalid bundle.
+- Own spends may also be signed directly by the wasm. Both paths are proven consensus-valid against
+  the wasm simulator (a reconstructed signature is accepted by `Simulator.newTransaction`).
+- This module BUILDS + VALIDATES signatures only; broadcasting a spend is a separate, per-signature
+  user-approved step (§5.5). Mainnet spends are never auto-broadcast in tests.
