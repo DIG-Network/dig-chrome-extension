@@ -82,7 +82,8 @@ export interface XchSendOpts {
 
 /** A decoded, tamper-resistant spend summary (base units) read back from the built coin spends. */
 export interface SpendSummary {
-  asset: 'XCH';
+  /** `'XCH'` for native, or a CAT asset id (TAIL hex) for a token send. */
+  asset: string;
   sent: string;
   change: string;
   fee: string;
