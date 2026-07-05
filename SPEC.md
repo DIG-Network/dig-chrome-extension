@@ -59,9 +59,10 @@ re-decrypts (§15).
   instantiation) and MUST restrict `script-src`/`object-src` to `'self'`. It MUST additionally
   declare an explicit `connect-src` enumerating every network egress (the chain host(s)
   `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT-price host `api.dexie.space`,
-  `api.bugreport.dig.net`, and the WalletConnect relay), `frame-src 'self'`, `font-src 'self'` (the
-  vendored Space Grotesk / Space Mono woff2), and `img-src 'self' data: https://explore.dig.net`
-  (the native dApp-launcher icons, §2.4).
+  `api.bugreport.dig.net`, and the WalletConnect relay), `frame-src 'self' https:` (the in-window
+  dApp app-view frames curated store `link`s over https, §2.4a), `font-src 'self'` (the vendored Space
+  Grotesk / Space Mono woff2), and `img-src 'self' data: https://explore.dig.net` (the native
+  dApp-launcher icons, §2.4).
 - Content scripts (`middleware.js`, then `content.js`) run at `document_start`,
   `all_frames: true`, matching `<all_urls>`.
 - The injected provider (`dist/dig-provider.js`) and the page fetch bridge (`page-script.js`)
@@ -182,6 +183,35 @@ retry / empty / success) and always offers a "browse the full store" affordance 
 The `/store.json` entry shape is `{ slug, name, icon, link, category, featured, accentColor? }` with
 `icon` + `link` absolute https URLs; featured entries come first. Entries missing a slug/name or a
 valid absolute icon/link are dropped defensively.
+
+### 2.4a In-window dApp app-view (#65)
+
+Tapping a launcher icon (on the Apps screen OR the Home launcher widget) LAUNCHES the dApp INSIDE the
+extension frame like a phone app (`ui.openApp`), rather than opening a new tab. `AppView` is a
+full-surface overlay (over either layout) with an app-open transition and a top bar: **back** (→ the
+launcher), the app name, and **⤢ expand** (promote the dApp to a full browser tab via
+`chrome.tabs.create`). The dApp's `link` is framed in a sandboxed `<iframe>`
+(`allow-scripts allow-forms allow-popups allow-modals allow-same-origin allow-downloads`); the CSP
+allows `frame-src 'self' https:` (the app-view only ever frames curated store links). `Escape` closes it.
+
+It renders THREE states, and NEVER leaves a blank frame:
+- **loading** — a spinner over the frame until the frame's `load` fires or a timeout elapses;
+- **ready** — the framed dApp;
+- **blocked** — a refused/unreachable embed. Detection: an `error` event, a no-`load` timeout, or a
+  `load` that resolves to a readable `about:blank` (a refused frame that never committed). On blocked,
+  the dApp is **gracefully opened in a new tab** with a one-line note + an explicit "open in a new
+  tab" button. NOTE: an `X-Frame-Options`/`frame-ancestors` refusal that fires `load` on a cross-origin
+  error document is INDISTINGUISHABLE from success in pure JS (both fire `load` and throw on
+  cross-origin access); for that case the browser shows its own "refused to connect" page inside the
+  frame and the always-present ⤢ expand / back give the user an escape.
+
+### 2.4b Inline bug-report entry (#65)
+
+The shared `@dignetwork/components` `<BugReportButton>` (the full reporting flow — challenge/honeypot/
+timing anti-spam + screenshot + console/network capture, filing to `api.bugreport.dig.net` against
+`repo="dig-chrome-extension"`) is surfaced as a **quiet inline "Report a bug" item in the footer**, not
+a floating overlay: the component's floating launcher FAB is hidden (`.digbr-launcher { display:none }`)
+and the inline item opens the same panel by programmatically clicking the (still-mounted) launcher.
 
 ---
 

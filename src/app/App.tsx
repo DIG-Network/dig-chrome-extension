@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { Provider } from 'react-redux';
 import { IntlProvider } from 'react-intl';
-import { BugReportButton } from '@dignetwork/components';
+import { AppView } from '@/features/apps/AppView';
 import { store as defaultStore, type AppStore } from '@/app/store';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/app/hooks';
 import { TransportProvider } from '@/app/TransportContext';
@@ -67,7 +67,8 @@ function Shell({ surface }: { surface: Surface }) {
   return (
     <>
       {mode === 'expanded' ? <ExpandedLayout surface={surface} /> : <CompactLayout surface={surface} />}
-      <BugReportButton repo="dig-chrome-extension" />
+      {/* The in-window dApp app-view overlays either layout when a dApp is launched (§2.4a). */}
+      <AppView />
     </>
   );
 }
