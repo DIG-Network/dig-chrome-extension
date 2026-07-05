@@ -354,7 +354,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `3`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `4`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -362,7 +362,8 @@ by `messages.test.mjs`).
 `importWallet`, `unlockWallet`, `lockWallet`, `revealPhrase`, `getLockState` — which the SW routes
 to the offscreen keystore vault (§18.3), plus the `OFFSCREEN_TARGET` discriminator on the
 SW→offscreen messages (those messages are handled by the offscreen document; the SW's own
-`onMessage` listener ignores them).
+`onMessage` listener ignores them). `4` (#56) added `getReceiveAddress` + `getCustodyBalances`
+(§18.6): the SW forwards them to the offscreen vault, which derives and scans coinset.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -781,7 +782,8 @@ custody requests, owns storage, and enforces auto-lock.
 |---|---|---|---|
 | `wallet.keystore` | `storage.local` | encrypted only | the DIGWX1 record (§18.2) — the only at-rest secret |
 | `wallet.activeId` | `storage.local` | no | active wallet id (multi-wallet switcher) |
-| `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, fee default, overrides…) |
+| `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, `chainRpcUrl`, `chainPrivacyAck`, fee default…) |
+| `walletCache.balances` | `storage.local` | no | last balance scan (`{ balances, at }`) for cached-first paint |
 | `wallet.unlockExpiry` | `storage.session` | no | non-secret unlock-expiry timestamp (ms); never key material |
 
 `storage.sync` is NEVER used for any wallet key (it would exfiltrate the encrypted seed).
@@ -800,3 +802,22 @@ The wallet surface lands on a state-driven custody gate BEFORE the balances view
 The recovery-phrase reveal MUST be accessible (§5.6): tap-to-reveal, a screen-reader-navigable
 numbered word list, an explicit Copy that AUTO-CLEARS the clipboard after a short delay, and an
 auto-hide of the on-screen phrase. The phrase is shown once for backup and never persisted.
+
+### 18.6 Balance scan & chain source
+
+Read-only balances come from an HD scan run in the offscreen vault (it has the key + the wasm):
+
+- **Derivation + scan.** Derive standard p2 puzzle hashes for BOTH schemes (§18.1) to a gap limit,
+  then sum UNSPENT coins from coinset: native XCH at those hashes, and each watched CAT at its CAT
+  puzzle hash (`catPuzzleHash(tail, innerPh)`). Balances are POOLED across all derivations.
+- **Chain source.** The wasm coinset `RpcClient` fetches the configured chain endpoint from the
+  offscreen document (extensions bypass CORS). Default `https://api.coinset.org`; an explicit
+  `wallet.settings.chainRpcUrl` override wins (§5.3 — a user-facing custom node, settable +
+  persisted). The pooled `dig.local`/`localhost` tiers are NOT used for the wallet chain reads (a DIG
+  node does not expose coinset-shape chain reads today).
+- **Privacy.** The wallet DISCLOSES, once (until acknowledged, `wallet.settings.chainPrivacyAck`),
+  that a scan reveals the wallet's full address set to the configured operator, and offers the
+  override so a privacy-minded user can point at their own node.
+- **Caching.** The last scan is cached (`walletCache.balances`, non-secret); a transient scan failure
+  returns the cached snapshot flagged `cached` (cached-first paint).
+- **Receive.** The pooled receive address is index 0, unhardened (`getReceiveAddress`).

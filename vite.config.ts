@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import wasm from 'vite-plugin-wasm';
+import topLevelAwait from 'vite-plugin-top-level-await';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
@@ -16,7 +18,11 @@ const pkg = JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8')) a
 // are the only shipped builds. build.js runs `vite build` then copies dist-web/* into dist/.
 export default defineConfig({
   base: './',
-  plugins: [react()],
+  // wasm() + topLevelAwait() let the offscreen bundle import the wasm-bindgen bundler-target
+  // `chia-wallet-sdk-wasm` (self-custody HD derivation + coinset scan); the wasm self-inits via
+  // top-level await. The extension_pages CSP already allows `'wasm-unsafe-eval'`.
+  plugins: [react(), wasm(), topLevelAwait()],
+  optimizeDeps: { exclude: ['chia-wallet-sdk-wasm'] },
   define: {
     // App semver baked into the JS bundle for window.__APP_VERSION__ + footer (§6.7). The HTML
     // <meta name="app-version"> placeholder is replaced separately by build.js at copy time.

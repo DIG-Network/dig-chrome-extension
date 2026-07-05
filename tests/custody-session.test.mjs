@@ -12,17 +12,35 @@ import {
   computeUnlockExpiry,
   isUnlockExpired,
   deriveLockState,
+  resolveCoinsetUrl,
+  DEFAULT_COINSET_URL,
   LOCK_STATE,
   DEFAULT_UNLOCK_TTL_MINUTES,
   MIN_UNLOCK_TTL_MINUTES,
   MAX_UNLOCK_TTL_MINUTES,
 } from '../custody-session.mjs';
 
-test('CUSTODY_ACTIONS lists exactly the offscreen-routed keystore ops', () => {
+test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
   assert.deepEqual(
     [...CUSTODY_ACTIONS].sort(),
-    ['createWallet', 'getLockState', 'importWallet', 'lockWallet', 'revealPhrase', 'unlockWallet'].sort(),
+    [
+      'createWallet',
+      'getCustodyBalances',
+      'getLockState',
+      'getReceiveAddress',
+      'importWallet',
+      'lockWallet',
+      'revealPhrase',
+      'unlockWallet',
+    ].sort(),
   );
+});
+
+test('resolveCoinsetUrl uses the override when set, else the coinset default', () => {
+  assert.equal(resolveCoinsetUrl(undefined), DEFAULT_COINSET_URL);
+  assert.equal(resolveCoinsetUrl({}), DEFAULT_COINSET_URL);
+  assert.equal(resolveCoinsetUrl({ chainRpcUrl: '  ' }), DEFAULT_COINSET_URL);
+  assert.equal(resolveCoinsetUrl({ chainRpcUrl: 'https://my.node/rpc' }), 'https://my.node/rpc');
 });
 
 test('isCustodyAction recognises custody actions and rejects others', () => {

@@ -28,7 +28,10 @@ import {
   isValidMnemonic,
   mnemonicToEntropy,
   entropyToMnemonic,
+  mnemonicToSeed,
 } from '@/lib/keystore/bip39';
+import { scanBalances, receiveAddress, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
+import type { ChainClient } from '@/offscreen/chain';
 
 /** The keystore operations the vault handles (mirrors the SW custody actions). */
 export type VaultOp =
@@ -37,7 +40,9 @@ export type VaultOp =
   | 'unlockWallet'
   | 'lockWallet'
   | 'revealPhrase'
-  | 'getVaultState';
+  | 'getVaultState'
+  | 'getReceiveAddress'
+  | 'scanBalances';
 
 /** A request forwarded from the SW to the vault. `record` is the persisted DIGWX1 blob for ops that need it. */
 export interface VaultRequest {
@@ -49,6 +54,10 @@ export interface VaultRequest {
   strong?: boolean;
   /** The persisted keystore record (SW reads it from storage for unlock / reveal). */
   record?: Digwx1Record;
+  /** Watched CAT asset ids (TAILs) to scan for balances. */
+  watchedCats?: string[];
+  /** HD scan gap limit per scheme. */
+  gapLimit?: number;
 }
 
 /** The vault's reply. Never carries the persisted key; `mnemonic` is for one-time display only. */
@@ -65,11 +74,17 @@ export interface VaultResponse {
   record?: Digwx1Record;
   /** The 24-word phrase — create + reveal only; shown once, never stored. */
   mnemonic?: string;
+  /** The pooled receive address (getReceiveAddress). */
+  address?: string;
+  /** The scanned balances (scanBalances). */
+  balances?: BalanceScan;
 }
 
-/** Test/DI seam. */
+/** Test/DI seam. `chia` + `chain` power derivation + the balance scan (offscreen-only at runtime). */
 export interface VaultDeps {
   argon2Fn?: Argon2Fn;
+  chia?: ScanWasm;
+  chain?: ChainClient;
 }
 
 export class Vault {
@@ -110,6 +125,10 @@ export class Vault {
           return { success: true, hasKey: false };
         case 'getVaultState':
           return { success: true, hasKey: this.hasKey() };
+        case 'getReceiveAddress':
+          return await this.getReceiveAddress(deps);
+        case 'scanBalances':
+          return await this.scanBalances(req, deps);
         default:
           return { success: false, code: 'BAD_REQUEST', message: `unknown vault op` };
       }
@@ -169,5 +188,30 @@ export class Vault {
     const mnemonic = entropyToMnemonic(entropy);
     entropy.fill(0);
     return { success: true, mnemonic };
+  }
+
+  /** Derive the held wallet's BIP-39 seed from the in-memory entropy (never leaves the vault). */
+  private async heldSeed(): Promise<Uint8Array | null> {
+    if (!this.entropy) return null;
+    return mnemonicToSeed(entropyToMnemonic(this.entropy));
+  }
+
+  private async getReceiveAddress(deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'derivation unavailable' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    return { success: true, address: receiveAddress(deps.chia, seed) };
+  }
+
+  private async scanBalances(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const balances = await scanBalances(deps.chia, deps.chain, {
+      seed,
+      ...(req.watchedCats ? { watchedCats: req.watchedCats } : {}),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    return { success: true, balances };
   }
 }
