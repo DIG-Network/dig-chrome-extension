@@ -35,6 +35,11 @@ export interface CustodyBalances {
   /** True when this is the last cached snapshot returned because a fresh scan failed. */
   cached?: boolean;
 }
+/** A prepared (unsigned) send: the pending id + the decoded summary to approve. */
+export interface PreparedSend {
+  pendingId: string;
+  summary: { asset: string; sent: string; change: string; fee: string; recipientPuzzleHashHex: string; coinCount: number };
+}
 
 export const custodyApi = api.injectEndpoints({
   endpoints: (build) => ({
@@ -80,6 +85,20 @@ export const custodyApi = api.injectEndpoints({
       query: () => ({ action: ACTIONS.getCustodyBalances }),
       providesTags: ['Balances'],
     }),
+
+    // Build (not broadcast) a send → returns the decoded summary to approve.
+    prepareSend: build.mutation<PreparedSend, { recipient: string; amount: string; fee?: string }>({
+      query: (arg) => ({ action: ACTIONS.prepareSend, ...arg }),
+    }),
+    // Sign + BROADCAST a prepared send (the approved step). Invalidates balances/activity.
+    confirmSend: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
+      query: (arg) => ({ action: ACTIONS.confirmSend, ...arg }),
+      invalidatesTags: ['Balances', 'Activity'],
+    }),
+    // Poll whether a broadcast send has confirmed.
+    sendStatus: build.query<{ confirmed: boolean }, { coinId: string }>({
+      query: (arg) => ({ action: ACTIONS.sendStatus, ...arg }),
+    }),
   }),
   overrideExisting: false,
 });
@@ -93,4 +112,7 @@ export const {
   useRevealPhraseMutation,
   useGetReceiveAddressQuery,
   useGetCustodyBalancesQuery,
+  usePrepareSendMutation,
+  useConfirmSendMutation,
+  useLazySendStatusQuery,
 } = custodyApi;

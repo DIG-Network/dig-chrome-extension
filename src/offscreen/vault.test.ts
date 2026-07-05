@@ -167,3 +167,68 @@ describe('Vault balance + address ops', () => {
     expect(res.code).toBe('CHAIN_UNAVAILABLE');
   });
 });
+
+describe('Vault send ops', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  async function unlockedZerosWallet(): Promise<Vault> {
+    const v = new Vault();
+    await v.handle({ op: 'importWallet', password: PW, mnemonic: golden.mnemonic }, deps);
+    return v;
+  }
+
+  // A chain that funds the golden index-0 unhardened address and accepts the push (signature
+  // correctness is proven end-to-end in sendFlow.test.ts; here we exercise the vault orchestration).
+  function sendChain() {
+    const wasm = chia as unknown as { Simulator: new () => { newCoin(ph: Uint8Array, a: bigint): unknown }; fromHex(h: string): Uint8Array; Address: new (ph: Uint8Array, p: string) => { encode(): string } };
+    const ph0 = golden.unhardened[0].puzzleHashHex;
+    const coin = new wasm.Simulator().newCoin(wasm.fromHex(ph0), 1_000_000_000_000n);
+    const recipient = new wasm.Address(new Uint8Array(32).fill(9), 'xch').encode();
+    const chain: ChainClient = {
+      totalUnspent: async () => 0,
+      unspentCoins: async (phs) => (phs.includes(ph0) ? [coin as never] : []),
+      pushSpendBundle: async () => ({ success: true }),
+      coinConfirmed: async () => true,
+    };
+    return { chain, recipient };
+  }
+
+  it('prepareSend → confirmSend → sendStatus (orchestration)', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const prep = await v.handle({ op: 'prepareSend', recipient, amount: '250000000000', fee: '1000000' }, { ...deps, chia, chain });
+    expect(prep.success).toBe(true);
+    expect(prep.pendingId).toBeTruthy();
+    expect(prep.summary?.sent).toBe('250000000000');
+
+    const conf = await v.handle({ op: 'confirmSend', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(conf.success).toBe(true);
+    expect(conf.spentCoinId).toBeTruthy();
+
+    // The pending entry is consumed — a second confirm is NO_PENDING.
+    const again = await v.handle({ op: 'confirmSend', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(again.code).toBe('NO_PENDING');
+
+    const status = await v.handle({ op: 'sendStatus', coinId: conf.spentCoinId }, { ...deps, chain });
+    expect(status.confirmed).toBe(true);
+  });
+
+  it('lock clears pending sends', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const prep = await v.handle({ op: 'prepareSend', recipient, amount: '1000', fee: '0' }, { ...deps, chia, chain });
+    v.lock();
+    const conf = await v.handle({ op: 'confirmSend', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(conf.code).toBe('NO_PENDING');
+  });
+
+  it('prepareSend requires recipient + amount', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain } = sendChain();
+    const res = await v.handle({ op: 'prepareSend', amount: '1000' }, { ...deps, chia, chain });
+    expect(res.code).toBe('BAD_REQUEST');
+  });
+});
