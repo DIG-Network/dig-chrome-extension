@@ -1,10 +1,9 @@
 /**
- * The ecosystem's standard locale set (§6.6) — the same 14 the hub carries. Phase 0 ships a
- * complete English (`en`) message catalog and wires locale detection + a persisted selector +
- * `IntlProvider` fallback so every string is externalized from day one; the other 13 catalogs are
- * a fast-follow (the extension had NO i18n before, so this is strictly additive — untranslated
- * locales fall back to English rather than showing raw ids). This module is the single source of
- * truth for the supported set + detection.
+ * The ecosystem's standard locale set (§6.6) — the same 14 the hub carries. Every locale ships a
+ * complete, translated message catalog (kept honest by `locales.test.ts`'s completeness gate);
+ * locale detection + a persisted selector + an `IntlProvider` English fallback (for any code that
+ * somehow isn't recognized) are wired so every string is externalized. This module is the single
+ * source of truth for the supported set + detection.
  */
 
 /** The 14 supported locales (BCP-47), English first. */
