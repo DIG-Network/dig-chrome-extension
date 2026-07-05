@@ -24,9 +24,13 @@ test('popup.html exposes data-testid on every primary control', () => {
     // The four tabs (Resolver · Wallet · Shield · Control Panel) + their panels.
     'tab-resolver', 'tab-wallet', 'tab-shield', 'tab-control',
     'resolver-panel', 'wallet-panel', 'shield-panel', 'control-panel',
-    // Wallet subviews (receive / send / activity) + send-form fields.
-    'wallet-receive', 'wallet-send', 'wallet-activity',
-    'send-address', 'send-amount', 'send-submit', 'wallet-address',
+    // Wallet subviews (assets / send / receive / activity / offers) + their controls.
+    'wallet-assets', 'wallet-send', 'wallet-receive', 'wallet-activity', 'wallet-offers',
+    'send-address', 'send-amount', 'send-fee', 'send-submit', 'wallet-address', 'receive-qr',
+    'add-token-id', 'add-token-submit', 'send-asset',
+    'offer-give-asset', 'offer-give-amount', 'offer-get-asset', 'offer-get-amount',
+    'offer-make-submit', 'offer-take-string', 'offer-inspect', 'offer-take-submit',
+    'offer-cancel-string', 'offer-cancel-submit', 'wallet-settings',
     // Resolver §5.3 node-config: custom-node override + the resolve-via verdict.
     'resolve-status', 'node-host-input', 'node-host-save',
   ]) {

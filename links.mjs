@@ -61,6 +61,31 @@ export const DISCORD_URL = 'https://discord.gg/dignetwork';
 /** Full DIG Browser releases — the native client we soft-upsell over the extension. */
 export const DIG_BROWSER_URL = 'https://github.com/DIG-Network/DIG_Browser/releases';
 
+/** SpaceScan — the Chia mainnet block explorer the wallet Activity view links each tx to. */
+export const SPACESCAN_URL = 'https://www.spacescan.io';
+
+/**
+ * SpaceScan coin page for a coin/transaction id. Chia has no Ethereum-style tx hashes; the
+ * durable on-chain handle is the coin id, which SpaceScan indexes at `/coin/0x…`. Normalises a
+ * bare 64-hex id to the `0x` form SpaceScan expects; passes an already-`0x` id through. Returns
+ * `null` for an empty/absent id so the renderer can omit the link honestly.
+ * @param {string} id a coin/transaction id (with or without `0x`)
+ * @returns {string|null}
+ */
+export function spaceScanCoinUrl(id) {
+  const s = String(id == null ? '' : id).trim();
+  if (!s) return null;
+  const withPrefix = /^0x/i.test(s) ? s : `0x${s}`;
+  return `${SPACESCAN_URL}/coin/${withPrefix}`;
+}
+
+/** SpaceScan address page for a bech32 `xch1…` address; `null` for an empty address. */
+export function spaceScanAddressUrl(address) {
+  const s = String(address == null ? '' : address).trim();
+  if (!s) return null;
+  return `${SPACESCAN_URL}/address/${s}`;
+}
+
 /**
  * Ordered list of resource links rendered in the popup's Resources/footer section.
  * `id` is used for stable hooks/tests; `external` marks links that open a new tab.
