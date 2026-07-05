@@ -16,6 +16,8 @@ import {
   HUB_URL,
   DIG_NETWORK_URL,
   DOCS_URL,
+  EXPLORE_URL,
+  BUGREPORT_URL,
   TIBETSWAP_URL,
   DEXIE_DIG_URL,
   NINEMM_DIG_URL,
@@ -36,6 +38,21 @@ test('DIG Network URL points at dig.net', () => {
 
 test('docs URL points at docs.dig.net', () => {
   assert.equal(DOCS_URL, 'https://docs.dig.net');
+});
+
+test('Explore URL points at explore.dig.net (the curated dApp store)', () => {
+  assert.equal(EXPLORE_URL, 'https://explore.dig.net');
+});
+
+test('bug-report URL points at bugreport.dig.net', () => {
+  assert.equal(BUGREPORT_URL, 'https://bugreport.dig.net');
+});
+
+test('popup.js mirrors the Explore + bug-report funnel URLs verbatim (classic script can\'t import)', () => {
+  const root = dirname(dirname(fileURLToPath(import.meta.url)));
+  const popup = readFileSync(join(root, 'popup.js'), 'utf8');
+  assert.ok(popup.includes(EXPLORE_URL), 'popup.js must reference explore.dig.net');
+  assert.ok(popup.includes(BUGREPORT_URL), 'popup.js must reference bugreport.dig.net');
 });
 
 test('Get-$DIG URL points at TibetSwap', () => {

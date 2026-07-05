@@ -13,6 +13,8 @@ const ECOSYSTEM_LINKS = {
   HUB_URL: 'https://hub.dig.net',
   DIG_NETWORK_URL: 'https://dig.net',
   DOCS_URL: 'https://docs.dig.net',
+  EXPLORE_URL: 'https://explore.dig.net',
+  BUGREPORT_URL: 'https://bugreport.dig.net',
   TIBETSWAP_URL: 'https://v2.tibetswap.io/',
   DIG_BROWSER_URL: 'https://github.com/DIG-Network/DIG_Browser/releases',
 };
@@ -47,6 +49,28 @@ function setupEcosystemFunnels() {
     });
   }
 
+  // Explore DIG Network → explore.dig.net (the curated dApp store). Header action.
+  const exploreLink = document.getElementById('exploreLink');
+  if (exploreLink) {
+    exploreLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      openEcosystemLink(ECOSYSTEM_LINKS.EXPLORE_URL);
+    });
+  }
+
+  // Report a bug → bugreport.dig.net, repo-scoped + build-attributed (§6.7 funnel). Passing the
+  // repo + the running extension version means a report always records which build it came from.
+  const bugReportLink = document.getElementById('bugReportLink');
+  if (bugReportLink) {
+    bugReportLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const version = (window.__APP_VERSION__ || '').trim();
+      const q = new URLSearchParams({ repo: 'dig-chrome-extension' });
+      if (version) q.set('version', version);
+      openEcosystemLink(`${ECOSYSTEM_LINKS.BUGREPORT_URL}/?${q.toString()}`);
+    });
+  }
+
   const resourcesLinks = document.getElementById('resourcesLinks');
   if (resourcesLinks) {
     RESOURCE_LINKS.forEach(({ id, label, url }) => {
@@ -73,8 +97,25 @@ function setupEcosystemFunnels() {
   }
 }
 
+// Expose the extension's semver everywhere a bug report can read it (§6.7): a subtle on-page
+// display (#appVersion in the footer), the <meta name="app-version"> tag (build-injected), and
+// the window.__APP_VERSION__ global. Sourced from the meta tag, which build.js fills from
+// package.json's version — never a hardcoded literal that could drift.
+function setupVersion() {
+  const meta = document.querySelector('meta[name="app-version"]');
+  const raw = meta && meta.content ? meta.content.trim() : '';
+  // The un-built source carries the literal placeholder; treat that as "unknown".
+  const version = raw && raw !== '__APP_VERSION__' ? raw : '';
+  try { window.__APP_VERSION__ = version; } catch (e) { /* ignore */ }
+  const el = document.getElementById('appVersion');
+  if (el) el.textContent = version ? `v${version}` : '—';
+}
+
 // Initialize popup - handle both DOMContentLoaded and immediate execution
 async function initPopup() {
+  // Version first, so the bug-report funnel can attribute the running build.
+  setupVersion();
+
   const toggle = document.getElementById('extensionToggle');
   const statusText = document.getElementById('statusText');
   const digUrlInput = document.getElementById('digUrlInput');

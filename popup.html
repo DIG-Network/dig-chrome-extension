@@ -4,180 +4,254 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DIG Network Extension</title>
+  <!-- App version (build-injected from package.json; read at runtime for the footer + the
+       window.__APP_VERSION__ global + bug-report build attribution, §6.7). -->
+  <meta name="app-version" content="__APP_VERSION__">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container" role="main" data-testid="popup-root">
-    <div class="header">
-      <div class="logo">
-        <!-- Vector wordmark (matches docs.dig.net light-mode navbar). -->
-        <img src="src/Wordmark-Black.svg" alt="DIG Network">
+  <div class="app" role="main" data-testid="popup-root">
+
+    <!-- Top bar: wordmark + Explore DIG Network + dig.net. -->
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="src/logo.png" alt="">
+        <span class="brand-word">DIG<span class="brand-net">&nbsp;Network</span></span>
         <span class="alpha-badge" title="Pre-release — expect rough edges">alpha</span>
       </div>
-      <a id="visitDigNetworkLink" class="header-link" href="#" title="Visit DIG Network" data-testid="visit-dig-network">dig.net ↗</a>
-    </div>
+      <div class="topbar-actions">
+        <a id="exploreLink" class="topbar-link explore" href="#" title="Explore DIG Network — the curated dApp store"
+           data-testid="explore-dig">Explore DIG Network ↗</a>
+        <a id="visitDigNetworkLink" class="topbar-link" href="#" title="Visit DIG Network"
+           data-testid="visit-dig-network">dig.net ↗</a>
+      </div>
+    </header>
 
-    <!-- Toolbar actions — Wallet · Shield · Control Panel — mirroring the native DIG Browser's
-         toolbar (browser/extension feature parity). Each button toggles the matching panel
-         below; the active button is reflected via aria-pressed + data-active for agents. -->
-    <div class="toolbar" role="toolbar" aria-label="DIG actions" data-testid="dig-toolbar">
-      <button id="toolbarWallet" class="toolbar-btn" type="button"
-              data-testid="toolbar-wallet" data-panel="wallet" aria-pressed="false"
-              title="DIG Wallet — balance, connect (WalletConnect → Sage)">
-        <span class="toolbar-icon" aria-hidden="true">&#128091;</span>
-        <span class="toolbar-text">Wallet</span>
+    <!-- Tab bar: Resolver · Wallet · Shield · Control Panel. ARIA tablist; one panel shown at a
+         time. The active tab reflects aria-selected + data-active so an agent can read state. -->
+    <nav class="tabs" role="tablist" aria-label="DIG surfaces" data-testid="dig-tabs">
+      <button id="tabResolver" class="tab" type="button" role="tab" aria-selected="true"
+              aria-controls="resolverPanel" data-tab="resolver" data-testid="tab-resolver">
+        <span class="tab-icon" aria-hidden="true">&#127760;</span>
+        <span class="tab-text">Resolver</span>
       </button>
-      <button id="toolbarShield" class="toolbar-btn" type="button"
-              data-testid="toolbar-shield" data-panel="shield" aria-pressed="false"
-              title="DIG Shields — verification &amp; proof status for this page">
-        <span class="toolbar-icon" aria-hidden="true">&#128737;</span>
-        <span class="toolbar-text">Shield</span>
-        <!-- Verdict dot for the active tab; color set by popup-wallet.js. -->
-        <span class="toolbar-dot" id="shieldDot" data-testid="shield-dot" data-verified=""></span>
+      <button id="tabWallet" class="tab" type="button" role="tab" aria-selected="false"
+              aria-controls="walletPanel" data-tab="wallet" data-testid="tab-wallet">
+        <span class="tab-icon" aria-hidden="true">&#128091;</span>
+        <span class="tab-text">Wallet</span>
       </button>
-      <button id="toolbarControl" class="toolbar-btn" type="button"
-              data-testid="toolbar-control" data-panel="control" aria-pressed="false"
-              title="Control Panel — your dig-node">
-        <span class="toolbar-icon" aria-hidden="true">&#9881;</span>
-        <span class="toolbar-text">Control Panel</span>
-        <!-- Node-present dot; color set by popup-wallet.js. -->
-        <span class="toolbar-dot" id="controlDot" data-testid="control-dot" data-node=""></span>
+      <button id="tabShield" class="tab" type="button" role="tab" aria-selected="false"
+              aria-controls="shieldPanel" data-tab="shield" data-testid="tab-shield">
+        <span class="tab-icon" aria-hidden="true">&#128737;</span>
+        <span class="tab-text">Shield</span>
+        <span class="tab-dot" id="shieldDot" data-testid="shield-dot" data-verified=""></span>
       </button>
-    </div>
+      <button id="tabControl" class="tab" type="button" role="tab" aria-selected="false"
+              aria-controls="controlPanel" data-tab="control" data-testid="tab-control">
+        <span class="tab-icon" aria-hidden="true">&#9881;</span>
+        <span class="tab-text">Control Panel</span>
+        <span class="tab-dot" id="controlDot" data-testid="control-dot" data-node=""></span>
+      </button>
+    </nav>
 
-    <!-- DIG Shields panel — the active tab's chia:// verification + per-resource proof ledger
-         (#134), mirroring the native browser's dig://shields. Hidden until the Shield action is
-         opened. -->
-    <div class="panel shield-panel" id="shieldPanel" style="display:none" role="region"
-         aria-label="DIG Shields" data-testid="shield-panel">
-      <div class="verify-line" id="verifyLine" role="status"
-           data-testid="verify-line" data-verified=""
-           title="Merkle-proven against the on-chain root and decrypted on this device">
-        <span class="verify-dot" id="verifyDot"></span>
-        <span class="verify-text" id="verifyText" data-testid="verify-text">Open a chia:// page to see its proof status</span>
-      </div>
-      <!-- Capsule disclosure (storeId:rootHash) for the active tab. -->
-      <div class="shield-capsule" id="shieldCapsule" style="display:none" data-testid="shield-capsule">
-        <span class="shield-capsule-label">Capsule</span>
-        <code class="shield-capsule-value" id="shieldCapsuleValue"></code>
-      </div>
-      <!-- Per-resource proof ledger summary: Verified (N) / Failed (M). -->
-      <div class="shield-ledger" id="shieldLedger" data-testid="shield-ledger">
-        <div class="shield-ledger-summary" id="shieldLedgerSummary"></div>
-        <ul class="shield-ledger-list" id="shieldLedgerList"></ul>
-      </div>
-      <p class="shield-note" id="shieldNote"></p>
-    </div>
+    <div class="panels">
 
-    <!-- DIG Control Panel — your dig-node. Mirrors the native browser's dig://control: when a
-         local dig-node is reachable it shows node status (management); otherwise a landing page
-         encouraging install of the dig-node (reads keep working via the hosted network). Hidden
-         until the Control Panel action is opened; contents filled by popup-wallet.js. -->
-    <div class="panel control-panel" id="controlPanel" style="display:none" role="region"
-         aria-label="DIG Control Panel" data-testid="control-panel" data-mode="">
-      <div class="control-body" id="controlBody"></div>
-    </div>
-
-    <!-- dig-node prompt: shown only when no local dig-node is reachable. Soft, plain-language
-         nudge to install the universal dig-installer (the extension still works via the hosted
-         network without it). Populated by popup-wallet.js from dig-node-status.mjs. -->
-    <div class="dignode-banner" id="digNodeBanner" style="display:none">
-      <div class="dignode-copy">
-        <span class="dignode-title" id="digNodeTitle"></span>
-        <span class="dignode-body" id="digNodeBody"></span>
-      </div>
-      <a id="digNodeInstall" class="dignode-install" href="#" target="_blank" rel="noopener"></a>
-    </div>
-
-    <!-- Wallet panel: balance + connect/disconnect (WalletConnect → Sage) + Get DIG.
-         Toggled by the Wallet toolbar action (open by default on popup load). -->
-    <div class="wallet-section panel" id="walletPanel" role="region" aria-label="DIG Wallet" data-testid="wallet-panel">
-      <div class="wallet-head">
-        <span class="wallet-title">Wallet</span>
-        <span class="wallet-state" id="walletState">Not connected</span>
-      </div>
-      <div class="wallet-balances" id="walletBalances" style="display:none">
-        <div class="wallet-bal">
-          <span class="wallet-bal-label">XCH</span>
-          <span class="wallet-bal-value" id="walletXch">—</span>
+      <!-- ============ 1. RESOLVER ============ -->
+      <section id="resolverPanel" class="panel resolver-panel" role="tabpanel"
+               aria-labelledby="tabResolver" data-testid="resolver-panel">
+        <div class="url-section">
+          <label for="digUrlInput" class="section-label">Open a chia:// address</label>
+          <div class="url-input-container">
+            <input type="text" id="digUrlInput" class="url-input"
+                   placeholder="chia://urn:dig:chia:storeID/path" autocomplete="off"
+                   data-testid="chia-url-input" aria-label="Open a chia:// address" />
+            <button id="goButton" class="go-button" title="Open" data-testid="chia-url-go"
+                    aria-label="Open address">→</button>
+          </div>
         </div>
-        <div class="wallet-bal">
-          <span class="wallet-bal-label">$DIG</span>
-          <span class="wallet-bal-value" id="walletDig">—</span>
+
+        <div class="toggle-section">
+          <label class="toggle-label">
+            <span class="toggle-text">chia:// resolution</span>
+            <span class="toggle-container">
+              <input type="checkbox" id="extensionToggle" class="toggle-input"
+                     data-testid="resolution-toggle" aria-label="Toggle chia:// resolution">
+              <span class="toggle-slider"></span>
+            </span>
+          </label>
+          <p class="status-text" id="statusText" role="status" data-testid="status-text">Inactive</p>
         </div>
-      </div>
-      <div class="wallet-address" id="walletAddress" style="display:none"></div>
-      <div class="wallet-actions">
-        <button id="walletConnectBtn" class="wallet-btn wallet-btn-primary" data-testid="wallet-connect">Connect wallet</button>
-        <button id="walletDisconnectBtn" class="wallet-btn" style="display:none" data-testid="wallet-disconnect">Disconnect</button>
-        <a id="getDigLink" class="wallet-btn wallet-btn-ghost" href="#" title="Get $DIG on TibetSwap" data-testid="get-dig">Get $DIG ↗</a>
-      </div>
-      <!-- Pairing affordance (URI / copy) appears here when connecting. -->
-      <div class="wallet-pairing" id="walletPairing" style="display:none">
-        <p class="wallet-pairing-hint">Open Sage → scan or paste this pairing link:</p>
-        <div class="wallet-pairing-row">
-          <input type="text" id="walletPairingUri" class="wallet-pairing-uri" readonly>
-          <button id="walletPairingCopy" class="restore-button" title="Copy">⧉</button>
+
+        <!-- Node-resolution status: which endpoint the read path uses, per the §5.3 ladder
+             (explicit custom > dig.local > localhost > rpc.dig.net). Filled by popup.js. -->
+        <div class="resolve-status" id="resolveStatus" data-testid="resolve-status" role="status">
+          <span class="resolve-label">Resolving via</span>
+          <span class="resolve-value" id="resolveVia">Checking…</span>
         </div>
-      </div>
-      <p class="wallet-note" id="walletNote"></p>
+
+        <!-- Custom-node override quick field (the §5.3 explicit-config tier). Full config +
+             upstream RPC live in DIG settings (the options page). -->
+        <div class="node-quick">
+          <label for="nodeHostInput" class="section-label">Custom dig-node (optional)</label>
+          <div class="url-input-container">
+            <input type="text" id="nodeHostInput" class="url-input" placeholder="localhost:8080"
+                   autocomplete="off" data-testid="node-host-input"
+                   aria-label="Custom dig-node host">
+            <button id="nodeHostSave" class="go-button" title="Save custom node"
+                    data-testid="node-host-save" aria-label="Save custom node">✓</button>
+          </div>
+          <p class="node-quick-note" id="nodeHostNote"></p>
+        </div>
+
+        <a id="openOptionsLink" class="inline-link" href="#" title="DIG settings: dig-node &amp; RPC"
+           data-testid="open-options">DIG settings — dig-node &amp; RPC →</a>
+      </section>
+
+      <!-- ============ 2. WALLET ============ -->
+      <section id="walletPanel" class="panel wallet-panel" role="tabpanel"
+               aria-labelledby="tabWallet" data-testid="wallet-panel" hidden>
+        <div class="wallet-head">
+          <span class="section-label">Wallet</span>
+          <span class="wallet-state" id="walletState" data-testid="wallet-state">Not connected</span>
+        </div>
+
+        <!-- Per-origin connection requests from dapps' window.chia.connect(). -->
+        <div class="connreq-section" id="connreqSection" style="display:none">
+          <p class="connreq-label">Connection requests</p>
+          <div class="connreq-list" id="connreqList"></div>
+        </div>
+
+        <!-- Disconnected: connect CTA + pairing affordance. -->
+        <div class="wallet-disconnected" id="walletDisconnected">
+          <p class="wallet-hint">Connect your Chia wallet (Sage) over WalletConnect for balances,
+            receive, send, and to approve dapp requests.</p>
+          <button id="walletConnectBtn" class="wallet-btn wallet-btn-primary" data-testid="wallet-connect">Connect wallet</button>
+          <div class="wallet-pairing" id="walletPairing" style="display:none">
+            <p class="wallet-pairing-hint">Open Sage → scan or paste this pairing link:</p>
+            <div class="wallet-pairing-row">
+              <input type="text" id="walletPairingUri" class="wallet-pairing-uri" readonly aria-label="WalletConnect pairing link">
+              <button id="walletPairingCopy" class="icon-button" title="Copy pairing link">⧉</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connected: balances + Receive/Send/Activity subtabs. -->
+        <div class="wallet-connected" id="walletConnected" hidden>
+          <div class="wallet-balances" id="walletBalances">
+            <div class="wallet-bal">
+              <span class="wallet-bal-label">XCH</span>
+              <span class="wallet-bal-value" id="walletXch" data-testid="wallet-xch">—</span>
+            </div>
+            <div class="wallet-bal">
+              <span class="wallet-bal-label">$DIG</span>
+              <span class="wallet-bal-value" id="walletDig" data-testid="wallet-dig">—</span>
+            </div>
+          </div>
+
+          <nav class="wallet-subtabs" role="tablist" aria-label="Wallet views">
+            <button class="wallet-subtab" type="button" role="tab" data-view="receive"
+                    aria-selected="true" data-testid="wallet-subtab-receive">Receive</button>
+            <button class="wallet-subtab" type="button" role="tab" data-view="send"
+                    aria-selected="false" data-testid="wallet-subtab-send">Send</button>
+            <button class="wallet-subtab" type="button" role="tab" data-view="activity"
+                    aria-selected="false" data-testid="wallet-subtab-activity">Activity</button>
+          </nav>
+
+          <!-- Receive: the wallet's address + copy. -->
+          <div class="wallet-view" id="walletReceive" data-testid="wallet-receive">
+            <p class="wallet-view-hint">Your Chia receive address:</p>
+            <div class="wallet-address-row">
+              <code class="wallet-address" id="walletAddress" data-testid="wallet-address">—</code>
+              <button id="walletAddressCopy" class="icon-button" title="Copy address" data-testid="wallet-address-copy">⧉</button>
+            </div>
+          </div>
+
+          <!-- Send: asset + recipient + amount → chia_send (Sage approves each spend). -->
+          <form class="wallet-view" id="walletSend" data-testid="wallet-send" hidden>
+            <label class="field">
+              <span class="field-label">Asset</span>
+              <select id="sendAsset" class="field-input" data-testid="send-asset">
+                <option value="xch">XCH</option>
+                <option value="dig">$DIG</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">To address</span>
+              <input type="text" id="sendAddress" class="field-input" placeholder="xch1…"
+                     autocomplete="off" data-testid="send-address" aria-label="Recipient address">
+            </label>
+            <label class="field">
+              <span class="field-label">Amount</span>
+              <input type="text" id="sendAmount" class="field-input" placeholder="0.0"
+                     inputmode="decimal" autocomplete="off" data-testid="send-amount" aria-label="Amount to send">
+            </label>
+            <button type="submit" id="sendSubmit" class="wallet-btn wallet-btn-primary" data-testid="send-submit">Send</button>
+            <p class="wallet-note" id="sendNote" role="status"></p>
+          </form>
+
+          <!-- Activity: recent transactions (best-effort via chia_getTransactions). -->
+          <div class="wallet-view" id="walletActivity" data-testid="wallet-activity" hidden>
+            <ul class="activity-list" id="activityList"></ul>
+            <p class="wallet-view-hint" id="activityNote">Loading activity…</p>
+          </div>
+
+          <div class="wallet-actions">
+            <button id="walletDisconnectBtn" class="wallet-btn" data-testid="wallet-disconnect">Disconnect</button>
+            <a id="getDigLink" class="wallet-btn wallet-btn-ghost" href="#" title="Get $DIG on TibetSwap" data-testid="get-dig">Get $DIG ↗</a>
+          </div>
+        </div>
+
+        <p class="wallet-note" id="walletNote" role="status"></p>
+      </section>
+
+      <!-- ============ 3. SHIELD ============ -->
+      <section id="shieldPanel" class="panel shield-panel" role="tabpanel"
+               aria-labelledby="tabShield" data-testid="shield-panel" hidden>
+        <div class="verify-line" id="verifyLine" role="status" data-testid="verify-line"
+             data-verified="" title="Merkle-proven against the on-chain root and decrypted on this device">
+          <span class="verify-dot" id="verifyDot"></span>
+          <span class="verify-text" id="verifyText" data-testid="verify-text">Open a chia:// page to see its proof status</span>
+        </div>
+        <div class="shield-capsule" id="shieldCapsule" style="display:none" data-testid="shield-capsule">
+          <span class="shield-capsule-label">Capsule</span>
+          <code class="shield-capsule-value" id="shieldCapsuleValue"></code>
+        </div>
+        <div class="shield-ledger" id="shieldLedger" data-testid="shield-ledger">
+          <div class="shield-ledger-summary" id="shieldLedgerSummary"></div>
+          <ul class="shield-ledger-list" id="shieldLedgerList"></ul>
+        </div>
+        <p class="shield-note" id="shieldNote"></p>
+      </section>
+
+      <!-- ============ 4. CONTROL PANEL ============ -->
+      <section id="controlPanel" class="panel control-panel" role="tabpanel"
+               aria-labelledby="tabControl" data-testid="control-panel" data-mode="" hidden>
+        <div class="control-body" id="controlBody"></div>
+      </section>
+
     </div>
 
-    <!-- Per-origin connection requests from dapps' window.chia.connect(). -->
-    <div class="connreq-section" id="connreqSection" style="display:none">
-      <p class="connreq-label">Connection requests</p>
-      <div class="connreq-list" id="connreqList"></div>
-    </div>
-
-    <!-- Ecosystem funnel: drive users from the RPC client into DIGHUb. -->
-    <div class="hub-section">
+    <!-- Footer: DIGHUb funnel + resources + version + full-browser upsell. -->
+    <footer class="footer">
       <button id="browseHubButton" class="hub-button" title="Browse DIGHUb" data-testid="browse-hub">
         <span class="hub-button-title">Browse DIGHUb</span>
         <span class="hub-button-sub">Explore &amp; publish on hub.dig.net</span>
       </button>
-    </div>
 
-    <!-- Open a chia:// address — the one thing this extension is for. -->
-    <div class="url-section">
-      <label for="digUrlInput" class="url-label">Open a chia:// address</label>
-      <div class="url-input-container">
-        <input
-          type="text"
-          id="digUrlInput"
-          class="url-input"
-          placeholder="chia://urn:dig:chia:storeID/path"
-          autocomplete="off"
-          data-testid="chia-url-input"
-          aria-label="Open a chia:// address"
-        />
-        <button id="goButton" class="go-button" title="Open" data-testid="chia-url-go" aria-label="Open address">→</button>
-      </div>
-    </div>
-
-    <div class="toggle-section">
-      <label class="toggle-label">
-        <span class="toggle-text">chia:// resolution</span>
-        <div class="toggle-container">
-          <input type="checkbox" id="extensionToggle" class="toggle-input" data-testid="resolution-toggle" aria-label="Toggle chia:// resolution">
-          <span class="toggle-slider"></span>
-        </div>
-      </label>
-      <p class="status-text" id="statusText" role="status" data-testid="status-text">Inactive</p>
-    </div>
-
-    <!-- Ecosystem funnel: Resources + soft upsell to the full native DIG Browser. -->
-    <div class="resources-section">
-      <p class="resources-label">Resources</p>
       <div class="resources-links" id="resourcesLinks">
-        <!-- Populated from RESOURCE_LINKS in popup.js so destinations stay in one place. -->
+        <!-- Populated from RESOURCE_LINKS in popup.js. -->
       </div>
+
       <a id="getFullBrowserLink" class="upsell-link" href="#" title="Get the full DIG Browser">
         Get the full DIG Browser — native chia:// &amp; built-in wallet ↗
       </a>
-      <a id="openOptionsLink" class="upsell-link" href="#" title="DIG settings: dig-node &amp; RPC" data-testid="open-options">
-        DIG settings — dig-node &amp; RPC →
-      </a>
-    </div>
+
+      <div class="footer-meta">
+        <p class="version-line">DIG Network Extension <span id="appVersion" data-testid="app-version">—</span></p>
+        <a id="bugReportLink" class="footer-report" href="#" title="Report a bug on bugreport.dig.net"
+           data-testid="report-bug">Report a bug ↗</a>
+      </div>
+    </footer>
   </div>
   <script src="popup.js"></script>
   <script type="module" src="popup-wallet.js"></script>
