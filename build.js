@@ -61,10 +61,8 @@ const EXTENSION_FILES = [
   'newtab.html',
   'newtab.css',
   'newtab.js',
-  // DIG settings (options page): dig-node host + RPC + wallet project id.
-  'options.html',
-  'options.css',
-  'options.js',
+  // DIG settings (options_ui) — options.html + src/entries/options.ts (+ its co-located
+  // options.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
   // Shared app directory + omnibox classifier (NTP) and wallet method/broker modules.
   'apps.mjs',
   'wallet-methods.mjs',
@@ -303,12 +301,12 @@ function buildWebApp() {
     throw new Error('Vite build produced no dist-web/ output.');
   }
   copyDirRecursive(WEB_OUT_DIR, DIST_DIR);
-  for (const page of ['popup.html', 'app.html', 'offscreen.html', 'approval.html', 'welcome.html']) {
+  for (const page of ['popup.html', 'app.html', 'offscreen.html', 'approval.html', 'welcome.html', 'options.html']) {
     if (!fs.existsSync(path.join(DIST_DIR, page))) {
       throw new Error(`React build missing ${page} in dist/ — the Vite multi-entry input changed?`);
     }
   }
-  log('✓ Built + copied React shell (popup.html, app.html, offscreen.html, approval.html, welcome.html, assets, fonts)', 'green');
+  log('✓ Built + copied React shell (popup.html, app.html, offscreen.html, approval.html, welcome.html, options.html, assets, fonts)', 'green');
 }
 
 function createZip() {

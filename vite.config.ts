@@ -53,6 +53,8 @@ export default defineConfig({
         // First-run welcome page (opened by the SW's onInstalled) — a vanilla-TS extension page
         // (no React), built by Vite so its TS entry can import the shared #shared/* modules.
         welcome: resolve(rootDir, 'welcome.html'),
+        // DIG settings (options_ui) — vanilla-TS extension page, same rationale as welcome.
+        options: resolve(rootDir, 'options.html'),
       },
     },
   },
