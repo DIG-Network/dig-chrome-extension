@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.19.0] - 2026-07-05
+
+### Features
+- In-window dApp app-view + inline bug-report entry (#65 Part B.2) (#21)
+
 ## [1.18.0] - 2026-07-05
 
 ### Features
