@@ -354,7 +354,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `6`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `7`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -366,7 +366,8 @@ SW→offscreen messages (those messages are handled by the offscreen document; t
 (§18.6): the SW forwards them to the offscreen vault, which derives and scans coinset. `5` (#56)
 added `prepareSend` (build + decode summary), `confirmSend` (sign + broadcast — the approved step),
 and `sendStatus` (poll confirmation) (§18.8). `6` (#56) added `getActivity` (§18.9): the SW routes
-it to the offscreen vault, which reconstructs the transaction ledger from coinset.
+it to the offscreen vault, which reconstructs the transaction ledger from coinset. `7` (#56) added the
+trade-offer actions — `makeOffer`, `inspectOffer`, `prepareTrade`, `confirmTrade` (§18.10).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -879,3 +880,36 @@ vault (`getActivity`):
   human-sentence rows + SpaceScan links. Results are cached (`walletCache.activity`) for cached-first
   paint; the height cursor is persisted for a future incremental scan (v1 re-scans fully for
   correctness — a coin created before a cursor may be spent after it).
+
+### 18.10 Trade offers
+
+Offers are assembled from `chia-wallet-sdk-wasm` primitives to match the canonical `chia-sdk-driver`
+offer construction byte-for-byte, so they interoperate with Sage / dexie. All money paths are proven
+consensus-valid by a two-party simulator settlement test. v1 supports a SINGLE offered asset and a
+SINGLE requested asset, each XCH or a CAT (covering every XCH↔token trade); the offered and requested
+assets MUST differ.
+
+- **Nonce.** `nonce = tree_hash(coin_ids sorted ascending)` over the maker's offered coin ids.
+  Make and take derive the same notarized-payment tree hash, so the announcements match.
+- **MAKE** (`makeOffer` → `prepareTrade`-free, no broadcast): spend the OFFERED coins into the
+  settlement puzzle (`Action.send(offeredId, SETTLEMENT_PAYMENT_HASH, amount)`), add the REQUESTED
+  payment ASSERTION (`AssertPuzzleAnnouncement(sha256(settlementPuzzleHash ‖ tree_hash(notarized_payment)))`,
+  where the settlement puzzle hash is `SETTLEMENT_PAYMENT_HASH` for XCH or `CatInfo(asset_id, hidden,
+  SETTLEMENT_PAYMENT_HASH).puzzle_hash()` for a CAT), and append a PHANTOM requested-payment carrier —
+  a coin spend with a ZERO parent and amount 0 whose puzzle is the (CAT-wrapped) settlement puzzle and
+  whose solution is the notarized payments. The maker NEVER funds the requested side (the offered coin
+  keeps full change). The bundle is `encodeOffer`-encoded to an `offer1…` string.
+- **INSPECT** (`inspectOffer`, read-only): `decodeOffer`, split real coin spends (`parent != 0`) from
+  phantom carriers (`parent == 0`), parse the requested payments from the carriers, and reconstruct the
+  offered legs (XCH from the real spends' CREATE_COINs to settlement; CATs via `offerSettlementCats`).
+- **TAKE** (`prepareTrade` `take` → `confirmTrade`): add the offered settlement coins (the taker
+  receives them) + the wallet's coins to fund the requested payments, apply the requested settle
+  actions (`RequestedPayments::actions()` = `Action.settle(id, notarized_payment)` — which create the
+  requested payments to the maker + the matching announcements), and concatenate the maker's REAL coin
+  spends (phantoms dropped) with the taker's spends into one aggregated `SpendBundle`. The taker pays
+  the network fee.
+- **CANCEL** (`prepareTrade` `cancel` → `confirmTrade`): re-spend the maker's original offered coins
+  back to self, invalidating the offer (its settlement coins can no longer be created).
+- `prepareTrade` builds + signs but does NOT broadcast; the signed bundle is held under a pending id;
+  `confirmTrade` is the ONLY place a trade is pushed (the user-approved step). Offers are mainnet-only
+  (signed with the mainnet AGG_SIG_ME genesis).

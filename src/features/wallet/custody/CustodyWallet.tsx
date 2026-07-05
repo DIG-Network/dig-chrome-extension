@@ -12,6 +12,7 @@ import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
+import { TradePanel } from '@/features/wallet/custody/TradePanel';
 import { CustodyActivity } from '@/features/wallet/custody/CustodyActivity';
 import { useState } from 'react';
 import type { WalletView } from '@/app/tabs';
@@ -116,11 +117,7 @@ export function CustodyWallet() {
       )}
 
       {walletView === 'activity' && <CustodyActivity />}
-      {walletView === 'trade' && (
-        <div className="dig-state" data-state="empty" data-testid="custody-trade-soon">
-          <FormattedMessage id="custody.soon.trade" />
-        </div>
-      )}
+      {walletView === 'trade' && <TradePanel assets={assets} />}
     </div>
   );
 }

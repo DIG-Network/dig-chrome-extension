@@ -68,7 +68,7 @@ describe('App shell', () => {
     await userEvent.click(screen.getByTestId('seg-activity'));
     expect(await screen.findByTestId('custody-activity')).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('seg-trade'));
-    expect(await screen.findByTestId('custody-trade-soon')).toBeInTheDocument();
+    expect(await screen.findByTestId('custody-trade')).toBeInTheDocument();
   });
 
   it('embeds the explore.dig.net iframe on the Apps tab', async () => {

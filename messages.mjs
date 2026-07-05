@@ -38,8 +38,12 @@ import { DIG_ERR } from './error-codes.mjs';
  *
  * v6 (#56 activity): added `getActivity` — the SW routes it to the offscreen vault, which
  * reconstructs the transaction ledger from coinset (coin-diff → decode → classify → net).
+ *
+ * v7 (#56 trade): added `makeOffer` (build a shareable `offer1…`), `inspectOffer` (decode a
+ * two-sided summary), `prepareTrade` (build + sign a take/cancel, held for approval), and
+ * `confirmTrade` (broadcast the approved trade) — routed to the offscreen vault.
  */
-export const MESSAGE_PROTOCOL_VERSION = 6;
+export const MESSAGE_PROTOCOL_VERSION = 7;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -86,6 +90,10 @@ export const ACTIONS = Object.freeze({
   confirmSend: 'confirmSend',
   sendStatus: 'sendStatus',
   getActivity: 'getActivity',
+  makeOffer: 'makeOffer',
+  inspectOffer: 'inspectOffer',
+  prepareTrade: 'prepareTrade',
+  confirmTrade: 'confirmTrade',
   // ── verification + node status ──
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
@@ -252,6 +260,26 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Reconstruct the transaction ledger (read-only) from coinset in the offscreen vault: coin-diff (both HD schemes, incl. spent) → decode → classify (XCH/CAT/trade) → net + counterparty. Cached to walletCache.activity; incremental from a height cursor.',
     request: '{ action }',
     response: "{ events:[{ id, kind:'sent'|'received'|'trade', asset, amount, counterparty, height, timestamp, coinId }], cursorHeight:number } | { success:false, code, message }",
+  },
+  [ACTIONS.makeOffer]: {
+    summary: 'Build (not broadcast) a shareable trade offer in the offscreen vault: spend the offered asset into the settlement puzzle + assert the requested payment; returns the `offer1…` string + two-sided summary.',
+    request: "{ action, offered:{ asset:{kind:'xch'}|{kind:'cat',assetId}, amount:string }, requested:{ asset, amount:string }, fee?:string }",
+    response: "{ offer:string /* offer1… */, offerSummary:{ offered:[{asset,amount}], requested:[{asset,amount,toPuzzleHashHex}] } } | { success:false, code, message }",
+  },
+  [ACTIONS.inspectOffer]: {
+    summary: 'Decode an `offer1…` string to its two-sided (offered vs requested) summary in the offscreen vault. Read-only; no broadcast.',
+    request: '{ action, offerStr:string }',
+    response: '{ offerSummary:{ offered:[{asset,amount}], requested:[{asset,amount,toPuzzleHashHex}] } } | { success:false, code, message }',
+  },
+  [ACTIONS.prepareTrade]: {
+    summary: 'Build + sign (not broadcast) a TAKE (fund + accept) or CANCEL (reclaim) of an offer; hold it under a pending id and return the two-sided summary to approve.',
+    request: "{ action, offerStr:string, tradeKind:'take'|'cancel', fee?:string }",
+    response: '{ pendingId:string, offerSummary:{ offered, requested } } | { success:false, code, message }',
+  },
+  [ACTIONS.confirmTrade]: {
+    summary: 'BROADCAST a previously-prepared trade (the approved step — the only place a trade is pushed). Returns an input coin id to poll.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },
   [ACTIONS.reportVerification]: {
     summary: 'Viewer reports the Merkle-verification result for rendered chia:// content.',

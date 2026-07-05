@@ -35,6 +35,27 @@ import type { ChainClient } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
 import { indexActivity, type ActivityWasm, type ActivityEvent } from '@/offscreen/activity';
+import { makeOffer, inspectOffer, takeOffer, cancelOffer, type OfferWasm, type OfferAsset, type OfferLeg, type OfferSummary } from '@/offscreen/offers';
+import type { ChainSpendBundle } from '@/offscreen/chain';
+
+/** Wire-safe (JSON, no bigint) asset descriptor crossing the SW boundary. */
+export type WireOfferAsset = { kind: 'xch' } | { kind: 'cat'; assetId: string };
+/** Wire-safe trade leg: asset + amount as a decimal string (base units). */
+export interface WireOfferLeg {
+  asset: WireOfferAsset;
+  amount: string;
+}
+/** Wire-safe two-sided offer summary (base-unit amounts as strings). */
+export interface WireOfferSummary {
+  offered: WireOfferLeg[];
+  requested: { asset: WireOfferAsset; amount: string; toPuzzleHashHex: string }[];
+}
+
+const toLeg = (w: WireOfferLeg): OfferLeg => ({ asset: w.asset as OfferAsset, amount: BigInt(w.amount) });
+const toWireSummary = (s: OfferSummary): WireOfferSummary => ({
+  offered: s.offered.map((l) => ({ asset: l.asset, amount: l.amount.toString() })),
+  requested: s.requested.map((r) => ({ asset: r.asset, amount: r.amount.toString(), toPuzzleHashHex: r.toPuzzleHashHex })),
+});
 
 /** The keystore operations the vault handles (mirrors the SW custody actions). */
 export type VaultOp =
@@ -49,7 +70,11 @@ export type VaultOp =
   | 'prepareSend'
   | 'confirmSend'
   | 'sendStatus'
-  | 'getActivity';
+  | 'getActivity'
+  | 'makeOffer'
+  | 'inspectOffer'
+  | 'prepareTrade'
+  | 'confirmTrade';
 
 /** A request forwarded from the SW to the vault. `record` is the persisted DIGWX1 blob for ops that need it. */
 export interface VaultRequest {
@@ -77,6 +102,13 @@ export interface VaultRequest {
   coinId?: string;
   /** getActivity: resume the incremental scan from this block height. */
   sinceHeight?: number;
+  /** makeOffer: the leg the wallet gives / the leg it wants (wire-safe, string amounts). */
+  offered?: WireOfferLeg;
+  requested?: WireOfferLeg;
+  /** inspectOffer / prepareTrade: the `offer1…` string. */
+  offerStr?: string;
+  /** prepareTrade: whether to TAKE (fund + accept) or CANCEL (reclaim) the offer. */
+  tradeKind?: 'take' | 'cancel';
 }
 
 /** The vault's reply. Never carries the persisted key; `mnemonic` is for one-time display only. */
@@ -107,6 +139,10 @@ export interface VaultResponse {
   /** getActivity: the reconstructed ledger events + the height cursor for the next incremental scan. */
   events?: ActivityEvent[];
   cursorHeight?: number;
+  /** makeOffer: the shareable `offer1…` string. */
+  offer?: string;
+  /** makeOffer / inspectOffer / prepareTrade: the decoded two-sided summary. */
+  offerSummary?: WireOfferSummary;
 }
 
 /** Test/DI seam. `chia` + `chain` power derivation + the balance scan (offscreen-only at runtime). */
@@ -130,6 +166,9 @@ export class Vault {
   /** Prepared sends awaiting user approval → confirm (cleared on confirm / lock). */
   private pending = new Map<string, PendingSend>();
 
+  /** Prepared trades (take/cancel) — a signed bundle held between approval and broadcast. */
+  private pendingTrades = new Map<string, { bundle: ChainSpendBundle; inputCoinId: string }>();
+
   /** True iff a decrypted key is currently held in memory. */
   hasKey(): boolean {
     return this.entropy !== null;
@@ -140,6 +179,7 @@ export class Vault {
     if (this.entropy) this.entropy.fill(0);
     this.entropy = null;
     this.pending.clear();
+    this.pendingTrades.clear();
   }
 
   /** Replace the held entropy, zeroizing any prior copy first. */
@@ -177,6 +217,14 @@ export class Vault {
           return await this.sendStatus(req, deps);
         case 'getActivity':
           return await this.getActivity(req, deps);
+        case 'makeOffer':
+          return await this.makeOffer(req, deps);
+        case 'inspectOffer':
+          return await this.inspectOffer(req, deps);
+        case 'prepareTrade':
+          return await this.prepareTrade(req, deps);
+        case 'confirmTrade':
+          return await this.confirmTrade(req, deps);
         default:
           return { success: false, code: 'BAD_REQUEST', message: `unknown vault op` };
       }
@@ -331,5 +379,61 @@ export class Vault {
       ...(req.sinceHeight ? { sinceHeight: req.sinceHeight } : {}),
     });
     return { success: true, events: idx.events, cursorHeight: idx.cursorHeight };
+  }
+
+  /** MAKE a trade offer (build + encode; does NOT broadcast). Returns the shareable string + summary. */
+  private async makeOffer(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.offered || !req.requested) return { success: false, code: 'BAD_REQUEST', message: 'offered + requested required' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const made = await makeOffer(deps.chia as unknown as OfferWasm, deps.chain, {
+      seed,
+      offered: toLeg(req.offered),
+      requested: toLeg(req.requested),
+      ...(req.fee ? { fee: BigInt(req.fee) } : {}),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    return { success: true, offer: made.offer, offerSummary: toWireSummary(made.summary) };
+  }
+
+  /** INSPECT an offer (decode + two-sided summary). Read-only; needs the wasm but no held key. */
+  private async inspectOffer(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'decode unavailable' };
+    if (!req.offerStr) return { success: false, code: 'BAD_REQUEST', message: 'offerStr required' };
+    const summary = inspectOffer(deps.chia as unknown as OfferWasm, req.offerStr);
+    return { success: true, offerSummary: toWireSummary(summary) };
+  }
+
+  /**
+   * Prepare (build + sign, don't broadcast) a TAKE or CANCEL and HOLD the bundle under a pending id.
+   * Returns the two-sided summary for the user to approve before `confirmTrade` broadcasts it.
+   */
+  private async prepareTrade(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.offerStr) return { success: false, code: 'BAD_REQUEST', message: 'offerStr required' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const build = req.tradeKind === 'cancel' ? cancelOffer : takeOffer;
+    const prepared = await build(deps.chia as unknown as OfferWasm, deps.chain, {
+      seed,
+      offerStr: req.offerStr,
+      ...(req.fee ? { fee: BigInt(req.fee) } : {}),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    const pendingId = crypto.randomUUID();
+    this.pendingTrades.set(pendingId, { bundle: prepared.bundle, inputCoinId: prepared.inputCoinId });
+    return { success: true, pendingId, offerSummary: toWireSummary(prepared.summary) };
+  }
+
+  /** BROADCAST a previously-prepared trade (the approved step). Consumes the pending entry. */
+  private async confirmTrade(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const held = req.pendingId ? this.pendingTrades.get(req.pendingId) : undefined;
+    if (!held) return { success: false, code: 'NO_PENDING', message: 'no matching pending trade' };
+    const push = await deps.chain.pushSpendBundle(held.bundle);
+    this.pendingTrades.delete(req.pendingId!);
+    if (!push.success) return { success: false, code: 'PUSH_FAILED', message: push.error ?? 'broadcast failed' };
+    return { success: true, spentCoinId: held.inputCoinId };
   }
 }

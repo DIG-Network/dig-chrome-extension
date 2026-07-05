@@ -2,6 +2,7 @@ import { api } from '@/api/api';
 import { ACTIONS } from '#shared/messages.mjs';
 import type { LockState } from '@/features/wallet/walletSlice';
 import type { ActivityEvent } from '@/offscreen/activity';
+import type { WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 
 /**
  * Self-custody endpoints (#56) — these route over the SW seam (`chromeBaseQuery` →
@@ -107,6 +108,25 @@ export const custodyApi = api.injectEndpoints({
       query: () => ({ action: ACTIONS.getActivity }),
       providesTags: ['Activity'],
     }),
+
+    // ── Trade offers (#56) ──
+    // Build (not broadcast) a shareable offer → the `offer1…` string + two-sided summary.
+    makeCustodyOffer: build.mutation<{ offer: string; offerSummary: WireOfferSummary }, { offered: WireOfferLeg; requested: WireOfferLeg; fee?: string }>({
+      query: (arg) => ({ action: ACTIONS.makeOffer, ...arg }),
+    }),
+    // Decode an offer string → its two-sided summary (read-only review).
+    inspectCustodyOffer: build.mutation<{ offerSummary: WireOfferSummary }, { offerStr: string }>({
+      query: (arg) => ({ action: ACTIONS.inspectOffer, ...arg }),
+    }),
+    // Build + sign (not broadcast) a take/cancel → held under a pending id + summary to approve.
+    prepareTrade: build.mutation<{ pendingId: string; offerSummary: WireOfferSummary }, { offerStr: string; tradeKind: 'take' | 'cancel'; fee?: string }>({
+      query: (arg) => ({ action: ACTIONS.prepareTrade, ...arg }),
+    }),
+    // BROADCAST a prepared trade (the approved step). Invalidates balances/activity.
+    confirmTrade: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
+      query: (arg) => ({ action: ACTIONS.confirmTrade, ...arg }),
+      invalidatesTags: ['Balances', 'Activity'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -124,4 +144,8 @@ export const {
   useConfirmSendMutation,
   useLazySendStatusQuery,
   useGetCustodyActivityQuery,
+  useMakeCustodyOfferMutation,
+  useInspectCustodyOfferMutation,
+  usePrepareTradeMutation,
+  useConfirmTradeMutation,
 } = custodyApi;
