@@ -12,6 +12,7 @@ import {
   computeUnlockExpiry,
   isUnlockExpired,
   deriveLockState,
+  computeLockSnapshot,
   resolveCoinsetUrl,
   DEFAULT_COINSET_URL,
   LOCK_STATE,
@@ -113,5 +114,42 @@ test('deriveLockState: keystore + key in vault + fresh TTL → unlocked', () => 
   assert.equal(
     deriveLockState({ hasKeystore: true, hasKeyInVault: true, unlockExpiry: 200, now: 100 }),
     LOCK_STATE.UNLOCKED,
+  );
+});
+
+// ── computeLockSnapshot: the storage-only snapshot the SW returns for getLockState ──
+// The lock state the UI reads is derived PURELY from persisted facts — whether the encrypted
+// keystore blob exists in chrome.storage.local and the non-secret unlock-expiry kept in
+// chrome.storage.session — with NO round-trip to the offscreen vault. That decoupling is the fix
+// for the #68 "Loading wallet" hang: a no-wallet user (who has no offscreen document at all) always
+// resolves getLockState instantly to `none`, so CustodyGate lands on onboarding instead of waiting
+// on a vault that will never answer. The fresh unlock-expiry is the faithful proxy for "unlocked":
+// it is set on create/import/unlock and cleared on lock / TTL lapse.
+test('computeLockSnapshot: no keystore → none, purely from storage (never needs the vault)', () => {
+  // The regression case: even with a stale/fresh expiry and an active id lingering, no blob = none.
+  assert.deepEqual(
+    computeLockSnapshot({ hasKeystore: false, activeWalletId: 'main', unlockExpiry: 9e12, now: 100 }),
+    { lockState: LOCK_STATE.NONE, activeWalletId: null, unlockExpiry: null },
+  );
+});
+
+test('computeLockSnapshot: keystore + no unlock session → locked', () => {
+  assert.equal(
+    computeLockSnapshot({ hasKeystore: true, unlockExpiry: null, now: 100 }).lockState,
+    LOCK_STATE.LOCKED,
+  );
+});
+
+test('computeLockSnapshot: keystore + expired unlock session → locked', () => {
+  assert.equal(
+    computeLockSnapshot({ hasKeystore: true, unlockExpiry: 50, now: 100 }).lockState,
+    LOCK_STATE.LOCKED,
+  );
+});
+
+test('computeLockSnapshot: keystore + fresh unlock session → unlocked (carries id + expiry)', () => {
+  assert.deepEqual(
+    computeLockSnapshot({ hasKeystore: true, activeWalletId: 'main', unlockExpiry: 200, now: 100 }),
+    { lockState: LOCK_STATE.UNLOCKED, activeWalletId: 'main', unlockExpiry: 200 },
   );
 });

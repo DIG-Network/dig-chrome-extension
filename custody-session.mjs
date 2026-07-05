@@ -107,3 +107,36 @@ export function deriveLockState({ hasKeystore, hasKeyInVault, unlockExpiry, now 
   if (!hasKeyInVault) return LOCK_STATE.LOCKED;
   return isUnlockExpired(unlockExpiry, now) ? LOCK_STATE.LOCKED : LOCK_STATE.UNLOCKED;
 }
+
+/**
+ * Compute the full lock-state snapshot the UI's CustodyGate reads, PURELY from persisted facts:
+ * whether the encrypted keystore blob exists in `chrome.storage.local` and the non-secret
+ * unlock-expiry kept in `chrome.storage.session`. It NEVER consults the offscreen vault, so it
+ * ALWAYS resolves immediately — a no-wallet user (who has no offscreen document at all) can never
+ * leave `getLockState` pending, which is what stranded CustodyGate on "Loading wallet" (#68). The
+ * SW spawns the offscreen document only when it actually unlocks / uses the key, not to read state.
+ *
+ * A fresh, unexpired unlock-expiry is the faithful proxy for "the wallet is unlocked": it is set
+ * together with the decrypted key on create/import/unlock (`startUnlockWindow`) and cleared together
+ * on lock / idle / TTL lapse (`lockVaultNow`, the auto-lock alarm). The auto-lock alarm independently
+ * zeroizes the vault when the window lapses, so the two never stay desynced for long.
+ *
+ *   - no keystore blob          → `none`     (→ onboarding)
+ *   - blob, expired/absent TTL  → `locked`   (→ unlock screen)
+ *   - blob, fresh TTL           → `unlocked` (→ the wallet)
+ *
+ * @param {{ hasKeystore: boolean, activeWalletId?: string|null, unlockExpiry?: number|null, now: number }} facts
+ * @returns {{ lockState: string, activeWalletId: string|null, unlockExpiry: number|null }}
+ */
+export function computeLockSnapshot({ hasKeystore, activeWalletId = null, unlockExpiry = null, now }) {
+  const lockState = !hasKeystore
+    ? LOCK_STATE.NONE
+    : isUnlockExpired(unlockExpiry, now)
+      ? LOCK_STATE.LOCKED
+      : LOCK_STATE.UNLOCKED;
+  return {
+    lockState,
+    activeWalletId: hasKeystore ? activeWalletId || null : null,
+    unlockExpiry: hasKeystore ? unlockExpiry || null : null,
+  };
+}
