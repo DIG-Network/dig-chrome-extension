@@ -81,6 +81,10 @@ const EXTENSION_FILES = [
   // so the injected surface is the shared package's, never a hand-copied divergent one.
   'dig-viewer.html',
   'dig-viewer.js',
+  // Pure store-reference classifier/resolver (#55) — imported by dig-viewer.js (the parent side of
+  // the in-page store interceptor bridge). The DOM-glue interceptor itself is BUNDLED below from
+  // store-interceptor.entry.mjs into dist/store-interceptor.js (not plain-copied).
+  'store-refs.mjs',
   // dig-client WASM (ES module + binary) — required for client-side decryption in the module SW
   'dig_client.js',
   'dig_client_bg.wasm',
@@ -513,6 +517,43 @@ async function bundleQr() {
   log('✓ Bundled: qr.mjs (self-contained ESM, browser-safe)', 'green');
 }
 
+// The in-page STORE INTERCEPTOR (#55) runs inside the sandboxed, opaque-origin `data:` frame that
+// dig-viewer renders store HTML into. An opaque frame can neither import an ES module nor fetch a
+// cross-origin script, so the interceptor MUST be a single self-contained IIFE that dig-viewer.js
+// inlines into the frame document. esbuild bundles store-interceptor.entry.mjs (which imports the
+// unit-tested store-refs.mjs) into dist/store-interceptor.js with the pure logic inlined.
+const STORE_INTERCEPTOR_SRC = path.join(__dirname, 'store-interceptor.entry.mjs');
+const STORE_INTERCEPTOR_OUT = path.join(DIST_DIR, 'store-interceptor.js');
+
+async function bundleStoreInterceptor() {
+  log('\n🧩 Bundling store-interceptor.js (in-page relative-asset interceptor, #55)...', 'blue');
+  await esbuild.build({
+    entryPoints: [STORE_INTERCEPTOR_SRC],
+    outfile: STORE_INTERCEPTOR_OUT,
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: ['chrome111'],
+    legalComments: 'none',
+    minify: false,
+  });
+  const out = fs.readFileSync(STORE_INTERCEPTOR_OUT, 'utf8');
+  // Must be self-contained (store-refs inlined; no surviving ES import) and must NOT contain a
+  // literal `</script>` sequence (dig-viewer inlines this into a data: <script> block).
+  if (PROVIDER_ESM_LEAK.test(out)) {
+    throw new Error('Bundled store-interceptor.js still contains an ES import/export — store-refs did not inline.');
+  }
+  if (/<\/script/i.test(out)) {
+    throw new Error('Bundled store-interceptor.js contains a literal </script> — would break the inlined <script> block.');
+  }
+  for (const needle of ['__DIG_CFG', 'read-result']) {
+    if (!out.includes(needle)) {
+      throw new Error(`Bundled store-interceptor.js is missing "${needle}" — the interceptor did not bundle correctly.`);
+    }
+  }
+  log('✓ Bundled: store-interceptor.js (self-contained IIFE, store-refs inlined)', 'green');
+}
+
 /** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
 async function vendorWalletConnect() {
   log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
@@ -565,6 +606,10 @@ async function main() {
   // Bundle qr.mjs so its qrcode-generator import resolves in the browser (bare specifier). Runs
   // AFTER copyFiles (which places the raw copy) so the inlined bundle overwrites it.
   await bundleQr();
+
+  // Bundle the in-page store interceptor (#55) into dist/store-interceptor.js as a self-contained
+  // IIFE (store-refs.mjs inlined) so dig-viewer can inline it into the sandboxed store frame.
+  await bundleStoreInterceptor();
 
   // Inject the shared WalletConnect project id into dist/wallet-wc.js (build-time only;
   // never a committed source literal, never logged).

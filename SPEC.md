@@ -245,6 +245,41 @@ The reader reassembles windows into a single buffer of `total_length` and passes
   a proof/integrity failure (`DIG_ERR_PROOF_MISMATCH`). Each chunk is decrypted independently
   and the plaintext concatenated in order.
 
+### 5.3 Store rendering & relative-reference resolution (in-page interceptor)
+
+When the loader renders an HTML document from a store, that document's relative links and asset
+references (`./style.css`, `/img/x.png`, a relative `<a href>`, a relative `fetch()`/XHR) MUST
+resolve back to reads of the SAME capsule through the node — never against the (opaque) frame
+origin, which would break them. This mirrors the `*.on.dig.net` loader's service-worker request
+interception; because MV3 cannot register a page service worker onto the rendered document, the
+extension uses an equivalent IN-PAGE interceptor (parity with the on.dig.net loader's Tier-2
+in-page path):
+
+1. The viewer renders store HTML inside a SANDBOXED, opaque-origin `data:` frame (isolated from
+   the extension — the frame has no `chrome.*` access and holds no keys). The frame boots the
+   interceptor with the entry capsule config `{ storeId, root, salt, entryKey }`.
+2. The interceptor patches `window.fetch` + `XMLHttpRequest` and rewrites DOM `src`/`href` on
+   injection and on mutation. Each reference is classified as:
+   - a **relative** ref — resolved against the CURRENT document's resource key into the same
+     capsule (a root-absolute `/x` resolves against the store root; `./x`/`../x` against the
+     current document's directory), so a multi-page store's per-page relative assets resolve
+     correctly;
+   - an absolute **`chia://`/`urn:dig:chia:`** ref — read as given (a rootless/saltless ref
+     inherits the current capsule's root/salt);
+   - **external** (http(s)/protocol-relative/`data:`/`mailto:`/in-page `#anchor`) — left untouched.
+3. Each resolved DIG reference is read via a `read` request to the parent viewer, which serves it
+   through the standard `proxyRequest` (§5, §8 ladder + verify + decrypt) and replies with a
+   `data:` URL. The interceptor holds NO keys and runs NO crypto — the single decrypt path stays
+   in the background service worker.
+4. A relative `<a>` navigation is intercepted (a native navigation would escape the interceptor)
+   and the target document is swapped in-page; the current resource key updates so subsequent
+   relative references resolve against the new document.
+
+The reference→`chia://` mapping is normative and shared (`store-refs.mjs`): a resolved reference is
+emitted CHAIN-PREFIXED as `chia://chia:<storeId>[:<root>]/<resourceKey>[?salt=<hex>]` (a `latest`
+root is emitted rootless), which `parseURN` (§4) parses to the correct `{ storeId, roothash }` — a
+bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the chain).
+
 ---
 
 ## 6. Crypto & verification invariants
@@ -497,10 +532,13 @@ extension MUST NOT diverge from it.
 - `node build.js` validates required source files and copies them into `dist/`, esbuild-bundles
   `dig-provider.entry.mjs` → `dist/dig-provider.js`, esbuild-bundles `wallet-methods.mjs` into a
   self-contained ESM (inlining `@dignetwork/chia-provider` — browsers + MV3 SWs cannot resolve the
-  bare specifier, so the raw re-export would break every consumer's module graph), vendors the
-  WalletConnect SignClient into `dist/vendor/`, injects the build-time WalletConnect project id
-  into `dist/wallet-wc.js`, injects the `package.json` version into the `__APP_VERSION__`
-  placeholder of `popup.html` + `control.html` (§2.2), and emits `dist/agent-surface.json`.
+  bare specifier, so the raw re-export would break every consumer's module graph), esbuild-bundles
+  `store-interceptor.entry.mjs` → `dist/store-interceptor.js` (a self-contained IIFE with the
+  unit-tested `store-refs.mjs` inlined, since the opaque store frame can neither import a module nor
+  fetch a cross-origin script — §5.3), vendors the WalletConnect SignClient into `dist/vendor/`,
+  injects the build-time WalletConnect project id into `dist/wallet-wc.js`, injects the
+  `package.json` version into the `__APP_VERSION__` placeholder of `popup.html` + `control.html`
+  (§2.2), and emits `dist/agent-surface.json`.
 - The bundled `dist/wallet-methods.mjs` MUST retain the same named exports and contain NO surviving
   bare `@dignetwork/*` import; the build fails loudly otherwise.
 - `node build.js --zip` additionally produces a versioned `.zip` for distribution.
