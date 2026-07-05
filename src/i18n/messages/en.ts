@@ -190,6 +190,9 @@ export const en: Record<string, string> = {
   'apps.loading': 'Loading the DIG dApp store…',
   'apps.error': "Couldn't load the dApp store.",
   'apps.openTab': 'Open in a new tab',
+  'apps.empty': 'No dApps are listed yet — check back soon.',
+  'apps.offline': "Offline — showing the last apps you loaded.",
+  'apps.open': 'Open {name}',
 
   // ── resolver ──
   'resolver.title': 'chia:// resolver',

@@ -1,42 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
-import { FormattedMessage } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 import { EXPLORE_URL } from '#shared/links.mjs';
 import { ExternalLink } from '@/components/ExternalLink';
-
-/** The single embed URL for BOTH surfaces — explore's own responsive breakpoint decides the view. */
-const APPS_URL = `${EXPLORE_URL}/apps`;
-
-/** How long to wait for the iframe to load before showing the error/retry state (ms). */
-const LOAD_TIMEOUT = 12000;
+import { FourState } from '@/components/FourState';
+import { useGetStoreCatalogQuery } from '@/features/apps/appsApi';
+import type { StoreApp } from '@/features/apps/storeCatalog';
 
 /**
- * The Apps tab (#59) — the curated DIG dApp store (explore.dig.net) embedded in-window via an
- * iframe. The SAME URL is embedded on both surfaces; explore's responsive breakpoint renders the
- * mobile launcher at the popup's narrow width and the full desktop store in the wide `app.html`
- * surface, so the iframe just needs to FILL its container at each width. explore.dig.net sends no
- * frame-ancestors block, so it embeds directly (the extension CSP adds `frame-src
- * https://explore.dig.net`). Four states: loading (until the iframe's `load` fires or a timeout),
- * error + retry (reloads the frame), success. An "open in a new tab" affordance is always present.
+ * The Apps tab (#65) — the extension's OWN native dApp launcher (no iframe). It fetches
+ * explore.dig.net's `/store.json`, caches it for offline/instant paint (stale-while-revalidate, see
+ * appsApi), and renders a mobile-OS icon grid: squircle icons tinted by each app's `accentColor`,
+ * labels from `name`, tap → open the app's `link` in a new tab. Four states drive the grid (loading
+ * skeleton / error+retry / empty / success). A "browse the full store" affordance is always present.
  */
 export function AppsTab() {
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [attempt, setAttempt] = useState(0);
-  const timer = useRef<number | undefined>(undefined);
-  const url = APPS_URL;
-
-  useEffect(() => {
-    setStatus('loading');
-    timer.current = window.setTimeout(() => setStatus((s) => (s === 'loading' ? 'error' : s)), LOAD_TIMEOUT);
-    return () => window.clearTimeout(timer.current);
-  }, [attempt, url]);
-
-  const onLoad = () => {
-    window.clearTimeout(timer.current);
-    setStatus('ready');
-  };
-  const retry = () => {
-    setAttempt((n) => n + 1);
-  };
+  const intl = useIntl();
+  const { data, isLoading, isError, refetch, isFetching } = useGetStoreCatalogQuery();
+  const apps = data?.apps ?? [];
 
   return (
     <section className="dig-appswrap" data-testid="apps-panel" aria-labelledby="apps-title">
@@ -44,42 +23,65 @@ export function AppsTab() {
         <h2 className="dig-heading" id="apps-title" style={{ margin: 0 }}>
           <FormattedMessage id="apps.title" />
         </h2>
-        <ExternalLink href={url} testid="apps-open-tab">
+        <ExternalLink href={EXPLORE_URL} testid="apps-open-tab">
           ↗ <FormattedMessage id="apps.openTab" />
         </ExternalLink>
       </div>
 
-      {status === 'loading' && (
-        <div className="dig-state" role="status" aria-live="polite" data-state="loading" data-testid="apps-loading">
-          <div className="dig-skeleton" style={{ width: '100%' }} />
-          <span className="dig-muted">
-            <FormattedMessage id="apps.loading" />
-          </span>
-        </div>
-      )}
-      {status === 'error' && (
-        <div className="dig-state" role="alert" data-state="error" data-testid="apps-error">
-          <p>
-            <FormattedMessage id="apps.error" />
-          </p>
-          <button type="button" className="dig-btn" data-testid="apps-retry" onClick={retry}>
-            <FormattedMessage id="state.retry" />
-          </button>
-        </div>
+      {data?.stale && (
+        <p className="dig-muted" role="status" data-testid="apps-offline" style={{ margin: '2px 0 0' }}>
+          <FormattedMessage id="apps.offline" />
+        </p>
       )}
 
-      {status !== 'error' && (
-        <iframe
-          key={attempt}
-          className="dig-appsframe"
-          data-testid="apps-frame"
-          title="DIG dApp store"
-          src={url}
-          onLoad={onLoad}
-          style={{ display: status === 'ready' ? 'block' : 'none' }}
-          sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-        />
+      <FourState
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={!isLoading && !isError && apps.length === 0}
+        onRetry={() => void refetch()}
+        testid="apps"
+        loadingId="apps.loading"
+        errorId="apps.error"
+        emptyId="apps.empty"
+        skeleton={<div className="dig-launcher" aria-hidden="true">{Array.from({ length: 6 }, (_, i) => <div key={i} className="dig-app-tile dig-app-tile--skeleton"><div className="dig-app-icon dig-skeleton" /><div className="dig-skeleton" style={{ height: 10, width: '70%', margin: '6px auto 0' }} /></div>)}</div>}
+      >
+        <ul className="dig-launcher" data-testid="apps-launcher" aria-label={intl.formatMessage({ id: 'apps.title' })}>
+          {apps.map((app) => (
+            <li key={app.slug}>
+              <AppTile app={app} intl={intl} />
+            </li>
+          ))}
+        </ul>
+      </FourState>
+
+      {isFetching && !isLoading && (
+        <span className="dig-visually-hidden" role="status" aria-live="polite" data-testid="apps-refreshing">
+          <FormattedMessage id="apps.loading" />
+        </span>
       )}
     </section>
+  );
+}
+
+/** One launcher icon: squircle icon tinted by the app's accent, its name, tap → open the app. */
+function AppTile({ app, intl }: { app: StoreApp; intl: ReturnType<typeof useIntl> }) {
+  const tint = app.accentColor;
+  return (
+    <ExternalLink
+      href={app.link}
+      className="dig-app-tile"
+      testid={`app-tile-${app.slug}`}
+      closePopup
+    >
+      <span
+        className="dig-app-icon"
+        data-testid={`app-icon-${app.slug}`}
+        style={tint ? ({ ['--tile-accent' as string]: tint }) : undefined}
+      >
+        <img src={app.icon} alt="" loading="lazy" draggable={false} />
+      </span>
+      <span className="dig-app-label">{app.name}</span>
+      <span className="dig-visually-hidden">{intl.formatMessage({ id: 'apps.open' }, { name: app.name })}</span>
+    </ExternalLink>
   );
 }
