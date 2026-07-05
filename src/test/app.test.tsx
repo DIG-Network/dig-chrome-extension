@@ -31,6 +31,16 @@ beforeEach(() => {
   // Route lives in location.hash, which persists across tests in the shared jsdom document —
   // reset it so each test starts on the default (resolver) route.
   history.replaceState(null, '', '/');
+  // The wallet tab now lands on the self-custody gate (#56). These shell tests exercise the
+  // (Sage-broker) wallet body, so report an already-unlocked wallet from the SW; other actions
+  // keep the default stub reply.
+  (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = vi.fn(
+    (msg: { action?: string } | undefined, cb?: (r: unknown) => void) => {
+      const reply = msg?.action === 'getLockState' ? { lockState: 'unlocked' } : { success: true };
+      if (cb) cb(reply);
+      return Promise.resolve(reply);
+    },
+  );
 });
 afterEach(() => {
   window.matchMedia = original;
@@ -42,8 +52,9 @@ describe('App shell', () => {
     for (const t of ['wallet', 'apps', 'resolver', 'shield', 'control']) {
       expect(screen.getByTestId(`tab-${t}`)).toBeInTheDocument();
     }
-    // Wallet is the default landing (ladder-of-needs); disconnected → the connect gateway.
-    expect(screen.getByTestId('wallet-panel')).toBeInTheDocument();
+    // Wallet is the default landing (ladder-of-needs); unlocked custody → the (Sage) body, which
+    // is disconnected here → the connect gateway.
+    expect(await screen.findByTestId('wallet-panel')).toBeInTheDocument();
     expect(await screen.findByTestId('wallet-connect-cta')).toBeInTheDocument();
     expect(screen.getByTestId('app-version')).toHaveTextContent('v0.0.0-test');
     expect(screen.getByTestId('popout-fullview')).toBeInTheDocument();

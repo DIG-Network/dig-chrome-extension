@@ -10,16 +10,31 @@ import { ConnectPanel } from '@/features/wallet/ConnectPanel';
 import { Home } from '@/features/wallet/Home';
 import { Activity } from '@/features/wallet/Activity';
 import { Trade } from '@/features/wallet/Trade';
+import { CustodyGate } from '@/features/wallet/custody/CustodyGate';
 
 const SEG_OPTIONS = WALLET_VIEWS.map((v) => ({ value: v, labelId: `wallet.view.${v}` }));
 
 /**
- * The Wallet tab — the Balances & Intents surface. Gates on the WalletConnect session: while it
- * resolves, four-state loading; when there's no session, the ConnectPanel; when connected, the
- * Home/Activity/Trade segmented control drives the active view, with a connected chip + disconnect.
- * The active sub-view is cross-document client state (`ui.walletView`).
+ * The Wallet tab. The self-custody {@link CustodyGate} lands FIRST (§18.3, full Sage replacement):
+ * no wallet → onboarding/CTA, locked → unlock, unlocked → the Balances & Intents body below. The
+ * body ({@link WalletBody}) is a child so its Sage-broker queries only mount when the gate reaches
+ * it (unlocked, or the "use Sage instead" path).
  */
 export function WalletTab() {
+  return (
+    <CustodyGate>
+      <WalletBody />
+    </CustodyGate>
+  );
+}
+
+/**
+ * The Balances & Intents body. Gates on the WalletConnect session: while it resolves, four-state
+ * loading; when there's no session, the ConnectPanel; when connected, the Home/Activity/Trade
+ * segmented control drives the active view. The active sub-view is cross-document client state
+ * (`ui.walletView`). (Custody-backed balances replace the Sage source in a follow-up PR.)
+ */
+function WalletBody() {
   const dispatch = useAppDispatch();
   const walletView = useAppSelector((s) => s.ui.walletView);
   const connection = useGetConnectionQuery();
