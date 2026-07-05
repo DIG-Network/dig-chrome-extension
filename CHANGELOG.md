@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.14.0] - 2026-07-05
+
+### Features
+- CAT send — lineage reconstruction + asset picker (#56) (#16)
+
 ## [1.13.0] - 2026-07-05
 
 ### Features
