@@ -34,9 +34,6 @@ const EXTENSION_FILES = [
   // QR renderer for the Receive view (bundled below to inline qrcode-generator for the browser).
   'qr.mjs',
   'resolve-status.mjs',
-  // Full-page DIG Control Panel onboarding landing (opened when no local node is detected).
-  'control.html',
-  'control.js',
   'dig-urn.mjs',
   // Shared dig-node host config (one parser/default for the server.host key + the
   // dig.local→localhost resolution order) + the branded, plain-language chia:// error
@@ -351,7 +348,7 @@ function createZip() {
  */
 function injectAppVersion() {
   const version = require('./package.json').version;
-  for (const page of ['popup.html', 'app.html', 'control.html', 'approval.html']) {
+  for (const page of ['popup.html', 'app.html', 'approval.html']) {
     const dest = path.join(DIST_DIR, page);
     if (!fs.existsSync(dest)) continue;
     const src = fs.readFileSync(dest, 'utf8');
