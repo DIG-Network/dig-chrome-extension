@@ -12,31 +12,19 @@ function renderApp(surface: Surface, transport: WalletTransport) {
   return { store, ...render(<App surface={surface} store={store} transport={transport} />) };
 }
 
-/** A connected transport whose broker returns simple balances + an empty activity list. */
-function connectedWithData(overrides: Partial<WalletTransport> = {}): WalletTransport {
-  return makeTransport({
-    getConnection: vi.fn(async () => ({ connected: true, address: 'xch1abcdefghij', network: 'mainnet', topic: 't' })),
-    isConnected: vi.fn(async () => true),
-    request: vi.fn(async (method: string) => {
-      if (method === 'chip0002_getAssetBalance') return { confirmed: 2_510_000_000_000 };
-      if (method === 'chia_getTransactions') return { transactions: [] };
-      return {};
-    }),
-    ...overrides,
-  });
-}
-
 const original = window.matchMedia;
 beforeEach(() => {
   // Route lives in location.hash, which persists across tests in the shared jsdom document —
   // reset it so each test starts on the default (resolver) route.
   history.replaceState(null, '', '/');
-  // The wallet tab now lands on the self-custody gate (#56). These shell tests exercise the
-  // (Sage-broker) wallet body, so report an already-unlocked wallet from the SW; other actions
-  // keep the default stub reply.
+  // The wallet tab lands on the self-custody gate (#56). Report an already-unlocked custody wallet
+  // + a balance scan + a receive address from the SW so the shell tests exercise the custody body.
   (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = vi.fn(
     (msg: { action?: string } | undefined, cb?: (r: unknown) => void) => {
-      const reply = msg?.action === 'getLockState' ? { lockState: 'unlocked' } : { success: true };
+      let reply: unknown = { success: true };
+      if (msg?.action === 'getLockState') reply = { lockState: 'unlocked' };
+      else if (msg?.action === 'getCustodyBalances') reply = { balances: { xch: 2_510_000_000_000, cats: {} } };
+      else if (msg?.action === 'getReceiveAddress') reply = { address: 'xch1qqqqcustodyreceiveaddressqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzz' };
       if (cb) cb(reply);
       return Promise.resolve(reply);
     },
@@ -52,39 +40,35 @@ describe('App shell', () => {
     for (const t of ['wallet', 'apps', 'resolver', 'shield', 'control']) {
       expect(screen.getByTestId(`tab-${t}`)).toBeInTheDocument();
     }
-    // Wallet is the default landing (ladder-of-needs); unlocked custody → the (Sage) body, which
-    // is disconnected here → the connect gateway.
-    expect(await screen.findByTestId('wallet-panel')).toBeInTheDocument();
-    expect(await screen.findByTestId('wallet-connect-cta')).toBeInTheDocument();
+    // Wallet is the default landing; the unlocked self-custody wallet renders its balances body.
+    expect(await screen.findByTestId('custody-wallet')).toBeInTheDocument();
     expect(screen.getByTestId('app-version')).toHaveTextContent('v0.0.0-test');
     expect(screen.getByTestId('popout-fullview')).toBeInTheDocument();
   });
 
-  it('shows the connect gateway on the wallet tab when disconnected', async () => {
+  it('shows the custody portfolio + scanned assets on the wallet tab', async () => {
     renderApp('popup', makeTransport());
     await userEvent.click(screen.getByTestId('tab-wallet'));
-    expect(await screen.findByTestId('wallet-connect-cta')).toBeInTheDocument();
-  });
-
-  it('renders the wallet Home (portfolio + assets) when connected, and switches sub-views', async () => {
-    renderApp('popup', connectedWithData());
-    await userEvent.click(screen.getByTestId('tab-wallet'));
     const hero = await screen.findByTestId('portfolio-value');
-    await waitFor(() => expect(hero).toHaveTextContent('2.51'));
+    await waitFor(() => expect(hero).toHaveTextContent('2.51')); // 2.51 XCH from the custody scan
     expect(await screen.findByTestId('asset-xch')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByTestId('seg-activity'));
-    expect(await screen.findByTestId('wallet-activity')).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('seg-trade'));
-    expect(await screen.findByTestId('wallet-trade')).toBeInTheDocument();
   });
 
-  it('opens the Send sheet from Home', async () => {
-    renderApp('popup', connectedWithData());
+  it('shows the custody receive address on Home', async () => {
+    renderApp('popup', makeTransport());
     await userEvent.click(screen.getByTestId('tab-wallet'));
-    await userEvent.click(await screen.findByTestId('action-send'));
-    expect(await screen.findByTestId('send-sheet')).toBeInTheDocument();
-    expect(screen.getByTestId('send-submit')).toBeInTheDocument();
+    const addr = await screen.findByTestId('wallet-address');
+    expect(addr).toHaveValue('xch1qqqqcustodyreceiveaddressqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzz');
+  });
+
+  it('switches custody sub-views via the segmented control', async () => {
+    renderApp('popup', makeTransport());
+    await userEvent.click(screen.getByTestId('tab-wallet'));
+    await screen.findByTestId('custody-wallet');
+    await userEvent.click(screen.getByTestId('seg-activity'));
+    expect(await screen.findByTestId('custody-activity-soon')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('seg-trade'));
+    expect(await screen.findByTestId('custody-trade-soon')).toBeInTheDocument();
   });
 
   it('embeds the explore.dig.net iframe on the Apps tab', async () => {

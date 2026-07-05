@@ -29,8 +29,11 @@ import { DIG_ERR } from './error-codes.mjs';
  * v3 (#56 self-custody): added the custody actions (`createWallet`, `importWallet`,
  * `unlockWallet`, `lockWallet`, `revealPhrase`, `getLockState`) the SW routes to the offscreen
  * keystore vault, plus the `OFFSCREEN_TARGET` discriminator for SW→offscreen messages.
+ *
+ * v4 (#56 balances): added `getReceiveAddress` + `getCustodyBalances` — the SW forwards them to the
+ * offscreen vault, which derives (both HD schemes) and scans coinset for XCH + watched CATs.
  */
-export const MESSAGE_PROTOCOL_VERSION = 3;
+export const MESSAGE_PROTOCOL_VERSION = 4;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -71,6 +74,8 @@ export const ACTIONS = Object.freeze({
   lockWallet: 'lockWallet',
   revealPhrase: 'revealPhrase',
   getLockState: 'getLockState',
+  getReceiveAddress: 'getReceiveAddress',
+  getCustodyBalances: 'getCustodyBalances',
   // ── verification + node status ──
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
@@ -207,6 +212,16 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: "Report the wallet lock state: 'none' (no wallet), 'locked' (wallet exists, key not in memory / TTL expired), or 'unlocked'.",
     request: '{ action }',
     response: "{ lockState:'none'|'locked'|'unlocked', activeWalletId?:string, unlockExpiry?:number }",
+  },
+  [ACTIONS.getReceiveAddress]: {
+    summary: 'Derive the wallet\'s pooled receive address (index 0, unhardened) in the offscreen vault. Requires an unlocked wallet.',
+    request: '{ action }',
+    response: "{ address:string } | { success:false, code:'LOCKED'|..., message }",
+  },
+  [ACTIONS.getCustodyBalances]: {
+    summary: 'Scan pooled self-custody balances (both HD schemes) from coinset for XCH + watched CATs. Cached to walletCache.balances; returns the cached snapshot on a transient scan failure.',
+    request: '{ action }',
+    response: "{ balances:{ xch:number, cats:{ [assetId]:number } }, cached?:boolean } | { success:false, code, message }",
   },
   [ACTIONS.reportVerification]: {
     summary: 'Viewer reports the Merkle-verification result for rendered chia:// content.',

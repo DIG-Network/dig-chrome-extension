@@ -30,12 +30,17 @@ import {
   SETTINGS_KEY,
   ACTIVE_WALLET_KEY,
   UNLOCK_EXPIRY_KEY,
+  BALANCES_CACHE_KEY,
   LOCK_STATE,
+  SCAN_GAP_LIMIT,
   isCustodyAction,
   resolveTtlMinutes,
+  resolveCoinsetUrl,
   computeUnlockExpiry,
   deriveLockState,
 } from './custody-session.mjs';
+// Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
+import { parseWatchedCats } from './wallet-assets.mjs';
 // dig-node install prompt + "dig-node required" error mapping (universal installer link).
 import { digNodeInstallPrompt, isDigNodeRequiredError } from './dig-node-status.mjs';
 
@@ -746,6 +751,8 @@ const successReports = [];
 // (idle / TTL / all-windows-close). Pure decisions come from custody-session.mjs.
 const OFFSCREEN_URL = 'offscreen.html';
 const AUTO_LOCK_ALARM = 'dig-wallet-autolock';
+/** `chrome.storage.local` key holding the user's watched CAT list (shared with the wallet UI). */
+const WATCHED_CATS_KEY = 'wallet.watchedCats';
 let creatingOffscreen = null;
 
 async function hasOffscreenDocument() {
@@ -859,6 +866,23 @@ async function handleCustodyAction(message) {
       const record = await readKeystore();
       if (!record) return { success: false, code: 'NO_WALLET', message: 'no wallet' };
       return callVault({ op: 'revealPhrase', password: message.password, record });
+    }
+    case ACTIONS.getReceiveAddress:
+      return callVault({ op: 'getReceiveAddress' });
+    case ACTIONS.getCustodyBalances: {
+      const settings = await readWalletSettings();
+      const coinsetUrl = resolveCoinsetUrl(settings);
+      const { [WATCHED_CATS_KEY]: watchedRaw } = await chrome.storage.local.get(WATCHED_CATS_KEY);
+      const watchedCats = parseWatchedCats(watchedRaw).map((c) => c.assetId);
+      const res = await callVault({ op: 'scanBalances', watchedCats, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      if (res && res.success !== false && res.balances) {
+        await chrome.storage.local.set({ [BALANCES_CACHE_KEY]: { balances: res.balances, at: Date.now() } });
+        return { balances: res.balances, cached: false };
+      }
+      // Scan failed (offline / locked) — fall back to the last cached snapshot (cached-first).
+      const { [BALANCES_CACHE_KEY]: cache } = await chrome.storage.local.get(BALANCES_CACHE_KEY);
+      if (cache && cache.balances) return { balances: cache.balances, cached: true };
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'balance scan failed' };
     }
     default:
       return { success: false, code: 'CUSTODY_ERROR', message: 'unknown custody action' };

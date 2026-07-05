@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { Vault } from './vault';
 import type { Argon2Fn } from '@/lib/keystore/digwx1';
 import { isValidMnemonic, mnemonicToEntropy } from '@/lib/keystore/bip39';
+import { loadChiaWasmNode } from '@/test/chiaWasm';
+import type { ScanWasm } from '@/offscreen/scan';
+import type { ChainClient } from '@/offscreen/chain';
+import golden from '@/lib/keystore/derive.golden.json';
 
 // Fast, deterministic Argon2 stand-in so the vault's create/unlock cycle doesn't pay the 64 MiB KDF
 // cost per test. The real hash-wasm Argon2id is covered by digwx1.test.ts.
@@ -115,5 +119,48 @@ describe('offscreen Vault', () => {
     const res = await new Vault().handle({ op: 'nope' as never }, deps);
     expect(res.success).toBe(false);
     expect(res.code).toBe('BAD_REQUEST');
+  });
+});
+
+describe('Vault balance + address ops', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  async function unlockedZerosWallet(): Promise<Vault> {
+    const v = new Vault();
+    await v.handle({ op: 'importWallet', password: PW, mnemonic: golden.mnemonic }, deps);
+    return v;
+  }
+  const chain = (map: Record<string, number>): ChainClient => ({
+    totalUnspent: async (phs) => phs.reduce((s, ph) => s + (map[ph.toLowerCase()] ?? 0), 0),
+  });
+
+  it('derives the pooled receive address for the held wallet', async () => {
+    const v = await unlockedZerosWallet();
+    const res = await v.handle({ op: 'getReceiveAddress' }, { ...deps, chia });
+    expect(res.success).toBe(true);
+    expect(res.address).toBe(golden.unhardened[0].address);
+  });
+
+  it('scans XCH + CAT balances for the held wallet', async () => {
+    const v = await unlockedZerosWallet();
+    const res = await v.handle(
+      { op: 'scanBalances', gapLimit: 5 },
+      { ...deps, chia, chain: chain({ [golden.unhardened[0].puzzleHashHex]: 2_000_000_000_000 }) },
+    );
+    expect(res.balances?.xch).toBe(2_000_000_000_000);
+  });
+
+  it('returns LOCKED when no key is held', async () => {
+    const res = await new Vault().handle({ op: 'getReceiveAddress' }, { ...deps, chia });
+    expect(res.code).toBe('LOCKED');
+  });
+
+  it('returns CHAIN_UNAVAILABLE without a chain client', async () => {
+    const v = await unlockedZerosWallet();
+    const res = await v.handle({ op: 'scanBalances' }, { ...deps, chia });
+    expect(res.code).toBe('CHAIN_UNAVAILABLE');
   });
 });
