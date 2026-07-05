@@ -25,10 +25,13 @@ function getChia(): Promise<OffscreenWasm> {
   return chiaPromise;
 }
 
+const NEEDS_CHIA = new Set<VaultRequest['op']>(['getReceiveAddress', 'scanBalances', 'prepareSend', 'confirmSend', 'sendStatus']);
+const NEEDS_CHAIN = new Set<VaultRequest['op']>(['scanBalances', 'prepareSend', 'confirmSend', 'sendStatus']);
+
 async function depsFor(req: VaultRequest & { coinsetUrl?: string }): Promise<VaultDeps> {
-  if (req.op !== 'getReceiveAddress' && req.op !== 'scanBalances') return {};
+  if (!NEEDS_CHIA.has(req.op)) return {};
   const chia = await getChia();
-  if (req.op === 'getReceiveAddress') return { chia };
+  if (!NEEDS_CHAIN.has(req.op)) return { chia };
   const url = req.coinsetUrl || DEFAULT_COINSET_URL;
   let chain = chainByUrl.get(url);
   if (!chain) {

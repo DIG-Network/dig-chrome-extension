@@ -32,8 +32,11 @@ import { DIG_ERR } from './error-codes.mjs';
  *
  * v4 (#56 balances): added `getReceiveAddress` + `getCustodyBalances` — the SW forwards them to the
  * offscreen vault, which derives (both HD schemes) and scans coinset for XCH + watched CATs.
+ *
+ * v5 (#56 send): added `prepareSend` (build + decode summary), `confirmSend` (sign + broadcast, the
+ * approved step), and `sendStatus` (poll confirmation) — routed to the offscreen vault.
  */
-export const MESSAGE_PROTOCOL_VERSION = 4;
+export const MESSAGE_PROTOCOL_VERSION = 5;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -76,6 +79,9 @@ export const ACTIONS = Object.freeze({
   getLockState: 'getLockState',
   getReceiveAddress: 'getReceiveAddress',
   getCustodyBalances: 'getCustodyBalances',
+  prepareSend: 'prepareSend',
+  confirmSend: 'confirmSend',
+  sendStatus: 'sendStatus',
   // ── verification + node status ──
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
@@ -222,6 +228,21 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Scan pooled self-custody balances (both HD schemes) from coinset for XCH + watched CATs. Cached to walletCache.balances; returns the cached snapshot on a transient scan failure.',
     request: '{ action }',
     response: "{ balances:{ xch:number, cats:{ [assetId]:number } }, cached?:boolean } | { success:false, code, message }",
+  },
+  [ACTIONS.prepareSend]: {
+    summary: 'Build (not sign/broadcast) an XCH send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve.',
+    request: '{ action, recipient:string /* xch1… */, amount:string /* mojos */, fee?:string /* mojos */ }',
+    response: "{ pendingId:string, summary:{ asset:'XCH', sent, change, fee, recipientPuzzleHashHex, coinCount } } | { success:false, code, message }",
+  },
+  [ACTIONS.confirmSend]: {
+    summary: 'Sign + BROADCAST a previously-prepared send (the approved step — the only place a real spend is pushed). Returns an input coin id to poll.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.sendStatus]: {
+    summary: 'Poll whether a broadcast send has confirmed (an input coin is now recorded spent).',
+    request: '{ action, coinId:string }',
+    response: '{ confirmed:boolean } | { success:false, code, message }',
   },
   [ACTIONS.reportVerification]: {
     summary: 'Viewer reports the Merkle-verification result for rendered chia:// content.',

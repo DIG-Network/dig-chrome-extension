@@ -32,6 +32,9 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'lockWallet',
       'revealPhrase',
       'unlockWallet',
+      'prepareSend',
+      'confirmSend',
+      'sendStatus',
     ].sort(),
   );
 });

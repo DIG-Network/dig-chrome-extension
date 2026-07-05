@@ -11,6 +11,8 @@ import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
+import { SendPanel } from '@/features/wallet/custody/SendPanel';
+import { useState } from 'react';
 import type { WalletView } from '@/app/tabs';
 
 const SEG_OPTIONS: { value: WalletView; labelId: string }[] = [
@@ -36,6 +38,7 @@ export function CustodyWallet() {
   const assets = custodyAssetBalances(balances.data?.balances, watchedCats);
   const hero = pickHeroBalance(assets);
   const cached = balances.data?.cached === true;
+  const [sending, setSending] = useState(false);
 
   return (
     <div data-testid="custody-wallet">
@@ -65,8 +68,17 @@ export function CustodyWallet() {
         />
       </div>
 
-      {walletView === 'home' && (
+      {walletView === 'home' && sending && (
+        <SendPanel spendableMojos={balances.data?.balances.xch ?? null} onClose={() => setSending(false)} />
+      )}
+
+      {walletView === 'home' && !sending && (
         <>
+          <div className="dig-action-bar" style={{ display: 'flex', gap: 8, margin: '4px 0 14px' }}>
+            <button type="button" className="dig-btn dig-btn--primary" data-testid="action-send" onClick={() => setSending(true)}>
+              <FormattedMessage id="wallet.action.send" />
+            </button>
+          </div>
           <h2 className="dig-heading">
             <FormattedMessage id="wallet.assets.title" />
           </h2>

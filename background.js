@@ -884,6 +884,21 @@ async function handleCustodyAction(message) {
       if (cache && cache.balances) return { balances: cache.balances, cached: true };
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'balance scan failed' };
     }
+    case ACTIONS.prepareSend: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareSend', recipient: message.recipient, amount: message.amount, fee: message.fee, coinsetUrl });
+    }
+    case ACTIONS.confirmSend: {
+      // The ONLY place a real spend is broadcast — reached only after the user approves in the UI.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'send failed' };
+    }
+    case ACTIONS.sendStatus: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'sendStatus', coinId: message.coinId, coinsetUrl });
+    }
     default:
       return { success: false, code: 'CUSTODY_ERROR', message: 'unknown custody action' };
   }
