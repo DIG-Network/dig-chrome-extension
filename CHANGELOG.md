@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.11.0] - 2026-07-05
+
+### Features
+- Signing spike — own-spend + from_coin_spends signing via shipped wasm (#56) (#13)
+
 ## [1.10.0] - 2026-07-05
 
 ### Features
