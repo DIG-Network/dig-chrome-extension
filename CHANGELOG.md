@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.6.0] - 2026-07-05
+
+### Features
+- Dual-layout React shell — wallet Phase 0 (Balances & Intents) + Apps tab (#56, #59) (#8)
+
 ## [1.5.1] - 2026-07-05
 
 ### Bug Fixes
