@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.9.0] - 2026-07-05
+
+### Features
+- Self-custody onboarding + unlock UI + landing gate (#56) (#11)
+
 ## [1.8.0] - 2026-07-05
 
 ### Features
