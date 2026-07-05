@@ -57,10 +57,8 @@ const EXTENSION_FILES = [
   // Ecosystem funnel: shared link constants. (The first-run welcome page welcome.html + its TS
   // entry src/entries/welcome.ts is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.)
   'links.mjs',
-  // DIG Home (new-tab override) — ported from the native DIG Browser NTP.
-  'newtab.html',
-  'newtab.css',
-  'newtab.js',
+  // DIG Home (new-tab override) — newtab.html + src/entries/newtab.ts (+ its co-located
+  // newtab.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
   // DIG settings (options_ui) — options.html + src/entries/options.ts (+ its co-located
   // options.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
   // Shared app directory + omnibox classifier (NTP) and wallet method/broker modules.
@@ -303,7 +301,7 @@ function buildWebApp() {
     throw new Error('Vite build produced no dist-web/ output.');
   }
   copyDirRecursive(WEB_OUT_DIR, DIST_DIR);
-  for (const page of ['popup.html', 'app.html', 'offscreen.html', 'approval.html', 'welcome.html', 'options.html', 'dig-viewer.html']) {
+  for (const page of ['popup.html', 'app.html', 'offscreen.html', 'approval.html', 'welcome.html', 'options.html', 'dig-viewer.html', 'newtab.html']) {
     if (!fs.existsSync(path.join(DIST_DIR, page))) {
       throw new Error(`React build missing ${page} in dist/ — the Vite multi-entry input changed?`);
     }
