@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { resolveViaStatus } from '#shared/resolve-status.mjs';
+import { resolveViaStatus } from '@/lib/resolve-status';
 import { ACTIONS } from '#shared/messages.mjs';
 import { FourState } from '@/components/FourState';
 import { StatusPill } from '@/components/StatusPill';

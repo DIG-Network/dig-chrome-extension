@@ -35,4 +35,19 @@ export default tseslint.config(
       '@typescript-eslint/no-non-null-assertion': 'off',
     },
   },
+  {
+    // The two large content-script interception shims (#68): verbatim-moved MAIN/isolated-world
+    // code whose whole job is reassigning native URL-consuming globals — untypeable by TS's DOM
+    // types and behaviour-frozen (relocated unchanged). They carry `// @ts-nocheck` and are held
+    // to the same infra-vs-React-shell bar this repo already applied to the legacy vanilla modules.
+    // The sibling middleware.ts is NOT listed here — it stays fully typed under the strict bar.
+    files: ['src/content/content.ts', 'src/content/page-script.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/ban-ts-comment': 'off',
+      'no-useless-escape': 'off',
+      'prefer-const': 'off',
+    },
+  },
 );

@@ -1,19 +1,13 @@
 /**
- * Unit tests for the pure SW-authoritative wallet read cache (sw-cache.mjs): deterministic keys,
+ * Unit tests for the pure SW-authoritative wallet read cache (sw-cache.ts): deterministic keys,
  * bounded LRU eviction, TTL expiry, and epoch-based (mutation-driven) invalidation.
- *
- * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-
-import { WalletCache, cacheKey, stableStringify } from '../sw-cache.mjs';
+import { WalletCache, cacheKey, stableStringify } from '@/lib/sw-cache';
 
 test('cacheKey is stable across param key ordering', () => {
-  assert.equal(
-    cacheKey('walletRead', { b: 2, a: 1 }),
-    cacheKey('walletRead', { a: 1, b: 2 }),
-  );
+  assert.equal(cacheKey('walletRead', { b: 2, a: 1 }), cacheKey('walletRead', { a: 1, b: 2 }));
   assert.notEqual(cacheKey('walletRead', { a: 1 }), cacheKey('walletRead', { a: 2 }));
   assert.notEqual(cacheKey('getBalances', { a: 1 }), cacheKey('getActivity', { a: 1 }));
 });

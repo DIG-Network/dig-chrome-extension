@@ -45,14 +45,14 @@ test('background.js does not warm a cache via preloadResources', () => {
 });
 
 test('middleware.js has no MemoryCache / IndexedDBCache content-caching classes', () => {
-  const src = read('middleware.js');
+  const src = read('src/content/middleware.ts');
   assert.ok(!/class MemoryCache/.test(src), 'middleware.js must not define a MemoryCache class');
   assert.ok(!/class IndexedDBCache/.test(src), 'middleware.js must not define an IndexedDBCache class');
   assert.ok(!/indexedDB\.open/.test(src), 'middleware.js must not open a persistent IndexedDB content cache');
 });
 
 test('content.js never writes resolved content into a memory/IndexedDB cache', () => {
-  const src = read('content.js');
+  const src = read('src/content/content.ts');
   assert.ok(!/memoryCache\.set|indexedDBCache\.set/.test(src), 'content.js must not cache resolved content');
   assert.ok(!/preloadPageResources/.test(src), 'content.js must not run the (now-pointless) cache-warming preload pass');
 });
