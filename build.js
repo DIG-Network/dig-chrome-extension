@@ -46,6 +46,10 @@ const EXTENSION_FILES = [
   // getCapabilities self-description). Both imported at runtime by background.js.
   'error-codes.mjs',
   'messages.mjs',
+  // Self-custody session logic (#56) — the offscreen-vault coordination decisions imported by the
+  // (not-yet-bundled) module service worker at runtime. MUST be copied or the SW fails to load its
+  // module graph (a released regression: background.js imported it but it was absent from this list).
+  'custody-session.mjs',
   // DIG Control Panel (dig://control parity) decision logic + the DIG Shields per-resource
   // proof ledger (#134, byte-mirror of the browser's dig/shields/dig_ledger.mjs). Imported by
   // the React shell (#shared/* alias), the background SW, and the dig-viewer.
