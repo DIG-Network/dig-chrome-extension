@@ -60,6 +60,8 @@ export default defineConfig({
         // TS entry can import the shared #shared/* view-models (error-page / messages / dig-urn /
         // error-codes / store-refs) it renders + bridges with.
         digViewer: resolve(rootDir, 'dig-viewer.html'),
+        // DIG Home (new-tab override) — vanilla-TS extension page, same rationale as welcome.
+        newtab: resolve(rootDir, 'newtab.html'),
       },
     },
   },
