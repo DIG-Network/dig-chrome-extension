@@ -32,6 +32,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   window.matchMedia = original;
+  vi.unstubAllGlobals();
 });
 
 describe('App shell', () => {
@@ -71,12 +72,17 @@ describe('App shell', () => {
     expect(await screen.findByTestId('custody-trade')).toBeInTheDocument();
   });
 
-  it('embeds the explore.dig.net iframe on the Apps tab', async () => {
+  it('shows the native dApp launcher on the Apps tab (no iframe)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ apps: [{ slug: 'chia-offer', name: 'Chia-Offer', icon: 'https://explore.dig.net/catalog/chia-offer/icon-512.png', link: 'https://chia-offer.on.dig.net/', category: 'tools', featured: true }] }),
+    })));
     renderApp('popup', makeTransport());
     await userEvent.click(screen.getByTestId('tab-apps'));
-    const frame = await screen.findByTestId('apps-frame');
-    expect(frame.getAttribute('src')).toBe('https://explore.dig.net/apps');
+    expect(await screen.findByTestId('apps-launcher')).toBeInTheDocument();
+    expect(screen.getByTestId('app-tile-chia-offer')).toBeInTheDocument();
     expect(screen.getByTestId('apps-open-tab')).toBeInTheDocument();
+    expect(screen.queryByTestId('apps-frame')).not.toBeInTheDocument();
   });
 
   it('renders the resolver, shield, and control tabs', async () => {

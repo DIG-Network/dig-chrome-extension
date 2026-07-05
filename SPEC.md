@@ -59,9 +59,9 @@ re-decrypts (§15).
   instantiation) and MUST restrict `script-src`/`object-src` to `'self'`. It MUST additionally
   declare an explicit `connect-src` enumerating every network egress (the chain host(s)
   `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT-price host `api.dexie.space`,
-  `api.bugreport.dig.net`, and the WalletConnect relay), a `frame-src 'self'
-  https://explore.dig.net` (the Apps tab embed, §2.4), `font-src 'self'` (the vendored Space
-  Grotesk / Space Mono woff2), and `img-src 'self' data:`.
+  `api.bugreport.dig.net`, and the WalletConnect relay), `frame-src 'self'`, `font-src 'self'` (the
+  vendored Space Grotesk / Space Mono woff2), and `img-src 'self' data: https://explore.dig.net`
+  (the native dApp-launcher icons, §2.4).
 - Content scripts (`middleware.js`, then `content.js`) run at `document_start`,
   `all_frames: true`, matching `<all_urls>`.
 - The injected provider (`dist/dig-provider.js`) and the page fetch bridge (`page-script.js`)
@@ -73,7 +73,7 @@ re-decrypts (§15).
   MUST include the local node hosts (`localhost`, `127.0.0.1`, `dig.local`, `*.dig.local`), the
   hosted read tier (`rpc.dig.net`, `*.dig.net`), the wallet chain source (`coinset.org`), the
   CAT-price host (`api.dexie.space`), the bug-report service (`api.bugreport.dig.net`), and the
-  dApp-store embed (`explore.dig.net`).
+  dApp-store catalog host (`explore.dig.net`, §2.4).
 
 An implementation targeting a browser without MV3 module service workers MUST provide an
 equivalent long-lived module context able to instantiate WASM.
@@ -123,7 +123,7 @@ tab hosts a `Resolver | Shield | Node` segmented control with `#resolver|#shield
 4. **Control** — manage a detected local dig-node, else pitch installing one (`getControlStatus`
    → `dig-control.mjs` `controlPanelViewModel`); full token-gated management deep-links to the DIG
    Browser (§11). Carries `data-mode` (`manage`|`install`).
-5. **Apps** (§2.4) — the curated DIG dApp store embedded in-window.
+5. **Apps** (§2.4) — the curated DIG dApp store as a native in-extension launcher.
 
 - Each tab is a `role="tab"` with `aria-selected` + a roving `tabindex` and a stable `data-testid`
   (`tab-<name>`); the active tab's content is a `role="tabpanel"`.
@@ -158,15 +158,23 @@ by Vite `define`) in three forms: a visible footer (`data-testid="app-version"`,
 `<meta name="app-version">` tag, and the `window.__APP_VERSION__` global. The embedded
 `<BugReportButton repo="dig-chrome-extension">` auto-detects it so a report records its build.
 
-### 2.4 Apps tab — explore.dig.net embed (#59)
+### 2.4 Apps tab — native dApp launcher (#65)
 
-The Apps tab embeds the curated DIG dApp store (`https://explore.dig.net/apps`) in-window via an
-iframe on BOTH surfaces; explore.dig.net's own responsive breakpoint renders the mobile launcher
-at the popup's narrow width and the full desktop store in the wide `app.html` surface, so the
-iframe MUST fill its container. explore.dig.net sends no `frame-ancestors` block, so it embeds
-directly (the CSP adds `frame-src https://explore.dig.net`). The tab renders four states (loading
-until the iframe `load` fires or a timeout; error + retry that reloads the frame; success) and
-always offers an "open in a new tab" affordance.
+The Apps tab is the extension's OWN native launcher for the curated DIG dApp store — NOT an iframe.
+It fetches explore.dig.net's public catalog manifest `https://explore.dig.net/store.json` (the
+normative contract in explore's SPEC §5.1 + the superproject `SYSTEM.md`; CORS `*`) directly (the
+host is in `connect-src` + `host_permissions`), normalizes it (validate + featured-first order), and
+renders a mobile-OS icon grid: a squircle icon per app (`icon`, an absolute URL — hence
+`img-src https://explore.dig.net`), the `name` as its label, tinted by the app's `accentColor`, and
+tapping a tile opens the app's absolute `link` in a new tab. The manifest is cached in
+`chrome.storage.local` (`appsCache.store`) for **stale-while-revalidate**: a network success refreshes
+the cache and renders fresh; a failure falls back to the cached catalog (flagged offline) so the
+launcher still paints and works offline. The tab renders four states (loading skeleton grid / error +
+retry / empty / success) and always offers a "browse the full store" affordance to `explore.dig.net`.
+
+The `/store.json` entry shape is `{ slug, name, icon, link, category, featured, accentColor? }` with
+`icon` + `link` absolute https URLs; featured entries come first. Entries missing a slug/name or a
+valid absolute icon/link are dropped defensively.
 
 ---
 
