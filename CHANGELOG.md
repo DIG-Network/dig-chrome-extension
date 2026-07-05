@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.21.0] - 2026-07-05
+
+### Features
+- NFTs + Collectibles — list, detail, and transfer the wallet's NFTs (#56) (#23)
+
 ## [1.20.0] - 2026-07-05
 
 ### Features
