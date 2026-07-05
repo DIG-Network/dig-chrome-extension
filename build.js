@@ -23,8 +23,15 @@ const EXTENSION_FILES = [
   'popup.html',
   'popup.css',
   'popup.js',
-  // Popup wallet panel + verified line + per-origin consent (module).
+  // Popup controller (module side): 4-tab routing + wallet + shield + control + resolver config.
   'popup-wallet.js',
+  // Pure popup view-models (tab routing, wallet number/validation logic, §5.3 resolve verdict).
+  'tabs.mjs',
+  'wallet-view.mjs',
+  'resolve-status.mjs',
+  // Full-page DIG Control Panel onboarding landing (opened when no local node is detected).
+  'control.html',
+  'control.js',
   'dig-urn.mjs',
   // Shared dig-node host config (one parser/default for the server.host key + the
   // dig.local→localhost resolution order) + the branded, plain-language chia:// error
@@ -292,6 +299,23 @@ function createZip() {
 }
 
 /**
+ * Replace the `__APP_VERSION__` placeholder in the copied HTML pages (popup.html, control.html)
+ * with package.json's version, so the shipped pages carry the real build in their <meta
+ * name="app-version"> tag + footer (§6.7). Idempotent; a page without the placeholder is left as-is.
+ */
+function injectAppVersion() {
+  const version = require('./package.json').version;
+  for (const page of ['popup.html', 'control.html']) {
+    const dest = path.join(DIST_DIR, page);
+    if (!fs.existsSync(dest)) continue;
+    const src = fs.readFileSync(dest, 'utf8');
+    if (!src.includes('__APP_VERSION__')) continue;
+    fs.writeFileSync(dest, src.split('__APP_VERSION__').join(version));
+    log(`✓ Injected app version ${version} into ${page}`, 'green');
+  }
+}
+
+/**
  * Resolve the shared WalletConnect project id at build time.
  * Precedence: WALLETCONNECT_PROJECT_ID env var → hub apps/web/.env.local (NEXT_PUBLIC_…).
  * Returns '' if neither is available (build still succeeds; the options-page field then
@@ -419,6 +443,42 @@ async function bundleProvider() {
   log(`✓ Bundled: dig-provider.js (${kb} KB, shared @dignetwork/chia-provider surface)`, 'green');
 }
 
+// wallet-methods.mjs re-exports the CHIP-0002 method surface from the @dignetwork/chia-provider
+// package (a BARE specifier). Browsers + MV3 module service workers cannot resolve bare specifiers,
+// so the raw copy breaks the whole module graph that imports it (the popup controller AND the
+// background SW, via messages.mjs). Bundle it to a self-contained ESM at build time — esbuild
+// inlines the package while preserving the same named exports, so every consumer's `import
+// './wallet-methods.mjs'` resolves in the browser with no source change.
+const WALLET_METHODS_SRC = path.join(__dirname, 'wallet-methods.mjs');
+const WALLET_METHODS_OUT = path.join(DIST_DIR, 'wallet-methods.mjs');
+// After bundling there must be NO surviving bare @dignetwork import (that would re-break the graph).
+const BARE_DIGNETWORK_IMPORT = /from\s+['"]@dignetwork\//;
+
+async function bundleWalletMethods() {
+  log('\n🧩 Bundling wallet-methods.mjs (inline @dignetwork/chia-provider for the browser)...', 'blue');
+  await esbuild.build({
+    entryPoints: [WALLET_METHODS_SRC],
+    outfile: WALLET_METHODS_OUT,
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: ['chrome111'],
+    legalComments: 'none',
+    minify: false,
+    allowOverwrite: true,
+  });
+  const out = fs.readFileSync(WALLET_METHODS_OUT, 'utf8');
+  if (BARE_DIGNETWORK_IMPORT.test(out)) {
+    throw new Error('dist/wallet-methods.mjs still has a bare @dignetwork import — the package did not inline.');
+  }
+  for (const needle of ['WALLET_METHODS', 'STATE_CHANGING_METHODS', 'normalizeMethod']) {
+    if (!out.includes(needle)) {
+      throw new Error(`Bundled wallet-methods.mjs is missing export "${needle}".`);
+    }
+  }
+  log('✓ Bundled: wallet-methods.mjs (self-contained ESM, browser-safe)', 'green');
+}
+
 /** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
 async function vendorWalletConnect() {
   log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
@@ -452,12 +512,21 @@ async function main() {
   // Copy files
   copyFiles();
 
+  // Stamp the extension version (from package.json) into the HTML pages so every frontend surfaces
+  // its build in all three §6.7 forms: a visible footer, <meta name="app-version">, and (via the
+  // page script) window.__APP_VERSION__. The SOURCE keeps the __APP_VERSION__ placeholder.
+  injectAppVersion();
+
   // Vendor the WalletConnect SignClient (same-origin ESM for MV3) into dist/vendor/.
   await vendorWalletConnect();
 
   // Bundle the injected window.chia provider from the shared @dignetwork/chia-provider package
   // into dist/dig-provider.js (single IIFE for the page MAIN world).
   await bundleProvider();
+
+  // Bundle wallet-methods.mjs so its @dignetwork/chia-provider re-export resolves in the browser +
+  // MV3 SW (bare specifiers don't). Must run AFTER copyFiles (which places the raw copy).
+  await bundleWalletMethods();
 
   // Inject the shared WalletConnect project id into dist/wallet-wc.js (build-time only;
   // never a committed source literal, never logged).

@@ -20,6 +20,12 @@ export const DIG_NETWORK_URL = 'https://dig.net';
 /** docs.dig.net — protocol + integration documentation. */
 export const DOCS_URL = 'https://docs.dig.net';
 
+/** explore.dig.net — the curated DIG Network dApp store (the "Explore DIG Network" action). */
+export const EXPLORE_URL = 'https://explore.dig.net';
+
+/** bugreport.dig.net — the ecosystem bug-report funnel (§6.7); repo-scoped via a query param. */
+export const BUGREPORT_URL = 'https://bugreport.dig.net';
+
 /**
  * The DIG CAT asset id (tail hash, plain hex). Pinned; never user-supplied. Mirrors hub
  * `apps/web/lib/links.js` `DIG_ASSET_ID` so the dexie/9mm venue URLs are byte-identical

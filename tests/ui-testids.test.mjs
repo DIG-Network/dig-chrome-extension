@@ -20,35 +20,49 @@ test('popup.html exposes data-testid on every primary control', () => {
   for (const id of [
     'popup-root', 'verify-line', 'wallet-connect', 'wallet-disconnect', 'get-dig',
     'chia-url-input', 'chia-url-go', 'resolution-toggle', 'status-text',
-    'browse-hub', 'open-options',
-    // The three toolbar actions (browser parity) + their panels.
-    'dig-toolbar', 'toolbar-wallet', 'toolbar-shield', 'toolbar-control',
-    'wallet-panel', 'shield-panel', 'control-panel',
+    'browse-hub', 'open-options', 'explore-dig',
+    // The four tabs (Resolver · Wallet · Shield · Control Panel) + their panels.
+    'tab-resolver', 'tab-wallet', 'tab-shield', 'tab-control',
+    'resolver-panel', 'wallet-panel', 'shield-panel', 'control-panel',
+    // Wallet subviews (receive / send / activity) + send-form fields.
+    'wallet-receive', 'wallet-send', 'wallet-activity',
+    'send-address', 'send-amount', 'send-submit', 'wallet-address',
+    // Resolver §5.3 node-config: custom-node override + the resolve-via verdict.
+    'resolve-status', 'node-host-input', 'node-host-save',
   ]) {
     assert.match(html, new RegExp(`data-testid="${id}"`), `popup.html missing data-testid="${id}"`);
   }
 });
 
-test('popup.html toolbar exposes the three actions with aria-pressed + panel targets', () => {
+test('popup.html organises the surface as an ARIA tablist of four tabs', () => {
   const html = read('popup.html');
-  // The toolbar is an ARIA toolbar grouping the three actions.
-  assert.match(html, /role="toolbar"/, 'toolbar should be an ARIA toolbar');
-  for (const panel of ['wallet', 'shield', 'control']) {
-    assert.match(html, new RegExp(`data-panel="${panel}"`), `toolbar missing a button targeting the ${panel} panel`);
+  assert.match(html, /role="tablist"/, 'the tab bar should be an ARIA tablist');
+  for (const tab of ['resolver', 'wallet', 'shield', 'control']) {
+    assert.match(html, new RegExp(`data-tab="${tab}"`), `missing a tab button for ${tab}`);
   }
-  // The Shield + Control buttons carry a machine-readable status dot (agent-readable verdict).
+  // Each tab button is an ARIA tab controlling its panel; the active tab reflects aria-selected.
+  assert.match(html, /role="tab"[^>]*aria-selected="true"/, 'the default tab should be aria-selected');
+  // The Shield + Control tabs carry a machine-readable status dot (agent-readable verdict).
   assert.match(html, /id="shieldDot"[^>]*data-verified=/, 'shield dot should carry data-verified');
   assert.match(html, /id="controlDot"[^>]*data-node=/, 'control dot should carry data-node');
   // The control panel reports its mode (manage|install) as a data-* attribute.
   assert.match(html, /id="controlPanel"[^>]*data-mode=/, 'control panel should carry data-mode');
 });
 
-test('popup.html keeps the white product theme + ARIA on the verify status line', () => {
+test('popup.html is a main landmark with an ARIA verify status line', () => {
   const html = read('popup.html');
   assert.match(html, /role="main"/, 'popup root should be a main landmark');
   assert.match(html, /id="verifyLine"[^>]*role="status"/, 'verify line should be a status region');
-  // White theme not regressed (the popup CSS owns the palette; the page must not bake a dark bg).
-  assert.ok(!/#1a0a2e/i.test(html), 'must not introduce the legacy dark background');
+});
+
+test('popup uses the DIG luxurious DARK theme (palette lives in popup.css, not baked in HTML)', () => {
+  const css = read('popup.css');
+  // The dark ground (#0B0A12-family) + the purple accent (#7A3DFF) define the theme.
+  assert.match(css, /#0b0a12/i, 'popup.css should ground the surface in the DIG dark (#0B0A12)');
+  assert.match(css, /#7a3dff/i, 'popup.css should lead with the DIG purple accent (#7A3DFF)');
+  // The page itself must not bake colors — the CSS owns the palette (agent + theme portability).
+  const html = read('popup.html');
+  assert.ok(!/style="[^"]*background/i.test(html), 'popup.html must not inline a background color');
 });
 
 test('popup.html exposes the verify verdict as a data-* attribute (not just class/text)', () => {
