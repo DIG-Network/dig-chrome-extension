@@ -50,6 +50,9 @@ export default defineConfig({
         offscreen: resolve(rootDir, 'offscreen.html'),
         // The dApp approval window (#56 §5.5) — summoned by the SW via chrome.windows.create.
         approval: resolve(rootDir, 'approval.html'),
+        // First-run welcome page (opened by the SW's onInstalled) — a vanilla-TS extension page
+        // (no React), built by Vite so its TS entry can import the shared #shared/* modules.
+        welcome: resolve(rootDir, 'welcome.html'),
       },
     },
   },
