@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.17.0] - 2026-07-05
+
+### Features
+- Native dApp launcher from /store.json — replace the Apps iframe (#65) (#19)
+
 ## [1.16.0] - 2026-07-05
 
 ### Features
