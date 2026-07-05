@@ -135,6 +135,9 @@ describe('Vault balance + address ops', () => {
   }
   const chain = (map: Record<string, number>): ChainClient => ({
     totalUnspent: async (phs) => phs.reduce((s, ph) => s + (map[ph.toLowerCase()] ?? 0), 0),
+    unspentCoins: async () => [],
+    pushSpendBundle: async () => ({ success: true }),
+    coinConfirmed: async () => false,
   });
 
   it('derives the pooled receive address for the held wallet', async () => {
