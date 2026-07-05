@@ -8,6 +8,9 @@ import { classifyError, DIG_ERR } from './error-codes.mjs';
 // Shared URN parser — derive the capsule (storeId:rootHash) + resource path so the per-resource
 // proof verdict can be recorded into the DIG Shields ledger (#134).
 import { parseURN } from './dig-urn.mjs';
+// Build the chia:// URL for a resolved store reference — used to serve the in-page interceptor's
+// relative-asset reads (#55) back through the background proxyRequest (the §5.3 node ladder).
+import { buildDigUrl } from './store-refs.mjs';
 
 // One canonical verified label across popup / viewer / toolbar.
 const VERIFIED_LABEL = 'Verified on Chia';
@@ -110,7 +113,86 @@ function showError(url, rawMessage, code) {
   mount.appendChild(card);
 }
 
-function init() {
+// Report a resource's verification verdict to the background SW (sets the toolbar badge) and
+// record it into the active tab's DIG Shields proof ledger (#134). Best-effort; the ledger never
+// re-verifies — the verdict is the loader's. `urnStr` is a chia:// / bare URN for the resource.
+function recordVerification(verified, urnStr) {
+  try {
+    chrome.runtime.sendMessage(
+      { action: ACTIONS.reportVerification, verified, urn: urnStr },
+      () => { void chrome.runtime.lastError; }
+    );
+  } catch (e) { /* non-fatal */ }
+  try {
+    const parsed = parseURN(String(urnStr).replace(/^chia:\/\//, ''));
+    if (parsed) {
+      chrome.runtime.sendMessage(
+        {
+          action: ACTIONS.recordLedgerEntry,
+          storeId: parsed.storeId,
+          rootHash: parsed.roothash || 'latest',
+          resourcePath: parsed.resourceKey || 'index.html',
+          inclusionProofPassed: verified,
+          errorCode: verified ? '' : DIG_ERR.DIG_ERR_PROOF_MISMATCH,
+          // The extension read path fetches inclusion only (dig.getContent) — no execution
+          // proof is available, so the ledger honestly records none.
+          executionProofStatus: '',
+        },
+        () => { void chrome.runtime.lastError; }
+      );
+    }
+  } catch (e) { /* non-fatal */ }
+}
+
+// Serve ONE store read for the in-page interceptor (#55): resolve the ref to its chia:// URL and
+// proxy it through the background (the §5.3 node ladder + verify + decrypt), replying to the
+// requesting frame with a `data:` URL. This is the extension's analogue of the *.on.dig.net loader
+// SW's fetch handler — a store's relative asset request routed back to the node as a capsule read.
+function serveRead(source, id, ref) {
+  const reply = (payload) => {
+    try { source.postMessage({ __dig: true, type: 'read-result', id, ...payload }, '*'); } catch (e) { /* frame gone */ }
+  };
+  let url;
+  try {
+    if (!ref || !ref.storeId) throw new Error('missing store');
+    url = buildDigUrl(ref);
+  } catch (e) {
+    reply({ ok: false, code: DIG_ERR.DIG_ERR_INVALID_URN, message: 'Invalid store reference' });
+    return;
+  }
+  chrome.runtime.sendMessage({ action: ACTIONS.proxyRequest, url }, (response) => {
+    if (chrome.runtime.lastError) {
+      reply({ ok: false, code: DIG_ERR.DIG_ERR_NETWORK, message: chrome.runtime.lastError.message });
+      return;
+    }
+    if (!response || !response.success || !response.data) {
+      reply({
+        ok: false,
+        code: (response && response.code) || DIG_ERR.DIG_ERR_NETWORK,
+        message: (response && response.error) || 'Failed to fetch',
+      });
+      return;
+    }
+    reply({ ok: true, dataUrl: response.data, contentType: response.contentType, verified: !!response.verified });
+  });
+}
+
+// Build the sandboxed store-frame document: an opaque-origin `data:` document (isolated from the
+// extension — no chrome.* access) that boots the in-page interceptor with the capsule config. The
+// interceptor requests the entry + every relative asset back through this page's message bridge.
+function storeFrameDoc(cfg, interceptorSrc) {
+  const cfgJson = JSON.stringify(cfg);
+  const html =
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    '<meta name="color-scheme" content="light dark"><title>DIG Network Content</title>' +
+    '<style>html,body{margin:0;padding:0;min-height:100%;background:#fff}</style>' +
+    '<script>window.__DIG_CFG=' + cfgJson + ';</scr' + 'ipt>' +
+    '<script>' + interceptorSrc + '</scr' + 'ipt>' +
+    '</head><body></body></html>';
+  return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+}
+
+async function init() {
   const urlParams = new URLSearchParams(window.location.search);
   const urn = urlParams.get('urn');
   const loading = document.getElementById('loading');
@@ -121,65 +203,68 @@ function init() {
     return;
   }
 
-  chrome.runtime.sendMessage({ action: ACTIONS.proxyRequest, url: digUrl }, async (response) => {
-    if (chrome.runtime.lastError) {
-      showError(digUrl, chrome.runtime.lastError.message);
-      return;
+  // Resolve the entry capsule so the interceptor can resolve relative references against it.
+  const parsed = parseURN(String(urn).replace(/^chia:\/\//, ''));
+  if (!parsed) {
+    showError(digUrl, 'This address may not exist.', DIG_ERR.DIG_ERR_INVALID_URN);
+    return;
+  }
+  const cfg = {
+    storeId: parsed.storeId,
+    root: parsed.roothash || 'latest',
+    salt: parsed.salt || null,
+    entryKey: parsed.resourceKey || 'index.html',
+  };
+
+  // Load the interceptor bundle (self-contained IIFE) so it can be inlined into the opaque frame —
+  // an opaque `data:` document cannot import a module or fetch a cross-origin script.
+  let interceptorSrc;
+  try {
+    interceptorSrc = await (await fetch(chrome.runtime.getURL('store-interceptor.js'))).text();
+  } catch (e) {
+    showError(digUrl, 'Failed to fetch', DIG_ERR.DIG_ERR_NETWORK);
+    return;
+  }
+
+  const iframe = document.createElement('iframe');
+
+  // Bridge: serve the interceptor's reads + react to its lifecycle notifications.
+  const onMessage = (event) => {
+    if (event.source !== iframe.contentWindow) return; // only our store frame
+    const d = event.data;
+    if (!d || d.__dig !== true) return;
+    switch (d.type) {
+      case 'read':
+        serveRead(event.source, d.id, d.ref);
+        break;
+      case 'ready':
+        // The entry document rendered — reveal it, drop the spinner, record the entry verdict.
+        showVerifyBanner(!!d.verified);
+        recordVerification(!!d.verified, urn);
+        if (loading) loading.style.display = 'none';
+        break;
+      case 'nav':
+        // An in-page navigation to another store document — update the badge + ledger.
+        showVerifyBanner(!!d.verified);
+        recordVerification(!!d.verified, d.urn || urn);
+        break;
+      case 'entry-error':
+        window.removeEventListener('message', onMessage);
+        showError(digUrl, d.message || 'Failed to fetch', d.code);
+        break;
+      case 'nav-error':
+        // A failed in-page link — surface it without tearing down the current view.
+        showError(digUrl, d.message || 'Failed to fetch', d.code);
+        break;
+      default:
+        break;
     }
-    if (response && response.error) {
-      // The coded envelope carries response.code (DIG_ERR_*); pass it through so the viewer
-      // surfaces the machine discriminant (data-dig-error) even though the human copy stays friendly.
-      showError(digUrl, response.error, response.code);
-      return;
-    }
-    if (!response || !response.success || !response.data) {
-      showError(digUrl, 'Failed to fetch', DIG_ERR.DIG_ERR_NETWORK);
-      return;
-    }
+  };
+  window.addEventListener('message', onMessage);
 
-    const dataUrl = response.data;
-    const verified = !!response.verified;
-
-    // Report verification to the background SW (sets the toolbar badge) + show the banner.
-    try {
-      chrome.runtime.sendMessage(
-        { action: ACTIONS.reportVerification, verified, urn },
-        () => { void chrome.runtime.lastError; }
-      );
-    } catch (e) { /* non-fatal */ }
-
-    // Record this resource's inclusion-proof verdict into the active tab's DIG Shields proof
-    // ledger (#134) so the popup's Shield action can list the per-resource proofs. The verdict
-    // is the loader's (response.verified) — the ledger never re-verifies. Best-effort.
-    try {
-      const parsed = parseURN(String(urn).replace(/^chia:\/\//, ''));
-      if (parsed) {
-        chrome.runtime.sendMessage(
-          {
-            action: ACTIONS.recordLedgerEntry,
-            storeId: parsed.storeId,
-            rootHash: parsed.roothash || 'latest',
-            resourcePath: parsed.resourceKey || 'index.html',
-            inclusionProofPassed: verified,
-            errorCode: verified ? '' : DIG_ERR.DIG_ERR_PROOF_MISMATCH,
-            // The extension read path fetches inclusion only (dig.getContent) — no execution
-            // proof is available, so the ledger honestly records none.
-            executionProofStatus: '',
-          },
-          () => { void chrome.runtime.lastError; }
-        );
-      }
-    } catch (e) { /* non-fatal */ }
-
-    showVerifyBanner(verified);
-
-    if (loading) loading.style.display = 'none';
-
-    const iframe = document.createElement('iframe');
-    iframe.src = dataUrl;
-    iframe.onerror = () => showError(digUrl, 'Failed to fetch');
-    document.body.appendChild(iframe);
-  });
+  iframe.src = storeFrameDoc(cfg, interceptorSrc);
+  iframe.onerror = () => showError(digUrl, 'Failed to fetch');
+  document.body.appendChild(iframe);
 }
 
 if (document.readyState === 'loading') {
