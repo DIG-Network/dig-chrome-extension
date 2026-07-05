@@ -33,6 +33,7 @@ import {
 import { scanBalances, receiveAddress, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
 import type { ChainClient } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, type SendFlowWasm } from '@/offscreen/sendFlow';
+import { listNfts, prepareNftTransfer, type NftWasm, type WalletNft, type NftTransferSummary } from '@/offscreen/nfts';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
 import { indexActivity, type ActivityWasm, type ActivityEvent } from '@/offscreen/activity';
 import { makeOffer, inspectOffer, takeOffer, cancelOffer, type OfferWasm, type OfferAsset, type OfferLeg, type OfferSummary } from '@/offscreen/offers';
@@ -74,7 +75,9 @@ export type VaultOp =
   | 'makeOffer'
   | 'inspectOffer'
   | 'prepareTrade'
-  | 'confirmTrade';
+  | 'confirmTrade'
+  | 'listNfts'
+  | 'prepareNftTransfer';
 
 /** A request forwarded from the SW to the vault. `record` is the persisted DIGWX1 blob for ops that need it. */
 export interface VaultRequest {
@@ -109,6 +112,8 @@ export interface VaultRequest {
   offerStr?: string;
   /** prepareTrade: whether to TAKE (fund + accept) or CANCEL (reclaim) the offer. */
   tradeKind?: 'take' | 'cancel';
+  /** prepareNftTransfer: the NFT's singleton launcher id (hex). */
+  launcherId?: string;
 }
 
 /** The vault's reply. Never carries the persisted key; `mnemonic` is for one-time display only. */
@@ -143,6 +148,10 @@ export interface VaultResponse {
   offer?: string;
   /** makeOffer / inspectOffer / prepareTrade: the decoded two-sided summary. */
   offerSummary?: WireOfferSummary;
+  /** listNfts: the wallet's NFTs (both HD schemes), wire-safe. */
+  nfts?: WalletNft[];
+  /** prepareNftTransfer: the decoded transfer summary to approve. */
+  nftSummary?: NftTransferSummary;
 }
 
 /** Test/DI seam. `chia` + `chain` power derivation + the balance scan (offscreen-only at runtime). */
@@ -225,6 +234,10 @@ export class Vault {
           return await this.prepareTrade(req, deps);
         case 'confirmTrade':
           return await this.confirmTrade(req, deps);
+        case 'listNfts':
+          return await this.listNfts(req, deps);
+        case 'prepareNftTransfer':
+          return await this.prepareNftTransfer(req, deps);
         default:
           return { success: false, code: 'BAD_REQUEST', message: `unknown vault op` };
       }
@@ -435,5 +448,42 @@ export class Vault {
     this.pendingTrades.delete(req.pendingId!);
     if (!push.success) return { success: false, code: 'PUSH_FAILED', message: push.error ?? 'broadcast failed' };
     return { success: true, spentCoinId: held.inputCoinId };
+  }
+
+  /** LIST the wallet's NFTs (§18 Collectibles) — both HD schemes, discovered by hint. Read-only. */
+  private async listNfts(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const nfts = await listNfts(deps.chia as unknown as NftWasm, deps.chain, {
+      seed,
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    return { success: true, nfts };
+  }
+
+  /**
+   * Prepare (build, don't sign/broadcast) an NFT transfer and HOLD it under a pending id — the SAME
+   * pending map + `confirmSend` broadcast path as a coin send (an NFT transfer is just a spend). The
+   * UI approves via `confirmSend` (mapped from `confirmNftTransfer`) and polls via `sendStatus`.
+   */
+  private async prepareNftTransfer(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.launcherId || !req.recipient) return { success: false, code: 'BAD_REQUEST', message: 'launcherId + recipient required' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as NftWasm;
+    const prepared = await prepareNftTransfer(chia, deps.chain, {
+      seed,
+      launcherId: req.launcherId,
+      recipient: req.recipient,
+      fee: BigInt(req.fee ?? '0'),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => (deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b).replace(/^0x/i, '').toLowerCase();
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    return { success: true, pendingId, nftSummary: prepared.summary };
   }
 }

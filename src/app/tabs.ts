@@ -17,8 +17,8 @@ export type Tab = (typeof TABS)[number];
 /** The screen shown when the surface opens with no deep-link — the mobile-OS Home launcher. */
 export const DEFAULT_TAB: Tab = 'home';
 
-/** The wallet screen's segmented sub-views (Balances & Intents home + ledger + offers). */
-export const WALLET_VIEWS = ['home', 'activity', 'trade'] as const;
+/** The wallet screen's segmented sub-views (Balances & Intents home + ledger + offers + collectibles). */
+export const WALLET_VIEWS = ['home', 'activity', 'trade', 'collectibles'] as const;
 export type WalletView = (typeof WALLET_VIEWS)[number];
 /** The default wallet sub-view. */
 export const DEFAULT_WALLET_VIEW: WalletView = 'home';

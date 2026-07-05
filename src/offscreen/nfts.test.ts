@@ -1,0 +1,221 @@
+import { describe, it, expect, beforeAll } from 'vitest';
+import { listNfts, prepareNftTransfer, type NftWasm, type NftChain } from './nfts';
+import { buildKeyring, signAndBundle, type SendFlowWasm } from './sendFlow';
+import { signCoinSpends, TESTNET11_AGG_SIG_ME, type SigningWasm } from './signing';
+import type { ChainClient, ChainCoin, ChainCoinSpend, ChainSpendBundle } from './chain';
+import { mnemonicToSeed, entropyToMnemonic } from '@/lib/keystore/bip39';
+import { loadChiaWasmNode } from '@/test/chiaWasm';
+import golden from '@/lib/keystore/derive.golden.json';
+
+/**
+ * NFT engine, proven authoritatively against the wasm Simulator: an NFT is minted to a seed-derived
+ * wallet, `listNfts` finds it, `prepareNftTransfer` builds a transfer to a DIFFERENT seed-derived
+ * wallet, and after the Simulator accepts the signed bundle the NFT is gone from the sender and
+ * discoverable by the recipient (proving both the transfer AND the recipient hint). Read-only in CI
+ * (never broadcasts to mainnet); signs with the testnet11 genesis so the Simulator validates it.
+ */
+interface SimHandle {
+  newCoin(puzzleHash: Uint8Array, amount: bigint): ChainCoin;
+  newTransaction(bundle: ChainSpendBundle): void;
+  createBlock(): void;
+  unspentCoins(puzzleHash: Uint8Array, includeHints: boolean): ChainCoin[];
+  coinSpend(coinId: Uint8Array): ChainCoinSpend | undefined;
+}
+interface TestWasm extends NftWasm {
+  Simulator: new () => SimHandle;
+  NftMetadata: new (
+    editionNumber: bigint,
+    editionTotal: bigint,
+    dataUris: string[],
+    dataHash: Uint8Array | undefined,
+    metadataUris: string[],
+    metadataHash: Uint8Array | undefined,
+    licenseUris: string[],
+    licenseHash?: Uint8Array,
+  ) => unknown;
+  Constants: { nftMetadataUpdaterDefaultHash(): Uint8Array };
+  SpendBundle: new (coinSpends: unknown[], signature: unknown) => ChainSpendBundle;
+}
+
+// golden.mnemonic is the all-abandon vector; derive a DISTINCT recipient wallet from fixed entropy.
+const RECIPIENT_MNEMONIC = entropyToMnemonic(new Uint8Array(32).fill(9));
+
+let chia: TestWasm;
+const asNft = () => chia as unknown as NftWasm;
+const asFlow = () => chia as unknown as SendFlowWasm;
+const asSig = () => chia as unknown as SigningWasm;
+const hx = (b: Uint8Array) => chia.toHex(b).replace(/^0x/i, '').toLowerCase();
+
+/** bech32m address for a keyring entry's inner puzzle hash (the keyring itself carries no address). */
+function addressOf(puzzleHashHex: string): string {
+  const AddressCtor = (chia as unknown as { Address: new (ph: Uint8Array, prefix: string) => { encode(): string } }).Address;
+  return new AddressCtor(chia.fromHex(puzzleHashHex), 'xch').encode();
+}
+
+beforeAll(async () => {
+  chia = (await loadChiaWasmNode()) as unknown as TestWasm;
+});
+
+/** A sim-backed chain client covering every method the NFT engine calls (incl. hint discovery). */
+function simChain(sim: SimHandle): NftChain {
+  const base: ChainClient = {
+    totalUnspent: async () => 0,
+    unspentCoins: async (phs) => phs.flatMap((h) => sim.unspentCoins(chia.fromHex(h), false)),
+    coinRecords: async () => [],
+    getCoinSpend: async (idHex) => sim.coinSpend(chia.fromHex(idHex)) ?? null,
+    pushSpendBundle: async (bundle) => {
+      sim.newTransaction(bundle);
+      sim.createBlock();
+      return { success: true };
+    },
+    coinConfirmed: async () => true,
+    coinsByHints: async (hints) => hints.flatMap((h) => sim.unspentCoins(chia.fromHex(h), true)),
+  };
+  return base;
+}
+
+/** Mint a single NFT to a seed-derived wallet's index-0 address (owner + royalty = self). */
+function mintNftTo(sim: SimHandle, ring0: ReturnType<typeof buildKeyring>[number]): string {
+  const ph0 = chia.fromHex(ring0.puzzleHashHex);
+  const clvm = new chia.Clvm() as unknown as {
+    nftMetadata(v: unknown): unknown;
+    standardSpend(pk: unknown, s: unknown): unknown;
+    delegatedSpend(c: unknown[]): unknown;
+    coinSpends(): unknown[];
+  };
+  const spends = new (chia as unknown as {
+    Spends: new (
+      c: unknown,
+      ph: Uint8Array,
+    ) => {
+      addXch(c: unknown): void;
+      apply(a: unknown[]): unknown;
+      prepare(d: unknown): {
+        pendingSpends(): Array<{ coin(): { coinId(): Uint8Array }; conditions(): unknown[] }>;
+        insert(id: Uint8Array, s: unknown): void;
+        spend(): { nfts(): unknown[]; nft(id: unknown): { info: { launcherId: Uint8Array } } };
+      };
+    };
+  }).Spends(clvm, ph0);
+  spends.addXch(sim.unspentCoins(ph0, false)[0]);
+  const metadata = clvm.nftMetadata(
+    new chia.NftMetadata(1n, 1n, ['https://example.test/img.png'], undefined, ['https://example.test/meta.json'], undefined, []),
+  );
+  const mintAction = (chia as unknown as {
+    Action: { mintNft(c: unknown, m: unknown, u: Uint8Array, r: Uint8Array, bps: number, amt: bigint, parent?: unknown): unknown };
+  }).Action.mintNft(clvm, metadata, chia.Constants.nftMetadataUpdaterDefaultHash(), ph0, 300, 1n, undefined);
+  const fin = spends.prepare(spends.apply([mintAction]));
+  for (const ps of fin.pendingSpends()) fin.insert(ps.coin().coinId(), clvm.standardSpend(ring0.pk, clvm.delegatedSpend(ps.conditions())));
+  const outputs = fin.spend();
+  const launcherId = hx(outputs.nft(outputs.nfts()[0]).info.launcherId);
+  const coinSpends = clvm.coinSpends();
+  const sig = signCoinSpends(asSig(), coinSpends as never, [ring0.sk], TESTNET11_AGG_SIG_ME);
+  sim.newTransaction(new chia.SpendBundle(coinSpends, sig));
+  sim.createBlock();
+  return launcherId;
+}
+
+describe('nfts — mint, list, transfer (Simulator-validated)', () => {
+  it('lists a minted NFT with its on-chain metadata', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 5_000_000_000_000n);
+    const launcherId = mintNftTo(sim, ring[0]);
+    const chain = simChain(sim);
+
+    const nfts = await listNfts(asNft(), chain, { seed, gapLimit: 2 });
+    expect(nfts).toHaveLength(1);
+    expect(nfts[0].launcherId).toBe(launcherId);
+    expect(nfts[0].p2PuzzleHash).toBe(ring[0].puzzleHashHex);
+    expect(nfts[0].royaltyBasisPoints).toBe(300);
+    expect(nfts[0].dataUris).toEqual(['https://example.test/img.png']);
+    expect(nfts[0].metadataUris).toEqual(['https://example.test/meta.json']);
+    expect(nfts[0].editionNumber).toBe('1');
+  });
+
+  it('transfers an NFT to another wallet; it leaves the sender and lands at the recipient', async () => {
+    const senderSeed = await mnemonicToSeed(golden.mnemonic);
+    const recipientSeed = await mnemonicToSeed(RECIPIENT_MNEMONIC);
+    const senderRing = buildKeyring(asFlow(), senderSeed, { count: 2 });
+    const recipientRing = buildKeyring(asFlow(), recipientSeed, { count: 2 });
+    const recipientAddr = addressOf(recipientRing[0].puzzleHashHex);
+
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(senderRing[0].puzzleHashHex), 5_000_000_000_000n);
+    const launcherId = mintNftTo(sim, senderRing[0]);
+    const chain = simChain(sim);
+
+    // Sender owns it before the transfer.
+    expect(await listNfts(asNft(), chain, { seed: senderSeed, gapLimit: 2 })).toHaveLength(1);
+
+    const prepared = await prepareNftTransfer(asNft(), chain, {
+      seed: senderSeed,
+      launcherId,
+      recipient: recipientAddr,
+      gapLimit: 2,
+    });
+    expect(prepared.summary.launcherId).toBe(launcherId);
+    expect(prepared.summary.recipientPuzzleHashHex).toBe(recipientRing[0].puzzleHashHex);
+
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    const res = await chain.pushSpendBundle(bundle);
+    expect(res.success).toBe(true);
+
+    // The NFT moved: gone from the sender, discoverable by the recipient (proves the transfer + hint).
+    expect(await listNfts(asNft(), chain, { seed: senderSeed, gapLimit: 2 })).toHaveLength(0);
+    const recipientNfts = await listNfts(asNft(), chain, { seed: recipientSeed, gapLimit: 2 });
+    expect(recipientNfts).toHaveLength(1);
+    expect(recipientNfts[0].launcherId).toBe(launcherId);
+    expect(recipientNfts[0].p2PuzzleHash).toBe(recipientRing[0].puzzleHashHex);
+  });
+
+  it('pays a fee from the wallet when transferring', async () => {
+    const senderSeed = await mnemonicToSeed(golden.mnemonic);
+    const recipientSeed = await mnemonicToSeed(RECIPIENT_MNEMONIC);
+    const senderRing = buildKeyring(asFlow(), senderSeed, { count: 2 });
+    const recipientRing = buildKeyring(asFlow(), recipientSeed, { count: 2 });
+
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(senderRing[0].puzzleHashHex), 5_000_000_000_000n);
+    const launcherId = mintNftTo(sim, senderRing[0]);
+    const chain = simChain(sim);
+
+    const prepared = await prepareNftTransfer(asNft(), chain, {
+      seed: senderSeed,
+      launcherId,
+      recipient: addressOf(recipientRing[0].puzzleHashHex),
+      fee: 1_000_000n,
+      gapLimit: 2,
+    });
+    expect(prepared.summary.fee).toBe('1000000');
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
+    const recipientNfts = await listNfts(asNft(), chain, { seed: recipientSeed, gapLimit: 2 });
+    expect(recipientNfts.map((n) => n.launcherId)).toContain(launcherId);
+  });
+
+  it('returns an empty list when the wallet holds no NFTs', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
+    expect(await listNfts(asNft(), simChain(sim), { seed, gapLimit: 2 })).toEqual([]);
+  });
+
+  it('throws NFT_NOT_FOUND when transferring an NFT the wallet does not hold', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
+    await expect(
+      prepareNftTransfer(asNft(), simChain(sim), { seed, launcherId: 'ab'.repeat(32), recipient: addressOf(ring[0].puzzleHashHex), gapLimit: 2 }),
+    ).rejects.toThrow(/NFT_NOT_FOUND/);
+  });
+
+  it('throws HINT_LOOKUP_UNAVAILABLE when the chain cannot resolve hints', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const chain = { getCoinSpend: async () => null, unspentCoins: async () => [] } as unknown as NftChain;
+    await expect(listNfts(asNft(), chain, { seed, gapLimit: 2 })).rejects.toThrow(/HINT_LOOKUP_UNAVAILABLE/);
+  });
+});

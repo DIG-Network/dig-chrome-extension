@@ -1,0 +1,293 @@
+/**
+ * Self-custody NFTs / Collectibles (§18 NFTs, #56 Phase-1 Sage parity) — LIST the wallet's NFTs and
+ * TRANSFER one, assembled from `chia-wallet-sdk-wasm` primitives so the spends are byte-identical to
+ * the canonical `chia-sdk-driver` construction (they interoperate with Sage / dexie). Runs in the
+ * offscreen vault (holds the seed). Pure (injected wasm + chain); the transfer money path is proven
+ * consensus-valid by a Simulator test (`nfts.test.ts`) — nothing is broadcast in CI.
+ *
+ * NFT discovery model (mirrors the CAT lineage reconstruction in `sendFlow.reconstructCats`):
+ *   - An NFT is a singleton whose OUTER coin puzzle hash is the full singleton/ownership puzzle — NOT
+ *     the wallet's p2 (standard) puzzle hash — so it is NOT found by a puzzle-hash scan. Instead the
+ *     transfer that delivered it HINTS the recipient's inner p2 puzzle hash, so the wallet finds its
+ *     NFT coins via coinset `get_coin_records_by_hints` over its derived p2 hashes.
+ *   - For each hinted unspent coin, its PARENT spend is fetched and `Puzzle.parseChildNft(parentCoin,
+ *     parentSolution)` reconstructs the child `Nft` (exactly parallel to `Puzzle.parseChildCats`).
+ *     A coin is one of OUR NFTs iff the reconstructed child is this coin and its `info.p2PuzzleHash`
+ *     is one of the wallet's derived inner puzzle hashes.
+ *
+ * Transfer model: add the reconstructed `Nft` to a `Spends` driver, `Action.send(Id.existing(
+ * launcherId), destP2, 1, hintMemo)` (a singleton is amount 1; the recipient p2 is carried as the
+ * create-coin hint so the recipient can discover it), pay the fee in XCH, then insert a standard
+ * inner spend for each pending coin. Does NOT sign or broadcast — the vault's confirm step does that
+ * on explicit user approval (reusing the same sign+broadcast+poll machinery as Send).
+ */
+
+import { buildKeyring, type KeyringEntry, type SendFlowWasm } from '@/offscreen/sendFlow';
+import { type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
+import type { ChainClient } from '@/offscreen/chain';
+
+const strip0x = (h: string): string => h.replace(/^0x/i, '').toLowerCase();
+
+// ── Minimal structural wasm surfaces (focused casts, per sendFlow/offers) ─────────────────────────
+interface NftMetadataObj {
+  editionNumber: bigint;
+  editionTotal: bigint;
+  dataUris: string[];
+  dataHash?: Uint8Array;
+  metadataUris: string[];
+  metadataHash?: Uint8Array;
+  licenseUris: string[];
+  licenseHash?: Uint8Array;
+}
+interface NftMetadataProgram {
+  parseNftMetadata(): NftMetadataObj | undefined;
+}
+interface NftInfoObj {
+  launcherId: Uint8Array;
+  metadata: NftMetadataProgram;
+  currentOwner?: Uint8Array;
+  royaltyPuzzleHash: Uint8Array;
+  royaltyBasisPoints: number;
+  p2PuzzleHash: Uint8Array;
+}
+interface NftObj {
+  coin: { coinId(): Uint8Array; amount: bigint };
+  info: NftInfoObj;
+}
+interface NftPuzzle {
+  parseChildNft(parentCoin: unknown, parentSolution: unknown): NftObj | undefined;
+}
+interface NftProgram {
+  puzzle(): NftPuzzle;
+}
+interface NftPendingSpend {
+  coin(): { coinId(): Uint8Array };
+  p2PuzzleHash(): Uint8Array;
+  conditions(): unknown[];
+}
+interface NftFinished {
+  pendingSpends(): NftPendingSpend[];
+  insert(coinId: Uint8Array, spend: unknown): void;
+  spend(): unknown;
+}
+interface NftSpends {
+  addXch(coin: unknown): void;
+  addNft(nft: NftObj): void;
+  apply(actions: unknown[]): unknown;
+  prepare(deltas: unknown): NftFinished;
+}
+interface NftClvm {
+  deserialize(bytes: Uint8Array): NftProgram;
+  alloc(value: unknown): unknown;
+  standardSpend(syntheticKey: unknown, spend: unknown): unknown;
+  delegatedSpend(conditions: unknown[]): unknown;
+  coinSpends(): SigCoinSpend[];
+}
+
+/**
+ * The full wasm surface the NFT engine needs. Standalone (NOT `extends SendFlowWasm`) because it
+ * types `Clvm`/`Spends`/`Action`/`Id` more richly; the shared derivation helper (`buildKeyring`)
+ * receives a focused `as unknown as SendFlowWasm` cast, and the offscreen vault signs the result via
+ * `signAndBundle` (which owns the signer cast).
+ */
+export interface NftWasm {
+  toHex(bytes: Uint8Array): string;
+  fromHex(hex: string): Uint8Array;
+  standardPuzzleHash(syntheticKey: unknown): Uint8Array;
+  Clvm: new () => NftClvm;
+  Spends: new (clvm: NftClvm, changePuzzleHash: Uint8Array) => NftSpends;
+  Address: { decode(address: string): { puzzleHash: Uint8Array } };
+  Action: {
+    send(id: unknown, puzzleHash: Uint8Array, amount: bigint, memos: unknown): unknown;
+    fee(amount: bigint): unknown;
+  };
+  Id: { existing(assetId: Uint8Array): unknown };
+  // Derivation surface reused via a cast to SendFlowWasm.
+  SecretKey: unknown;
+}
+
+const asHex = (chia: NftWasm, b: Uint8Array): string => strip0x(chia.toHex(b));
+
+/** A wallet-owned NFT, flattened to wire-safe (JSON, no bigint) display fields. */
+export interface WalletNft {
+  /** The singleton launcher id (hex) — the NFT's stable identity. */
+  launcherId: string;
+  /** The current NFT coin id (hex) that holds it. */
+  coinId: string;
+  /** Which derived inner (p2) puzzle hash of THIS wallet holds it (hex). */
+  p2PuzzleHash: string;
+  /** The minter/collection grouping signal: the current owner DID (hex) if set, else null. */
+  collectionId: string | null;
+  /** CHIP-0007 edition number / total (decimal strings). */
+  editionNumber: string;
+  editionTotal: string;
+  /** Royalty basis points (e.g. 250 = 2.5%). */
+  royaltyBasisPoints: number;
+  /** The royalty payout puzzle hash (hex). */
+  royaltyPuzzleHash: string;
+  /** On-chain data / metadata / license URIs + hashes (hex, or null). */
+  dataUris: string[];
+  dataHash: string | null;
+  metadataUris: string[];
+  metadataHash: string | null;
+  licenseUris: string[];
+}
+
+/** The chain surface the NFT engine needs — the standard {@link ChainClient} plus a hint lookup. */
+export type NftChain = ChainClient;
+
+/**
+ * Reconstruct a wallet-owned {@link NftObj} handle from a hinted unspent coin, or null if not ours.
+ * The caller supplies the `clvm` so the reconstructed NFT's `metadata` Program lives in the SAME CLVM
+ * allocator that will later consume it (the `Spends` driver) — a cross-arena handle panics the wasm.
+ */
+async function reconstructOwnedNft(
+  chia: NftWasm,
+  chain: NftChain,
+  clvm: NftClvm,
+  ownedPhs: Set<string>,
+  coin: { coinId(): Uint8Array; parentCoinInfo: Uint8Array },
+): Promise<NftObj | null> {
+  const parentSpend = await chain.getCoinSpend(asHex(chia, coin.parentCoinInfo));
+  if (!parentSpend) return null;
+  const puzzle = clvm.deserialize(parentSpend.puzzleReveal).puzzle();
+  const nft = puzzle.parseChildNft(parentSpend.coin, clvm.deserialize(parentSpend.solution));
+  if (!nft) return null;
+  // The reconstructed child must BE this coin, and its inner p2 must be one of ours.
+  if (asHex(chia, nft.coin.coinId()) !== asHex(chia, coin.coinId())) return null;
+  if (!ownedPhs.has(asHex(chia, nft.info.p2PuzzleHash))) return null;
+  return nft;
+}
+
+/** Flatten a reconstructed {@link NftObj} to a wire-safe {@link WalletNft}. */
+function toWalletNft(chia: NftWasm, nft: NftObj): WalletNft {
+  const meta = nft.info.metadata.parseNftMetadata();
+  return {
+    launcherId: asHex(chia, nft.info.launcherId),
+    coinId: asHex(chia, nft.coin.coinId()),
+    p2PuzzleHash: asHex(chia, nft.info.p2PuzzleHash),
+    collectionId: nft.info.currentOwner ? asHex(chia, nft.info.currentOwner) : null,
+    editionNumber: (meta?.editionNumber ?? 1n).toString(),
+    editionTotal: (meta?.editionTotal ?? 1n).toString(),
+    royaltyBasisPoints: nft.info.royaltyBasisPoints,
+    royaltyPuzzleHash: asHex(chia, nft.info.royaltyPuzzleHash),
+    dataUris: meta?.dataUris ?? [],
+    dataHash: meta?.dataHash ? asHex(chia, meta.dataHash) : null,
+    metadataUris: meta?.metadataUris ?? [],
+    metadataHash: meta?.metadataHash ? asHex(chia, meta.metadataHash) : null,
+    licenseUris: meta?.licenseUris ?? [],
+  };
+}
+
+/**
+ * List the wallet's NFTs. Derives the HD keyring (both schemes to `gapLimit`), finds the coins
+ * hinted to those inner puzzle hashes (coinset `get_coin_records_by_hints`), reconstructs each as an
+ * NFT via its parent spend, and keeps those actually owned by the wallet. Deduped by launcher id
+ * (the newest coin wins per launcher). Read-only — never signs or broadcasts.
+ */
+export async function listNfts(
+  chia: NftWasm,
+  chain: NftChain,
+  opts: { seed: Uint8Array; gapLimit?: number },
+): Promise<WalletNft[]> {
+  if (!chain.coinsByHints) throw new Error('HINT_LOOKUP_UNAVAILABLE: the chain client cannot resolve hints');
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));
+  const coins = await chain.coinsByHints([...ownedPhs]);
+  const clvm = new chia.Clvm();
+  const byLauncher = new Map<string, WalletNft>();
+  for (const coin of coins) {
+    const nft = await reconstructOwnedNft(chia, chain, clvm, ownedPhs, coin);
+    if (!nft) continue;
+    const wallet = toWalletNft(chia, nft);
+    byLauncher.set(wallet.launcherId, wallet);
+  }
+  return [...byLauncher.values()];
+}
+
+/** A prepared (unsigned) NFT transfer: coin spends + the keys to sign + the decoded summary. */
+export interface PreparedNftTransfer {
+  coinSpends: SigCoinSpend[];
+  secretKeys: SigSecretKey[];
+  summary: NftTransferSummary;
+}
+/** The decoded, tamper-resistant summary of an NFT transfer for the user to approve. */
+export interface NftTransferSummary {
+  launcherId: string;
+  recipientPuzzleHashHex: string;
+  fee: string;
+  coinCount: number;
+}
+
+/**
+ * Locate the wallet's NFT of `launcherId` as a live wasm `Nft` handle reconstructed in `clvm` (the
+ * same allocator the `Spends` driver uses). Throws `NFT_NOT_FOUND` if the wallet no longer holds it.
+ */
+async function findNftForTransfer(
+  chia: NftWasm,
+  chain: NftChain,
+  clvm: NftClvm,
+  keyring: KeyringEntry[],
+  launcherId: string,
+): Promise<NftObj> {
+  if (!chain.coinsByHints) throw new Error('HINT_LOOKUP_UNAVAILABLE: the chain client cannot resolve hints');
+  const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));
+  const wantId = strip0x(launcherId);
+  const coins = await chain.coinsByHints([...ownedPhs]);
+  for (const coin of coins) {
+    const nft = await reconstructOwnedNft(chia, chain, clvm, ownedPhs, coin);
+    if (nft && asHex(chia, nft.info.launcherId) === wantId) return nft;
+  }
+  throw new Error('NFT_NOT_FOUND: the wallet does not hold this NFT');
+}
+
+/**
+ * Prepare (build, don't sign/broadcast) a transfer of the wallet's NFT `launcherId` to `recipient`.
+ * Pays `fee` (XCH) from the wallet's coins. Returns the coin spends, the signing keys, and a decoded
+ * summary. The recipient's p2 puzzle hash is carried as the create-coin hint so they discover it.
+ */
+export async function prepareNftTransfer(
+  chia: NftWasm,
+  chain: NftChain,
+  opts: { seed: Uint8Array; launcherId: string; recipient: string; fee?: bigint; gapLimit?: number },
+): Promise<PreparedNftTransfer> {
+  const fee = opts.fee ?? 0n;
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
+  const clvm = new chia.Clvm();
+  const nft = await findNftForTransfer(chia, chain, clvm, keyring, opts.launcherId);
+
+  const destPuzzleHash = chia.Address.decode(opts.recipient).puzzleHash;
+  const changePuzzleHash = chia.fromHex(keyring[0].puzzleHashHex);
+  const spends = new chia.Spends(clvm, changePuzzleHash);
+  spends.addNft(nft);
+  if (fee > 0n) {
+    const xchCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
+    for (const c of xchCoins) spends.addXch(c);
+  }
+
+  const nftId = chia.Id.existing(chia.fromHex(strip0x(opts.launcherId)));
+  const hintMemo = clvm.alloc([destPuzzleHash]); // recipient p2 as the create-coin hint
+  const actions: unknown[] = [chia.Action.send(nftId, destPuzzleHash, 1n, hintMemo)];
+  if (fee > 0n) actions.push(chia.Action.fee(fee));
+
+  const finished = spends.prepare(spends.apply(actions));
+  for (const ps of finished.pendingSpends()) {
+    const key = keyByPuzzleHash.get(asHex(chia, ps.p2PuzzleHash()));
+    if (!key) throw new Error('MISSING_KEY: a selected coin is not owned by this wallet');
+    finished.insert(ps.coin().coinId(), clvm.standardSpend(key.pk, clvm.delegatedSpend(ps.conditions())));
+  }
+  finished.spend();
+
+  const coinSpends = clvm.coinSpends();
+  return {
+    coinSpends,
+    secretKeys: keyring.map((k) => k.sk),
+    summary: {
+      launcherId: strip0x(opts.launcherId),
+      recipientPuzzleHashHex: asHex(chia, destPuzzleHash),
+      fee: fee.toString(),
+      coinCount: coinSpends.length,
+    },
+  };
+}

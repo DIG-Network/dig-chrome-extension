@@ -14,6 +14,7 @@ import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
 import { TradePanel } from '@/features/wallet/custody/TradePanel';
 import { CustodyActivity } from '@/features/wallet/custody/CustodyActivity';
+import { CollectiblesPanel } from '@/features/collectibles/CollectiblesPanel';
 import { useState } from 'react';
 import type { WalletView } from '@/app/tabs';
 
@@ -21,6 +22,7 @@ const SEG_OPTIONS: { value: WalletView; labelId: string }[] = [
   { value: 'home', labelId: 'wallet.view.home' },
   { value: 'activity', labelId: 'wallet.view.activity' },
   { value: 'trade', labelId: 'wallet.view.trade' },
+  { value: 'collectibles', labelId: 'wallet.view.collectibles' },
 ];
 
 /**
@@ -118,6 +120,7 @@ export function CustodyWallet() {
 
       {walletView === 'activity' && <CustodyActivity />}
       {walletView === 'trade' && <TradePanel assets={assets} />}
+      {walletView === 'collectibles' && <CollectiblesPanel />}
     </div>
   );
 }

@@ -40,6 +40,9 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'inspectOffer',
       'prepareTrade',
       'confirmTrade',
+      'listNfts',
+      'prepareNftTransfer',
+      'confirmNftTransfer',
     ].sort(),
   );
 });
