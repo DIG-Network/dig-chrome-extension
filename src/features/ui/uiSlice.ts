@@ -20,6 +20,15 @@ export interface UiState {
   locale: string;
   /** Tier-3 "Advanced/Pro" disclosure toggle (persisted to `wallet.settings.advanced`). */
   advanced: boolean;
+  /** The dApp opened in the in-window app-view (mobile-OS "app launch"), else null. Ephemeral. */
+  openApp: OpenApp | null;
+}
+
+/** A dApp launched into the in-window app-view: its display name + absolute launch URL. */
+export interface OpenApp {
+  slug: string;
+  name: string;
+  link: string;
 }
 
 /** The persisted settings blob shape (subset of `wallet.settings`). */
@@ -30,7 +39,7 @@ interface PersistedSettings {
 
 function initialState(): UiState {
   const route = resolveRoute(typeof location !== 'undefined' ? location.hash : '');
-  return { tab: route.tab, walletView: route.walletView, networkView: route.networkView, locale: DEFAULT_LOCALE, advanced: false };
+  return { tab: route.tab, walletView: route.walletView, networkView: route.networkView, locale: DEFAULT_LOCALE, advanced: false, openApp: null };
 }
 
 const uiSlice = createSlice({
@@ -45,6 +54,14 @@ const uiSlice = createSlice({
     },
     setNetworkView(state, action: PayloadAction<NetworkView>) {
       state.networkView = action.payload;
+    },
+    /** Launch a dApp into the in-window app-view (mobile-OS app-open). */
+    setOpenApp(state, action: PayloadAction<OpenApp>) {
+      state.openApp = action.payload;
+    },
+    /** Close the in-window app-view (back to the launcher). */
+    closeApp(state) {
+      state.openApp = null;
     },
     setLocale(state, action: PayloadAction<string>) {
       state.locale = isSupportedLocale(action.payload) ? action.payload : DEFAULT_LOCALE;
@@ -69,7 +86,7 @@ const uiSlice = createSlice({
   },
 });
 
-export const { setTab, setWalletView, setNetworkView, setLocale, setAdvanced, routeFromHash, settingsHydrated } =
+export const { setTab, setWalletView, setNetworkView, setOpenApp, closeApp, setLocale, setAdvanced, routeFromHash, settingsHydrated } =
   uiSlice.actions;
 export const uiReducer = uiSlice.reducer;
 

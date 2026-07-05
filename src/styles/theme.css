@@ -857,3 +857,73 @@ button.dig-widget:focus-visible {
     transition: none;
   }
 }
+
+/* ── in-window dApp app-view (#65 B.2 — open a dApp like a phone app) ── */
+.dig-appview {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--dig-bg);
+  animation: dig-appview-open 0.24s ease both;
+}
+@keyframes dig-appview-open {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.dig-appview-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid var(--dig-border);
+  background: color-mix(in srgb, var(--dig-bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+.dig-appview-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dig-appview-body {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dig-appview-body .dig-state {
+  margin: auto;
+  padding: 24px;
+  text-align: center;
+}
+.dig-appview-frame {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--dig-bg-raised);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dig-appview {
+    animation: none;
+  }
+}
+
+/* ── inline bug-report entry (#65 B.2): hide the shared reporter's floating FAB; open it inline ── */
+.digbr-launcher {
+  display: none !important;
+}
+.dig-bugreport-inline {
+  display: inline-flex;
+}
+.dig-bugreport-inline .dig-link {
+  font-size: 11px;
+}
