@@ -208,6 +208,14 @@ export const ko: Record<string, string> = {
   'apps.empty': '등록된 dApp이 아직 없습니다 — 곧 다시 확인해 주십시오.',
   'apps.offline': '오프라인 — 마지막으로 불러온 앱 목록을 표시합니다.',
   'apps.open': '{name} 열기',
+  // In-window dApp app-view
+  'appview.back': '뒤로',
+  'appview.expand': '전체 탭에서 열기',
+  'appview.loading': '{name} 여는 중…',
+  'appview.blocked': '{name}은(는) DIG 내에서 실행할 수 없습니다 — 새 탭에서 엽니다.',
+  'appview.openTab': '새 탭에서 열기',
+  // Inline bug-report entry
+  'bugreport.report': '버그 신고',
 
   // ── resolver ──
   'resolver.title': 'chia:// 리졸버',

@@ -208,6 +208,14 @@ export const ru: Record<string, string> = {
   'apps.empty': 'Пока нет ни одного dApp — загляните позже.',
   'apps.offline': 'Нет подключения — показаны последние загруженные приложения.',
   'apps.open': 'Открыть {name}',
+  // In-window dApp app-view
+  'appview.back': 'Назад',
+  'appview.expand': 'Открыть в полноценной вкладке',
+  'appview.loading': 'Открытие {name}…',
+  'appview.blocked': '{name} не может работать внутри DIG — открывается в новой вкладке.',
+  'appview.openTab': 'Открыть в новой вкладке',
+  // Inline bug-report entry
+  'bugreport.report': 'Сообщить об ошибке',
 
   // ── resolver ──
   'resolver.title': 'Резолвер chia://',

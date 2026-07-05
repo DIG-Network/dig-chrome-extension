@@ -208,6 +208,14 @@ export const fr: Record<string, string> = {
   'apps.empty': "Aucune dApp n'est encore répertoriée — revenez bientôt.",
   'apps.offline': 'Hors ligne — affichage des dernières applications chargées.',
   'apps.open': 'Ouvrir {name}',
+  // In-window dApp app-view
+  'appview.back': 'Retour',
+  'appview.expand': 'Ouvrir dans un onglet complet',
+  'appview.loading': 'Ouverture de {name}…',
+  'appview.blocked': "{name} ne peut pas s'exécuter dans DIG — ouverture dans un nouvel onglet.",
+  'appview.openTab': 'Ouvrir dans un nouvel onglet',
+  // Inline bug-report entry
+  'bugreport.report': 'Signaler un problème',
 
   // ── resolver ──
   'resolver.title': 'Résolveur chia://',

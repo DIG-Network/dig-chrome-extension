@@ -208,6 +208,14 @@ export const hi: Record<string, string> = {
   'apps.empty': 'अभी कोई dApp सूचीबद्ध नहीं है — जल्द ही फिर देखें।',
   'apps.offline': 'ऑफ़लाइन — आपके द्वारा पहले लोड किए गए ऐप्स दिखाए जा रहे हैं।',
   'apps.open': '{name} खोलें',
+  // In-window dApp app-view
+  'appview.back': 'वापस',
+  'appview.expand': 'पूरे टैब में खोलें',
+  'appview.loading': '{name} खोला जा रहा है…',
+  'appview.blocked': '{name} DIG के अंदर नहीं चल सकता — इसे नए टैब में खोला जा रहा है।',
+  'appview.openTab': 'नए टैब में खोलें',
+  // Inline bug-report entry
+  'bugreport.report': 'बग की रिपोर्ट करें',
 
   // ── resolver ──
   'resolver.title': 'chia:// रिज़ॉल्वर',

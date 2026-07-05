@@ -208,6 +208,14 @@ export const ptBR: Record<string, string> = {
   'apps.empty': 'Ainda não há dApps listados — volte em breve.',
   'apps.offline': 'Offline — mostrando os últimos apps que você carregou.',
   'apps.open': 'Abrir {name}',
+  // In-window dApp app-view
+  'appview.back': 'Voltar',
+  'appview.expand': 'Abrir em uma aba completa',
+  'appview.loading': 'Abrindo {name}…',
+  'appview.blocked': '{name} não pode ser executado dentro do DIG — abrindo em uma nova aba.',
+  'appview.openTab': 'Abrir em uma nova aba',
+  // Inline bug-report entry
+  'bugreport.report': 'Reportar um problema',
 
   // ── resolver ──
   'resolver.title': 'Resolvedor de chia://',

@@ -208,6 +208,14 @@ export const ja: Record<string, string> = {
   'apps.empty': 'まだ登録されているdAppはありません。後ほどご確認ください。',
   'apps.offline': 'オフライン — 最後に読み込んだアプリを表示しています。',
   'apps.open': '{name} を開く',
+  // In-window dApp app-view
+  'appview.back': '戻る',
+  'appview.expand': 'フルタブで開く',
+  'appview.loading': '{name} を開いています…',
+  'appview.blocked': '{name} はDIG内で実行できません。新しいタブで開きます。',
+  'appview.openTab': '新しいタブで開く',
+  // Inline bug-report entry
+  'bugreport.report': '不具合を報告',
 
   // ── resolver ──
   'resolver.title': 'chia://リゾルバー',

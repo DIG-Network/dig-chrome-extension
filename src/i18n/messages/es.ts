@@ -208,6 +208,14 @@ export const es: Record<string, string> = {
   'apps.empty': 'Todavía no hay dApps listadas — vuelve a revisar pronto.',
   'apps.offline': 'Sin conexión — mostrando las últimas apps que cargaste.',
   'apps.open': 'Abrir {name}',
+  // In-window dApp app-view
+  'appview.back': 'Atrás',
+  'appview.expand': 'Abrir en una pestaña completa',
+  'appview.loading': 'Abriendo {name}…',
+  'appview.blocked': '{name} no puede ejecutarse dentro de DIG — se abrirá en una pestaña nueva.',
+  'appview.openTab': 'Abrir en una pestaña nueva',
+  // Inline bug-report entry
+  'bugreport.report': 'Reportar un error',
 
   // ── resolver ──
   'resolver.title': 'Resolver de chia://',

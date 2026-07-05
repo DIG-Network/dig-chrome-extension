@@ -208,6 +208,14 @@ export const vi: Record<string, string> = {
   'apps.empty': 'Chưa có dApp nào được liệt kê — hãy quay lại sau.',
   'apps.offline': 'Ngoại tuyến — đang hiển thị các ứng dụng bạn đã tải gần nhất.',
   'apps.open': 'Mở {name}',
+  // In-window dApp app-view
+  'appview.back': 'Quay lại',
+  'appview.expand': 'Mở trong tab đầy đủ',
+  'appview.loading': 'Đang mở {name}…',
+  'appview.blocked': '{name} không thể chạy bên trong DIG — đang mở trong tab mới.',
+  'appview.openTab': 'Mở trong tab mới',
+  // Inline bug-report entry
+  'bugreport.report': 'Báo cáo lỗi',
 
   // ── resolver ──
   'resolver.title': 'Bộ phân giải chia://',

@@ -208,6 +208,14 @@ export const id: Record<string, string> = {
   'apps.empty': 'Belum ada dApp yang terdaftar — silakan cek kembali nanti.',
   'apps.offline': 'Offline — menampilkan aplikasi terakhir yang Anda muat.',
   'apps.open': 'Buka {name}',
+  // In-window dApp app-view
+  'appview.back': 'Kembali',
+  'appview.expand': 'Buka di tab penuh',
+  'appview.loading': 'Membuka {name}…',
+  'appview.blocked': '{name} tidak dapat berjalan di dalam DIG — membukanya di tab baru.',
+  'appview.openTab': 'Buka di tab baru',
+  // Inline bug-report entry
+  'bugreport.report': 'Laporkan bug',
 
   // ── resolver ──
   'resolver.title': 'Resolver chia://',

@@ -208,6 +208,14 @@ export const zhTW: Record<string, string> = {
   'apps.empty': '目前尚無上架的 dApp——請稍後再來查看。',
   'apps.offline': '離線中——正在顯示您上次載入的應用程式。',
   'apps.open': '開啟 {name}',
+  // In-window dApp app-view
+  'appview.back': '返回',
+  'appview.expand': '在完整分頁中開啟',
+  'appview.loading': '正在開啟 {name}…',
+  'appview.blocked': '{name} 無法在 DIG 內執行 — 正在新分頁中開啟。',
+  'appview.openTab': '在新分頁中開啟',
+  // Inline bug-report entry
+  'bugreport.report': '回報問題',
 
   // ── resolver ──
   'resolver.title': 'chia:// 解析器',

@@ -208,6 +208,14 @@ export const tr: Record<string, string> = {
   'apps.empty': 'Henüz listelenen dApp yok — daha sonra tekrar kontrol edin.',
   'apps.offline': 'Çevrimdışı — en son yüklediğiniz uygulamalar gösteriliyor.',
   'apps.open': '{name} uygulamasını aç',
+  // In-window dApp app-view
+  'appview.back': 'Geri',
+  'appview.expand': 'Tam sekmede aç',
+  'appview.loading': '{name} açılıyor…',
+  'appview.blocked': '{name} DIG içinde çalışamıyor — yeni sekmede açılıyor.',
+  'appview.openTab': 'Yeni sekmede aç',
+  // Inline bug-report entry
+  'bugreport.report': 'Hata bildir',
 
   // ── resolver ──
   'resolver.title': 'chia:// çözümleyici',

@@ -208,6 +208,14 @@ export const zhCN: Record<string, string> = {
   'apps.empty': '暂无已上架的 dApp——请稍后再来查看。',
   'apps.offline': '离线中——正在显示您上次加载的应用。',
   'apps.open': '打开 {name}',
+  // In-window dApp app-view
+  'appview.back': '返回',
+  'appview.expand': '在完整标签页中打开',
+  'appview.loading': '正在打开 {name}…',
+  'appview.blocked': '{name} 无法在 DIG 内运行 — 正在新标签页中打开。',
+  'appview.openTab': '在新标签页中打开',
+  // Inline bug-report entry
+  'bugreport.report': '报告问题',
 
   // ── resolver ──
   'resolver.title': 'chia:// 解析器',
