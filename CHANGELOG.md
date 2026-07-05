@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.20.0] - 2026-07-05
+
+### Features
+- **i18n:** Add the 13 non-English wallet locale catalogs (#22)
+
 ## [1.19.0] - 2026-07-05
 
 ### Features
