@@ -7,10 +7,25 @@
 
 import type { ChiaWasm } from '@/lib/keystore/derive';
 
-/** The minimal chain-read surface the balance scan needs. */
+/** An opaque wasm `Coin` (has `coinId()`); the send builder consumes these directly. */
+export interface ChainCoin {
+  coinId(): Uint8Array;
+}
+/** An opaque wasm `SpendBundle` to broadcast. */
+export interface ChainSpendBundle {
+  toBytes(): Uint8Array;
+}
+
+/** The chain surface the balance scan + send flow need (coinset JSON-RPC). */
 export interface ChainClient {
   /** Total UNSPENT coin amount (base units) across ALL the given puzzle hashes (hex, no `0x`). */
   totalUnspent(puzzleHashesHex: string[]): Promise<number>;
+  /** The UNSPENT coins at the given puzzle hashes (for coin selection). */
+  unspentCoins(puzzleHashesHex: string[]): Promise<ChainCoin[]>;
+  /** Broadcast a signed spend bundle (REAL — only reached on explicit user approval). */
+  pushSpendBundle(bundle: ChainSpendBundle): Promise<{ success: boolean; error?: string }>;
+  /** True once the coin (an input we spent) is recorded spent — i.e. the send confirmed. */
+  coinConfirmed(coinIdHex: string): Promise<boolean>;
 }
 
 /** The default public coinset gateway (extensions bypass its CORS). */
@@ -29,7 +44,9 @@ interface WasmRpcClient {
     startHeight: number | undefined,
     endHeight: number | undefined,
     includeSpentCoins: boolean | undefined,
-  ): Promise<{ success: boolean; error?: string; coinRecords?: Array<{ coin: { amount: bigint } }> }>;
+  ): Promise<{ success: boolean; error?: string; coinRecords?: Array<{ coin: ChainCoin & { amount: bigint } }> }>;
+  getCoinRecordByName(name: Uint8Array): Promise<{ success: boolean; coinRecord?: { spent: boolean; spentBlockIndex?: number } }>;
+  pushTx(spendBundle: ChainSpendBundle): Promise<{ success: boolean; error?: string; status?: string }>;
 }
 export interface RpcCapableWasm extends ChiaWasm {
   fromHex(value: string): Uint8Array;
@@ -53,6 +70,24 @@ export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = D
         total += (res.coinRecords ?? []).reduce((s, r) => s + Number(r.coin.amount), 0);
       }
       return total;
+    },
+    async unspentCoins(puzzleHashesHex) {
+      const coins: ChainCoin[] = [];
+      for (let i = 0; i < puzzleHashesHex.length; i += COINSET_BATCH) {
+        const phBytes = puzzleHashesHex.slice(i, i + COINSET_BATCH).map((h) => chia.fromHex(h));
+        const res = await rpc.getCoinRecordsByPuzzleHashes(phBytes, undefined, undefined, false);
+        if (!res.success) throw new Error(res.error || 'coinset query failed');
+        for (const r of res.coinRecords ?? []) coins.push(r.coin);
+      }
+      return coins;
+    },
+    async pushSpendBundle(bundle) {
+      const res = await rpc.pushTx(bundle);
+      return { success: res.success, ...(res.error ? { error: res.error } : {}) };
+    },
+    async coinConfirmed(coinIdHex) {
+      const res = await rpc.getCoinRecordByName(chia.fromHex(coinIdHex));
+      return !!(res.success && res.coinRecord && res.coinRecord.spent);
     },
   };
 }

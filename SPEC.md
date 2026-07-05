@@ -354,7 +354,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `4`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `5`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -363,7 +363,9 @@ by `messages.test.mjs`).
 to the offscreen keystore vault (§18.3), plus the `OFFSCREEN_TARGET` discriminator on the
 SW→offscreen messages (those messages are handled by the offscreen document; the SW's own
 `onMessage` listener ignores them). `4` (#56) added `getReceiveAddress` + `getCustodyBalances`
-(§18.6): the SW forwards them to the offscreen vault, which derives and scans coinset.
+(§18.6): the SW forwards them to the offscreen vault, which derives and scans coinset. `5` (#56)
+added `prepareSend` (build + decode summary), `confirmSend` (sign + broadcast — the approved step),
+and `sendStatus` (poll confirmation) (§18.8).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.

@@ -19,7 +19,12 @@ beforeAll(async () => {
 
 /** A fake chain: sums amounts from a puzzle-hash → base-units map over each query. */
 function fakeChain(map: Record<string, number>): ChainClient {
-  return { totalUnspent: async (phs) => phs.reduce((s, ph) => s + (map[ph.toLowerCase()] ?? 0), 0) };
+  return {
+    totalUnspent: async (phs) => phs.reduce((s, ph) => s + (map[ph.toLowerCase()] ?? 0), 0),
+    unspentCoins: async () => [],
+    pushSpendBundle: async () => ({ success: true }),
+    coinConfirmed: async () => false,
+  };
 }
 
 describe('scanBalances', () => {

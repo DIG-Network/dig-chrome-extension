@@ -120,7 +120,21 @@ export const en: Record<string, string> = {
   'send.submit': 'Review & send',
   'send.error.address': 'Enter a valid xch1… address',
   'send.error.amount': 'Enter a positive amount',
+  'send.error.insufficient': "You don't have enough XCH for that amount plus the network fee.",
+  'send.error.build': "Couldn't prepare the transaction — try again.",
   'send.disabled': 'Connect a wallet to send.',
+  // custody send flow (#56)
+  'send.cancel': 'Cancel',
+  'send.back': 'Back',
+  'send.confirm': 'Confirm & send',
+  'send.done': 'Done',
+  'send.review.intro': "Review the details below — this is what will be sent. Confirm to sign and broadcast.",
+  'send.review.amount': 'Amount',
+  'send.review.fee': 'Network fee',
+  'send.review.recipient': 'To',
+  'send.sending': 'Sending… broadcasting your transaction.',
+  'send.confirmed': 'Confirmed — your transaction is final.',
+  'send.failed': 'Not confirmed — the transaction was not accepted. Your balance is unchanged; try again.',
 
   // ── wallet: receive ──
   'receive.title': 'Receive',
