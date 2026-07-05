@@ -1,14 +1,29 @@
 // DIG Extension Middleware System
 // Implements all fallback strategies in priority order
 
+/**
+ * A DOM element this middleware may load a chia:// resource onto. The vanilla code reads/writes
+ * `src`/`srcset`/`href`/`data`/`alt` across many element kinds after a `tagName` guard, so this
+ * intersection exposes those (as `string`) on top of `HTMLElement`; each is only touched inside the
+ * matching `tagName` branch, so the runtime behavior is unchanged.
+ */
+type DigElement = HTMLElement & {
+  src: string;
+  srcset: string;
+  href: string;
+  data: string;
+  alt: string;
+};
+
 // Cache for RPC host configuration. Default MUST match the dig-node's actual default port
 // (8080 — server-config.mjs DEFAULT_DIG_NODE_PORT), not the http-standard 80. Content scripts
 // are classic (non-module) scripts and can't `import` the shared constant, so it's a literal
-// here — keep it in lockstep with server-config.mjs.
-let cachedRpcHost = 'localhost:8080';
+// here — keep it in lockstep with server-config.mjs. Promoted onto globalThis so content.js
+// (a separate IIFE in the SAME isolated world) reads the live value.
+globalThis.cachedRpcHost = 'localhost:8080';
 
 // Get RPC host from storage (async)
-async function updateRpcHostCache() {
+async function updateRpcHostCache(): Promise<void> {
   try {
     if (typeof chrome !== 'undefined' && chrome.storage) {
       const result = await chrome.storage.local.get(['server.host', 'server.url', 'server.port']);
@@ -23,25 +38,26 @@ async function updateRpcHostCache() {
         const port = result['server.port'] || 8080;
         newRpcHost = `${url}:${port}`;
       }
-      
+
       // Only update if changed
-      if (cachedRpcHost !== newRpcHost) {
-        cachedRpcHost = newRpcHost;
-        console.log('DIG Extension: RPC host updated to:', cachedRpcHost);
-        
+      if (globalThis.cachedRpcHost !== newRpcHost) {
+        globalThis.cachedRpcHost = newRpcHost;
+        console.log('DIG Extension: RPC host updated to:', globalThis.cachedRpcHost);
+
         // Notify content scripts to update their cache
         if (typeof chrome !== 'undefined' && chrome.tabs) {
           try {
             const tabs = await chrome.tabs.query({});
             tabs.forEach(tab => {
+              if (tab.id === undefined) return;
               chrome.tabs.sendMessage(tab.id, {
                 action: 'updateRpcHost',
-                rpcHost: cachedRpcHost
+                rpcHost: globalThis.cachedRpcHost
               }).catch(() => {
                 // Ignore errors (tab might not have content script loaded)
               });
             });
-          } catch (e) {
+          } catch {
             // Ignore errors
           }
         }
@@ -55,7 +71,7 @@ async function updateRpcHostCache() {
 // Initialize cache
 if (typeof chrome !== 'undefined' && chrome.storage) {
   updateRpcHostCache();
-  
+
   // Listen for storage changes
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === 'local') {
@@ -71,7 +87,7 @@ if (typeof chrome !== 'undefined' && chrome.storage) {
 // ============================================================================
 
 // Exponential backoff retry
-async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 100) {
+async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3, baseDelay = 100): Promise<T> {
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn();
@@ -81,10 +97,17 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 100) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
+  throw new Error('retryWithBackoff: retries exhausted');
 }
 
 // Circuit breaker pattern
 class CircuitBreaker {
+  failures: number;
+  threshold: number;
+  timeout: number;
+  state: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+  lastFailure: number;
+
   constructor(threshold = 5, timeout = 60000) {
     this.failures = 0;
     this.threshold = threshold;
@@ -93,7 +116,7 @@ class CircuitBreaker {
     this.lastFailure = 0;
   }
 
-  async execute(fn) {
+  async execute<T>(fn: () => Promise<T>): Promise<T> {
     if (this.state === 'OPEN') {
       if (Date.now() - this.lastFailure > this.timeout) {
         this.state = 'HALF_OPEN';
@@ -112,14 +135,14 @@ class CircuitBreaker {
     }
   }
 
-  onSuccess() {
+  onSuccess(): void {
     this.failures = 0;
     if (this.state === 'HALF_OPEN') {
       this.state = 'CLOSED';
     }
   }
 
-  onFailure() {
+  onFailure(): void {
     this.failures++;
     this.lastFailure = Date.now();
     if (this.failures >= this.threshold) {
@@ -127,7 +150,7 @@ class CircuitBreaker {
     }
   }
 
-  reset() {
+  reset(): void {
     this.failures = 0;
     this.state = 'CLOSED';
     this.lastFailure = 0;
@@ -138,7 +161,20 @@ class CircuitBreaker {
 // Priority 6: Request Queuing
 // ============================================================================
 
+/** One queued request awaiting a free concurrency slot. */
+interface QueueItem {
+  request: () => Promise<unknown>;
+  resolve: (value: unknown) => void;
+  reject: (reason?: unknown) => void;
+  priority: number;
+}
+
 class RequestQueue {
+  queue: QueueItem[];
+  processing: boolean;
+  maxConcurrent: number;
+  active: number;
+
   constructor(maxConcurrent = 5) {
     this.queue = [];
     this.processing = false;
@@ -146,20 +182,27 @@ class RequestQueue {
     this.active = 0;
   }
 
-  async enqueue(request, priority = 0) {
-    return new Promise((resolve, reject) => {
-      this.queue.push({ request, priority, resolve, reject });
+  async enqueue<T>(request: () => Promise<T>, priority = 0): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      this.queue.push({
+        request: request as () => Promise<unknown>,
+        priority,
+        resolve: resolve as (value: unknown) => void,
+        reject,
+      });
       this.queue.sort((a, b) => b.priority - a.priority);
       this.process();
     });
   }
 
-  async process() {
+  async process(): Promise<void> {
     if (this.processing || this.active >= this.maxConcurrent) return;
     this.processing = true;
 
     while (this.queue.length > 0 && this.active < this.maxConcurrent) {
-      const { request, resolve, reject } = this.queue.shift();
+      const item = this.queue.shift();
+      if (!item) break;
+      const { request, resolve, reject } = item;
       this.active++;
 
       try {
@@ -178,11 +221,11 @@ class RequestQueue {
     }
   }
 
-  clear() {
+  clear(): void {
     this.queue = [];
   }
 
-  size() {
+  size(): number {
     return this.queue.length;
   }
 }
@@ -191,14 +234,14 @@ class RequestQueue {
 // Priority 10: Error Recovery & Reporting
 // ============================================================================
 
-function reportError(digUrl, error, strategy) {
+function reportError(digUrl: string, error: unknown, strategy: string): void {
   try {
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       chrome.runtime.sendMessage({
         action: 'reportError',
         url: digUrl,
-        error: error.message || String(error),
-        strategy: strategy,
+        error: (error as { message?: string }).message || String(error),
+        strategy,
         timestamp: Date.now()
       });
     }
@@ -207,22 +250,22 @@ function reportError(digUrl, error, strategy) {
   }
 }
 
-function reportSuccess(digUrl, strategy) {
+function reportSuccess(digUrl: string, strategy: string): void {
   try {
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       chrome.runtime.sendMessage({
         action: 'reportSuccess',
         url: digUrl,
-        strategy: strategy,
+        strategy,
         timestamp: Date.now()
       });
     }
-  } catch (e) {
+  } catch {
     // Ignore reporting errors
   }
 }
 
-function injectFallback(element, digUrl) {
+function injectFallback(element: DigElement, digUrl: string): void {
   if (element.tagName === 'IMG') {
     // SVG placeholder
     const placeholder = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -248,7 +291,12 @@ function injectFallback(element, digUrl) {
 // Main Resource Loader with All Strategies
 // ============================================================================
 
-class DigResourceLoader {
+class DigResourceLoader implements DigResourceLoaderApi {
+  requestQueue: RequestQueue;
+  circuitBreaker: CircuitBreaker;
+  errorHandlers: Map<Element, EventListener>;
+  loadHandlers: Map<Element, EventListener>;
+
   constructor() {
     this.requestQueue = new RequestQueue();
     this.circuitBreaker = new CircuitBreaker();
@@ -260,11 +308,11 @@ class DigResourceLoader {
   // used to warm a memory + IndexedDB content cache here; it no longer caches resolved
   // content at all (caching is a dig-node job — #43 / #41 SoC audit decision 3), so there is
   // nothing to initialize.
-  async init() {}
+  async init(): Promise<void> {}
 
   // Convert chia:// URL - ALL chia:// URLs now use RPC via background script
   // This function returns a placeholder that will be replaced by proxyResource
-  convertDigUrl(url) {
+  convertDigUrl(url: string): string {
     if (typeof url === 'string' && url.startsWith('chia://')) {
       // Return a placeholder data URL that indicates RPC should be used
       // The actual fetching will be done via proxyResource or background script
@@ -275,12 +323,12 @@ class DigResourceLoader {
   }
 
   // Strategy 1: Proxy through background worker
-  async proxyResource(digUrl) {
+  async proxyResource(digUrl: string): Promise<DigProxyResponse> {
     if (typeof chrome === 'undefined' || !chrome.runtime) {
       throw new Error('Chrome runtime not available');
     }
-    
-    return new Promise((resolve, reject) => {
+
+    return new Promise<DigProxyResponse>((resolve, reject) => {
       chrome.runtime.sendMessage(
         { action: 'proxyRequest', url: digUrl },
         (proxyResponse) => {
@@ -303,7 +351,7 @@ class DigResourceLoader {
   }
 
   // Strategy 2: Proxy with retry
-  async proxyWithRetry(digUrl) {
+  async proxyWithRetry(digUrl: string): Promise<DigLoadResult> {
     return retryWithBackoff(
       () => this.proxyResource(digUrl),
       3,
@@ -316,7 +364,7 @@ class DigResourceLoader {
   }
 
   // Strategy 3: Redirect/URL conversion
-  async redirectResource(digUrl) {
+  async redirectResource(digUrl: string): Promise<DigLoadResult> {
     const localhostUrl = this.convertDigUrl(digUrl);
     return {
       success: true,
@@ -328,8 +376,8 @@ class DigResourceLoader {
   // Main load function with all strategies. Every call re-fetches via the background worker —
   // the extension does not cache resolved content (caching is a dig-node job; #43 / #41 SoC
   // audit decision 3).
-  async loadResource(element, attribute, digUrl, priority = 0) {
-    const strategies = [
+  async loadResource(element: DigElement, _attribute: string, digUrl: string, priority = 0): Promise<DigLoadResult> {
+    const strategies: Array<() => Promise<DigLoadResult>> = [
       // Strategy 1: Proxy through background worker (with circuit breaker)
       () => this.circuitBreaker.execute(() => this.proxyResource(digUrl))
         .then(response => ({ success: true, strategy: 'proxy', data: response })),
@@ -343,12 +391,12 @@ class DigResourceLoader {
       // Strategy 4: Fallback content
       () => {
         injectFallback(element, digUrl);
-        return { success: true, strategy: 'fallback', data: null };
+        return Promise.resolve({ success: true, strategy: 'fallback', data: null });
       }
     ];
 
     // Queue the request
-    return this.requestQueue.enqueue(async () => {
+    return this.requestQueue.enqueue<DigLoadResult>(async () => {
       // Try each strategy in order
       for (const strategy of strategies) {
         try {
@@ -369,10 +417,10 @@ class DigResourceLoader {
   }
 
   // Load resource and apply to element
-  async loadAndApply(element, attribute, digUrl, priority = 0) {
+  async loadAndApply(element: DigElement, attribute: string, digUrl: string, priority = 0): Promise<void> {
     try {
       const result = await this.loadResource(element, attribute, digUrl, priority);
-      
+
       if (result.strategy === 'fallback') {
         // Fallback already applied
         // Remove spinner
@@ -386,7 +434,7 @@ class DigResourceLoader {
 
       if (result.strategy === 'redirect') {
         // Set the converted URL
-        element[attribute] = result.data;
+        (element as unknown as Record<string, unknown>)[attribute] = result.data;
         // Spinner will be removed by load event handler
         return;
       }
@@ -395,7 +443,7 @@ class DigResourceLoader {
       if (result.data && result.data.data) {
         const blob = await (await fetch(result.data.data)).blob();
         const blobUrl = URL.createObjectURL(blob);
-        element[attribute] = blobUrl;
+        (element as unknown as Record<string, unknown>)[attribute] = blobUrl;
         // Remove spinner immediately for proxied resources (they're already loaded)
         const spinner = element.querySelector('.dig-loading-spinner');
         if (spinner) {
@@ -404,7 +452,7 @@ class DigResourceLoader {
         }
       } else if (result.data) {
         // Direct blob/data
-        element[attribute] = result.data;
+        (element as unknown as Record<string, unknown>)[attribute] = result.data;
         // Remove spinner immediately
         const spinner = element.querySelector('.dig-loading-spinner');
         if (spinner) {
@@ -427,10 +475,10 @@ class DigResourceLoader {
   }
 
   // Register error handler for element
-  registerErrorHandler(element, digUrl) {
+  registerErrorHandler(element: DigElement, _digUrl: string): void {
     if (this.errorHandlers.has(element)) return;
-    
-    const handler = (e) => {
+
+    const handler = (e: Event): void => {
       if (e.target === element && (element.src || element.href || element.data)?.includes('chia://')) {
         // Remove loading spinner on error
         const spinner = element.querySelector('.dig-loading-spinner');
@@ -438,18 +486,18 @@ class DigResourceLoader {
           spinner.remove();
           delete element.dataset.digSpinnerInjected;
         }
-        
+
         e.preventDefault();
         e.stopPropagation();
-        
+
         // Retry with different strategy
         const currentUrl = element.src || element.href || element.data;
         if (currentUrl && currentUrl.startsWith('chia://')) {
           // Re-inject spinner for retry
-          if (typeof injectLoadingSpinner === 'function') {
-            injectLoadingSpinner(element, currentUrl);
+          if (typeof globalThis.injectLoadingSpinner === 'function') {
+            globalThis.injectLoadingSpinner(element, currentUrl);
           }
-          this.loadAndApply(element, 
+          this.loadAndApply(element,
             element.src ? 'src' : element.href ? 'href' : 'data',
             currentUrl,
             10 // High priority for retry
@@ -457,16 +505,16 @@ class DigResourceLoader {
         }
       }
     };
-    
+
     element.addEventListener('error', handler, true);
     this.errorHandlers.set(element, handler);
   }
 
   // Register load handler for element
-  registerLoadHandler(element, digUrl) {
+  registerLoadHandler(element: DigElement, digUrl: string): void {
     if (this.loadHandlers.has(element)) return;
-    
-    const handler = (e) => {
+
+    const handler = (e: Event): void => {
       if (e.target === element) {
         reportSuccess(digUrl, 'load-event');
         // Remove loading spinner on successful load
@@ -477,19 +525,19 @@ class DigResourceLoader {
         }
       }
     };
-    
+
     element.addEventListener('load', handler, true);
     this.loadHandlers.set(element, handler);
   }
 
   // Cleanup handlers
-  cleanup(element) {
+  cleanup(element: DigElement): void {
     const errorHandler = this.errorHandlers.get(element);
     if (errorHandler) {
       element.removeEventListener('error', errorHandler, true);
       this.errorHandlers.delete(element);
     }
-    
+
     const loadHandler = this.loadHandlers.get(element);
     if (loadHandler) {
       element.removeEventListener('load', loadHandler, true);
@@ -498,8 +546,11 @@ class DigResourceLoader {
   }
 }
 
-// Export singleton instance. init() is currently a no-op (no cache to initialize) but is
-// still called/awaited-safe for forward compatibility with any future non-caching setup step.
+// Export singleton instance onto globalThis so content.js (a separate IIFE in the same isolated
+// world) can use it. init() is currently a no-op (no cache to initialize) but is still
+// called/awaited-safe for forward compatibility with any future non-caching setup step.
 const digResourceLoader = new DigResourceLoader();
 digResourceLoader.init().catch(() => {});
+globalThis.digResourceLoader = digResourceLoader;
 
+export {};

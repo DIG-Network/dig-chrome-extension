@@ -67,9 +67,12 @@ const EXTENSION_FILES = [
   // WalletConnect → Sage transport (runs in the popup page).
   'wallet-wc.js',
   'background.js',
-  'middleware.js',
-  'content.js',
-  'page-script.js',
+  // NB: the three content-script-layer files are NOT plain-copied — they are strict-TS entries
+  // under src/content/ that esbuild bundles into dist/middleware.js, dist/content.js, and
+  // dist/page-script.js (SAME shipped filenames) by bundleContentScript()/bundlePageScript()/
+  // bundleMiddleware() below. middleware.js + content.js are the manifest content_scripts
+  // (isolated world); page-script.js is the web_accessible_resource injected into the MAIN world.
+  //
   // NB: the injected window.chia provider (dist/dig-provider.js) is NOT plain-copied — it is
   // BUNDLED from dig-provider.entry.mjs + @dignetwork/chia-provider by bundleProvider() below,
   // so the injected surface is the shared package's, never a hand-copied divergent one.
@@ -590,6 +593,81 @@ async function bundleStoreInterceptor() {
   log('✓ Bundled: store-interceptor.js (self-contained IIFE, store-refs inlined)', 'green');
 }
 
+// The three content-script-layer entries (issue #68 — strict-TS reorg under src/content/). Each is
+// a self-contained classic script (ZERO imports) that esbuild bundles into an IIFE at the SAME
+// shipped filename manifest.json already references, so no manifest change is needed:
+//   src/content/middleware.ts  → dist/middleware.js   (content_scripts, isolated world)
+//   src/content/content.ts     → dist/content.js      (content_scripts, isolated world)
+//   src/content/page-script.ts → dist/page-script.js  (web_accessible_resource, MAIN world)
+// middleware + content share the isolated-world global scope (they promote/read a few symbols via
+// globalThis); page-script talks to content only over postMessage.
+const CONTENT_ENTRIES = [
+  {
+    src: path.join(SRC_DIR, 'content', 'middleware.ts'),
+    out: path.join(DIST_DIR, 'middleware.js'),
+    // A stable string unique to middleware.ts — proves the real file bundled, not an empty stub.
+    needle: 'DIG Extension: RPC host updated to:',
+  },
+  {
+    src: path.join(SRC_DIR, 'content', 'content.ts'),
+    out: path.join(DIST_DIR, 'content.js'),
+    needle: 'DIG Extension: Content script v2.0 loaded',
+  },
+  {
+    src: path.join(SRC_DIR, 'content', 'page-script.ts'),
+    out: path.join(DIST_DIR, 'page-script.js'),
+    needle: 'DIG Extension: Page script loaded',
+  },
+];
+
+// A surviving ES import/export/require in the bundle means esbuild failed to produce a
+// self-contained classic script — the browser would then throw on the content script. This is a
+// stricter cousin of PROVIDER_ESM_LEAK that EXCLUDES the CSS `@import url(...)` these files carry
+// in template strings/regexes (the `@` before `import` rules it out) so a valid bundle isn't
+// falsely rejected. Real leaks look like `import{`/`import"`/`import '`/`export {`/`require(`.
+const CONTENT_SCRIPT_ESM_LEAK = /(^|[^.\w@])(import|export)\s*["'{*]|(^|[^.\w])require\s*\(/m;
+
+/**
+ * Bundle one src/content/*.ts entry into its shipped dist/*.js as a self-contained IIFE (classic
+ * script — content scripts are NOT ES modules). Guards that no ES import/export/require survived
+ * and that a stable needle string is present, so a broken bundle fails the build loudly.
+ */
+async function bundleContentEntry(entry) {
+  const name = path.basename(entry.out);
+  log(`\n🧩 Bundling ${name} (src/content/${path.basename(entry.src)}, #68)...`, 'blue');
+  await esbuild.build({
+    entryPoints: [entry.src],
+    outfile: entry.out,
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: ['chrome111'],
+    legalComments: 'none',
+    minify: false,
+    allowOverwrite: true,
+  });
+  const out = fs.readFileSync(entry.out, 'utf8');
+  if (CONTENT_SCRIPT_ESM_LEAK.test(out)) {
+    const m = out.match(CONTENT_SCRIPT_ESM_LEAK);
+    throw new Error(
+      `Bundled ${name} still contains an ES import/export or require() — it is not a self-contained ` +
+        `classic script. Offending match near: ${JSON.stringify((m && m[0]) || '')}`
+    );
+  }
+  if (!out.includes(entry.needle)) {
+    throw new Error(`Bundled ${name} is missing "${entry.needle}" — the source did not bundle correctly.`);
+  }
+  const kb = (Buffer.byteLength(out) / 1024).toFixed(0);
+  log(`✓ Bundled: ${name} (${kb} KB, self-contained classic script)`, 'green');
+}
+
+/** Bundle all three content-script-layer entries (middleware.js, content.js, page-script.js). */
+async function bundleContentScripts() {
+  for (const entry of CONTENT_ENTRIES) {
+    await bundleContentEntry(entry);
+  }
+}
+
 /** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
 async function vendorWalletConnect() {
   log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
@@ -649,6 +727,10 @@ async function main() {
   // Bundle the in-page store interceptor (#55) into dist/store-interceptor.js as a self-contained
   // IIFE (store-refs.mjs inlined) so dig-viewer can inline it into the sandboxed store frame.
   await bundleStoreInterceptor();
+
+  // Bundle the three content-script-layer entries (src/content/*.ts → dist/middleware.js,
+  // dist/content.js, dist/page-script.js) as self-contained IIFE classic scripts (#68).
+  await bundleContentScripts();
 
   // Inject the shared WalletConnect project id into dist/wallet-wc.js (build-time only;
   // never a committed source literal, never logged).

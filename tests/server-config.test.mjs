@@ -74,7 +74,7 @@ test('round-trips parse → format', () => {
 // updating the literals to `8080`; this test pins the source text so it can't silently drift
 // back to `:80`.
 test('middleware.js and content.js default the RPC host to the dig-node port (8080, not 80)', () => {
-  for (const file of ['middleware.js', 'content.js']) {
+  for (const file of ['src/content/middleware.ts', 'src/content/content.ts']) {
     const src = readFileSync(join(ROOT, file), 'utf8');
     assert.ok(!/localhost:80['"`]/.test(src), `${file} must not default to the stale localhost:80`);
     assert.match(src, /localhost:8080/, `${file} must default to localhost:8080 (the dig-node port)`);
