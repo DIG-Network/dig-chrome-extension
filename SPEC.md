@@ -67,8 +67,9 @@ re-decrypts (§15).
 - The injected provider (`dist/dig-provider.js`) and the page fetch bridge (`page-script.js`)
   are `web_accessible_resources` injected into the page's MAIN world.
 - Required permissions: `storage`, `webNavigation`, `tabs`, `declarativeNetRequest`,
-  `scripting`, `omnibox`, `search`, `notifications`, `offscreen`, `idle` (the last two reserved
-  for the Phase-1 offscreen-document key custody + `chrome.idle` auto-lock). Host permissions
+  `scripting`, `omnibox`, `search`, `notifications`, `offscreen`, `idle`, `alarms` (the last three
+  power the self-custody offscreen-document key custody, `chrome.idle` auto-lock, and the
+  `chrome.alarms` unlock-TTL sweep — §18.3). Host permissions
   MUST include the local node hosts (`localhost`, `127.0.0.1`, `dig.local`, `*.dig.local`), the
   hosted read tier (`rpc.dig.net`, `*.dig.net`), the wallet chain source (`coinset.org`), the
   CAT-price host (`api.dexie.space`), the bug-report service (`api.bugreport.dig.net`), and the
@@ -353,9 +354,15 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `2`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `3`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
+
+`MESSAGE_PROTOCOL_VERSION` `3` (#56) added the self-custody actions — `createWallet`,
+`importWallet`, `unlockWallet`, `lockWallet`, `revealPhrase`, `getLockState` — which the SW routes
+to the offscreen keystore vault (§18.3), plus the `OFFSCREEN_TARGET` discriminator on the
+SW→offscreen messages (those messages are handled by the offscreen document; the SW's own
+`onMessage` listener ignores them).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -737,3 +744,44 @@ The wallet entropy is stored ONLY as an encrypted `DIGWX1` record under `chrome.
   removed or repurposed.
 
 Fresh salt + nonce are drawn on every (re)encryption; RNG is `crypto.getRandomValues`.
+
+### 18.3 Custody lifecycle & session
+
+The decrypted key lives ONLY in a long-lived `chrome.offscreen` document (`offscreen.html` →
+`src/entries/offscreen.ts`), which hosts one in-memory vault (`src/offscreen/vault.ts`). The service
+worker coordinates but NEVER holds the key: it creates the offscreen document on demand, forwards
+custody requests, owns storage, and enforces auto-lock.
+
+- **SW ↔ vault messaging.** The SW forwards `chrome.runtime.sendMessage({ target: OFFSCREEN_TARGET,
+  request })`; ONLY the offscreen document handles messages carrying `OFFSCREEN_TARGET`, and the SW's
+  own `onMessage` listener ignores them. Requests carry the password IN and public results (lock
+  state, the encrypted record to persist, or the once-shown mnemonic) OUT — never the persisted key.
+- **create / import.** The vault generates or validates the phrase, encrypts the entropy (DIGWX1),
+  holds the entropy in memory, and returns the record; the SW persists it to `wallet.keystore` and
+  starts the unlock window. Create additionally returns the 24-word phrase for ONE-TIME display
+  (backup); it is never stored — this transient pass-through to the UI is inherent to backup.
+- **unlock.** The SW reads the record and forwards it with the password; the vault runs Argon2id +
+  AES-GCM decrypt and holds the entropy. Failure is the opaque `UNLOCK_FAILED`.
+- **reveal recovery phrase.** Re-runs the FULL password decrypt in the vault (never from the TTL
+  window); returns the phrase for one-time display without changing the held-key state.
+- **lock.** The vault zeroizes + drops the entropy (best-effort); the SW clears the unlock window.
+- **unlock window (TTL).** A NON-SECRET expiry timestamp is stored in `chrome.storage.session`
+  (`wallet.unlockExpiry`) — never key material. Default TTL 10 minutes, clamped to 1–60, from
+  `wallet.settings.unlockTtlMinutes`.
+- **auto-lock triggers (all lock the vault + clear the window):** explicit lock; a `chrome.alarms`
+  minute sweep once the TTL lapses; `chrome.idle` reporting `idle`/`locked`; all-windows-close (the
+  offscreen document tears down, dropping the in-memory key).
+- **lock state.** `getLockState` derives `none` (no keystore blob) / `locked` (blob present but the
+  vault holds no key, or the TTL lapsed) / `unlocked` (blob + key held + fresh TTL), and locks the
+  vault if it finds a key past a lapsed TTL.
+
+### 18.4 Storage schema (custody)
+
+| Key | Area | Secret? | Contents |
+|---|---|---|---|
+| `wallet.keystore` | `storage.local` | encrypted only | the DIGWX1 record (§18.2) — the only at-rest secret |
+| `wallet.activeId` | `storage.local` | no | active wallet id (multi-wallet switcher) |
+| `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, fee default, overrides…) |
+| `wallet.unlockExpiry` | `storage.session` | no | non-secret unlock-expiry timestamp (ms); never key material |
+
+`storage.sync` is NEVER used for any wallet key (it would exfiltrate the encrypted seed).
