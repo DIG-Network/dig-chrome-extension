@@ -5,8 +5,8 @@
  * balance-unit conversion (XCH mojos ÷ 1e12, $DIG base units ÷ 1000), tolerant balance-field
  * extraction from Sage's varied getAssetBalance response casings, send-amount → base-unit
  * conversion, send-form validation, address shortening, and the activity list view model. The
- * popup renderer (popup-wallet.js) is thin glue over these tested pure functions, so the
- * wallet's number handling and validation can't silently regress.
+ * React wallet shell (via the #shared/* alias) is thin glue over these tested pure functions, so
+ * the wallet's number handling and validation can't silently regress.
  *
  * Run: node --test tests/
  */

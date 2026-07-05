@@ -237,9 +237,8 @@ The stub server provides basic placeholder responses but has limited functionali
 ```
 dig-browser-extension/
 ├── manifest.json          # Extension manifest (Manifest V3)
-├── popup.html             # Extension popup UI
-├── popup.css              # Popup styling with DIG branding
-├── popup.js               # Popup logic and toggle handling
+├── popup.html             # Extension popup UI (React shell entry — src/entries/popup.tsx)
+├── app.html               # Full-page wallet UI (React shell entry — src/entries/app.tsx)
 ├── background.js          # Service worker for protocol interception
 ├── content.js             # Content script to intercept chia:// links
 ├── stub-server.js         # Simple stub server (alternative to Express server)

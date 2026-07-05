@@ -1044,7 +1044,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // async
   }
   if (message.action === 'toggleExtension') {
-    // State is updated in popup.js; no redirect rules to update (all content via RPC)
+    // State is updated in the React popup; no redirect rules to update (all content via RPC)
     console.log('Extension toggled:', message.enabled);
     return false; // Not async
   }
