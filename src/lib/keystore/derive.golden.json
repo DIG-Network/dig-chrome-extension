@@ -1,0 +1,17 @@
+{
+  "_note": "Golden HD-derivation parity vectors for the CANONICAL BIP-39 all-zeros-entropy 24-word mnemonic (`abandon...art`). These are the Chia standard-path (m/12381/8444/2/{index}) derivations produced by chia_rs (via chia-wallet-sdk-wasm). dig-l1-wallet derives with the IDENTICAL chia_rs primitives (master_to_wallet_unhardened/hardened -> derive_synthetic -> StandardArgs::curry_tree_hash -> bech32m Address), so these vectors are byte-identical across the extension, dig-l1-wallet, and Sage. The BIP-39 seed for this mnemonic (empty passphrase) matches the published BIP-39 test vector 408b285c...80840, so the chain is confirmed non-circularly against a public vector. Fixture is public test data (all-zeros entropy) and holds no funds.",
+  "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+  "entropyHex": "0000000000000000000000000000000000000000000000000000000000000000",
+  "seedHex": "408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf705489c6fc77dbd4e3dc1dd8cc6bc9f043db8ada1e243c4a0eafb290d399480840",
+  "masterPkHex": "827af93158c0542a234c76fcdfd54766dc39405b259c25f6fc90ca47fb0c73a8f5c745a4489b0a0ed7662044021bac53",
+  "unhardened": [
+    { "index": 0, "syntheticPkHex": "93c7d36e915aa1570087c9adc427c3a9bb532efe964dcc3bb04a07bc64308dbd82598a1f49f6ca86a82b32559e41380e", "puzzleHashHex": "d207c1e11fc3b0cd7472e8c7e53c8d2b81709516346c7baa9fbb9070ffccfe89", "address": "xch16grurcglcwcv6arjarr720yd9wqhp9gkx3k8h25lhwg8pl7vl6ysuax0gy" },
+    { "index": 1, "syntheticPkHex": "94f93f9826ef799bd358e51df8f6cd23ad4f0dc4f67798d0392f78cb8cdd6fbc53376b0c820268b18a7463f44d27ea28", "puzzleHashHex": "7ba6cfb69d2cbd960dffed610aef280384d0435a4c9d9e8582430f0df5d4052f", "address": "xch10wnvld5a9j7evr0la4ss4megqwzdqs66fjweapvzgv8smaw5q5hstw3tp2" },
+    { "index": 2, "syntheticPkHex": "b4642067b4a56f878b11129497c7ca297a4d516651e4f2b35b3a40d0066e60776b64854ad401f7105c0dac564df27676", "puzzleHashHex": "6aaf6665bbde852f20f9b8f0f682624a369a09e4f73ef58faa0c67163a0d14a3", "address": "xch1d2hkvedmm6zj7g8ehrc0dqnzfgmf5z0y7ul0tra2p3n3vwsdzj3s8wayvk" }
+  ],
+  "hardened": [
+    { "index": 0, "syntheticPkHex": "ad2abf356f2360aac5d6134e2c4b86d4c0b71c7b34d6585ff55b305d0ba9081baad3c55fef66aa15c3f41ac1e7da90b1", "puzzleHashHex": "761bbd89ca2a12a4c950f1a4c6df81382425e47221d53869cce882393675d07d", "address": "xch1wcdmmzw29gf2fj2s7xjvdhup8qjzterjy82ns6wvazprjdn46p7sq9qem8" },
+    { "index": 1, "syntheticPkHex": "a5fa214c8220dc4fcf9cfa25d058182c26981cae5222f73a37e211c4064435562c404e2ab9bc11ed19619a20a516e058", "puzzleHashHex": "7c8ddbc4f34e334664327b2db15e1c14c5ec8aaea3c935bda595b03367580ca4", "address": "xch10jxah38nfce5vepj0vkmzhsuznz7ez4w50ynt0d9jkcrxe6cpjjqhpa20p" },
+    { "index": 2, "syntheticPkHex": "a82143e7be0edd324a6f5b12fb9831b4220ab19ecbd4b37503ab8ff9ed20dce8552a5e85223614775ea2f0de0f503248", "puzzleHashHex": "f81d853471e974869d54c3ecaee01049aec12464a2bb6b6885e569e30f50a354", "address": "xch1lqwc2dr3a96gd825c0k2acqsfxhvzfry52akk6y9u457xr6s5d2qay4skt" }
+  ]
+}
