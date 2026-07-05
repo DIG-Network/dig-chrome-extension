@@ -32,9 +32,10 @@ import {
 } from '@/lib/keystore/bip39';
 import { scanBalances, receiveAddress, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
 import type { ChainClient } from '@/offscreen/chain';
-import { prepareXchSend, prepareCatSend, signAndBundle, type SendFlowWasm } from '@/offscreen/sendFlow';
+import { prepareXchSend, prepareCatSend, signAndBundle, buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { listNfts, prepareNftTransfer, type NftWasm, type WalletNft, type NftTransferSummary } from '@/offscreen/nfts';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
+import { decodeDappSpend, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
 import { indexActivity, type ActivityWasm, type ActivityEvent } from '@/offscreen/activity';
 import { makeOffer, inspectOffer, takeOffer, cancelOffer, type OfferWasm, type OfferAsset, type OfferLeg, type OfferSummary } from '@/offscreen/offers';
 import type { ChainSpendBundle } from '@/offscreen/chain';
@@ -77,7 +78,12 @@ export type VaultOp =
   | 'prepareTrade'
   | 'confirmTrade'
   | 'listNfts'
-  | 'prepareNftTransfer';
+  | 'prepareNftTransfer'
+  // dApp `window.chia` RPC (§5.5): identity read + approval-gated foreign-spend / message signing.
+  | 'getPublicKeys'
+  | 'decodeDappSpend'
+  | 'signDappSpend'
+  | 'signMessage';
 
 /** A request forwarded from the SW to the vault. `record` is the persisted DIGWX1 blob for ops that need it. */
 export interface VaultRequest {
@@ -114,6 +120,12 @@ export interface VaultRequest {
   tradeKind?: 'take' | 'cancel';
   /** prepareNftTransfer: the NFT's singleton launcher id (hex). */
   launcherId?: string;
+  /** decodeDappSpend / signDappSpend: the dApp-supplied coin spends (CHIP-0002 wire, hex fields). */
+  coinSpends?: WireCoinSpend[];
+  /** signMessage: the UTF-8 message a dApp asked the wallet to sign. */
+  message?: string;
+  /** signMessage: an optional requested public key (hex); the wallet MUST own it or fails MISSING_KEY. */
+  publicKey?: string;
 }
 
 /** The vault's reply. Never carries the persisted key; `mnemonic` is for one-time display only. */
@@ -152,6 +164,14 @@ export interface VaultResponse {
   nfts?: WalletNft[];
   /** prepareNftTransfer: the decoded transfer summary to approve. */
   nftSummary?: NftTransferSummary;
+  /** getPublicKeys: the wallet's synthetic public keys (hex, both HD schemes, deduped). */
+  publicKeys?: string[];
+  /** decodeDappSpend: the tamper-resistant summary decoded from the dApp-supplied coin spends. */
+  dappSummary?: DappSpendSummary;
+  /** signDappSpend: the aggregated BLS signature (hex); signMessage: the message signature (hex). */
+  signature?: string;
+  /** signMessage: the public key (hex) the message was signed under. */
+  signerPublicKey?: string;
 }
 
 /** Test/DI seam. `chia` + `chain` power derivation + the balance scan (offscreen-only at runtime). */
@@ -238,6 +258,14 @@ export class Vault {
           return await this.listNfts(req, deps);
         case 'prepareNftTransfer':
           return await this.prepareNftTransfer(req, deps);
+        case 'getPublicKeys':
+          return await this.getPublicKeys(req, deps);
+        case 'decodeDappSpend':
+          return await this.decodeDappSpend(req, deps);
+        case 'signDappSpend':
+          return await this.signDappSpend(req, deps);
+        case 'signMessage':
+          return await this.signMessage(req, deps);
         default:
           return { success: false, code: 'BAD_REQUEST', message: `unknown vault op` };
       }
@@ -486,4 +514,88 @@ export class Vault {
     this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
     return { success: true, pendingId, nftSummary: prepared.summary };
   }
+
+  /**
+   * Derive the wallet's HD keyring (both schemes to `gapLimit`) — the standard puzzle hashes +
+   * synthetic public/secret keys a dApp request is decoded against and signed with. Offscreen-only
+   * (holds the seed). Returns `null` when locked / no wasm.
+   */
+  private async heldKeyring(deps: VaultDeps, gapLimit?: number): Promise<ReturnType<typeof buildKeyring> | null> {
+    if (!deps.chia) return null;
+    const seed = await this.heldSeed();
+    if (!seed) return null;
+    return buildKeyring(deps.chia as unknown as SendFlowWasm, seed, { count: gapLimit ?? 20 });
+  }
+
+  /** The wallet's synthetic public keys (hex, deduped) — CHIP-0002 `getPublicKeys` for a dApp. */
+  private async getPublicKeys(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'derivation unavailable' };
+    if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const keyring = await this.heldKeyring(deps, req.gapLimit);
+    if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const publicKeys = [...new Set(keyring.map((k) => strip0x(deps.chia!.toHex(k.pk.toBytes()))))];
+    return { success: true, publicKeys };
+  }
+
+  /**
+   * Decode a tamper-resistant summary (§5.5) from dApp-supplied coin spends — what the approval window
+   * shows. Never signs. Derived from the built spend + the wallet's own address/key sets (self-vs-
+   * external classification + which signers we can satisfy).
+   */
+  private async decodeDappSpend(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'decode unavailable' };
+    if (!req.coinSpends || req.coinSpends.length === 0) return { success: false, code: 'BAD_REQUEST', message: 'coinSpends required' };
+    if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const keyring = await this.heldKeyring(deps, req.gapLimit);
+    if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as DappSignWasm;
+    const ownPh = keyring.map((k) => k.puzzleHashHex);
+    const ownPk = keyring.map((k) => strip0x(chia.toHex(k.pk.toBytes())));
+    const dappSummary = decodeDappSpend(chia, req.coinSpends, ownPh, MAINNET_AGG_SIG_ME, ownPk);
+    return { success: true, dappSummary };
+  }
+
+  /**
+   * Sign dApp-supplied coin spends (the APPROVED step) and return the aggregated BLS signature (hex).
+   * `MISSING_KEY` if the wallet can't satisfy a required signer (never emits an invalid signature). The
+   * dApp broadcasts — the extension does not push a dApp-signed bundle.
+   */
+  private async signDappSpend(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'signing unavailable' };
+    if (!req.coinSpends || req.coinSpends.length === 0) return { success: false, code: 'BAD_REQUEST', message: 'coinSpends required' };
+    if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const keyring = await this.heldKeyring(deps, req.gapLimit);
+    if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    try {
+      const { signatureHex } = signDappCoinSpends(deps.chia as unknown as DappSignWasm, req.coinSpends, keyring.map((k) => k.sk), MAINNET_AGG_SIG_ME);
+      return { success: true, signature: signatureHex };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'sign failed';
+      if (msg.startsWith('MISSING_KEY')) return { success: false, code: 'MISSING_KEY', message: msg };
+      throw e;
+    }
+  }
+
+  /** Sign a dApp message (the APPROVED step): raw-bytes BLS sign with the wallet key + report the signer. */
+  private async signMessage(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'signing unavailable' };
+    if (req.message == null || req.message === '') return { success: false, code: 'BAD_REQUEST', message: 'message required' };
+    if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const keyring = await this.heldKeyring(deps, req.gapLimit);
+    if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    try {
+      const bytes = new TextEncoder().encode(req.message);
+      const { signatureHex, publicKeyHex } = signMessageCustody(deps.chia as unknown as DappSignWasm, bytes, keyring.map((k) => k.sk), req.publicKey);
+      return { success: true, signature: signatureHex, signerPublicKey: publicKeyHex };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'sign failed';
+      if (msg.startsWith('MISSING_KEY')) return { success: false, code: 'MISSING_KEY', message: msg };
+      throw e;
+    }
+  }
+}
+
+/** Strip a leading `0x` and lower-case a hex string. */
+function strip0x(h: string): string {
+  return h.replace(/^0x/i, '').toLowerCase();
 }

@@ -47,8 +47,14 @@ import { DIG_ERR } from './error-codes.mjs';
  * `prepareNftTransfer` (build + hold an NFT transfer for approval), and `confirmNftTransfer`
  * (sign + broadcast the approved transfer — reuses the vault's `confirmSend` broadcast path) —
  * routed to the offscreen vault; poll confirmation via the shared `sendStatus`.
+ *
+ * v9 (#56 dApp approval, §5.5): `walletRpc` now routes to the SELF-CUSTODY wallet when one exists
+ * (falling back to the Sage broker otherwise) — connect + reads go straight to the offscreen vault;
+ * sign/message requests summon a dedicated approval window. Added `dappApprovalList` (the window
+ * reads the pending-request queue + decoded, tamper-resistant summaries) and `dappApprovalResolve`
+ * (the window returns the user's approve/reject decision; approve signs in the vault).
  */
-export const MESSAGE_PROTOCOL_VERSION = 8;
+export const MESSAGE_PROTOCOL_VERSION = 9;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -82,6 +88,9 @@ export const ACTIONS = Object.freeze({
   // ── wallet (window.chia broker) ──
   walletRpc: 'walletRpc',
   walletConsent: 'walletConsent',
+  // ── self-custody dApp approval window (#56 §5.5): the window ↔ SW channel ──
+  dappApprovalList: 'dappApprovalList',
+  dappApprovalResolve: 'dappApprovalResolve',
   // ── self-custody wallet (#56): keystore ops the SW routes to the offscreen vault ──
   createWallet: 'createWallet',
   importWallet: 'importWallet',
@@ -196,7 +205,8 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: 'none (one-way to content scripts)',
   },
   [ACTIONS.walletRpc]: {
-    summary: 'Broker one window.chia CHIP-0002 RPC over WalletConnect → Sage (per-origin gated).',
+    summary:
+      'Route one window.chia CHIP-0002 RPC. When a self-custody wallet exists (§5.5): connect + reads go to the offscreen vault, and sign/message requests summon the approval window (per-origin gated). Otherwise falls back to the WalletConnect → Sage broker.',
     request: '{ action, method:string, params?:object, origin?:string }',
     response: '{ status:number /* 200|202|4xx|5xx */, body:{ data } | { error } }',
   },
@@ -204,6 +214,19 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Popup approves/revokes a dapp origin for wallet access.',
     request: '{ action, origin:string, approved:boolean }',
     response: '{ success:boolean, error?:string }',
+  },
+  [ACTIONS.dappApprovalList]: {
+    summary:
+      'Approval window (§5.5): read the pending dApp signing-request queue, each enriched with the tamper-resistant summary decoded FROM THE BUILT SPEND (or flagged needsUnlock when the wallet is locked).',
+    request: '{ action }',
+    response:
+      "{ requests:[{ id, origin, method, kind:'signCoinSpends'|'signMessage', summary:object|null, needsUnlock:boolean, decodeError:boolean, createdAt:number }], lockState:'none'|'locked'|'unlocked', summoned:boolean }",
+  },
+  [ACTIONS.dappApprovalResolve]: {
+    summary:
+      "Approval window (§5.5): return the user's decision for one queued request. Approve → the offscreen vault signs and the dApp promise resolves with the signature; reject → the dApp gets a user-rejection error.",
+    request: '{ action, id:string, approved:boolean }',
+    response: '{ success:boolean, remaining:number, code?:string }',
   },
   [ACTIONS.createWallet]: {
     summary:

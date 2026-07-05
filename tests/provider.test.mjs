@@ -152,7 +152,7 @@ test('build.js bundles dist/dig-provider.js as a self-contained IIFE carrying th
   }
 });
 
-// ─── Goby / CHIP-0002 / Sage-WC2 compatibility (loroco window.chia parity) ──────
+// ─── Goby / CHIP-0002 / Sage-WC2 compatibility (window.chia parity) ──────
 // A dApp built for Goby / Sage's WC2 API expects: identity flags (isGoby), Goby-legacy
 // DIRECT methods on the object (provider.getPublicKeys(), .transfer(), …) rather than
 // only request({method}), the requestAccounts/accounts helpers, walletSwitchChain, and

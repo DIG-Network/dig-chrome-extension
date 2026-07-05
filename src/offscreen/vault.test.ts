@@ -5,6 +5,7 @@ import { isValidMnemonic, mnemonicToEntropy } from '@/lib/keystore/bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
 import type { ScanWasm } from '@/offscreen/scan';
 import type { ChainClient } from '@/offscreen/chain';
+import type { WireCoinSpend } from '@/offscreen/dappSign';
 import golden from '@/lib/keystore/derive.golden.json';
 
 // Fast, deterministic Argon2 stand-in so the vault's create/unlock cycle doesn't pay the 64 MiB KDF
@@ -119,6 +120,116 @@ describe('offscreen Vault', () => {
     const res = await new Vault().handle({ op: 'nope' as never }, deps);
     expect(res.success).toBe(false);
     expect(res.code).toBe('BAD_REQUEST');
+  });
+});
+
+describe('Vault dApp RPC ops (#56 §5.5)', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  async function goldenWallet(): Promise<Vault> {
+    const v = new Vault();
+    await v.handle({ op: 'importWallet', password: PW, mnemonic: golden.mnemonic }, deps);
+    return v;
+  }
+
+  interface SpendWasm {
+    Simulator: new () => { newCoin(ph: Uint8Array, a: bigint): unknown; bls(a: bigint): { sk: unknown; pk: { toBytes(): Uint8Array }; puzzleHash: Uint8Array; coin: unknown } };
+    SecretKey: { fromSeed(seed: Uint8Array): { deriveUnhardenedPath(p: number[]): { deriveSynthetic(): { publicKey(): { toBytes(): Uint8Array } } } } };
+    Clvm: new () => {
+      delegatedSpend(c: unknown[]): unknown;
+      createCoin(ph: Uint8Array, a: bigint, m: undefined): unknown;
+      spendStandardCoin(coin: unknown, pk: unknown, spend: unknown): void;
+      coinSpends(): Array<{ coin: { parentCoinInfo: Uint8Array; puzzleHash: Uint8Array; amount: bigint }; puzzleReveal: Uint8Array; solution: Uint8Array }>;
+    };
+    fromHex(h: string): Uint8Array;
+    toHex(b: Uint8Array): string;
+  }
+
+  type CoinSpendLike = { coin: { parentCoinInfo: Uint8Array; puzzleHash: Uint8Array; amount: bigint }; puzzleReveal: Uint8Array; solution: Uint8Array };
+
+  /** Serialize a wasm coin spend to the dApp wire shape (hex fields), as a page would supply it. */
+  function toWire(w: SpendWasm, coinSpends: CoinSpendLike[]): WireCoinSpend[] {
+    return coinSpends.map((cs) => ({
+      coin: {
+        parent_coin_info: w.toHex(cs.coin.parentCoinInfo),
+        puzzle_hash: w.toHex(cs.coin.puzzleHash),
+        amount: cs.coin.amount.toString(),
+      },
+      puzzle_reveal: w.toHex(cs.puzzleReveal),
+      solution: w.toHex(cs.solution),
+    }));
+  }
+
+  /** Build a standard self-send coin spend the golden wallet OWNS (index-0 unhardened) → wire. */
+  function goldenOwnedWire(): WireCoinSpend[] {
+    const w = chia as unknown as SpendWasm;
+    const ph0 = golden.unhardened[0].puzzleHashHex;
+    const synthPk = w.SecretKey.fromSeed(w.fromHex(golden.seedHex)).deriveUnhardenedPath([12381, 8444, 2, 0]).deriveSynthetic().publicKey();
+    const coin = new w.Simulator().newCoin(w.fromHex(ph0), 1000n);
+    const clvm = new w.Clvm();
+    clvm.spendStandardCoin(coin, synthPk, clvm.delegatedSpend([clvm.createCoin(w.fromHex(ph0), 1000n, undefined)]));
+    return toWire(w, clvm.coinSpends());
+  }
+
+  /** A standard spend by a FOREIGN sim key (the golden wallet cannot sign it). */
+  function foreignWire(): WireCoinSpend[] {
+    const w = chia as unknown as SpendWasm;
+    const sim = new w.Simulator();
+    const pair = sim.bls(1000n);
+    const clvm = new w.Clvm();
+    clvm.spendStandardCoin(pair.coin, pair.pk, clvm.delegatedSpend([clvm.createCoin(pair.puzzleHash, 1000n, undefined)]));
+    return toWire(w, clvm.coinSpends());
+  }
+
+  it('getPublicKeys returns the wallet synthetic public keys (both schemes)', async () => {
+    const v = await goldenWallet();
+    const res = await v.handle({ op: 'getPublicKeys', gapLimit: 3 }, { ...deps, chia });
+    expect(res.success).toBe(true);
+    expect(res.publicKeys).toContain(golden.unhardened[0].syntheticPkHex);
+    expect(res.publicKeys).toContain(golden.hardened[0].syntheticPkHex);
+  });
+
+  it('decodeDappSpend classifies an own coin spend as self + owned signer', async () => {
+    const v = await goldenWallet();
+    const res = await v.handle({ op: 'decodeDappSpend', coinSpends: goldenOwnedWire(), gapLimit: 3 }, { ...deps, chia });
+    expect(res.success).toBe(true);
+    expect(res.dappSummary?.coinCount).toBe(1);
+    expect(res.dappSummary?.inputs[0].isSelf).toBe(true);
+    expect(res.dappSummary?.allInputsSelf).toBe(true);
+    expect(res.dappSummary?.ownedSigners).toBe(1);
+    expect(res.dappSummary?.requiredSigners).toContain(golden.unhardened[0].syntheticPkHex);
+  });
+
+  it('signDappSpend signs an own coin spend (returns a 96-byte signature)', async () => {
+    const v = await goldenWallet();
+    const res = await v.handle({ op: 'signDappSpend', coinSpends: goldenOwnedWire(), gapLimit: 3 }, { ...deps, chia });
+    expect(res.success).toBe(true);
+    expect(res.signature).toMatch(/^[0-9a-f]{192}$/);
+  });
+
+  it('signDappSpend fails MISSING_KEY on a foreign spend the wallet cannot sign', async () => {
+    const v = await goldenWallet();
+    const res = await v.handle({ op: 'signDappSpend', coinSpends: foreignWire(), gapLimit: 3 }, { ...deps, chia });
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('MISSING_KEY');
+  });
+
+  it('signMessage signs and reports the signer public key', async () => {
+    const v = await goldenWallet();
+    const res = await v.handle({ op: 'signMessage', message: 'hello dig', gapLimit: 3 }, { ...deps, chia });
+    expect(res.success).toBe(true);
+    expect(res.signature).toMatch(/^[0-9a-f]{192}$/);
+    expect(res.signerPublicKey).toMatch(/^[0-9a-f]{96}$/);
+  });
+
+  it('dApp ops require an unlocked wallet + the wasm', async () => {
+    expect((await new Vault().handle({ op: 'getPublicKeys' }, { ...deps, chia })).code).toBe('LOCKED');
+    expect((await (await goldenWallet()).handle({ op: 'decodeDappSpend' }, { ...deps, chia })).code).toBe('BAD_REQUEST');
+    expect((await (await goldenWallet()).handle({ op: 'signMessage' }, { ...deps, chia })).code).toBe('BAD_REQUEST');
+    expect((await (await goldenWallet()).handle({ op: 'getPublicKeys' }, deps)).code).toBe('WASM_UNAVAILABLE');
   });
 });
 

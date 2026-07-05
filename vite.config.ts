@@ -48,6 +48,8 @@ export default defineConfig({
         app: resolve(rootDir, 'app.html'),
         // The offscreen keystore vault document (#56) — created by the SW via chrome.offscreen.
         offscreen: resolve(rootDir, 'offscreen.html'),
+        // The dApp approval window (#56 §5.5) — summoned by the SW via chrome.windows.create.
+        approval: resolve(rootDir, 'approval.html'),
       },
     },
   },

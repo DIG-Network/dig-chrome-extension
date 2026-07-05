@@ -77,6 +77,12 @@ import {
   setOriginApproval,
 } from './wallet-broker.mjs';
 
+// Self-custody dApp `walletRpc` router + approval queue (#56 §5.5). When a self-custody wallet
+// exists, a dApp's window.chia request routes here: connect + reads hit the offscreen vault; a
+// sign/message request is enqueued and a dedicated approval window is summoned. The manager is
+// chrome-free (its consent lookups, the vault call, and the window summon are injected below).
+import { DappApprovalManager } from './dapp-approval.mjs';
+
 // SRI for the read-crypto WASM (same artifact + digest as hub.dig.net sw.js and apps/web/lib/dig-client.js).
 // Fail closed: a mismatch (tampered/wrong artifact) refuses to run unverified crypto.
 const DIG_CLIENT_WASM_SHA256 = "ff486be806f908a2a90780e499a04dbd34e10e3b97be0470cb9ee841a1e49e77";
@@ -972,6 +978,60 @@ try {
   });
 } catch { /* idle unavailable */ }
 
+// ─── dApp `walletRpc` approval window (#56 §5.5) ───────────────────────────────────────────────
+// A dedicated, trusted popup window the SW summons when a dApp asks the custody wallet to sign. It
+// is NOT the main wallet (that needs a user gesture via action.openPopup); chrome.windows.create
+// works from the background. The window reads the pending queue (dappApprovalList) + returns the
+// user's decision (dappApprovalResolve); a keepalive port keeps the SW + offscreen vault alive.
+const APPROVAL_URL = 'approval.html';
+let approvalWindowId = null;
+
+/** Open the approval window (or focus it if already open). */
+async function summonApprovalWindow() {
+  if (approvalWindowId != null) {
+    try { await chrome.windows.update(approvalWindowId, { focused: true, drawAttention: true }); return; } catch { approvalWindowId = null; }
+  }
+  try {
+    const win = await chrome.windows.create({
+      url: chrome.runtime.getURL(APPROVAL_URL),
+      type: 'popup',
+      width: 460,
+      height: 680,
+      focused: true,
+    });
+    approvalWindowId = win && win.id != null ? win.id : null;
+  } catch { /* windows API unavailable (e.g. under test) */ }
+}
+
+try {
+  chrome.windows.onRemoved.addListener((winId) => {
+    if (winId === approvalWindowId) approvalWindowId = null;
+  });
+} catch { /* windows API unavailable */ }
+
+// The SW-side router + queue. Consent, the offscreen vault, and the window summon are injected so
+// the module stays chrome-free + unit-tested (dapp-approval.test.mjs).
+const dappApproval = new DappApprovalManager({
+  isOriginApproved: (o) => isOriginApproved(chrome.storage.local, o),
+  recordPendingOrigin: (o) => recordPendingOrigin(o),
+  callVault: (req) => callVault(req),
+  summonWindow: () => summonApprovalWindow(),
+  gapLimit: SCAN_GAP_LIMIT,
+  randomId: () => crypto.randomUUID(),
+});
+
+// Keepalive port from the approval window: while it is connected (and pinging), the MV3 service
+// worker is kept alive so the pending sign request + the offscreen vault survive the review. No
+// state is torn down on disconnect — the queued request resolves via its own promise on decision.
+try {
+  chrome.runtime.onConnect.addListener((port) => {
+    if (!port || port.name !== 'dapp-approval-keepalive') return;
+    const onMsg = () => { try { port.postMessage({ alive: true }); } catch { /* port closing */ } };
+    port.onMessage.addListener(onMsg);
+    port.onDisconnect.addListener(() => { try { port.onMessage.removeListener(onMsg); } catch { /* ignore */ } });
+  });
+} catch { /* onConnect unavailable */ }
+
 // Listen for messages from content script to proxy requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Messages the SW forwards to the offscreen vault are handled by the offscreen document, not here.
@@ -1291,31 +1351,68 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
 
-  // window.chia RPC from the content-script bridge (DIG_WALLET_REQUEST). Routes through
-  // the broker (per-origin consent gate + WC→Sage transport). The committed page origin
-  // is supplied by the content script. Returns the {status, body} envelope the provider
-  // expects. NOTE: sender.origin (when present) is the unspoofable origin; we prefer it
-  // over the message-supplied origin so a compromised content script can't lie.
+  // window.chia RPC from the content-script bridge (DIG_WALLET_REQUEST). The committed page origin
+  // is supplied by the content script. Returns the {status, body} envelope the provider expects.
+  // NOTE: sender.origin (when present) is the unspoofable origin; we prefer it over the
+  // message-supplied origin so a compromised content script can't lie.
+  //
+  // Routing (§5.5): when a SELF-CUSTODY wallet exists, route to the custody manager — connect +
+  // reads go straight to the offscreen vault, and sign/message requests are enqueued + summon the
+  // approval window (the promise stays pending until the user decides). Otherwise fall back to the
+  // legacy WalletConnect → Sage broker (unchanged behaviour for users without a custody wallet).
   if (message.action === 'walletRpc') {
     const origin = (sender && sender.origin) || message.origin;
     (async () => {
-      const env = await brokerRequest(
-        {
-          storage: chrome.storage.local,
-          transport: walletTransport,
-          // For a not-yet-approved origin, record it as pending so the popup can prompt;
-          // do NOT auto-approve (the user approves in the popup → connect() resolves on poll).
-          requestConsent: async (o) => {
-            const approved = await isOriginApproved(chrome.storage.local, o);
-            if (!approved) await recordPendingOrigin(o);
-            return approved;
-          },
-        },
-        message.method,
-        message.params || {},
-        origin
-      );
+      let env;
+      try {
+        const hasCustodyWallet = !!(await readKeystore());
+        if (hasCustodyWallet) {
+          env = await dappApproval.route({ method: message.method, params: message.params || {}, origin });
+        } else {
+          env = await brokerRequest(
+            {
+              storage: chrome.storage.local,
+              transport: walletTransport,
+              // For a not-yet-approved origin, record it as pending so the popup can prompt;
+              // do NOT auto-approve (the user approves in the popup → connect() resolves on poll).
+              requestConsent: async (o) => {
+                const approved = await isOriginApproved(chrome.storage.local, o);
+                if (!approved) await recordPendingOrigin(o);
+                return approved;
+              },
+            },
+            message.method,
+            message.params || {},
+            origin
+          );
+        }
+      } catch (e) {
+        env = { status: 500, body: { error: (e && e.message) || 'wallet request failed' } };
+      }
       try { sendResponse(env); } catch { /* port closed */ }
+    })();
+    return true; // async
+  }
+
+  // Approval window (§5.5) → SW: read the pending dApp signing-request queue, each enriched with the
+  // tamper-resistant summary decoded FROM THE BUILT SPEND (via the offscreen vault), plus lock state.
+  if (message.action === ACTIONS.dappApprovalList) {
+    (async () => {
+      try {
+        await dappApproval.enrich();
+        const lock = await getLockStateSnapshot();
+        sendResponse({ requests: dappApproval.list(), lockState: lock.lockState, summoned: approvalWindowId != null });
+      } catch { try { sendResponse({ requests: [], lockState: 'none', summoned: false }); } catch { /* port closed */ } }
+    })();
+    return true; // async
+  }
+
+  // Approval window (§5.5) → SW: the user's approve/reject decision for one queued request. Approve
+  // signs in the offscreen vault + resolves the dApp promise; reject resolves it with an error.
+  if (message.action === ACTIONS.dappApprovalResolve) {
+    (async () => {
+      try { sendResponse(await dappApproval.resolve(message.id, !!message.approved)); }
+      catch { try { sendResponse({ success: false, code: 'RESOLVE_FAILED', remaining: dappApproval.size() }); } catch { /* port closed */ } }
     })();
     return true; // async
   }

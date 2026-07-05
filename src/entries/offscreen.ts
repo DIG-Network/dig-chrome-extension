@@ -25,7 +25,7 @@ function getChia(): Promise<OffscreenWasm> {
   return chiaPromise;
 }
 
-const NEEDS_CHIA = new Set<VaultRequest['op']>(['getReceiveAddress', 'scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity', 'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer']);
+const NEEDS_CHIA = new Set<VaultRequest['op']>(['getReceiveAddress', 'scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity', 'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'getPublicKeys', 'decodeDappSpend', 'signDappSpend', 'signMessage']);
 const NEEDS_CHAIN = new Set<VaultRequest['op']>(['scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity', 'makeOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer']);
 
 async function depsFor(req: VaultRequest & { coinsetUrl?: string }): Promise<VaultDeps> {
