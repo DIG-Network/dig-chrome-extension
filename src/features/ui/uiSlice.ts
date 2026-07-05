@@ -2,9 +2,11 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import {
   DEFAULT_TAB,
   DEFAULT_WALLET_VIEW,
+  DEFAULT_NETWORK_VIEW,
   resolveRoute,
   type Tab,
   type WalletView,
+  type NetworkView,
 } from '@/app/tabs';
 import { DEFAULT_LOCALE, isSupportedLocale } from '@/i18n/locales';
 
@@ -12,6 +14,8 @@ import { DEFAULT_LOCALE, isSupportedLocale } from '@/i18n/locales';
 export interface UiState {
   tab: Tab;
   walletView: WalletView;
+  /** The Network screen's active sub-view (resolver | shield | control). */
+  networkView: NetworkView;
   /** Active UI locale (persisted to `wallet.settings.locale`). */
   locale: string;
   /** Tier-3 "Advanced/Pro" disclosure toggle (persisted to `wallet.settings.advanced`). */
@@ -26,7 +30,7 @@ interface PersistedSettings {
 
 function initialState(): UiState {
   const route = resolveRoute(typeof location !== 'undefined' ? location.hash : '');
-  return { tab: route.tab, walletView: route.walletView, locale: DEFAULT_LOCALE, advanced: false };
+  return { tab: route.tab, walletView: route.walletView, networkView: route.networkView, locale: DEFAULT_LOCALE, advanced: false };
 }
 
 const uiSlice = createSlice({
@@ -39,6 +43,9 @@ const uiSlice = createSlice({
     setWalletView(state, action: PayloadAction<WalletView>) {
       state.walletView = action.payload;
     },
+    setNetworkView(state, action: PayloadAction<NetworkView>) {
+      state.networkView = action.payload;
+    },
     setLocale(state, action: PayloadAction<string>) {
       state.locale = isSupportedLocale(action.payload) ? action.payload : DEFAULT_LOCALE;
     },
@@ -50,6 +57,7 @@ const uiSlice = createSlice({
       const route = resolveRoute(action.payload);
       state.tab = route.tab;
       state.walletView = route.walletView;
+      state.networkView = route.networkView;
     },
     /** Merge durable settings read from storage (hydration + `chrome.storage.onChanged`). */
     settingsHydrated(state, action: PayloadAction<PersistedSettings | undefined>) {
@@ -61,8 +69,8 @@ const uiSlice = createSlice({
   },
 });
 
-export const { setTab, setWalletView, setLocale, setAdvanced, routeFromHash, settingsHydrated } =
+export const { setTab, setWalletView, setNetworkView, setLocale, setAdvanced, routeFromHash, settingsHydrated } =
   uiSlice.actions;
 export const uiReducer = uiSlice.reducer;
 
-export { DEFAULT_TAB, DEFAULT_WALLET_VIEW };
+export { DEFAULT_TAB, DEFAULT_WALLET_VIEW, DEFAULT_NETWORK_VIEW };

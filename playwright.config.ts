@@ -1,0 +1,25 @@
+import { defineConfig, devices } from '@playwright/test';
+
+/**
+ * Playwright config for the mobile-OS SCREENSHOT harness (#65). It serves the built `dist-web`
+ * (the real popup.html / app.html bundles) over a static server and drives them with a stubbed
+ * `chrome.*` (canned unlocked wallet + node status), so the screenshots show the true rendered
+ * mobile-OS UI at phone + tablet widths. Run: `npm run build:web && npm run screenshots`.
+ * Not part of the CI test/coverage gate — it's a local visual-verification tool.
+ */
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  reporter: 'list',
+  use: {
+    baseURL: 'http://127.0.0.1:4173',
+    headless: true,
+  },
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  webServer: {
+    command: 'python -m http.server 4173 --directory dist-web',
+    url: 'http://127.0.0.1:4173/popup.html',
+    reuseExistingServer: true,
+    timeout: 30_000,
+  },
+});

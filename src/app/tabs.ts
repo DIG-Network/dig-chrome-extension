@@ -1,36 +1,35 @@
 /**
- * The React shell's tab model — the single source of truth for the 5-tab popup surface and the
- * wallet's Home/Activity/Trade sub-routes.
+ * The React shell's tab model — the single source of truth for the mobile-OS surface (#65): a
+ * phone-style bottom nav of four screens (Home · Wallet · Apps · Network) plus the wallet's
+ * Home/Activity/Trade sub-routes and the Network screen's Resolver/Shield/Control sub-routes.
  *
- * This EXTENDS the legacy 4-tab set (`#shared/tabs.mjs`, still driving the vanilla surfaces + its
- * own `node --test` suite) with the new **Apps** tab (#59, an in-window embed of explore.dig.net).
- * It is TypeScript-first because the shell is TypeScript-first; the shared `.mjs` model is left
- * untouched so the legacy contract can't regress. Pure (no DOM / chrome.*) so it is unit-testable
- * and the router stays thin glue over it.
+ * The IA follows the Fable Wallet · Apps · Network grouping: HOME is the launcher (widgets + app
+ * icons), and the three ambient/pull-on-failure surfaces (resolver, shield, control) live together
+ * under NETWORK — so every surface stays reachable from a clean 4-item nav. Legacy deep-links
+ * (`#resolver`/`#shield`/`#control`) still resolve (→ the Network screen on that sub-view) for
+ * back-compat with the pop-out + external links. Pure (no DOM/chrome.*) so it is unit-testable.
  */
 
-/**
- * The ordered top-shell tab set. Order === the visual (bottom-bar / sidebar) order.
- *
- * WALLET-FIRST per the ladder-of-needs IA (the wallet is the many-times-a-day surface; Apps is the
- * "what now?" surface; resolver/shield/control are ambient/pull-on-failure). The fuller
- * Wallet · Apps · Network grouping (a single Network tab hosting Resolver | Shield | Node) is a
- * planned fast-follow; Phase 0 ships the wallet-first order + the wallet default.
- */
-export const TABS = ['wallet', 'apps', 'resolver', 'shield', 'control'] as const;
+/** The ordered bottom-nav screens. Order === the visual (bottom-bar / rail) order. HOME first. */
+export const TABS = ['home', 'wallet', 'apps', 'network'] as const;
 export type Tab = (typeof TABS)[number];
 
-/** The tab shown when the popup opens with no deep-link — the wallet (the glance-many×/day surface). */
-export const DEFAULT_TAB: Tab = 'wallet';
+/** The screen shown when the surface opens with no deep-link — the mobile-OS Home launcher. */
+export const DEFAULT_TAB: Tab = 'home';
 
-/** The wallet tab's segmented sub-views (the Balances & Intents home + ledger + offers). */
+/** The wallet screen's segmented sub-views (Balances & Intents home + ledger + offers). */
 export const WALLET_VIEWS = ['home', 'activity', 'trade'] as const;
 export type WalletView = (typeof WALLET_VIEWS)[number];
-
 /** The default wallet sub-view. */
 export const DEFAULT_WALLET_VIEW: WalletView = 'home';
 
-/** True if `name` is one of the known tabs. */
+/** The Network screen's segmented sub-views (the resolver, the proof shield, the node control panel). */
+export const NETWORK_VIEWS = ['resolver', 'shield', 'control'] as const;
+export type NetworkView = (typeof NETWORK_VIEWS)[number];
+/** The default Network sub-view. */
+export const DEFAULT_NETWORK_VIEW: NetworkView = 'resolver';
+
+/** True if `name` is one of the known bottom-nav tabs. */
 export function isTab(name: string): name is Tab {
   return (TABS as readonly string[]).includes(name);
 }
@@ -40,30 +39,55 @@ export function isWalletView(name: string): name is WalletView {
   return (WALLET_VIEWS as readonly string[]).includes(name);
 }
 
-/**
- * Resolve `{ tab, walletView }` from a `location.hash`. Accepts a bare tab (`#wallet`), a
- * tab/subview pair (`#wallet/activity`), or an empty/unknown hash (→ defaults). Never throws.
- */
-export function resolveRoute(hash: string | null | undefined): { tab: Tab; walletView: WalletView } {
-  const raw = String(hash || '').replace(/^#/, '');
-  const [tabPart = '', viewPart = ''] = raw.split('/');
-  const tab = isTab(tabPart) ? tabPart : DEFAULT_TAB;
-  const walletView = isWalletView(viewPart) ? viewPart : DEFAULT_WALLET_VIEW;
-  return { tab, walletView };
+/** True if `name` is one of the known Network sub-views. */
+export function isNetworkView(name: string): name is NetworkView {
+  return (NETWORK_VIEWS as readonly string[]).includes(name);
 }
 
-/** Serialize a route back to a `#tab` or `#tab/view` hash (wallet keeps its sub-view). */
-export function routeToHash(tab: Tab, walletView: WalletView = DEFAULT_WALLET_VIEW): string {
+/** A fully-resolved route: the active tab + both segmented sub-views. */
+export interface Route {
+  tab: Tab;
+  walletView: WalletView;
+  networkView: NetworkView;
+}
+
+/**
+ * Resolve a {@link Route} from a `location.hash`. Accepts a bare tab (`#home`), a tab/subview pair
+ * (`#wallet/activity`, `#network/shield`), a LEGACY bare network surface (`#resolver`/`#shield`/
+ * `#control` → the Network screen on that sub-view, for back-compat), or empty/unknown (→ defaults).
+ * Never throws.
+ */
+export function resolveRoute(hash: string | null | undefined): Route {
+  const raw = String(hash || '').replace(/^#/, '');
+  const [head = '', sub = ''] = raw.split('/');
+  const base: Route = { tab: DEFAULT_TAB, walletView: DEFAULT_WALLET_VIEW, networkView: DEFAULT_NETWORK_VIEW };
+
+  // Legacy bare network surface (`#resolver`, `#shield`, `#control`) → Network screen on that view.
+  if (isNetworkView(head)) return { ...base, tab: 'network', networkView: head };
+
+  const tab = isTab(head) ? head : DEFAULT_TAB;
+  const walletView = tab === 'wallet' && isWalletView(sub) ? sub : DEFAULT_WALLET_VIEW;
+  const networkView = tab === 'network' && isNetworkView(sub) ? sub : DEFAULT_NETWORK_VIEW;
+  return { tab, walletView, networkView };
+}
+
+/** Serialize a route back to a `#tab` / `#tab/view` hash (wallet + network keep their sub-view). */
+export function routeToHash(
+  tab: Tab,
+  walletView: WalletView = DEFAULT_WALLET_VIEW,
+  networkView: NetworkView = DEFAULT_NETWORK_VIEW,
+): string {
   if (tab === 'wallet' && walletView !== DEFAULT_WALLET_VIEW) return `#wallet/${walletView}`;
+  if (tab === 'network' && networkView !== DEFAULT_NETWORK_VIEW) return `#network/${networkView}`;
   return `#${tab}`;
 }
 
-/** The stable, agent-driveable `data-testid` of the tab button for `tab`. */
+/** The stable, agent-driveable `data-testid` of the bottom-nav button for `tab`. */
 export function tabTestId(tab: Tab): string {
   return `tab-${tab}`;
 }
 
-/** The DOM id / testid of the tabpanel element for `tab`. */
+/** The DOM id / testid of the screen panel element for `tab`. */
 export function tabPanelId(tab: Tab): string {
   return `${tab}-panel`;
 }

@@ -7,9 +7,11 @@ import { setTab } from '@/features/ui/uiSlice';
 import type { Surface } from '@/app/layout';
 
 /**
- * Compact layout — the popup (and a narrow `app.html`): header, the active tab panel, the 5-tab
- * bottom bar, and a footer. One bottom bar; the wallet tab carries its own in-panel segmented
- * control. Renders every tab from the one route tree.
+ * Compact layout — a phone (the popup + a narrow `app.html`): a status-bar-feel header, ONE
+ * scrolling content area (the active mobile-OS screen + a subtle footer), and the STICKY phone
+ * bottom nav pinned to the viewport bottom (always visible; only the content scrolls). The footer
+ * lives inside the scroll area so the version stays visible without floating over content. Renders
+ * every screen from the one route tree.
  */
 export function CompactLayout({ surface }: { surface: Surface }) {
   const dispatch = useAppDispatch();
@@ -19,9 +21,9 @@ export function CompactLayout({ surface }: { surface: Surface }) {
       <AppHeader surface={surface} />
       <main className="dig-main" role="main" data-testid="popup-root">
         <ActiveTabPanel />
+        <AppFooter />
       </main>
       <TabBar active={tab} onSelect={(t) => dispatch(setTab(t))} orientation="bottom" />
-      <AppFooter />
     </div>
   );
 }
