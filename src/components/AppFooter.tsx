@@ -4,10 +4,11 @@ import { setLocale } from '@/features/ui/uiSlice';
 import { LOCALES } from '@/i18n/locales';
 import { storageSet } from '@/lib/messaging';
 import { versionLabel } from '@/lib/version';
+import { BugReportLink } from '@/components/BugReportLink';
 
 const SETTINGS_KEY = 'wallet.settings';
 
-/** Footer: the subtle app-version display (§6.7) + the language selector (§6.6). */
+/** Footer: the subtle app-version display (§6.7) + an inline "Report a bug" entry + the language selector (§6.6). */
 export function AppFooter() {
   const intl = useIntl();
   const dispatch = useAppDispatch();
@@ -22,6 +23,7 @@ export function AppFooter() {
   return (
     <footer className="dig-footer">
       <span data-testid="app-version">{versionLabel()}</span>
+      <BugReportLink />
       <label className="dig-sr-only" htmlFor="locale-select">
         {intl.formatMessage({ id: 'shell.language' })}
       </label>

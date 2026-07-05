@@ -84,3 +84,32 @@ for (const screen of ['home', 'wallet', 'apps', 'network']) {
     await page.screenshot({ path: `e2e/__screenshots__/fullscreen-${screen}.png` });
   });
 }
+
+// In-window dApp app-view (§2.4a): tap a launcher icon → the dApp opens INSIDE the frame.
+test('popup app-view (dApp opened in-window)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.route('https://chia-offer.on.dig.net/**', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<body style="font-family:system-ui;margin:0;padding:28px;background:#faf9fd"><h1 style="color:#3aaa35">Chia-Offer</h1><p>Trustless Chia offers, running inside DIG.</p></body>' }),
+  );
+  await open(page, 'popup.html', 'home');
+  await page.getByTestId('app-tile-chia-offer').click();
+  await page.getByTestId('appview-frame').waitFor();
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-appview.png' });
+});
+
+// Framing-failure fallback: an unreachable/refused embed → the blocked note (never a blank frame).
+// (An X-Frame-Options refusal still fires `load` + throws on cross-origin access — indistinguishable
+// from success in pure JS — so the reliable, detectable signals are a load error or no-load timeout;
+// here we hang the frame request so the load-timeout fires the graceful fallback.)
+test('popup app-view blocked (embed fails → open-in-tab note)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.route('https://chia-offer.on.dig.net/**', async (route) => {
+    await new Promise((r) => setTimeout(r, 8000)); // never loads within the app-view timeout
+    await route.abort();
+  });
+  await open(page, 'popup.html', 'home');
+  await page.getByTestId('app-tile-chia-offer').click();
+  await page.getByTestId('appview-blocked').waitFor({ timeout: 9000 });
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-appview-blocked.png' });
+});

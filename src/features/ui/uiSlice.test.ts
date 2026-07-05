@@ -3,6 +3,9 @@ import {
   uiReducer,
   setTab,
   setWalletView,
+  setNetworkView,
+  setOpenApp,
+  closeApp,
   setLocale,
   setAdvanced,
   routeFromHash,
@@ -17,6 +20,18 @@ describe('uiSlice', () => {
     expect(s.tab).toBe('wallet');
     s = uiReducer(s, setWalletView('trade'));
     expect(s.walletView).toBe('trade');
+  });
+
+  it('sets the network sub-view', () => {
+    expect(uiReducer(initial(), setNetworkView('shield')).networkView).toBe('shield');
+  });
+
+  it('opens + closes the in-window app-view', () => {
+    const app = { slug: 'chia-offer', name: 'Chia-Offer', link: 'https://chia-offer.on.dig.net/' };
+    let s = uiReducer(initial(), setOpenApp(app));
+    expect(s.openApp).toEqual(app);
+    s = uiReducer(s, closeApp());
+    expect(s.openApp).toBeNull();
   });
 
   it('validates locale, ignoring unsupported', () => {

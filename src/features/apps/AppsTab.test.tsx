@@ -36,8 +36,9 @@ describe('AppsTab launcher', () => {
     expect(await screen.findByTestId('apps-launcher')).toBeInTheDocument();
     expect(screen.getByTestId('app-tile-chia-offer')).toBeInTheDocument();
     expect(screen.getByTestId('app-tile-hashtunes')).toBeInTheDocument();
-    // The tile links to the app's absolute launch URL, and there is NO iframe.
-    expect(screen.getByTestId('app-tile-chia-offer').getAttribute('href')).toBe('https://chia-offer.on.dig.net/');
+    // Tiles are buttons that launch the in-window app-view (§2.4a), NOT plain links; no iframe here.
+    expect(screen.getByTestId('app-tile-chia-offer').tagName).toBe('BUTTON');
+    expect(screen.getByTestId('app-tile-chia-offer')).toHaveAttribute('aria-label', 'Open Chia-Offer');
     expect(screen.queryByTestId('apps-frame')).not.toBeInTheDocument();
     // Icon uses the remote absolute URL.
     const img = screen.getByTestId('app-icon-chia-offer').querySelector('img');
