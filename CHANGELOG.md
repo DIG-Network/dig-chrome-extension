@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.7.0] - 2026-07-05
+
+### Features
+- Custody core - DIGWX1 keystore, BIP-39, both-scheme HD derivation (#56) (#9)
+
 ## [1.6.0] - 2026-07-05
 
 ### Features
