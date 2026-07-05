@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.22.2] - 2026-07-05
+
+### Bug Fixes
+- **apps:** Render launcher icons as borderless phone-style tiles (#26)
+
 ## [1.22.1] - 2026-07-05
 
 ### Bug Fixes
