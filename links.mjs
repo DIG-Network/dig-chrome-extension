@@ -3,12 +3,11 @@
  * extension surfaces (popup "Browse DIGHUb" button, popup Resources/footer, and the
  * first-run welcome page).
  *
- * Why a shared module: the popup (popup.html via popup.js) and the welcome page
+ * Why a shared module: the React popup shell (via the #shared/* alias) and the welcome page
  * (welcome.html, which is also driven from background.js's onInstalled) must point at
  * exactly the same destinations. Keeping the URLs in one place means a funnel target
  * can never drift between surfaces. This file is an ES module so it can be imported by
- * the module service worker (background.js) and unit-tested under `node --test`; the
- * popup loads the same constants via popup.js.
+ * the module service worker (background.js), the React shell, and unit-tested under `node --test`.
  */
 
 /** hub.dig.net — the publishing/control-plane surface the extension funnels into. */

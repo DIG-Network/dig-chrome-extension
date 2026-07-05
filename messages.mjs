@@ -12,8 +12,8 @@
  * raw strings, read `MESSAGE_CATALOGUE` to discover the contract, and bump
  * `MESSAGE_PROTOCOL_VERSION` whenever the shape changes.
  *
- * Plain ES module (no chrome.* / DOM) so background.js, popup.js, popup-wallet.js,
- * dig-viewer.js, options.js AND tests under `node --test` can all import it.
+ * Plain ES module (no chrome.* / DOM) so background.js, dig-viewer.js, options.js, the React
+ * shell (via the #shared/* alias) AND tests under `node --test` can all import it.
  */
 
 import { WALLET_METHODS, STATE_CHANGING_METHODS } from './wallet-methods.mjs';

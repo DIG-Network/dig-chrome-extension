@@ -43,9 +43,9 @@ the read pipeline) by tracing the *user's* path, not the data path.
 ## 4. Pair a wallet (optional, for dapps)
 
 - A user pairs a Chia wallet over **WalletConnect → Sage** so dapps can use `window.chia`.
-- **Surface:** the **popup** wallet panel (`popup.html` + `popup-wallet.js`), driven by the
-  WalletConnect transport in `wallet-wc.js` (the live relay session runs in the popup page;
-  an MV3 service worker can't hold a relay socket).
+- **Surface:** the **popup** wallet panel (the React shell, `popup.html` → `src/entries/popup.tsx`),
+  driven by the WalletConnect transport in `wallet-wc.js` (the live relay session runs in the popup
+  page; an MV3 service worker can't hold a relay socket).
 - **Flow:** *Connect wallet* → a pairing link the user scans/pastes in Sage → on approval
   the panel shows the connected address and **XCH** + **$DIG** balances (the $DIG row is
   the DIG CAT, `a406d3a9…832f81`).
@@ -84,7 +84,7 @@ using the SRI-pinned `dig_client` WASM, and renders the result.
 
 - **Toolbar badge:** a ✓ (verified) / ! (failed) badge per tab, plus a global ● attention
   badge when a wallet connection request is pending.
-- **Popup verified line:** mirrors the active tab's verification state (`popup-wallet.js`).
+- **Popup verified line:** mirrors the active tab's verification state (the React shell).
 - **Viewer banner:** in-page verified/failed banner (`dig-viewer.js`).
 
 ## 7. Settings (the one settings home)
@@ -121,7 +121,7 @@ config controls).
 |---|---|---|
 | Welcome | `welcome.html`, `welcome.js` | First-run onboarding + Try it |
 | DIG Home (new tab) | `newtab.html`, `newtab.css`, `newtab.js`, `apps.mjs` | App directory + omnibox |
-| Popup | `popup.html`, `popup.js`, `popup-wallet.js`, `popup.css` | Product surface: verified line, wallet, open chia://, settings link |
+| Popup / full page | `popup.html` + `app.html` (React shell: `src/entries/popup.tsx` / `app.tsx`) | Product surface: verified line, wallet, open chia://, settings link |
 | Viewer | `dig-viewer.html`, `dig-viewer.js` | Renders verified content; branded loading/error states |
 | Settings | `options.html`, `options.js`, `options.css` | The one settings home: dig-node host, RPC, wallet |
 | Background SW | `background.js` | Intercept + verify + decrypt; badges; error pages |
