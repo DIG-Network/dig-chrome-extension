@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { buildOfferParams, validateOfferString } from '#shared/wallet-offers.mjs';
+import { buildOfferParams, validateOfferString } from '@/lib/wallet-offers';
 import type { AssetBalance } from '@/features/wallet/walletApi';
 import { useOfferActionMutation } from '@/features/wallet/walletApi';
 

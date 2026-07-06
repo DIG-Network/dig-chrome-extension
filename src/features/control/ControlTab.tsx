@@ -1,6 +1,6 @@
 import { FormattedMessage } from 'react-intl';
 import { controlPanelViewModel } from '@/lib/dig-control';
-import { DIG_BROWSER_URL } from '#shared/links.mjs';
+import { DIG_BROWSER_URL } from '@/lib/links';
 import { FourState } from '@/components/FourState';
 import { StatusPill } from '@/components/StatusPill';
 import { ExternalLink } from '@/components/ExternalLink';

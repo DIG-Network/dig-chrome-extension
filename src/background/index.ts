@@ -57,7 +57,7 @@ import {
   computeLockSnapshot,
 } from '@/lib/custody-session';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
-import { parseWatchedCats } from '#shared/wallet-assets.mjs';
+import { parseWatchedCats } from '@/lib/wallet-assets';
 // dig-node install prompt + "dig-node required" error mapping (universal installer link).
 import { digNodeInstallPrompt, isDigNodeRequiredError } from '@/lib/dig-node-status';
 

@@ -4,7 +4,7 @@
  * destination comes from the shared {@link links} module so the funnels can never drift from the
  * popup. Pure DOM glue (no state), built by Vite as a standalone extension page under `src/entries/`.
  */
-import { DIG_NETWORK_URL, DOCS_URL, DIG_BROWSER_URL, DISCORD_URL } from '#shared/links.mjs';
+import { DIG_NETWORK_URL, DOCS_URL, DIG_BROWSER_URL, DISCORD_URL } from '@/lib/links';
 
 /** Wire an anchor to open `url` in a new tab, keeping a real `href` so it works even without JS. */
 function wire(id: string, url: string): void {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import { qrSvg } from '@/lib/qr';
-import { shortenAddress } from '#shared/wallet-view.mjs';
+import { shortenAddress } from '@/lib/wallet-view';
 
 /**
  * The Receive view (§6 Receive): the wallet's address as text + a QR + copy. Local (no network),

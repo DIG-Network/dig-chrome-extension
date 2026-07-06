@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { validateSendForm, toBaseUnits } from '#shared/wallet-view.mjs';
+import { validateSendForm, toBaseUnits } from '@/lib/wallet-view';
 import type { AssetBalance } from '@/features/wallet/walletApi';
 import { useSendAssetMutation } from '@/features/wallet/walletApi';
 

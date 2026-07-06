@@ -10,7 +10,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   XCH_MOJOS_PER_UNIT,
@@ -24,7 +24,7 @@ import {
   shortenAddress,
   validateSendForm,
   activityViewModel,
-} from '../wallet-view.mjs';
+} from '@/lib/wallet-view';
 
 test('unit constants match Chia (XCH = 1e12 mojos, $DIG = 1000 base units / 3 decimals)', () => {
   assert.equal(XCH_MOJOS_PER_UNIT, 1_000_000_000_000);
@@ -176,9 +176,9 @@ test('activityViewModel attaches a SpaceScan link, fee, and status per item', ()
   // newest first: def456 (t=200) before abc123 (t=100)
   assert.equal(vm[0].id, 'def456');
   assert.equal(vm[0].statusLabel, 'Pending');
-  assert.match(vm[0].spaceScanUrl, /spacescan\.io\/coin\/0xdef456$/);
+  assert.match(vm[0].spaceScanUrl!, /spacescan\.io\/coin\/0xdef456$/);
   assert.equal(vm[1].id, '0xabc123');
   assert.equal(vm[1].statusLabel, 'Confirmed');
-  assert.match(vm[1].spaceScanUrl, /spacescan\.io\/coin\/0xabc123$/);
+  assert.match(vm[1].spaceScanUrl!, /spacescan\.io\/coin\/0xabc123$/);
   assert.ok(vm[1].feeLabel.includes('0.0000000005')); // 500 mojos fee in XCH
 });

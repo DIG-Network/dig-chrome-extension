@@ -7,7 +7,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   HUB_URL,
@@ -26,7 +26,7 @@ import {
   SPACESCAN_URL,
   spaceScanCoinUrl,
   spaceScanAddressUrl,
-} from '../links.mjs';
+} from '@/lib/links';
 
 test('hub URL points at hub.dig.net', () => {
   assert.equal(HUB_URL, 'https://hub.dig.net');
@@ -117,7 +117,7 @@ test('RESOURCE_LINKS contains Get $DIG, Visit DIG Network, and Learn the protoco
 
 // The token carries the $DIG sigil on first reference (SYSTEM.md "Token: $DIG").
 test('Get-$DIG label uses the $DIG sigil', () => {
-  const getDig = RESOURCE_LINKS.find((l) => l.id === 'get-dig');
+  const getDig = RESOURCE_LINKS.find((l) => l.id === 'get-dig')!;
   assert.equal(getDig.label, 'Get $DIG');
 });
 

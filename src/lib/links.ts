@@ -71,7 +71,7 @@ export const SPACESCAN_URL = 'https://www.spacescan.io';
  * @param {string} id a coin/transaction id (with or without `0x`)
  * @returns {string|null}
  */
-export function spaceScanCoinUrl(id) {
+export function spaceScanCoinUrl(id: string | null): string | null {
   const s = String(id == null ? '' : id).trim();
   if (!s) return null;
   const withPrefix = /^0x/i.test(s) ? s : `0x${s}`;
@@ -79,7 +79,7 @@ export function spaceScanCoinUrl(id) {
 }
 
 /** SpaceScan address page for a bech32 `xch1…` address; `null` for an empty address. */
-export function spaceScanAddressUrl(address) {
+export function spaceScanAddressUrl(address: string | null): string | null {
   const s = String(address == null ? '' : address).trim();
   if (!s) return null;
   return `${SPACESCAN_URL}/address/${s}`;

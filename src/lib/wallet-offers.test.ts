@@ -11,14 +11,14 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   validateOfferString,
   buildOfferParams,
   offerSummaryViewModel,
-} from '../wallet-offers.mjs';
-import { DIG_ASSET_ID } from '../links.mjs';
+} from '@/lib/wallet-offers';
+import { DIG_ASSET_ID } from '@/lib/links';
 
 test('validateOfferString requires a non-empty offer1… string', () => {
   assert.equal(validateOfferString('offer1qqq...').ok, true);
@@ -37,9 +37,9 @@ test('buildOfferParams converts whole units to base units per asset (XCH assetId
     watchedCats: [], fee: '',
   });
   assert.equal(r.ok, true);
-  assert.deepEqual(r.params.offerAssets, [{ assetId: '', amount: 1_000_000_000_000 }]);
-  assert.deepEqual(r.params.requestAssets, [{ assetId: DIG_ASSET_ID, amount: 10_000 }]);
-  assert.equal(r.params.fee, 0);
+  assert.deepEqual(r.params!.offerAssets, [{ assetId: '', amount: 1_000_000_000_000 }]);
+  assert.deepEqual(r.params!.requestAssets, [{ assetId: DIG_ASSET_ID, amount: 10_000 }]);
+  assert.equal(r.params!.fee, 0);
 });
 
 test('buildOfferParams supports a tracked CAT leg and an explicit XCH fee', () => {
@@ -50,9 +50,9 @@ test('buildOfferParams supports a tracked CAT leg and an explicit XCH fee', () =
     watchedCats: [{ assetId: c, name: 'Gamma' }], fee: '0.001',
   });
   assert.equal(r.ok, true);
-  assert.deepEqual(r.params.offerAssets, [{ assetId: c, amount: 2_000 }]);
-  assert.deepEqual(r.params.requestAssets, [{ assetId: '', amount: 500_000_000_000 }]);
-  assert.equal(r.params.fee, 1_000_000_000); // 0.001 XCH in mojos
+  assert.deepEqual(r.params!.offerAssets, [{ assetId: c, amount: 2_000 }]);
+  assert.deepEqual(r.params!.requestAssets, [{ assetId: '', amount: 500_000_000_000 }]);
+  assert.equal(r.params!.fee, 1_000_000_000); // 0.001 XCH in mojos
 });
 
 test('buildOfferParams rejects a non-positive amount or an unknown asset', () => {

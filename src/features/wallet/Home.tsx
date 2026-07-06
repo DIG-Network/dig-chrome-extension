@@ -5,7 +5,7 @@ import { AssetRow } from '@/components/AssetRow';
 import { StatusPill } from '@/components/StatusPill';
 import { Sheet } from '@/components/Sheet';
 import { ExternalLink } from '@/components/ExternalLink';
-import { TIBETSWAP_URL } from '#shared/links.mjs';
+import { TIBETSWAP_URL } from '@/lib/links';
 import { useGetBalancesQuery, useGetActivityQuery } from '@/features/wallet/walletApi';
 import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
 import { SendForm } from '@/features/wallet/SendForm';

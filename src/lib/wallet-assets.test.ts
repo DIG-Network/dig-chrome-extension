@@ -11,7 +11,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   XCH_META,
@@ -23,8 +23,8 @@ import {
   assetDescriptors,
   sendAssetOptions,
   resolveSendAsset,
-} from '../wallet-assets.mjs';
-import { DIG_ASSET_ID } from '../links.mjs';
+} from '@/lib/wallet-assets';
+import { DIG_ASSET_ID } from '@/lib/links';
 
 test('the built-in registry pins XCH (12 dp) and $DIG (3 dp, real TAIL)', () => {
   assert.equal(XCH_META.key, 'xch');
@@ -118,7 +118,7 @@ test('resolveSendAsset maps a picker value to chia_send {type, assetId} + decima
   const c = 'c'.repeat(64);
   assert.deepEqual(resolveSendAsset('xch', []), { type: null, assetId: null, decimals: 12, ticker: 'XCH' });
   assert.deepEqual(resolveSendAsset('dig', []), { type: 'cat', assetId: DIG_ASSET_ID, decimals: 3, ticker: '$DIG' });
-  const cat = resolveSendAsset(c, [{ assetId: c, name: 'Gamma' }]);
+  const cat = resolveSendAsset(c, [{ assetId: c, name: 'Gamma' }])!;
   assert.equal(cat.type, 'cat');
   assert.equal(cat.assetId, c);
   assert.equal(cat.decimals, 3);

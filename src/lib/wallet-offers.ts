@@ -13,12 +13,24 @@
  * regress the offer math.
  */
 
-import { resolveSendAsset, normalizeCatId } from './wallet-assets.mjs';
-import { toBaseUnits, formatBaseUnits } from './wallet-view.mjs';
-import { DIG_ASSET_ID } from './links.mjs';
+import { resolveSendAsset, normalizeCatId } from './wallet-assets';
+import { toBaseUnits, formatBaseUnits } from './wallet-view';
+import { DIG_ASSET_ID } from './links';
+
+/** One Sage offer leg: `{ assetId, amount }` (XCH uses an empty assetId). */
+interface OfferSageLeg {
+  assetId: string;
+  amount: number;
+}
+/** One display leg of a two-sided offer summary. */
+export interface OfferLeg {
+  ticker: string;
+  assetId: string | null;
+  amountLabel: string;
+}
 
 /** Validate a pasted offer string — must be a non-empty bech32 `offer1…`. */
-export function validateOfferString(str) {
+export function validateOfferString(str: string): { ok: boolean; error: string | null } {
   const s = String(str == null ? '' : str).trim();
   if (!s) return { ok: false, error: 'Paste an offer1… string.' };
   if (!/^offer1/i.test(s)) return { ok: false, error: 'That does not look like an offer1… string.' };
@@ -26,7 +38,7 @@ export function validateOfferString(str) {
 }
 
 /** Convert an optional XCH fee (whole XCH) to mojos; blank → 0. Returns a number or null (invalid). */
-function feeToMojos(fee) {
+function feeToMojos(fee: unknown): number | null {
   const s = String(fee == null ? '' : fee).trim();
   if (s === '') return 0;
   const f = Number(s);
@@ -35,14 +47,18 @@ function feeToMojos(fee) {
 }
 
 /** Build one Sage offer leg `{assetId, amount}` from a picker value + whole-unit amount. */
-function buildLeg(value, amount, watchedCats) {
+function buildLeg(
+  value: string,
+  amount: string | number | null,
+  watchedCats: unknown,
+): { error?: string; leg?: OfferSageLeg } {
   const asset = resolveSendAsset(value, watchedCats);
   if (!asset) return { error: 'Unknown asset in this offer.' };
-  let base;
+  let base: number;
   try {
     base = toBaseUnits(amount, asset.decimals);
   } catch (e) {
-    return { error: (e && e.message) || 'Enter a positive amount.' };
+    return { error: (e instanceof Error && e.message) || 'Enter a positive amount.' };
   }
   // Sage names XCH with an empty assetId; a CAT uses its TAIL.
   return { leg: { assetId: asset.assetId || '', amount: base } };
@@ -54,11 +70,29 @@ function buildLeg(value, amount, watchedCats) {
  * optional XCH fee. Returns `{ ok, params, error }` — `params` is
  * `{ offerAssets, requestAssets, fee }` on success.
  */
-export function buildOfferParams({ giveValue, giveAmount, getValue, getAmount, watchedCats = [], fee = '' } = {}) {
+export function buildOfferParams({
+  giveValue = '',
+  giveAmount = '',
+  getValue = '',
+  getAmount = '',
+  watchedCats = [],
+  fee = '',
+}: {
+  giveValue?: string;
+  giveAmount?: string;
+  getValue?: string;
+  getAmount?: string;
+  watchedCats?: unknown;
+  fee?: string;
+} = {}): {
+  ok: boolean;
+  params: { offerAssets: OfferSageLeg[]; requestAssets: OfferSageLeg[]; fee: number } | null;
+  error: string | null;
+} {
   const give = buildLeg(giveValue, giveAmount, watchedCats);
-  if (give.error) return { ok: false, params: null, error: give.error };
+  if (give.error || !give.leg) return { ok: false, params: null, error: give.error || 'Enter a positive amount.' };
   const get = buildLeg(getValue, getAmount, watchedCats);
-  if (get.error) return { ok: false, params: null, error: get.error };
+  if (get.error || !get.leg) return { ok: false, params: null, error: get.error || 'Enter a positive amount.' };
   const feeMojos = feeToMojos(fee);
   if (feeMojos === null) return { ok: false, params: null, error: 'Fee must be zero or more.' };
   return {
@@ -69,7 +103,7 @@ export function buildOfferParams({ giveValue, giveAmount, getValue, getAmount, w
 }
 
 /** Resolve an asset id (as it appears in an offer summary) to its ticker + display decimals. */
-function assetInfo(rawAssetId) {
+function assetInfo(rawAssetId: unknown): { ticker: string; decimals: number; assetId?: string } {
   const s = String(rawAssetId == null ? '' : rawAssetId).trim().toLowerCase();
   if (!s || s === 'xch' || s === 'null' || s === '0') return { ticker: 'XCH', decimals: 12 };
   const id = normalizeCatId(s);
@@ -78,8 +112,8 @@ function assetInfo(rawAssetId) {
 }
 
 /** Normalise one offer leg collection (array of {assetId,amount} OR a {assetId:amount} map). */
-function normalizeLegs(legs) {
-  const out = [];
+function normalizeLegs(legs: unknown): OfferLeg[] {
+  const out: OfferLeg[] = [];
   if (Array.isArray(legs)) {
     for (const l of legs) {
       if (!l || typeof l !== 'object') continue;
@@ -87,9 +121,9 @@ function normalizeLegs(legs) {
       out.push({ ticker: info.ticker, assetId: info.assetId || null, amountLabel: formatBaseUnits(l.amount, info.decimals) });
     }
   } else if (legs && typeof legs === 'object') {
-    for (const [key, amount] of Object.entries(legs)) {
+    for (const [key, amount] of Object.entries(legs as Record<string, unknown>)) {
       const info = assetInfo(key);
-      out.push({ ticker: info.ticker, assetId: info.assetId || null, amountLabel: formatBaseUnits(amount, info.decimals) });
+      out.push({ ticker: info.ticker, assetId: info.assetId || null, amountLabel: formatBaseUnits(amount as number, info.decimals) });
     }
   }
   return out;
@@ -101,8 +135,13 @@ function normalizeLegs(legs) {
  * unknown shape degrades to empty legs (never throws) so the Inspect view can show an honest
  * "couldn't summarise" fallback.
  */
-export function offerSummaryViewModel(raw, { watchedCats = [] } = {}) {
-  const src = (raw && typeof raw === 'object' && (raw.summary || raw.data || raw)) || {};
+export function offerSummaryViewModel(
+  raw: unknown,
+  { watchedCats = [] }: { watchedCats?: unknown } = {},
+): { offered: OfferLeg[]; requested: OfferLeg[]; fee: number; feeLabel: string } {
+  void watchedCats;
+  const rawObj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+  const src = ((rawObj && (rawObj.summary || rawObj.data || rawObj)) || {}) as Record<string, unknown>;
   const offered = normalizeLegs(src.offered ?? src.offer ?? src.offerAssets ?? src.maker);
   const requested = normalizeLegs(src.requested ?? src.request ?? src.requestAssets ?? src.taker);
   const fee = Number(src.fee);

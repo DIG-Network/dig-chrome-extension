@@ -14,7 +14,7 @@
  *     (each item carrying a SpaceScan coin link + fee + confirmed/pending status).
  */
 
-import { spaceScanCoinUrl } from './links.mjs';
+import { spaceScanCoinUrl } from './links';
 
 /** 1 XCH = 1e12 mojos. */
 export const XCH_MOJOS_PER_UNIT = 1_000_000_000_000;
@@ -27,18 +27,18 @@ export const DIG_BASE_UNITS_PER_UNIT = 1000;
  * asset KEY (`'xch'` → 12, anything else → 3, the Chia CAT convention). This lets the same
  * formatters serve XCH, $DIG, and any tracked CAT.
  */
-function decimals(assetOrDecimals) {
+function decimals(assetOrDecimals: number | string): number {
   if (typeof assetOrDecimals === 'number') return assetOrDecimals;
   return assetOrDecimals === 'xch' ? 12 : 3;
 }
 
 /** Base units per whole unit for an asset key or decimals number. */
-function perUnit(assetOrDecimals) {
+function perUnit(assetOrDecimals: number | string): number {
   return 10 ** decimals(assetOrDecimals);
 }
 
 /** Trim trailing zeros (and a bare trailing dot) from a fixed-decimal string. */
-function trimZeros(s) {
+function trimZeros(s: string): string {
   if (!s.includes('.')) return s;
   return s.replace(/0+$/, '').replace(/\.$/, '');
 }
@@ -51,7 +51,7 @@ function trimZeros(s) {
  * @param {any} resp a number, numeric string, or object with a balance field
  * @returns {number|null}
  */
-export function pickBalance(resp) {
+export function pickBalance(resp: unknown): number | null {
   if (resp == null) return null;
   if (typeof resp === 'number') return Number.isFinite(resp) ? resp : null;
   if (typeof resp === 'string') {
@@ -59,13 +59,14 @@ export function pickBalance(resp) {
     return Number.isFinite(n) ? n : null;
   }
   if (typeof resp !== 'object') return null;
+  const o = resp as Record<string, unknown>;
   for (const k of ['confirmed', 'spendable', 'confirmedWalletBalance', 'confirmed_wallet_balance', 'balance']) {
-    if (Object.prototype.hasOwnProperty.call(resp, k)) {
-      const n = Number(resp[k]);
+    if (Object.prototype.hasOwnProperty.call(o, k)) {
+      const n = Number(o[k]);
       if (Number.isFinite(n)) return n;
     }
   }
-  if (resp.data != null && typeof resp.data === 'object') return pickBalance(resp.data);
+  if (o.data != null && typeof o.data === 'object') return pickBalance(o.data);
   return null;
 }
 
@@ -76,7 +77,7 @@ export function pickBalance(resp) {
  * @param {number|string} decimalsOrAsset decimals count or asset key
  * @returns {string}
  */
-export function formatBaseUnits(value, decimalsOrAsset) {
+export function formatBaseUnits(value: number | string | null, decimalsOrAsset: number | string): string {
   if (value == null) return '—';
   const n = Number(value);
   if (!Number.isFinite(n)) return '—';
@@ -84,12 +85,12 @@ export function formatBaseUnits(value, decimalsOrAsset) {
 }
 
 /** Format mojos as XCH (÷1e12, trailing zeros trimmed); `null` → `'—'`. */
-export function formatXch(mojos) {
+export function formatXch(mojos: number | string | null): string {
   return formatBaseUnits(mojos, 'xch');
 }
 
 /** Format $DIG base units as $DIG (÷1000, 3 dp trimmed); `null` → `'—'`. */
-export function formatDig(baseUnits) {
+export function formatDig(baseUnits: number | string | null): string {
   return formatBaseUnits(baseUnits, 'dig');
 }
 
@@ -97,7 +98,7 @@ export function formatDig(baseUnits) {
  * Format a raw getAssetBalance response for an asset key (`'xch'`|`'dig'`|`'cat'`) or a decimals
  * number to a display string. Unknown/unavailable → `'—'`.
  */
-export function formatAssetBalance(resp, decimalsOrAsset) {
+export function formatAssetBalance(resp: unknown, decimalsOrAsset: number | string): string {
   const bal = pickBalance(resp);
   if (bal == null) return '—';
   return formatBaseUnits(bal, decimalsOrAsset);
@@ -110,7 +111,7 @@ export function formatAssetBalance(resp, decimalsOrAsset) {
  *
  * @throws if the amount is missing, non-numeric, or not strictly positive.
  */
-export function toBaseUnits(amountStr, decimalsOrAsset) {
+export function toBaseUnits(amountStr: string | number | null, decimalsOrAsset: number | string): number {
   const n = Number(String(amountStr == null ? '' : amountStr).trim());
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error('Enter a positive amount');
@@ -119,7 +120,7 @@ export function toBaseUnits(amountStr, decimalsOrAsset) {
 }
 
 /** Abbreviate a long address to `head…tail`; short/empty addresses pass through unchanged. */
-export function shortenAddress(addr, head = 10, tail = 8) {
+export function shortenAddress(addr: string | null, head = 10, tail = 8): string {
   const s = String(addr || '');
   if (s.length <= head + tail + 1) return s;
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
@@ -134,8 +135,15 @@ export function shortenAddress(addr, head = 10, tail = 8) {
  * @param {{address?:string, amount?:string, asset?:string, fee?:string}} form
  * @returns {{ok:boolean, errors:{address?:string, amount?:string, fee?:string}}}
  */
-export function validateSendForm({ address, amount, fee } = {}) {
-  const errors = {};
+export function validateSendForm({
+  address,
+  amount,
+  fee,
+}: { address?: string; amount?: string; asset?: string; fee?: string } = {}): {
+  ok: boolean;
+  errors: { address?: string; amount?: string; fee?: string };
+} {
+  const errors: { address?: string; amount?: string; fee?: string } = {};
   const addr = String(address || '').trim();
   if (!/^xch1[0-9a-z]{6,}$/i.test(addr)) {
     errors.address = 'Enter a valid xch1… address';
@@ -155,15 +163,16 @@ export function validateSendForm({ address, amount, fee } = {}) {
 }
 
 /** Pull the transaction array out of the several shapes chia_getTransactions can return. */
-function txList(raw) {
-  if (Array.isArray(raw)) return raw;
-  if (raw && Array.isArray(raw.transactions)) return raw.transactions;
-  if (raw && Array.isArray(raw.data)) return raw.data;
+function txList(raw: unknown): Record<string, unknown>[] {
+  if (Array.isArray(raw)) return raw as Record<string, unknown>[];
+  const r = raw as { transactions?: unknown; data?: unknown } | null;
+  if (r && Array.isArray(r.transactions)) return r.transactions as Record<string, unknown>[];
+  if (r && Array.isArray(r.data)) return r.data as Record<string, unknown>[];
   return [];
 }
 
 /** Decide incoming vs outgoing from a tx item, tolerating several field conventions. */
-function txDirection(item) {
+function txDirection(item: Record<string, unknown>): 'in' | 'out' {
   const type = item.type != null ? String(item.type).toLowerCase() : '';
   if (type) {
     if (/out|sent|spend/.test(type)) return 'out';
@@ -176,7 +185,7 @@ function txDirection(item) {
 }
 
 /** Decide the asset key ('xch'|'dig'|'cat') for a tx item. */
-function txAsset(item, digAssetId) {
+function txAsset(item: Record<string, unknown>, digAssetId: string): 'xch' | 'dig' | 'cat' {
   const id = String(item.assetId || item.asset_id || item.asset || '').toLowerCase();
   if (!id) return 'xch';
   const dig = String(digAssetId || '').toLowerCase();
@@ -185,7 +194,7 @@ function txAsset(item, digAssetId) {
 }
 
 /** Best-effort timestamp (ms) from a tx item's varied time fields. */
-function txTimestamp(item) {
+function txTimestamp(item: Record<string, unknown>): number {
   const t = Number(
     item.created_at_time ?? item.createdAtTime ?? item.timestamp ?? item.time ?? 0,
   );
@@ -195,13 +204,13 @@ function txTimestamp(item) {
 }
 
 /** The durable coin/tx id from a tx item's varied id fields, or `null` if none is present. */
-function txRawId(item) {
+function txRawId(item: Record<string, unknown>): string | null {
   const id = item.name || item.id || item.transactionId || item.tx_id || item.coinId || item.coin_id;
   return id ? String(id) : null;
 }
 
 /** True if a tx item reports itself confirmed (tolerating several conventions). */
-function txConfirmed(item) {
+function txConfirmed(item: Record<string, unknown>): boolean {
   if (item.confirmed === true) return true;
   if (item.confirmed === false) return false;
   const h = Number(item.confirmedAtHeight ?? item.confirmed_at_height ?? item.confirmed_height ?? 0);
@@ -220,7 +229,26 @@ function txConfirmed(item) {
  *   amountLabel:string, timeLabel:string, timestamp:number, memo:string, feeLabel:string,
  *   statusLabel:string, confirmed:boolean, spaceScanUrl:string|null}>}
  */
-export function activityViewModel(raw, { digAssetId = '', max = 100 } = {}) {
+/** One normalised activity row the Activity view renders directly. */
+export interface ActivityItem {
+  id: string;
+  rawId: string | null;
+  direction: 'in' | 'out';
+  asset: string;
+  amountLabel: string;
+  timeLabel: string;
+  timestamp: number;
+  memo: string;
+  feeLabel: string;
+  statusLabel: string;
+  confirmed: boolean;
+  spaceScanUrl: string | null;
+}
+
+export function activityViewModel(
+  raw: unknown,
+  { digAssetId = '', max = 100 }: { digAssetId?: string; max?: number } = {},
+): ActivityItem[] {
   const items = txList(raw);
   const vm = items.map((item, i) => {
     const asset = txAsset(item, digAssetId);

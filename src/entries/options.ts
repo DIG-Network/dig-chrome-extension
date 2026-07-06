@@ -6,7 +6,7 @@
  * `src/entries/`; the shared parser/resolver come from `#shared/*` so the background read path and
  * these keys can never disagree on the default port.
  */
-import { DIG_BROWSER_URL } from '#shared/links.mjs';
+import { DIG_BROWSER_URL } from '@/lib/links';
 import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from '@/lib/server-config';
 import { digNodeInstallPrompt } from '@/lib/dig-node-status';
 

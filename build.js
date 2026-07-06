@@ -22,29 +22,18 @@ const EXTENSION_FILES = [
   'manifest.json',
   // NB: the popup + full-page wallet UI (popup.html / app.html) are the React shell BUILT BY VITE
   // into dist-web/ and copied into dist/ by buildWebApp() below. The old hand-written vanilla popup
-  // (popup.js / popup-wallet.js / popup.css) was superseded by the React shell (#56) and has been
-  // removed. The pure view-models below are still copied because the vanilla service worker imports
-  // them at runtime; the React bundle inlines its own copies via the #shared/* alias.
-  // Pure popup view-models (wallet number/validation logic, §5.3 resolve verdict). (tabs.mjs was
-  // dead — superseded by src/app/tabs.ts — and removed; qr migrated to src/lib as TS — #68.)
-  'wallet-view.mjs',
-  // Wallet asset registry + tracked-CAT list, and the offers (make/inspect/take/cancel) model.
-  'wallet-assets.mjs',
-  'wallet-offers.mjs',
+  // (popup.js / popup-wallet.js / popup.css) was superseded by the React shell (#56) and removed.
+  //
+  // The pure view-models + contract leaves the SW/pages used to import at the repo root have ALL
+  // migrated to src/ as TypeScript (#68) — wallet-view/-assets/-offers, links, dig-node-status,
+  // dig-control, dig-ledger, apps, qr, error-codes/-page, messages, wallet-methods,
+  // dig-provider-core, agent-surface, wallet-broker, dapp-approval, server-config, custody-session,
+  // store-refs. They now inline into the esbuild SW bundle + the vite React/page bundles (no longer
+  // plain-copied); agent-surface is esbuild-transpiled at build time by generateAgentSurface().
+  //
+  // Only dig-urn (still consumed by the dev-only server/server.js as a runtime .mjs) remains a
+  // plain-copied root view-model for now.
   'dig-urn.mjs',
-  // (error-codes + messages + wallet-methods + dig-provider-core + agent-surface migrated to
-  // src/lib (+ src/agent-surface.ts) as TS — #68; they inline into the SW + vite bundles, and
-  // agent-surface is esbuild-transpiled at build time by generateAgentSurface(). dig-node-status +
-  // dig-control + dig-ledger + apps + qr likewise migrated.)
-  // Ecosystem funnel: shared link constants. (The first-run welcome page welcome.html + its TS
-  // entry src/entries/welcome.ts is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.)
-  'links.mjs',
-  // DIG Home (new-tab override) — newtab.html + src/entries/newtab.ts (+ its co-located
-  // newtab.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
-  // DIG settings (options_ui) — options.html + src/entries/options.ts (+ its co-located
-  // options.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
-  // (apps + wallet-methods + wallet-broker + dapp-approval migrated to src/lib as TS — #68; they
-  // inline into the SW bundle + the vite React bundles, no longer plain-copied.)
   // WalletConnect → Sage transport (runs in the popup page).
   'wallet-wc.js',
   // NB: background.js (the MV3 module service worker) is NOT plain-copied — it is a strict entry at

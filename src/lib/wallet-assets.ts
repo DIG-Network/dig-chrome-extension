@@ -12,7 +12,7 @@
  * convention of 3 decimals (same as $DIG); the user may give it a display name.
  */
 
-import { DIG_ASSET_ID } from './links.mjs';
+import { DIG_ASSET_ID } from './links';
 
 /** XCH — the native coin (1 XCH = 1e12 mojos). `assetId:null` selects XCH in Sage calls. */
 export const XCH_META = Object.freeze({ key: 'xch', ticker: 'XCH', name: 'Chia', decimals: 12, assetId: null });
@@ -27,7 +27,22 @@ export const CAT_DECIMALS = 3;
  * Normalise a CAT asset id (TAIL hash): strip a leading `0x` and surrounding whitespace,
  * lowercase, and require exactly 64 hex chars. Returns the canonical id or `null` if invalid.
  */
-export function normalizeCatId(raw) {
+/** One tracked-CAT entry: its 64-hex TAIL id + an optional display name. */
+export interface WatchedCat {
+  assetId: string;
+  name: string;
+}
+/** An ordered asset row the Assets view shows + queries a balance for. */
+export interface AssetDescriptor {
+  key: 'xch' | 'dig' | 'cat';
+  ticker: string;
+  name: string;
+  decimals: number;
+  assetId: string | null;
+  type: 'cat' | null;
+}
+
+export function normalizeCatId(raw: unknown): string | null {
   if (raw == null) return null;
   let s = String(raw).trim().toLowerCase();
   if (s.startsWith('0x')) s = s.slice(2);
@@ -39,7 +54,7 @@ export function normalizeCatId(raw) {
  * `[{assetId, name}]`, tolerating junk: non-arrays → `[]`, bare-string ids, and entries with a
  * bad/missing id are dropped. Names are coerced to a trimmed string.
  */
-export function parseWatchedCats(stored) {
+export function parseWatchedCats(stored: unknown): WatchedCat[] {
   if (!Array.isArray(stored)) return [];
   const out = [];
   for (const entry of stored) {
@@ -60,7 +75,7 @@ export function parseWatchedCats(stored) {
  * Add a tracked CAT to `list`. Validates the id, refuses XCH/$DIG (built-in) and duplicates.
  * Returns `{ ok, list, error }` — `list` is a NEW array on success, the original otherwise.
  */
-export function addWatchedCat(list, rawId, name = '') {
+export function addWatchedCat(list: unknown, rawId: string, name = ''): { ok: boolean; list: WatchedCat[]; error: string | null } {
   const current = parseWatchedCats(list);
   const id = normalizeCatId(rawId);
   if (!id) return { ok: false, list: current, error: 'Enter a valid 32-byte asset id (0x… TAIL).' };
@@ -74,7 +89,7 @@ export function addWatchedCat(list, rawId, name = '') {
 }
 
 /** Remove a tracked CAT by asset id (tolerating 0x/case); returns a NEW list (no-op if absent). */
-export function removeWatchedCat(list, rawId) {
+export function removeWatchedCat(list: unknown, rawId: string): WatchedCat[] {
   const id = normalizeCatId(rawId);
   const current = parseWatchedCats(list);
   if (!id) return current;
@@ -82,7 +97,7 @@ export function removeWatchedCat(list, rawId) {
 }
 
 /** A tracked CAT's display name, falling back to a shortened TAIL. */
-function catDisplayName(cat) {
+function catDisplayName(cat: { name?: string; assetId: string }): string {
   if (cat.name) return cat.name;
   return `Token ${cat.assetId.slice(0, 6)}…${cat.assetId.slice(-4)}`;
 }
@@ -92,8 +107,8 @@ function catDisplayName(cat) {
  * $DIG, then each tracked CAT. Each descriptor carries the ticker/name/decimals + the
  * `{type, assetId}` a `chip0002_getAssetBalance` call needs.
  */
-export function assetDescriptors(watchedCats) {
-  const cats = parseWatchedCats(watchedCats).map((c) => ({
+export function assetDescriptors(watchedCats: unknown): AssetDescriptor[] {
+  const cats: AssetDescriptor[] = parseWatchedCats(watchedCats).map((c) => ({
     key: 'cat',
     ticker: 'CAT',
     name: catDisplayName(c),
@@ -109,7 +124,7 @@ export function assetDescriptors(watchedCats) {
 }
 
 /** Options for the Send asset `<select>`: XCH, $DIG, then each tracked CAT (value = its TAIL). */
-export function sendAssetOptions(watchedCats) {
+export function sendAssetOptions(watchedCats: unknown): Array<{ value: string; label: string }> {
   const cats = parseWatchedCats(watchedCats).map((c) => ({ value: c.assetId, label: catDisplayName(c) }));
   return [
     { value: 'xch', label: 'XCH' },
@@ -125,7 +140,7 @@ export function sendAssetOptions(watchedCats) {
  *   - a 64-hex TAIL that is tracked → `{ type:'cat', assetId, decimals:3 }`
  * An unknown value returns `null` (the renderer surfaces an error / falls back to XCH).
  */
-export function resolveSendAsset(value, watchedCats) {
+export function resolveSendAsset(value: string, watchedCats: unknown): { type: 'cat' | null; assetId: string | null; decimals: number; ticker: string } | null {
   if (value === 'xch') return { type: null, assetId: null, decimals: 12, ticker: 'XCH' };
   if (value === 'dig') return { type: 'cat', assetId: DIG_META.assetId, decimals: 3, ticker: '$DIG' };
   const id = normalizeCatId(value);

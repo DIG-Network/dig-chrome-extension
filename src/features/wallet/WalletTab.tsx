@@ -4,7 +4,7 @@ import { FourState } from '@/components/FourState';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { setWalletView } from '@/features/ui/uiSlice';
 import { WALLET_VIEWS, type WalletView } from '@/app/tabs';
-import { shortenAddress } from '#shared/wallet-view.mjs';
+import { shortenAddress } from '@/lib/wallet-view';
 import { useGetConnectionQuery, useGetBalancesQuery, useDisconnectMutation } from '@/features/wallet/walletApi';
 import { ConnectPanel } from '@/features/wallet/ConnectPanel';
 import { Home } from '@/features/wallet/Home';
