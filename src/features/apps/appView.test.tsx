@@ -114,6 +114,12 @@ describe('AppView (in-window dApp app-view)', () => {
     expect(screen.getByTestId('appview-blocked')).toBeInTheDocument();
   });
 
+  it('moves focus to the Back control on open (WCAG — lands inside the dialog)', () => {
+    spySendMessage();
+    renderWithProviders(<AppView />, { store: openedStore(EXT_APP) });
+    expect(document.activeElement).toBe(screen.getByTestId('appview-back'));
+  });
+
   it('back closes the app-view', () => {
     spySendMessage();
     const store = openedStore(EXT_APP);

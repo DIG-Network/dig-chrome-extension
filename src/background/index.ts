@@ -672,11 +672,11 @@ const DIG_LOCAL_RULE_ID = 1;
 const processedUrls = new Map();
 const PROCESSED_URL_TTL = 5000; // 5 seconds - URLs expire after this time
 
-// isDigLocalResolvable removed: all content is served via rpc.dig.net RPC POST.
-// No localhost/dig.local GET probing needed.
-
-// Stub retained only so any surviving reference doesn't crash — always returns false.
-// (All call-sites that acted on a true result have been removed.)
+// Legacy `isDigLocalResolvable` removed. NOTE: content is NOT hard-defaulted to rpc.dig.net — the
+// §5.3 node ladder is honored by `getRpcEndpoint`/`resolveLocalDigNode`, which probe the local node
+// (dig.local → localhost) FIRST and fall back to the hosted rpc.dig.net gateway only when none is
+// reachable. This stub is retained only so any surviving reference doesn't crash (always false);
+// all call-sites that acted on a true result have been removed.
 async function isDigLocalResolvable() {
   return false;
 }

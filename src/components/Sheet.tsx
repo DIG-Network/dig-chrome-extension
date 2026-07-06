@@ -3,8 +3,9 @@ import { useEffect, useRef, type ReactNode } from 'react';
 /**
  * A modal dialog used for the Send / Receive actions — a bottom sheet on compact, a centered modal
  * on wide (the SAME component per the IA). Accessible: `role="dialog"` + `aria-modal`, focus moves
- * in on open + is restored on close, Escape closes, a backdrop click closes. Copy is passed in by
- * the caller (already localized).
+ * in on open + is restored on close, Tab is TRAPPED within the dialog (WCAG 2.2 — focus can't reach
+ * the inert page behind it), Escape closes, a backdrop click closes. Copy is passed in by the caller
+ * (already localized).
  */
 export function Sheet({
   title,
@@ -24,7 +25,32 @@ export function Sheet({
     restoreTo.current = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      // Trap Tab within the dialog so keyboard focus can't reach the inert page behind it (WCAG 2.2).
+      if (e.key !== 'Tab') return;
+      const dialog = ref.current;
+      if (!dialog) return;
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === dialog)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => {

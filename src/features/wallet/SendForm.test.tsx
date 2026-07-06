@@ -35,4 +35,22 @@ describe('SendForm', () => {
     await waitFor(() => expect(request).toHaveBeenCalled());
     expect(request).toHaveBeenCalledWith('chia_send', expect.objectContaining({ amount: 1_500_000_000_000 }));
   });
+
+  it('shows a "Done" success button (not the mislabeled "Receive"), then calls onDone', async () => {
+    const request = vi.fn(async () => ({ success: true }));
+    const transport = makeTransport({ request });
+    const store = createStore(transport);
+    const onDone = vi.fn();
+    renderWithProviders(<SendForm assets={assets} onDone={onDone} />, { transport, store });
+
+    await userEvent.type(screen.getByTestId('send-amount'), '1.5');
+    await userEvent.type(screen.getByTestId('send-address'), 'xch1validaddress000000');
+    await userEvent.click(screen.getByTestId('send-submit'));
+
+    const success = await screen.findByTestId('send-success');
+    const doneBtn = success.querySelector('button')!;
+    expect(doneBtn.textContent).toBe('Done'); // send.done — was wrongly 'Receive' (receive.title)
+    await userEvent.click(doneBtn);
+    expect(onDone).toHaveBeenCalled();
+  });
 });
