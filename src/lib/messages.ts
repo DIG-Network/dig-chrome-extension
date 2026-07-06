@@ -77,8 +77,14 @@ import { DIG_ERR } from './error-codes';
  * the 4004 stub. Writes join sign/message on the approval-window queue (built in the vault, summary
  * decoded from the built artifact, broadcast/released only on approve); a user reject now surfaces as
  * CHIP-0002 4002 USER_REJECTED (was 4001). No action names changed; the served method set grew.
+ *
+ * v14 (#91 coin control): added `listCoins` (per-asset unspent coins — id / amount / confirmed
+ * height), `prepareSplit` (one/more coins → N distinct self coins), and `prepareCombine` (N coins →
+ * one self coin) — all routed to the offscreen vault, built on the same `Spends`/`Action` driver as
+ * Send and broadcast via the shared `confirmSend`. `prepareSend` also gained an optional `coinIds`
+ * to hand-pick which coins fund a send (overriding auto-selection). No spend type / wasm added.
  */
-export const MESSAGE_PROTOCOL_VERSION = 13;
+export const MESSAGE_PROTOCOL_VERSION = 14;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -140,6 +146,10 @@ export const ACTIONS = Object.freeze({
   listNfts: 'listNfts',
   prepareNftTransfer: 'prepareNftTransfer',
   confirmNftTransfer: 'confirmNftTransfer',
+  // ── coin control (#91): per-asset coin listing + split / combine (confirmed via confirmSend) ──
+  listCoins: 'listCoins',
+  prepareSplit: 'prepareSplit',
+  prepareCombine: 'prepareCombine',
   // ── in-window app-view (#66): install/remove the on.dig.net framing bypass DNR rule ──
   appViewFraming: 'appViewFraming',
   // ── verification + node status ──
@@ -321,8 +331,8 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: "{ balances:{ xch:number, cats:{ [assetId]:number } }, cached?:boolean } | { success:false, code, message }",
   },
   [ACTIONS.prepareSend]: {
-    summary: 'Build (not sign/broadcast) an XCH or CAT send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve. A CAT send carries the token TAIL as assetId (omitted / "xch" = native XCH); the vault routes on assetId (#121).',
-    request: '{ action, recipient:string /* xch1… */, amount:string /* base units */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */ }',
+    summary: 'Build (not sign/broadcast) an XCH or CAT send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve. A CAT send carries the token TAIL as assetId (omitted / "xch" = native XCH); the vault routes on assetId (#121). An optional coinIds hand-picks which coins fund the send, overriding auto-selection (#91).',
+    request: '{ action, recipient:string /* xch1… */, amount:string /* base units */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */, coinIds?:string[] /* hex; hand-picked funding coins */ }',
     response: "{ pendingId:string, summary:{ asset:'XCH'|<assetId>, sent, change, fee, recipientPuzzleHashHex, coinCount } } | { success:false, code, message }",
   },
   [ACTIONS.confirmSend]: {
@@ -374,6 +384,21 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Sign + BROADCAST a previously-prepared NFT transfer (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.listCoins]: {
+    summary: "List the wallet's UNSPENT coins for one asset (coin control #91) — native XCH at the derived inner puzzle hashes, or a CAT at its CAT puzzle hash, both HD schemes. Each coin carries id + amount + confirmed height. Read-only; routed purely by assetId (#121).",
+    request: '{ action, assetId?:string /* CAT TAIL hex; omit for native XCH */ }',
+    response: '{ coins:[{ coinId:string, amount:string, confirmedHeight:number }] } | { success:false, code, message }',
+  },
+  [ACTIONS.prepareSplit]: {
+    summary: 'Build (not sign/broadcast) a SPLIT of one/more of the wallet coins into N distinct self coins (coin control #91); hold it under a pending id and return the decoded (tamper-resistant, self-send-verified) summary to approve. Broadcast via confirmSend. Routed on assetId (#121).',
+    request: '{ action, coinIds:string[] /* hex */, outputs:number /* ≥2 */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */ }',
+    response: "{ pendingId:string, coinOpSummary:{ asset, kind:'split', inputCoinCount, outputCoinCount, total, fee } } | { success:false, code, message }",
+  },
+  [ACTIONS.prepareCombine]: {
+    summary: 'Build (not sign/broadcast) a COMBINE of two or more of the wallet coins into a SINGLE self coin (coin control #91); hold it under a pending id and return the decoded summary to approve. Broadcast via confirmSend. Routed on assetId (#121).',
+    request: '{ action, coinIds:string[] /* hex, ≥2 */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */ }',
+    response: "{ pendingId:string, coinOpSummary:{ asset, kind:'combine', inputCoinCount, outputCoinCount, total, fee } } | { success:false, code, message }",
   },
   [ACTIONS.appViewFraming]: {
     summary: "In-window app-view (#66): install (enable:true) or remove (enable:false) an ephemeral declarativeNetRequest session rule that strips *.on.dig.net's X-Frame-Options + CSP framing headers for the app-view iframe, so a DIG dApp renders in-window instead of a forced tab. Scoped to on.dig.net sub-frames (and the sender's tab in the expanded layout); removed when the app-view closes.",
