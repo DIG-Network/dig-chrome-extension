@@ -44,6 +44,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'getDigNodeStatus', 'walletConsent',
     // Self-custody wallet (#56): keystore ops routed to the offscreen vault:
     'createWallet', 'importWallet', 'unlockWallet', 'lockWallet', 'revealPhrase', 'getLockState',
+    // Multi-wallet switcher (#90): registry list + switch/rename/remove routed via handleCustodyAction:
+    'listWallets', 'switchWallet', 'renameWallet', 'removeWallet',
     'getReceiveAddress', 'getCustodyBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity',
     'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade',
     // NFTs / Collectibles (#56): list + transfer routed to the offscreen vault:

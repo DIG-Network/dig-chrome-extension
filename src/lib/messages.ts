@@ -83,8 +83,15 @@ import { DIG_ERR } from './error-codes';
  * one self coin) — all routed to the offscreen vault, built on the same `Spends`/`Action` driver as
  * Send and broadcast via the shared `confirmSend`. `prepareSend` also gained an optional `coinIds`
  * to hand-pick which coins fund a send (overriding auto-selection). No spend type / wasm added.
+ *
+ * v15 (#90 multi-wallet switcher): added `listWallets` (record-free registry metadata + the active
+ * id), `switchWallet` (activate another wallet — instant when its key is cached this session, else
+ * unlock-then-activate, else NEEDS_UNLOCK), `renameWallet`, and `removeWallet` (never the last;
+ * re-homes the active wallet). The SW keeps a per-wallet DIGWX1 record registry over the existing
+ * keystore (no new crypto/wasm); the offscreen vault caches several unlocked keys and switches which
+ * is active. `getLockState`/create/import already carry `activeWalletId`.
  */
-export const MESSAGE_PROTOCOL_VERSION = 14;
+export const MESSAGE_PROTOCOL_VERSION = 15;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -132,6 +139,11 @@ export const ACTIONS = Object.freeze({
   lockWallet: 'lockWallet',
   revealPhrase: 'revealPhrase',
   getLockState: 'getLockState',
+  // ── multi-wallet switcher (#90): registry over the per-wallet DIGWX1 records ──
+  listWallets: 'listWallets',
+  switchWallet: 'switchWallet',
+  renameWallet: 'renameWallet',
+  removeWallet: 'removeWallet',
   getReceiveAddress: 'getReceiveAddress',
   getCustodyBalances: 'getCustodyBalances',
   prepareSend: 'prepareSend',
@@ -319,6 +331,29 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: "Report the wallet lock state: 'none' (no wallet), 'locked' (wallet exists, key not in memory / TTL expired), or 'unlocked'.",
     request: '{ action }',
     response: "{ lockState:'none'|'locked'|'unlocked', activeWalletId?:string, unlockExpiry?:number }",
+  },
+  [ACTIONS.listWallets]: {
+    summary:
+      'Multi-wallet (#90): list the wallet registry as record-FREE metadata (id, label, createdAt, active) + the active id. The encrypted DIGWX1 records never leave the SW.',
+    request: '{ action }',
+    response: '{ wallets:[{ id, label, createdAt, active:boolean }], activeWalletId:string|null } | { success:false, code, message }',
+  },
+  [ACTIONS.switchWallet]: {
+    summary:
+      "Multi-wallet (#90): make another wallet active. Instant when its key is cached in the vault this session; with a password it unlocks-then-activates; without one for a not-yet-unlocked wallet it returns NEEDS_UNLOCK so the UI prompts. The active wallet drives balances/receive/send/activity.",
+    request: '{ action, walletId:string, password?:string }',
+    response: "{ lockState:'unlocked', activeWalletId:string } | { success:false, code:'NEEDS_UNLOCK'|'NO_WALLET'|'UNLOCK_FAILED', message }",
+  },
+  [ACTIONS.renameWallet]: {
+    summary: 'Multi-wallet (#90): rename one wallet (metadata only — no key, no password). Returns the updated registry metadata + active id.',
+    request: '{ action, walletId:string, label:string }',
+    response: '{ success:true, wallets:[{ id, label, createdAt, active }], activeWalletId:string|null } | { success:false, code:\'NO_WALLET\'|\'BAD_REQUEST\', message }',
+  },
+  [ACTIONS.removeWallet]: {
+    summary:
+      'Multi-wallet (#90): remove one wallet (zeroizes its cached key). Refuses the last wallet (LAST_WALLET). Removing the active wallet re-homes active to another; the session stays unlocked only if the new active wallet\'s key is still cached, else it locks.',
+    request: '{ action, walletId:string }',
+    response: "{ success:true, wallets:[{ id, label, createdAt, active }], activeWalletId:string|null, lockState:'locked'|'unlocked' } | { success:false, code:'LAST_WALLET'|'NO_WALLET', message }",
   },
   [ACTIONS.getReceiveAddress]: {
     summary: 'Derive the wallet\'s pooled receive address (index 0, unhardened) in the offscreen vault. Requires an unlocked wallet.',

@@ -15,6 +15,7 @@ import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
 import { PortfolioHero } from '@/features/wallet/PortfolioHero';
 import { assetUsdValue, portfolioValue } from '@/features/wallet/portfolioValue';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
+import { WalletSwitcher } from '@/features/wallet/custody/WalletSwitcher';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
@@ -66,6 +67,9 @@ export function CustodyWallet() {
 
   return (
     <div data-testid="custody-wallet">
+      <div className="dig-toggle-row" style={{ marginBottom: 12 }}>
+        <WalletSwitcher />
+      </div>
       <PrivacyNote />
 
       <section className="dig-card" aria-labelledby="custody-portfolio-title">

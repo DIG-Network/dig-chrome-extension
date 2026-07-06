@@ -3,6 +3,20 @@ import { ACTIONS } from '@/lib/messages';
 import type { LockState } from '@/features/wallet/walletSlice';
 import type { ActivityEvent } from '@/offscreen/activity';
 import type { WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
+import type { WalletMeta } from '@/lib/wallet-registry';
+
+/** The record-free registry snapshot the switcher reads (#90): every wallet's metadata + the active id. */
+export interface WalletsResult {
+  wallets: WalletMeta[];
+  activeWalletId: string | null;
+}
+/** The reply from a registry mutation (rename / remove): the updated metadata list + active id. */
+export interface WalletsMutationResult {
+  wallets: WalletMeta[];
+  activeWalletId: string | null;
+  /** removeWallet only: `locked` when re-homing the active wallet landed on one not unlocked this session. */
+  lockState?: LockState;
+}
 
 /**
  * Self-custody endpoints (#56) — the ONLY wallet backend (the extension holds its own key; there is
@@ -54,6 +68,13 @@ export interface PreparedCoinOp {
   coinOpSummary: { asset: string; kind: 'split' | 'combine'; inputCoinCount: number; outputCoinCount: number; total: string; fee: string };
 }
 
+/**
+ * The cache tags to invalidate whenever the ACTIVE wallet changes (create / import / switch / remove
+ * an active wallet): every wallet-derived view — the registry list, lock state, balances, activity,
+ * receive address, collectibles, and the coin list — must re-read for the newly-active wallet.
+ */
+const ACTIVE_WALLET_INVALIDATION = ['Wallets', 'LockState', 'Balances', 'Activity', 'Address', 'Collectibles', 'Coins'] as const;
+
 export const custodyApi = api.injectEndpoints({
   endpoints: (build) => ({
     getLockState: build.query<LockStateResult, void>({
@@ -63,7 +84,7 @@ export const custodyApi = api.injectEndpoints({
 
     createWallet: build.mutation<CreateWalletResult, { password: string; label?: string; strong?: boolean }>({
       query: (arg) => ({ action: ACTIONS.createWallet, ...arg }),
-      invalidatesTags: ['LockState', 'Balances', 'Activity', 'Address'],
+      invalidatesTags: ACTIVE_WALLET_INVALIDATION,
     }),
 
     importWallet: build.mutation<
@@ -71,7 +92,32 @@ export const custodyApi = api.injectEndpoints({
       { mnemonic: string; password: string; label?: string; strong?: boolean }
     >({
       query: (arg) => ({ action: ACTIONS.importWallet, ...arg }),
-      invalidatesTags: ['LockState', 'Balances', 'Activity', 'Address'],
+      invalidatesTags: ACTIVE_WALLET_INVALIDATION,
+    }),
+
+    // ── Multi-wallet switcher (#90) ──
+    // The registry snapshot: record-free metadata for every wallet + the active id.
+    listWallets: build.query<WalletsResult, void>({
+      query: () => ({ action: ACTIONS.listWallets }),
+      providesTags: ['Wallets'],
+    }),
+    // Activate another wallet. Instant when its key is cached this session; with a password it
+    // unlocks-then-activates; without one for a not-yet-unlocked wallet it errors NEEDS_UNLOCK so the
+    // switcher prompts. Everything wallet-derived is invalidated so the whole UI re-reads the new wallet.
+    switchWallet: build.mutation<{ lockState: LockState; activeWalletId: string }, { walletId: string; password?: string }>({
+      query: (arg) => ({ action: ACTIONS.switchWallet, ...arg }),
+      invalidatesTags: ACTIVE_WALLET_INVALIDATION,
+    }),
+    // Rename one wallet (metadata only — no key, no password). Only the registry list changes.
+    renameWallet: build.mutation<WalletsMutationResult, { walletId: string; label: string }>({
+      query: (arg) => ({ action: ACTIONS.renameWallet, ...arg }),
+      invalidatesTags: ['Wallets'],
+    }),
+    // Remove one wallet (zeroizes its cached key); refuses the last (LAST_WALLET). Removing the active
+    // one re-homes active, so invalidate the full wallet-derived set alongside the registry list.
+    removeWallet: build.mutation<WalletsMutationResult, { walletId: string }>({
+      query: (arg) => ({ action: ACTIONS.removeWallet, ...arg }),
+      invalidatesTags: ACTIVE_WALLET_INVALIDATION,
     }),
 
     unlockWallet: build.mutation<UnlockResult, { password: string }>({
@@ -161,6 +207,10 @@ export const {
   useGetLockStateQuery,
   useCreateWalletMutation,
   useImportWalletMutation,
+  useListWalletsQuery,
+  useSwitchWalletMutation,
+  useRenameWalletMutation,
+  useRemoveWalletMutation,
   useUnlockWalletMutation,
   useLockWalletMutation,
   useRevealPhraseMutation,
