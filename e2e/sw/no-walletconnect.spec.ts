@@ -125,11 +125,16 @@ test('window.chia connect + sign work with NO WalletConnect (self-custody vault)
   const consent = await swSend<{ success?: boolean }>(ext, { action: 'walletConsent', origin: dappOrigin, approved: true });
   expect(consent.success).not.toBe(false);
 
-  // CONNECT — the address comes straight from the offscreen self-custody vault (no WalletConnect).
+  // CONNECT — served by the offscreen self-custody vault (no WalletConnect). Per the CHIP-0002
+  // contract, connect resolves a boolean; the address is read separately (getAddress below).
   const conn = await dappRequest(dapp, 'chip0002_connect');
   expect(conn.ok, `connect failed: ${conn.ok ? '' : conn.error}`).toBe(true);
-  const address = (conn.data as { address?: string }).address;
-  expect(typeof address).toBe('string');
+  expect(conn.data).toBe(true);
+
+  // READ — getAddress returns the wallet's receive address from the vault (no WalletConnect).
+  const addr = await dappRequest(dapp, 'chia_getAddress');
+  expect(addr.ok).toBe(true);
+  const address = typeof addr.data === 'string' ? addr.data : (addr.data as { address?: string }).address;
   expect(address).toMatch(/^xch1/);
 
   // READ — getPublicKeys is served from the vault (no approval, no chain).

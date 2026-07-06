@@ -32,7 +32,7 @@ test('connect() resolves, flips isConnected, and fires the connect event', async
   });
   provider.on('connect', (d: unknown) => events.push(d));
   const r = await provider.connect();
-  assert.deepEqual(r, { connected: true });
+  assert.equal(r, true);
   assert.equal(provider.isConnected(), true);
   assert.deepEqual(events, [{ connected: true }]);
 });
@@ -52,7 +52,7 @@ test('request({method:"connect"}) dispatches into connect()', async () => {
     bridgeCall: async (method: string) => { calls++; assert.equal(method, 'chip0002_connect'); return { status: 200, body: { data: { ok: 1 } } }; },
   });
   const r = await provider.request({ method: 'connect', params: { eager: false } });
-  assert.deepEqual(r, { ok: 1 });
+  assert.equal(r, true);
   assert.equal(calls, 1);
   assert.equal(provider.isConnected(), true);
 });
@@ -62,7 +62,7 @@ test('request({method:"chip0002_connect"}) also dispatches into connect()', asyn
     bridgeCall: async () => ({ status: 200, body: { data: { ok: 2 } } }),
   });
   const r = await provider.request({ method: 'chip0002_connect' });
-  assert.deepEqual(r, { ok: 2 });
+  assert.equal(r, true);
 });
 
 test('connect() polls through 202 pending-approval responses then resolves', async () => {
@@ -82,7 +82,7 @@ test('connect() polls through 202 pending-approval responses then resolves', asy
       },
     });
     const r = await provider.connect();
-    assert.deepEqual(r, { approved: true });
+    assert.equal(r, true);
     assert.equal(attempt, 3, 'should have retried twice before approval');
     assert.equal(provider.isConnected(), true);
   } finally {
@@ -96,7 +96,7 @@ test('connect() propagates a non-pending error instead of looping forever', asyn
   });
   await assert.rejects(
     () => provider.connect(),
-    (e: unknown) => { assert.equal((e as { code?: number }).code, 4100); return true; }
+    (e: unknown) => { assert.equal((e as { code?: number }).code, 4001); return true; }
   );
   assert.equal(provider.isConnected(), false);
 });
@@ -120,5 +120,5 @@ test('a throwing connect listener is isolated and does not reject connect()', as
   provider.on('connect', () => { throw new Error('listener blew up'); });
   // Must still resolve despite the listener throwing.
   const r = await provider.connect();
-  assert.deepEqual(r, { n: 1 });
+  assert.equal(r, true);
 });

@@ -198,7 +198,7 @@ test('multiple queued requests share one summon and drain independently', async 
 test('an unsupported (known) method is honestly rejected, not silently signed', async () => {
   const { m, calls } = makeManager();
   const env = await m.route({ method: 'createOffer', params: {}, origin: ORIGIN });
-  assert.equal(env.status, 501);
+  assert.equal(env.status, 404); // → CHIP-0002 4004 METHOD_NOT_FOUND (reference-parity stub)
   assert.equal(calls.summon, 0);
 });
 

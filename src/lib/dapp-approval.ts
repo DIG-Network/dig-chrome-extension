@@ -12,8 +12,8 @@
  *     approval window (`chrome.windows.create`, injected as `summonWindow`); the request promise
  *     stays pending until the window returns a decision. Approve → the vault signs (the key never
  *     leaves the offscreen document) and the promise resolves with the signature; reject → an error.
- *   - **unsupported** (a known wallet method not yet wired to custody) → an honest `501`, never a
- *     silent sign.
+ *   - **unsupported** (a known wallet method not yet wired to custody) → an honest `404`
+ *     (→ CHIP-0002 4004 METHOD_NOT_FOUND), never a silent sign.
  *
  * The decoded approval SUMMARY is derived FROM THE BUILT SPEND by the vault (`decodeDappSpend`),
  * never from page-supplied text (§5.5 tamper resistance). Pure/chrome-free: consent lookups, the
@@ -231,7 +231,9 @@ export class DappApprovalManager {
       const originRisk = this.deps.assessOrigin ? await this.#risk(origin) : undefined;
       return this.#enqueue({ origin, method: norm, kind: 'signMessage', params: { message: String(message), publicKey }, summary, originRisk });
     }
-    if (kind === 'unsupported') return err(501, `Method ${norm} is not yet supported by the custody wallet`);
+    // A known wallet method not yet wired to custody → 404 so the provider surfaces the CHIP-0002
+    // 4004 METHOD_NOT_FOUND (reference-parity stubbing), not a 5xx/disconnected class.
+    if (kind === 'unsupported') return err(404, `Method ${norm} is not yet supported by the custody wallet`);
     return err(404, `Unsupported method: ${norm}`);
   }
 
