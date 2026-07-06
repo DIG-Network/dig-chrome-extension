@@ -312,4 +312,13 @@ export const es: Record<string, string> = {
   "dapp.approval.approve": "Aprobar",
   "dapp.approval.reject": "Rechazar",
   "dapp.approval.working": "Procesando…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "Riesgo alto — revísalo con cuidado",
+  "dapp.approval.risk.title.caution": "Revísalo antes de aprobar",
+  "dapp.approval.risk.confirm": "Entiendo el riesgo y quiero aprobar de todos modos",
+  "dapp.approval.risk.DRAIN_ALL": "Esta solicitud envía casi todos los fondos seleccionados a una dirección fuera de tu billetera.",
+  "dapp.approval.risk.HIGH_FEE": "La comisión de red es inusualmente alta.",
+  "dapp.approval.risk.CANNOT_SIGN": "Tu billetera no puede firmar por completo esta solicitud.",
+  "dapp.approval.risk.FOREIGN_INPUTS": "Esta solicitud incluye monedas que tu billetera no posee; los importes mostrados no pueden verificarse por completo.",
 };

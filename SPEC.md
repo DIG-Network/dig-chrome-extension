@@ -1058,6 +1058,17 @@ the unspoofable `sender.origin`) gates every request.
   request shows the exact bytes to be signed. A locked wallet is flagged `needsUnlock` (the window shows
   the unlock gate, never a fabricated summary); an undecodable request is flagged `decodeError` (only
   Reject is offered).
+- **Anti-drainer risk layer (P0-3).** Before the user approves a coin-spend request, `assessSpendRisk`
+  (`src/lib/spend-risk.ts`, pure) inspects the decoded summary and flags high-risk patterns with stable
+  machine codes: `DRAIN_ALL` (value leaves the wallet with ≤1% kept back as change — the drainer
+  pattern), `HIGH_FEE` (reserved fee exceeds the amount sent, or ≥ 0.1 XCH absolute), `CANNOT_SIGN` (a
+  required signer the wallet cannot satisfy), `FOREIGN_INPUTS` (the spend mixes in coins the wallet does
+  not own, so the mojo amounts are untrusted). Mojo-based flags (`DRAIN_ALL`/`HIGH_FEE`) are computed
+  ONLY when every input is the wallet's own (`allInputsSelf`) — the only case the amounts are
+  trustworthy; otherwise `FOREIGN_INPUTS` is raised instead. The assessment is `none` / `caution` /
+  `high`; a `high` assessment renders a red risk banner (`role="alert"`) and GATES Approve behind an
+  explicit "I understand the risk" acknowledgement. All heuristics are Chia-native and evaluated
+  on-device — nothing is sent off the device, no external list is consulted.
 - **Approve → the offscreen vault signs** (`signDappSpend` reuses the §18.7 signer; `signMessage`
   BLS-signs the raw message bytes) and the `walletRpc` promise resolves with the aggregated signature
   (the dApp broadcasts — the extension does NOT push a dApp-signed bundle). **Reject** resolves with a

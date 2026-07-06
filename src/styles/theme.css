@@ -214,6 +214,40 @@ h2.dig-heading {
   background: transparent;
   border-color: transparent;
 }
+.dig-btn--danger {
+  background: linear-gradient(120deg, var(--dig-bad), color-mix(in srgb, var(--dig-bad) 70%, #000));
+  border-color: transparent;
+  color: #fff;
+}
+.dig-btn--danger:hover:not(:disabled) {
+  color: #fff;
+  filter: brightness(1.05);
+}
+/* ── anti-drainer risk banner (#67 P0-3) ── */
+.dig-banner {
+  border: 1px solid var(--dig-border);
+  border-radius: var(--dig-radius, 8px);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.dig-banner--warn {
+  color: var(--dig-accent-ink);
+  border-color: var(--dig-accent-soft);
+  background: color-mix(in srgb, var(--dig-warn) 12%, transparent);
+}
+.dig-banner--danger {
+  color: var(--dig-bad);
+  border-color: color-mix(in srgb, var(--dig-bad) 35%, transparent);
+  background: color-mix(in srgb, var(--dig-bad) 10%, transparent);
+}
+.dig-check {
+  font-size: 13px;
+  cursor: pointer;
+}
+.dig-check input {
+  margin-top: 2px;
+  cursor: pointer;
+}
 .dig-actionbar {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

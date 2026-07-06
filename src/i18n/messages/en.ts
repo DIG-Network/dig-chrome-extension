@@ -315,4 +315,13 @@ export const en: Record<string, string> = {
   'dapp.approval.approve': 'Approve',
   'dapp.approval.reject': 'Reject',
   'dapp.approval.working': 'Working…',
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  'dapp.approval.risk.title.high': 'High risk — review carefully',
+  'dapp.approval.risk.title.caution': 'Please review before approving',
+  'dapp.approval.risk.confirm': 'I understand the risk and want to approve anyway',
+  'dapp.approval.risk.DRAIN_ALL': 'This request sends nearly all of the selected funds to an address outside your wallet.',
+  'dapp.approval.risk.HIGH_FEE': 'The network fee is unusually large.',
+  'dapp.approval.risk.CANNOT_SIGN': 'Your wallet cannot fully sign this request.',
+  'dapp.approval.risk.FOREIGN_INPUTS': 'This request includes coins your wallet does not own; the amounts shown cannot be fully verified.',
 };

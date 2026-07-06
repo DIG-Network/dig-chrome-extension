@@ -312,4 +312,13 @@ export const tr: Record<string, string> = {
   "dapp.approval.approve": "Onayla",
   "dapp.approval.reject": "Reddet",
   "dapp.approval.working": "İşleniyor…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "Yüksek risk — dikkatlice inceleyin",
+  "dapp.approval.risk.title.caution": "Onaylamadan önce inceleyin",
+  "dapp.approval.risk.confirm": "Riski anlıyorum ve yine de onaylamak istiyorum",
+  "dapp.approval.risk.DRAIN_ALL": "Bu istek, seçilen fonların neredeyse tamamını cüzdanınızın dışındaki bir adrese gönderir.",
+  "dapp.approval.risk.HIGH_FEE": "Ağ ücreti alışılmadık derecede yüksek.",
+  "dapp.approval.risk.CANNOT_SIGN": "Cüzdanınız bu isteği tam olarak imzalayamıyor.",
+  "dapp.approval.risk.FOREIGN_INPUTS": "Bu istek, cüzdanınızın sahip olmadığı coinleri içeriyor; gösterilen tutarlar tam olarak doğrulanamıyor.",
 };

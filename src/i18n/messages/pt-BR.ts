@@ -312,4 +312,13 @@ export const ptBR: Record<string, string> = {
   "dapp.approval.approve": "Aprovar",
   "dapp.approval.reject": "Rejeitar",
   "dapp.approval.working": "Processando…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "Risco alto — revise com atenção",
+  "dapp.approval.risk.title.caution": "Revise antes de aprovar",
+  "dapp.approval.risk.confirm": "Entendo o risco e quero aprovar mesmo assim",
+  "dapp.approval.risk.DRAIN_ALL": "Esta solicitação envia quase todos os fundos selecionados para um endereço fora da sua carteira.",
+  "dapp.approval.risk.HIGH_FEE": "A taxa de rede está excepcionalmente alta.",
+  "dapp.approval.risk.CANNOT_SIGN": "Sua carteira não pode assinar totalmente esta solicitação.",
+  "dapp.approval.risk.FOREIGN_INPUTS": "Esta solicitação inclui moedas que sua carteira não possui; os valores exibidos não podem ser totalmente verificados.",
 };

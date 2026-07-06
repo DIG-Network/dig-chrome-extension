@@ -312,4 +312,13 @@ export const fr: Record<string, string> = {
   "dapp.approval.approve": "Approuver",
   "dapp.approval.reject": "Refuser",
   "dapp.approval.working": "Traitement…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "Risque élevé — vérifiez attentivement",
+  "dapp.approval.risk.title.caution": "Vérifiez avant d’approuver",
+  "dapp.approval.risk.confirm": "Je comprends le risque et je veux approuver quand même",
+  "dapp.approval.risk.DRAIN_ALL": "Cette demande envoie la quasi-totalité des fonds sélectionnés vers une adresse hors de votre portefeuille.",
+  "dapp.approval.risk.HIGH_FEE": "Les frais de réseau sont anormalement élevés.",
+  "dapp.approval.risk.CANNOT_SIGN": "Votre portefeuille ne peut pas signer entièrement cette demande.",
+  "dapp.approval.risk.FOREIGN_INPUTS": "Cette demande inclut des pièces que votre portefeuille ne possède pas ; les montants affichés ne peuvent pas être entièrement vérifiés.",
 };

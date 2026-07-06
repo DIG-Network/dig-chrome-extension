@@ -312,4 +312,13 @@ export const zhCN: Record<string, string> = {
   "dapp.approval.approve": "批准",
   "dapp.approval.reject": "拒绝",
   "dapp.approval.working": "处理中…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "高风险 — 请仔细核对",
+  "dapp.approval.risk.title.caution": "批准前请核对",
+  "dapp.approval.risk.confirm": "我了解风险，仍要批准",
+  "dapp.approval.risk.DRAIN_ALL": "此请求会将所选资金几乎全部发送到您钱包之外的地址。",
+  "dapp.approval.risk.HIGH_FEE": "网络手续费异常高。",
+  "dapp.approval.risk.CANNOT_SIGN": "您的钱包无法完整签署此请求。",
+  "dapp.approval.risk.FOREIGN_INPUTS": "此请求包含并非您钱包所拥有的币；所示金额无法完全核实。",
 };
