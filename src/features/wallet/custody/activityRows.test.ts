@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { activityRows } from './activityRows';
-import { DIG_ASSET_ID } from '#shared/links.mjs';
+import { DIG_ASSET_ID } from '@/lib/links';
 import type { ActivityEvent } from '@/offscreen/activity';
 
 const ev = (o: Partial<ActivityEvent>): ActivityEvent => ({

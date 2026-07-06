@@ -3,7 +3,7 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { TradePanel } from '@/features/wallet/custody/TradePanel';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
-import { DIG_ASSET_ID } from '#shared/links.mjs';
+import { DIG_ASSET_ID } from '@/lib/links';
 
 /** XCH + $DIG assets so the give/get pickers have two distinct legs. */
 function twoAssets() {

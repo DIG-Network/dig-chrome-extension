@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ExternalLink } from '@/components/ExternalLink';
-import { validateSendForm, toBaseUnits, formatBaseUnits } from '#shared/wallet-view.mjs';
+import { validateSendForm, toBaseUnits, formatBaseUnits } from '@/lib/wallet-view';
 import type { WalletNft } from '@/offscreen/nfts';
 import { usePrepareNftTransferMutation, useConfirmNftTransferMutation } from '@/features/collectibles/collectiblesApi';
 import { useLazySendStatusQuery } from '@/features/wallet/custodyApi';

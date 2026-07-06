@@ -9,7 +9,7 @@
  * `icon` and `link` are ABSOLUTE URLs. Featured entries come first.
  */
 
-import { EXPLORE_URL } from '#shared/links.mjs';
+import { EXPLORE_URL } from '@/lib/links';
 
 /** The live store manifest URL (absolute icons/links; CORS `*`). */
 export const STORE_JSON_URL = `${EXPLORE_URL}/store.json`;

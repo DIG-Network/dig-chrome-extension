@@ -11,9 +11,9 @@ const fs = require('fs');
 const crypto = require('crypto');
 const http = require('http');
 
-// Centralized URN utilities. dig-urn.mjs is the shared ES module used by the
-// shipping service worker; this CommonJS dev server loads it via dynamic import()
-// in startServers() before listening. Bound here so request handlers can use them.
+// Centralized URN utilities. src/lib/dig-urn.ts is the shared TS module used by the shipping
+// service worker; this CommonJS dev server loads it via dynamic import() in startServers() before
+// listening (run under `tsx`, see package.json). Bound here so request handlers can use them.
 let parseURN, resolveHostToURN, encodeStoreId, decodeStoreId;
 
 const app = express();
@@ -903,10 +903,11 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Load the shared URN ES module, then start both servers. Dynamic import() lets this
-// CommonJS file consume the single dig-urn.mjs ESM source of truth.
+// Load the shared URN module, then start both servers. Dynamic import() lets this CommonJS dev
+// server consume the single dig-urn source of truth, which now lives at src/lib/dig-urn.ts (#68);
+// this server is launched with `tsx` (see package.json) so the .ts import resolves.
 async function startServers() {
-  ({ parseURN, resolveHostToURN, encodeStoreId, decodeStoreId } = await import('../dig-urn.mjs'));
+  ({ parseURN, resolveHostToURN, encodeStoreId, decodeStoreId } = await import('../src/lib/dig-urn.ts'));
 
 // Start content server - listen on all interfaces (0.0.0.0) to accept dig.local requests
 // When dig.local is mapped to 127.0.0.1 in hosts file, requests will come here

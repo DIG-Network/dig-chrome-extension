@@ -1,6 +1,6 @@
-import { assetDescriptors } from '#shared/wallet-assets.mjs';
-import { formatBaseUnits, shortenAddress } from '#shared/wallet-view.mjs';
-import { spaceScanCoinUrl } from '#shared/links.mjs';
+import { assetDescriptors } from '@/lib/wallet-assets';
+import { formatBaseUnits, shortenAddress } from '@/lib/wallet-view';
+import { spaceScanCoinUrl } from '@/lib/links';
 import type { ActivityEvent } from '@/offscreen/activity';
 
 /** A display row for the Activity list — the last, cheap formatting step over an indexed event. */

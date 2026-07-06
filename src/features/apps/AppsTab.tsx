@@ -1,5 +1,5 @@
 import { FormattedMessage } from 'react-intl';
-import { EXPLORE_URL } from '#shared/links.mjs';
+import { EXPLORE_URL } from '@/lib/links';
 import { ExternalLink } from '@/components/ExternalLink';
 import { FourState } from '@/components/FourState';
 import { useGetStoreCatalogQuery } from '@/features/apps/appsApi';

@@ -1,6 +1,6 @@
 import { api } from '@/api/api';
-import { ACTIONS } from '#shared/messages.mjs';
-import type { LedgerEntry } from '#shared/dig-ledger.mjs';
+import { ACTIONS } from '@/lib/messages';
+import type { LedgerEntry } from '@/lib/dig-ledger';
 
 /** `getShieldLedger` — the active tab's capsule + grouped per-resource proof ledger. */
 export interface ShieldLedger {

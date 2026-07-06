@@ -27,11 +27,13 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci || npm install
-      # No lint/typecheck script is defined yet — --if-present makes these no-op until added.
-      - run: npm run lint --if-present
-      - run: npm run typecheck --if-present
-      # node --test under c8; .c8rc.json gates lines/branches/functions/statements at >=80%
-      # (check-coverage: true) — a run below the floor FAILS the job.
+      - run: npm run lint
+      - run: npm run typecheck
+      # test:coverage = test:node (node --test — the build/wiring assertion suite) + test:web
+      # (vitest --coverage over all of src/, gated at >=80% lines/branches/functions/statements via
+      # vitest.config.ts thresholds — a run below the floor FAILS the job). Now that all app logic
+      # lives in src/ (#68), vitest is the single coverage gate; the node suite carries the
+      # build-integration assertions (SW bundling contract, WC vendoring, copy consistency).
       - run: npm run test:coverage
 
   build:
@@ -48,3 +50,25 @@ jobs:
       # No project id needed here (the plain build leaves the default empty); build:zip + secret
       # live in deploy.yml.
       - run: npm run build
+
+  sw-harness:
+    # Browser SW-registration verification harness (#68): the ONLY gate that validates the MV3
+    # module service worker actually registers + its runtime module graph (dig_client wasm, offscreen
+    # key-custody vault, message router, chia:// interception) loads in a real browser — which the
+    # Node/vitest suite and the static copy-list check cannot. Loads the BUILT unpacked extension in
+    # headless Chromium. See e2e/sw/sw-registration.spec.ts + playwright.sw.config.ts.
+    name: sw-harness (Node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci || npm install
+      # The harness loads a full extension → needs the full Chromium build (channel: 'chromium'),
+      # not the headless-shell (which cannot load extensions). --with-deps pulls the OS libraries.
+      - run: npx playwright install --with-deps chromium
+      # Build the extension into dist/ (the harness loads it as an unpacked extension).
+      - run: npm run build
+      - run: npm run test:sw

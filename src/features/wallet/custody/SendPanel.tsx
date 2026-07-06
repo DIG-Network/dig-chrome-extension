@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { toBaseUnits, formatBaseUnits, validateSendForm } from '#shared/wallet-view.mjs';
+import { toBaseUnits, formatBaseUnits, validateSendForm } from '@/lib/wallet-view';
 import type { AssetBalance } from '@/features/wallet/walletApi';
 import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery, type PreparedSend } from '@/features/wallet/custodyApi';
 

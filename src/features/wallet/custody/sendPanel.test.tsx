@@ -3,7 +3,7 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
-import { DIG_ASSET_ID } from '#shared/links.mjs';
+import { DIG_ASSET_ID } from '@/lib/links';
 import golden from '@/lib/keystore/derive.golden.json';
 
 const RECIPIENT = golden.unhardened[0].address; // a valid xch1 bech32m address
