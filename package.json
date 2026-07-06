@@ -1,6 +1,6 @@
 {
   "name": "dig-browser-extension",
-  "version": "1.35.0",
+  "version": "1.36.0",
   "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
   "types": "messages.d.ts",
@@ -23,6 +23,7 @@
     "prepare": "npm run build",
     "screenshots": "playwright test",
     "test:prices": "playwright test e2e/prices.spec.ts",
+    "test:contacts": "playwright test e2e/contacts.spec.ts",
     "test:sw": "playwright test --config=playwright.sw.config.ts"
   },
   "keywords": [
