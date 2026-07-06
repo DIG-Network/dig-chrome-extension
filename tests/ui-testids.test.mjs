@@ -37,7 +37,7 @@ test('options.html exposes data-testid on every config control', () => {
   const html = read('options.html');
   for (const id of [
     'options-root', 'dignode-host-input', 'dignode-host-reset',
-    'dignode-status', 'rpc-endpoint-input', 'rpc-endpoint-reset', 'wc-project-id-input',
+    'dignode-status', 'rpc-endpoint-input', 'rpc-endpoint-reset',
   ]) {
     assert.match(html, new RegExp(`data-testid="${id}"`), `options.html missing data-testid="${id}"`);
   }

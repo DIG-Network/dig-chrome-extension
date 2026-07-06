@@ -12,7 +12,8 @@
     - dig-node host: the local DIG node the extension resolves chia:// through (server.host),
       with a "dig-node not running" affordance.
     - DIG RPC endpoint: the upstream used when no dig-node is configured (rpc.dig.net).
-    - Wallet: the WalletConnect project id used to pair Sage.
+  The extension is a self-custody wallet (its own key, no external pairing), so there is no
+  wallet-connection setting here — wallet setup happens in the popup.
 -->
 <link rel="stylesheet" href="/src/entries/options.css">
 </head>
@@ -50,18 +51,6 @@
         <input type="text" id="rpcEndpoint" class="input" placeholder="https://rpc.dig.net/" autocomplete="off" data-testid="rpc-endpoint-input">
         <button id="rpcDefaultBtn" class="btn ghost" title="Restore default" data-testid="rpc-endpoint-reset">↺</button>
       </div>
-    </section>
-
-    <!-- Wallet -->
-    <section class="card">
-      <h2>Wallet (WalletConnect → Sage)</h2>
-      <p class="desc">The extension connects your Chia wallet over WalletConnect to Sage. Enter a
-        WalletConnect / Reown project id to enable pairing.</p>
-      <label class="lbl" for="projectId">WalletConnect project id</label>
-      <div class="row">
-        <input type="text" id="projectId" class="input" placeholder="your-walletconnect-project-id" autocomplete="off" data-testid="wc-project-id-input">
-      </div>
-      <p class="note" id="walletNote"></p>
     </section>
 
     <footer class="foot">

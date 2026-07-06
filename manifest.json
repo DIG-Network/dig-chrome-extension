@@ -24,7 +24,7 @@
     "type": "module"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://rpc.dig.net https://*.dig.net https://coinset.org https://api.dexie.space https://api.bugreport.dig.net wss://*.walletconnect.com wss://*.walletconnect.org https://*.walletconnect.com https://*.walletconnect.org; frame-src 'self' https:; font-src 'self'; img-src 'self' data: https://explore.dig.net"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://rpc.dig.net https://*.dig.net https://coinset.org https://api.dexie.space https://api.bugreport.dig.net; frame-src 'self' https:; font-src 'self'; img-src 'self' data: https://explore.dig.net"
   },
   "content_scripts": [
     {
@@ -68,8 +68,7 @@
         "dig-viewer.html",
         "agent-surface.json",
         "dig_client.js",
-        "dig_client_bg.wasm",
-        "vendor/walletconnect-sign-client.js"
+        "dig_client_bg.wasm"
       ],
       "matches": [
         "<all_urls>"
