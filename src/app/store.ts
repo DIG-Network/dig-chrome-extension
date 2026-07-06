@@ -25,6 +25,14 @@ export function createStore(transport: WalletTransport = wcTransport) {
     },
     middleware: (getDefault) =>
       getDefault({ thunk: { extraArgument: extra } }).concat(api.middleware),
+    // Batch RTK Query store notifications on the microtask queue rather than the default
+    // requestAnimationFrame. `raf` defers a coalescing callback to the next animation frame (a ~16 ms
+    // macrotask); under jsdom that frame can fire after a test's window is torn down and throw from
+    // inside RTK's autoBatchEnhancer ("cancelAnimationFrame is not defined" / jsdom `_location`),
+    // surfacing as a flaky "unhandled error" run even though every test passes. `tick`
+    // (queueMicrotask) coalesces just as effectively for this UI and always drains within the turn
+    // that scheduled it, so nothing escapes to a later frame.
+    enhancers: (getDefaultEnhancers) => getDefaultEnhancers({ autoBatch: { type: 'tick' } }),
   });
 }
 

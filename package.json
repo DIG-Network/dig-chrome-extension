@@ -1,6 +1,6 @@
 {
   "name": "dig-browser-extension",
-  "version": "1.28.2",
+  "version": "1.28.3",
   "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
   "types": "messages.d.ts",
