@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.31.1] - 2026-07-06
+
+### Bug Fixes
+- **wallet:** Forward assetId in SW prepareSend so a CAT sends as the CAT (#46)
+
 ## [1.31.0] - 2026-07-06
 
 ### Features
