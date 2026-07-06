@@ -19,6 +19,7 @@ import {
   type VaultRequest,
   type VaultResponse,
 } from '@/lib/dapp-approval';
+import type { OriginRisk } from '@/lib/phishing';
 
 const ORIGIN = 'https://dapp.example';
 
@@ -26,9 +27,11 @@ const ORIGIN = 'https://dapp.example';
 function makeManager({
   approved = new Set([ORIGIN]),
   vault = {},
+  assessOrigin,
 }: {
   approved?: Set<string>;
   vault?: Record<string, (req: VaultRequest) => VaultResponse>;
+  assessOrigin?: (o: string) => OriginRisk;
 } = {}) {
   const calls: { vault: VaultRequest[]; summon: number; pending: string[] } = { vault: [], summon: 0, pending: [] };
   let n = 0;
@@ -41,6 +44,7 @@ function makeManager({
       return fn ? fn(req) : { success: false, code: 'NO_STUB', message: req.op };
     },
     summonWindow: async () => { calls.summon++; },
+    ...(assessOrigin ? { assessOrigin } : {}),
     randomId: () => `id-${++n}`,
     gapLimit: 5,
   };
@@ -196,4 +200,32 @@ test('an unsupported (known) method is honestly rejected, not silently signed', 
   const env = await m.route({ method: 'createOffer', params: {}, origin: ORIGIN });
   assert.equal(env.status, 501);
   assert.equal(calls.summon, 0);
+});
+
+// ── Phishing / malicious-origin protection (#67 P0-2) ──
+test('phishing: a blocked origin is refused at connect and never recorded/approved', async () => {
+  const { m, calls } = makeManager({ approved: new Set(), assessOrigin: () => ({ verdict: 'block', reason: 'BLOCKLISTED' }) });
+  const env = await m.route({ method: 'connect', params: {}, origin: ORIGIN });
+  assert.equal(env.status, 403);
+  assert.deepEqual(calls.pending, []); // NOT recorded as pending
+  assert.equal(calls.summon, 0);
+});
+
+test('phishing: a lookalike origin still connects but its verdict rides the queue for the interstitial', async () => {
+  const { m } = makeManager({
+    assessOrigin: () => ({ verdict: 'warn', reason: 'LOOKALIKE' }),
+    vault: { decodeDappSpend: () => ({ success: true, dappSummary: { coinCount: 1 } }) },
+  });
+  void m.route({ method: 'signCoinSpends', params: { coinSpends: WIRE_COIN_SPENDS }, origin: ORIGIN });
+  await new Promise((r) => setTimeout(r, 0)); // flush the assessOrigin await chain before enqueue
+  const item = m.list()[0];
+  assert.equal(item.originRisk.verdict, 'warn');
+  assert.equal(item.originRisk.reason, 'LOOKALIKE');
+});
+
+test('phishing: an ok origin gets an ok verdict on the queue (default when no assessor)', async () => {
+  const { m } = makeManager();
+  void m.route({ method: 'signCoinSpends', params: { coinSpends: WIRE_COIN_SPENDS }, origin: ORIGIN });
+  await Promise.resolve();
+  assert.equal(m.list()[0].originRisk.verdict, 'ok');
 });

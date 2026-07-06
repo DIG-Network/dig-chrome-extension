@@ -321,4 +321,12 @@ export const zhTW: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "網路手續費異常高。",
   "dapp.approval.risk.CANNOT_SIGN": "您的錢包無法完整簽署此請求。",
   "dapp.approval.risk.FOREIGN_INPUTS": "此請求包含並非您錢包所擁有的幣；所示金額無法完全核實。",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "已封鎖危險網站",
+  "dapp.approval.phishing.title.warn": "此網站可能在冒充 DIG",
+  "dapp.approval.phishing.blocked.note": "為保護您，已封鎖此網站。您只能拒絕此請求。",
+  "dapp.approval.phishing.reason.blocklisted": "此網站在 DIG 的已知釣魚與盜幣網站黑名單中。",
+  "dapp.approval.phishing.reason.lookalike": "此網址看起來像 DIG 網站，但並非如此——請仔細核對網址列。",
+  "dapp.approval.phishing.confirm": "我知道這可能是假冒網站，仍要繼續",
 };

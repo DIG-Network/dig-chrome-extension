@@ -321,4 +321,12 @@ export const ru: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "Комиссия сети необычно велика.",
   "dapp.approval.risk.CANNOT_SIGN": "Ваш кошелёк не может полностью подписать этот запрос.",
   "dapp.approval.risk.FOREIGN_INPUTS": "Этот запрос включает монеты, которые не принадлежат вашему кошельку; показанные суммы нельзя полностью проверить.",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "Опасный сайт заблокирован",
+  "dapp.approval.phishing.title.warn": "Этот сайт может выдавать себя за DIG",
+  "dapp.approval.phishing.blocked.note": "Этот сайт заблокирован для вашей защиты. Запрос можно только отклонить.",
+  "dapp.approval.phishing.reason.blocklisted": "Этот сайт в списке блокировки DIG известных фишинговых и дренажных сайтов.",
+  "dapp.approval.phishing.reason.lookalike": "Этот адрес похож на сайт DIG, но им не является — внимательно проверьте адресную строку.",
+  "dapp.approval.phishing.confirm": "Я понимаю, что это может быть поддельный сайт, и всё равно хочу продолжить",
 };

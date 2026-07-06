@@ -321,4 +321,12 @@ export const vi: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "Phí mạng cao bất thường.",
   "dapp.approval.risk.CANNOT_SIGN": "Ví của bạn không thể ký đầy đủ yêu cầu này.",
   "dapp.approval.risk.FOREIGN_INPUTS": "Yêu cầu này bao gồm các coin mà ví của bạn không sở hữu; số tiền hiển thị không thể được xác minh đầy đủ.",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "Đã chặn trang web nguy hiểm",
+  "dapp.approval.phishing.title.warn": "Trang web này có thể đang giả mạo DIG",
+  "dapp.approval.phishing.blocked.note": "Trang web này đã bị chặn để bảo vệ bạn. Bạn chỉ có thể từ chối yêu cầu này.",
+  "dapp.approval.phishing.reason.blocklisted": "Trang web này nằm trong danh sách chặn của DIG gồm các trang lừa đảo và rút cạn ví đã biết.",
+  "dapp.approval.phishing.reason.lookalike": "Địa chỉ này trông giống trang DIG nhưng không phải — hãy kiểm tra kỹ thanh địa chỉ.",
+  "dapp.approval.phishing.confirm": "Tôi hiểu đây có thể là trang giả mạo và vẫn muốn tiếp tục",
 };

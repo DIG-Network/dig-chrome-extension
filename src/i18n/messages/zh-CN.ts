@@ -321,4 +321,12 @@ export const zhCN: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "网络手续费异常高。",
   "dapp.approval.risk.CANNOT_SIGN": "您的钱包无法完整签署此请求。",
   "dapp.approval.risk.FOREIGN_INPUTS": "此请求包含并非您钱包所拥有的币；所示金额无法完全核实。",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "已拦截危险网站",
+  "dapp.approval.phishing.title.warn": "此网站可能在冒充 DIG",
+  "dapp.approval.phishing.blocked.note": "为保护您，已拦截此网站。您只能拒绝此请求。",
+  "dapp.approval.phishing.reason.blocklisted": "此网站在 DIG 的已知钓鱼和盗币网站黑名单中。",
+  "dapp.approval.phishing.reason.lookalike": "此网址看起来像 DIG 网站，但并非如此——请仔细核对地址栏。",
+  "dapp.approval.phishing.confirm": "我知道这可能是假冒网站，仍要继续",
 };

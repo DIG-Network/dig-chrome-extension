@@ -24,6 +24,10 @@
 
 import { normalizeMethod, isSupportedMethod } from './wallet-methods';
 import { ok, pending, err, type BrokerEnvelope } from './wallet-broker';
+import type { OriginRisk } from './phishing';
+
+/** Neutral verdict used when no origin-risk assessor is injected. */
+const OK_RISK: OriginRisk = { verdict: 'ok', reason: null };
 
 /** A response from the offscreen vault (only the fields this router reads; extra keys tolerated). */
 export interface VaultResponse {
@@ -48,6 +52,8 @@ export interface DappApprovalDeps {
   recordPendingOrigin(origin: string): Promise<void>;
   callVault(request: VaultRequest): Promise<VaultResponse>;
   summonWindow(): Promise<void> | void;
+  /** Phishing/lookalike assessment for an origin (#67 P0-2). Absent → every origin is treated `ok`. */
+  assessOrigin?(origin: string): Promise<OriginRisk> | OriginRisk;
   gapLimit?: number;
   randomId?: () => string;
 }
@@ -61,6 +67,8 @@ export interface QueueEntry {
   summary?: unknown;
   needsUnlock?: boolean;
   decodeError?: boolean;
+  /** Phishing/lookalike verdict for the requesting origin (#67 P0-2), shown as an interstitial. */
+  originRisk?: OriginRisk;
   createdAt: number;
   resolve: (value: BrokerEnvelope) => void;
 }
@@ -135,8 +143,19 @@ export class DappApprovalManager {
       summary: e.summary ?? null,
       needsUnlock: !!e.needsUnlock,
       decodeError: !!e.decodeError,
+      originRisk: e.originRisk ?? OK_RISK,
       createdAt: e.createdAt,
     }));
+  }
+
+  /** Assess an origin via the injected assessor (defaults to `ok` when none is provided). */
+  async #risk(origin: string): Promise<OriginRisk> {
+    if (!this.deps.assessOrigin) return OK_RISK;
+    try {
+      return (await this.deps.assessOrigin(origin)) || OK_RISK;
+    } catch {
+      return OK_RISK;
+    }
   }
 
   /**
@@ -176,6 +195,12 @@ export class DappApprovalManager {
     const norm = normalizeMethod(method);
 
     if (kind === 'connect') {
+      // Phishing gate (#67 P0-2): a blocklisted origin is refused before it can ever connect —
+      // it is never recorded as pending and never approved.
+      if (this.deps.assessOrigin) {
+        const risk = await this.#risk(origin);
+        if (risk.verdict === 'block') return err(403, 'This site is flagged as dangerous and was blocked.');
+      }
       const approved = await this.deps.isOriginApproved(origin);
       if (!approved) {
         await this.deps.recordPendingOrigin(origin);
@@ -195,14 +220,16 @@ export class DappApprovalManager {
     if (kind === 'sign') {
       const coinSpends = extractCoinSpends(params);
       if (!coinSpends) return err(400, 'signCoinSpends requires coinSpends');
-      return this.#enqueue({ origin, method: norm, kind: 'signCoinSpends', params: { coinSpends } });
+      const originRisk = this.deps.assessOrigin ? await this.#risk(origin) : undefined;
+      return this.#enqueue({ origin, method: norm, kind: 'signCoinSpends', params: { coinSpends }, originRisk });
     }
     if (kind === 'message') {
       const message = params && (params.message ?? params.msg);
       if (message == null) return err(400, 'signMessage requires a message');
       const publicKey = params && (params.publicKey ?? params.public_key);
       const summary = { message: String(message), publicKey: publicKey || null };
-      return this.#enqueue({ origin, method: norm, kind: 'signMessage', params: { message: String(message), publicKey }, summary });
+      const originRisk = this.deps.assessOrigin ? await this.#risk(origin) : undefined;
+      return this.#enqueue({ origin, method: norm, kind: 'signMessage', params: { message: String(message), publicKey }, summary, originRisk });
     }
     if (kind === 'unsupported') return err(501, `Method ${norm} is not yet supported by the custody wallet`);
     return err(404, `Unsupported method: ${norm}`);
@@ -235,16 +262,18 @@ export class DappApprovalManager {
     kind,
     params,
     summary,
+    originRisk,
   }: {
     origin: string;
     method: string;
     kind: QueueEntry['kind'];
     params: QueueEntry['params'];
     summary?: unknown;
+    originRisk?: OriginRisk;
   }): Promise<BrokerEnvelope> {
     const id = (this.deps.randomId || defaultId)();
     return new Promise<BrokerEnvelope>((resolve) => {
-      this.queue.set(id, { id, origin, method, kind, params, summary, createdAt: Date.now(), resolve });
+      this.queue.set(id, { id, origin, method, kind, params, summary, originRisk, createdAt: Date.now(), resolve });
       // Summon AFTER registering so the window's first list() includes this request.
       Promise.resolve(this.deps.summonWindow()).catch(() => {});
     });

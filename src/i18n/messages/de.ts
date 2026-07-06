@@ -321,4 +321,12 @@ export const de: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "Die Netzwerkgebühr ist ungewöhnlich hoch.",
   "dapp.approval.risk.CANNOT_SIGN": "Ihre Wallet kann diese Anfrage nicht vollständig signieren.",
   "dapp.approval.risk.FOREIGN_INPUTS": "Diese Anfrage enthält Coins, die Ihrer Wallet nicht gehören; die angezeigten Beträge können nicht vollständig überprüft werden.",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "Gefährliche Website blockiert",
+  "dapp.approval.phishing.title.warn": "Diese Website gibt sich möglicherweise als DIG aus",
+  "dapp.approval.phishing.blocked.note": "Diese Website wurde zu Ihrem Schutz blockiert. Sie können diese Anfrage nur ablehnen.",
+  "dapp.approval.phishing.reason.blocklisted": "Diese Website steht auf der DIG-Sperrliste bekannter Phishing- und Wallet-Drainer-Seiten.",
+  "dapp.approval.phishing.reason.lookalike": "Diese Adresse sieht aus wie eine DIG-Website, ist es aber nicht — prüfen Sie die Adressleiste sorgfältig.",
+  "dapp.approval.phishing.confirm": "Ich verstehe, dass dies eine gefälschte Website sein könnte, und möchte trotzdem fortfahren",
 };
