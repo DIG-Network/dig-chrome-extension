@@ -329,4 +329,17 @@ export const ru: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "Этот сайт в списке блокировки DIG известных фишинговых и дренажных сайтов.",
   "dapp.approval.phishing.reason.lookalike": "Этот адрес похож на сайт DIG, но им не является — внимательно проверьте адресную строку.",
   "dapp.approval.phishing.confirm": "Я понимаю, что это может быть поддельный сайт, и всё равно хочу продолжить",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "Подключённые сайты",
+  "sites.subtitle": "Сайты, к которым вы подключили кошелёк. Доступ можно отозвать в любой момент.",
+  "sites.loading": "Загрузка подключённых сайтов…",
+  "sites.error": "Не удалось загрузить подключённые сайты.",
+  "sites.empty": "К вашему кошельку не подключён ни один сайт.",
+  "sites.granted": "Подключён {date}",
+  "sites.lastUsed": "последнее использование {date}",
+  "sites.addresses": "Передано адресов: {count}",
+  "sites.revoke": "Отозвать",
+  "sites.revoke.aria": "Отозвать доступ для {host}",
+  "sites.revokeAll": "Отозвать все",
 };

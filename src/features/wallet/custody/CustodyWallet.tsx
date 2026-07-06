@@ -11,6 +11,7 @@ import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
+import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
 import { TradePanel } from '@/features/wallet/custody/TradePanel';
 import { CustodyActivity } from '@/features/wallet/custody/CustodyActivity';
@@ -114,7 +115,12 @@ export function CustodyWallet() {
           </h2>
           <ReceiveView address={receive.data?.address} />
 
-          {advanced && <ChainNodeSetting />}
+          {advanced && (
+            <>
+              <ChainNodeSetting />
+              <ConnectedSites />
+            </>
+          )}
         </>
       )}
 

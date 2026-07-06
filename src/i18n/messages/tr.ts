@@ -329,4 +329,17 @@ export const tr: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "Bu site, bilinen kimlik avı ve cüzdan boşaltma siteleri için DIG engelleme listesinde yer alıyor.",
   "dapp.approval.phishing.reason.lookalike": "Bu adres bir DIG sitesine benziyor ama değil — adres çubuğunu dikkatlice kontrol edin.",
   "dapp.approval.phishing.confirm": "Bunun sahte bir site olabileceğini anlıyorum ve yine de devam etmek istiyorum",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "Bağlı siteler",
+  "sites.subtitle": "Cüzdanınızı bağladığınız siteler. Erişimi istediğiniz zaman iptal edebilirsiniz.",
+  "sites.loading": "Bağlı siteler yükleniyor…",
+  "sites.error": "Bağlı siteler yüklenemedi.",
+  "sites.empty": "Cüzdanınıza bağlı site yok.",
+  "sites.granted": "{date} tarihinde bağlandı",
+  "sites.lastUsed": "son kullanım {date}",
+  "sites.addresses": "{count} adres paylaşıldı",
+  "sites.revoke": "İptal et",
+  "sites.revoke.aria": "{host} erişimini iptal et",
+  "sites.revokeAll": "Tümünü iptal et",
 };

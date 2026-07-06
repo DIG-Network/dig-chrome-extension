@@ -329,4 +329,17 @@ export const de: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "Diese Website steht auf der DIG-Sperrliste bekannter Phishing- und Wallet-Drainer-Seiten.",
   "dapp.approval.phishing.reason.lookalike": "Diese Adresse sieht aus wie eine DIG-Website, ist es aber nicht — prüfen Sie die Adressleiste sorgfältig.",
   "dapp.approval.phishing.confirm": "Ich verstehe, dass dies eine gefälschte Website sein könnte, und möchte trotzdem fortfahren",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "Verbundene Websites",
+  "sites.subtitle": "Websites, mit denen Sie Ihre Wallet verbunden haben. Sie können den Zugriff jederzeit widerrufen.",
+  "sites.loading": "Verbundene Websites werden geladen…",
+  "sites.error": "Verbundene Websites konnten nicht geladen werden.",
+  "sites.empty": "Es sind keine Websites mit Ihrer Wallet verbunden.",
+  "sites.granted": "Verbunden am {date}",
+  "sites.lastUsed": "zuletzt verwendet {date}",
+  "sites.addresses": "{count} Adresse(n) freigegeben",
+  "sites.revoke": "Widerrufen",
+  "sites.revoke.aria": "Zugriff für {host} widerrufen",
+  "sites.revokeAll": "Alle widerrufen",
 };

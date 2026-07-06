@@ -59,8 +59,13 @@ import { DIG_ERR } from './error-codes';
  * headers (X-Frame-Options / CSP frame-ancestors) for the app-view iframe, so a DIG dApp renders
  * in-window instead of being forced into a tab. Scoped to on.dig.net sub-frames (and the app-view's
  * tab when in the expanded layout) and removed the moment the app-view closes.
+ *
+ * v11 (#67 P0-4 connected sites): `walletRpc` now also handles the EIP-2255-shaped permission methods
+ * `wallet_getPermissions` / `wallet_revokePermissions` against the shared per-origin consent store.
+ * Added `listConnectedSites` (the Connected-sites settings screen reads every origin's capability),
+ * `revokeConnectedSite` (per-site revoke), and `revokeAllConnectedSites` (revoke all).
  */
-export const MESSAGE_PROTOCOL_VERSION = 10;
+export const MESSAGE_PROTOCOL_VERSION = 11;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -97,6 +102,10 @@ export const ACTIONS = Object.freeze({
   // ── self-custody dApp approval window (#56 §5.5): the window ↔ SW channel ──
   dappApprovalList: 'dappApprovalList',
   dappApprovalResolve: 'dappApprovalResolve',
+  // ── connected sites / granular permissions (#67 P0-4): the Settings screen ↔ SW channel ──
+  listConnectedSites: 'listConnectedSites',
+  revokeConnectedSite: 'revokeConnectedSite',
+  revokeAllConnectedSites: 'revokeAllConnectedSites',
   // ── self-custody wallet (#56): keystore ops the SW routes to the offscreen vault ──
   createWallet: 'createWallet',
   importWallet: 'importWallet',
@@ -214,7 +223,7 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.walletRpc]: {
     summary:
-      'Route one window.chia CHIP-0002 RPC. When a self-custody wallet exists (§5.5): connect + reads go to the offscreen vault, and sign/message requests summon the approval window (per-origin gated). Otherwise falls back to the WalletConnect → Sage broker.',
+      'Route one window.chia CHIP-0002 RPC. The EIP-2255-shaped permission methods (wallet_getPermissions / wallet_revokePermissions, #67 P0-4) are answered from the shared per-origin consent store. When a self-custody wallet exists (§5.5): connect + reads go to the offscreen vault, and sign/message requests summon the approval window (per-origin gated). Otherwise falls back to the WalletConnect → Sage broker.',
     request: '{ action, method:string, params?:object, origin?:string }',
     response: '{ status:number /* 200|202|4xx|5xx */, body:{ data } | { error } }',
   },
@@ -235,6 +244,23 @@ export const MESSAGE_CATALOGUE = Object.freeze({
       "Approval window (§5.5): return the user's decision for one queued request. Approve → the offscreen vault signs and the dApp promise resolves with the signature; reject → the dApp gets a user-rejection error.",
     request: '{ action, id:string, approved:boolean }',
     response: '{ success:boolean, remaining:number, code?:string }',
+  },
+  [ACTIONS.listConnectedSites]: {
+    summary:
+      'Connected sites (#67 P0-4): list every origin the wallet is connected to, each as a capability record (connected addresses, granted/last-used timestamps, allowed methods) for the Settings/Advanced screen.',
+    request: '{ action }',
+    response:
+      '{ sites:[{ origin, approved:true, addresses:string[], methods:string[], grantedAt:number, lastUsed:number|null }] } | { success:false, code, message }',
+  },
+  [ACTIONS.revokeConnectedSite]: {
+    summary: 'Connected sites (#67 P0-4): revoke ONE origin — clears its consent so it must re-request access.',
+    request: '{ action, origin:string }',
+    response: '{ success:true } | { success:false, code, message }',
+  },
+  [ACTIONS.revokeAllConnectedSites]: {
+    summary: 'Connected sites (#67 P0-4): revoke EVERY connected origin at once.',
+    request: '{ action }',
+    response: '{ success:true } | { success:false, code, message }',
   },
   [ACTIONS.createWallet]: {
     summary:

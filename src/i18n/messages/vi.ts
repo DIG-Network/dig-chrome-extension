@@ -329,4 +329,17 @@ export const vi: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "Trang web này nằm trong danh sách chặn của DIG gồm các trang lừa đảo và rút cạn ví đã biết.",
   "dapp.approval.phishing.reason.lookalike": "Địa chỉ này trông giống trang DIG nhưng không phải — hãy kiểm tra kỹ thanh địa chỉ.",
   "dapp.approval.phishing.confirm": "Tôi hiểu đây có thể là trang giả mạo và vẫn muốn tiếp tục",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "Trang web đã kết nối",
+  "sites.subtitle": "Các trang web bạn đã kết nối ví. Bạn có thể thu hồi quyền truy cập bất cứ lúc nào.",
+  "sites.loading": "Đang tải các trang web đã kết nối…",
+  "sites.error": "Không thể tải các trang web đã kết nối.",
+  "sites.empty": "Không có trang web nào kết nối với ví của bạn.",
+  "sites.granted": "Đã kết nối {date}",
+  "sites.lastUsed": "lần dùng gần nhất {date}",
+  "sites.addresses": "Đã chia sẻ {count} địa chỉ",
+  "sites.revoke": "Thu hồi",
+  "sites.revoke.aria": "Thu hồi quyền truy cập của {host}",
+  "sites.revokeAll": "Thu hồi tất cả",
 };

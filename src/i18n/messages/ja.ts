@@ -329,4 +329,17 @@ export const ja: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "このサイトは既知のフィッシング・資産流出サイトの DIG ブロックリストに含まれています。",
   "dapp.approval.phishing.reason.lookalike": "このアドレスは DIG サイトのように見えますが異なります。アドレスバーをよく確認してください。",
   "dapp.approval.phishing.confirm": "偽サイトの可能性を理解した上で続行します",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "接続済みのサイト",
+  "sites.subtitle": "ウォレットを接続したサイトです。いつでもアクセスを取り消せます。",
+  "sites.loading": "接続済みのサイトを読み込み中…",
+  "sites.error": "接続済みのサイトを読み込めませんでした。",
+  "sites.empty": "ウォレットに接続されたサイトはありません。",
+  "sites.granted": "{date} に接続",
+  "sites.lastUsed": "最終使用 {date}",
+  "sites.addresses": "{count} 件のアドレスを共有",
+  "sites.revoke": "取り消す",
+  "sites.revoke.aria": "{host} のアクセスを取り消す",
+  "sites.revokeAll": "すべて取り消す",
 };
