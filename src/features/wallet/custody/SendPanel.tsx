@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { toBaseUnits, formatBaseUnits, validateSendForm } from '@/lib/wallet-view';
+import { toBaseUnits, formatBaseUnits, validateSendForm, shortenAddress, isChiaAddress } from '@/lib/wallet-view';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery, type PreparedSend } from '@/features/wallet/custodyApi';
+import { ContactPicker } from '@/features/contacts/ContactPicker';
+import { useContacts } from '@/features/contacts/useContacts';
 
 const XCH_DECIMALS = 12;
 
@@ -17,10 +19,13 @@ type Phase = 'form' | 'review' | 'sending' | 'confirmed' | 'failed';
 export function SendPanel({
   assets,
   onClose,
+  onManageContacts,
   pollMs = 8000,
 }: {
   assets: AssetBalance[];
   onClose?: () => void;
+  /** Open the full address-book manager (from the recipient picker's "Manage" link). */
+  onManageContacts?: () => void;
   pollMs?: number;
 }) {
   const intl = useIntl();
@@ -36,6 +41,9 @@ export function SendPanel({
   const [prepareSend, prep] = usePrepareSendMutation();
   const [confirmSend, conf] = useConfirmSendMutation();
   const [pollStatus] = useLazySendStatusQuery();
+
+  const { labelForAddress, recordRecent, add: addContact } = useContacts();
+  const recipientLabel = labelForAddress(recipient);
 
   const selected = assets[assetIdx] ?? assets[0];
   const decimals = selected?.descriptor.decimals ?? XCH_DECIMALS;
@@ -84,6 +92,7 @@ export function SendPanel({
     const res = await confirmSend({ pendingId: prepared.pendingId });
     if ('data' in res && res.data?.spentCoinId) {
       setSpentCoinId(res.data.spentCoinId);
+      recordRecent(recipient); // remember this recipient for the picker's "Recent" list
     } else {
       setPhase('failed');
     }
@@ -143,6 +152,12 @@ export function SendPanel({
             <span><FormattedMessage id="send.recipient" /></span>
             <input data-testid="send-recipient" className="dig-input dig-mono" value={recipient} onChange={(e) => setRecipient(e.target.value)} autoComplete="off" spellCheck={false} placeholder="xch1…" />
           </label>
+          <ContactPicker onPick={setRecipient} onManage={onManageContacts} />
+          {recipientLabel && (
+            <p className="dig-muted" data-testid="send-recipient-contact" style={{ margin: '2px 0 8px' }}>
+              <FormattedMessage id="send.recipient.sendingTo" values={{ label: <strong>{recipientLabel}</strong> }} />
+            </p>
+          )}
           <label className="dig-field">
             <span><FormattedMessage id="send.amount" /> ({ticker})</span>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -179,8 +194,20 @@ export function SendPanel({
             <dt><FormattedMessage id="send.review.fee" /></dt>
             <dd data-testid="review-fee">{formatBaseUnits(Number(prepared.summary.fee), XCH_DECIMALS)} XCH</dd>
             <dt><FormattedMessage id="send.review.recipient" /></dt>
-            <dd className="dig-mono" data-testid="review-recipient">{recipient}</dd>
+            <dd data-testid="review-recipient">
+              {recipientLabel ? (
+                <>
+                  <strong data-testid="review-recipient-label">{recipientLabel}</strong>
+                  <span className="dig-mono dig-muted" style={{ display: 'block', fontSize: '0.8em' }}>{shortenAddress(recipient)}</span>
+                </>
+              ) : (
+                <span className="dig-mono">{recipient}</span>
+              )}
+            </dd>
           </dl>
+          {isChiaAddress(recipient) && (
+            <SaveRecipientInline alreadySaved={!!recipientLabel} onSave={(label) => addContact({ label, address: recipient })} />
+          )}
           <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-confirm" onClick={() => void doConfirm()} disabled={busy}>
             <FormattedMessage id="send.confirm" />
           </button>
@@ -214,6 +241,60 @@ export function SendPanel({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Add-on-send (#88): inline "save this recipient" shown in the review step. Renders nothing when the
+ * recipient is already a saved contact (unless WE just saved it — then a brief confirmation stays).
+ * `onSave` is the parent's single-instance address-book add, so the review's label preference flips
+ * to the saved name in the same tick — deterministic, no cross-instance storage round-trip.
+ */
+function SaveRecipientInline({ alreadySaved, onSave }: { alreadySaved: boolean; onSave: (label: string) => { ok: boolean; errors?: { label?: string; address?: string } } }) {
+  const intl = useIntl();
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (saved) {
+    return (
+      <p className="dig-state" data-state="success" role="status" data-testid="save-contact-saved" style={{ margin: '8px 0' }}>
+        <FormattedMessage id="send.saveContact.saved" />
+      </p>
+    );
+  }
+  if (alreadySaved) return null; // recipient is a known contact — nothing to offer
+
+  if (!open) {
+    return (
+      <button type="button" className="dig-link" data-testid="save-contact-open" onClick={() => setOpen(true)} style={{ margin: '6px 0' }}>
+        <FormattedMessage id="send.saveContact.prompt" />
+      </button>
+    );
+  }
+
+  function save() {
+    const res = onSave(label);
+    if (res.ok) {
+      setSaved(true);
+      setError(null);
+    } else {
+      setError(res.errors?.label ?? res.errors?.address ?? 'contacts.error.label');
+    }
+  }
+
+  return (
+    <div data-testid="save-contact-form" style={{ margin: '8px 0' }}>
+      <label className="dig-field">
+        <span><FormattedMessage id="send.saveContact.label" /></span>
+        <input className="dig-input" data-testid="save-contact-label" value={label} onChange={(e) => setLabel(e.target.value)} autoComplete="off" maxLength={80} placeholder={intl.formatMessage({ id: 'contacts.field.label' })} />
+      </label>
+      {error && <p className="dig-error-text" role="alert" data-testid="save-contact-error"><FormattedMessage id={error} /></p>}
+      <button type="button" className="dig-btn" data-testid="save-contact-save" onClick={save}>
+        <FormattedMessage id="send.saveContact.save" />
+      </button>
+    </div>
   );
 }
 

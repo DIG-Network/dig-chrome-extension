@@ -17,6 +17,7 @@ import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
 import { TradePanel } from '@/features/wallet/custody/TradePanel';
+import { ContactsManager } from '@/features/contacts/ContactsManager';
 import { CustodyActivity } from '@/features/wallet/custody/CustodyActivity';
 import { CollectiblesPanel } from '@/features/collectibles/CollectiblesPanel';
 import { useState } from 'react';
@@ -50,7 +51,7 @@ export function CustodyWallet() {
   const priceMap = prices.data ?? {};
   const total = portfolioValue(assets, priceMap);
   const cached = balances.data?.cached === true;
-  const [sending, setSending] = useState(false);
+  const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'contacts'>('assets');
 
   /** Format a row's fiat value as `≈ $x.xx`, or null when it can't be priced. */
   const fiatLabelFor = (row: (typeof assets)[number]): string | null => {
@@ -90,15 +91,22 @@ export function CustodyWallet() {
         />
       </div>
 
-      {walletView === 'home' && sending && (
-        <SendPanel assets={assets} onClose={() => setSending(false)} />
+      {walletView === 'home' && homePanel === 'send' && (
+        <SendPanel assets={assets} onClose={() => setHomePanel('assets')} onManageContacts={() => setHomePanel('contacts')} />
       )}
 
-      {walletView === 'home' && !sending && (
+      {walletView === 'home' && homePanel === 'contacts' && (
+        <ContactsManager onClose={() => setHomePanel('assets')} />
+      )}
+
+      {walletView === 'home' && homePanel === 'assets' && (
         <>
           <div className="dig-action-bar" style={{ display: 'flex', gap: 8, margin: '4px 0 14px' }}>
-            <button type="button" className="dig-btn dig-btn--primary" data-testid="action-send" onClick={() => setSending(true)}>
+            <button type="button" className="dig-btn dig-btn--primary" data-testid="action-send" onClick={() => setHomePanel('send')}>
               <FormattedMessage id="wallet.action.send" />
+            </button>
+            <button type="button" className="dig-btn" data-testid="action-contacts" onClick={() => setHomePanel('contacts')}>
+              <FormattedMessage id="wallet.action.contacts" />
             </button>
           </div>
           <h2 className="dig-heading">

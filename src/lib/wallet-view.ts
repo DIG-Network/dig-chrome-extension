@@ -127,6 +127,17 @@ export function shortenAddress(addr: string | null, head = 10, tail = 8): string
 }
 
 /**
+ * True if `value` is a well-formed Chia payment address — a bech32(m) `xch1…` string. This is a
+ * FORMAT gate (prefix + charset + minimum length), not a checksum verify; the offscreen vault does
+ * the authoritative `Address.decode` when it builds the spend. It is the single source of truth for
+ * "is this an xch1 address" shared by the Send form and the address book (#88), so the two never
+ * disagree about which strings are valid recipients.
+ */
+export function isChiaAddress(value: unknown): boolean {
+  return /^xch1[0-9a-z]{6,}$/i.test(String(value == null ? '' : value).trim());
+}
+
+/**
  * Validate the send form. Returns `{ ok, errors }` where `errors` carries per-field messages
  * for `address`, `amount`, and/or `fee`. A valid Chia address is a bech32 `xch1…`; the amount
  * must be a strictly-positive finite number. The fee is OPTIONAL — blank/absent is treated as
@@ -144,8 +155,7 @@ export function validateSendForm({
   errors: { address?: string; amount?: string; fee?: string };
 } {
   const errors: { address?: string; amount?: string; fee?: string } = {};
-  const addr = String(address || '').trim();
-  if (!/^xch1[0-9a-z]{6,}$/i.test(addr)) {
+  if (!isChiaAddress(address)) {
     errors.address = 'Enter a valid xch1… address';
   }
   const n = Number(String(amount == null ? '' : amount).trim());

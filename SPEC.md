@@ -873,6 +873,8 @@ custody requests, owns storage, and enforces auto-lock.
 | `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, `chainRpcUrl`, `chainPrivacyAck`, fee default…) |
 | `walletCache.balances` | `storage.local` | no | last balance scan (`{ balances, at }`) for cached-first paint |
 | `walletCache.activity` | `storage.local` | no | last activity ledger (`{ events, cursorHeight, at }`) for cached-first paint |
+| `wallet.contacts` | `storage.local` | no | address book (§18.14) — array of `{ id, label, address, note?, createdAt, updatedAt }` |
+| `wallet.recentRecipients` | `storage.local` | no | recent send recipients (§18.14) — newest-first `{ address, lastUsedAt }`, capped |
 | `wallet.unlockExpiry` | `storage.session` | no | non-secret unlock-expiry timestamp (ms); never key material |
 
 `storage.sync` is NEVER used for any wallet key (it would exfiltrate the encrypted seed).
@@ -1161,3 +1163,40 @@ while balances render unchanged.
   value" (per-row muted placeholder). Error/empty: the native amount + "value unavailable" + retry, and
   `≈ $—` per row. All copy is react-intl across the 14 locales. USD is the default currency (a currency
   preference is a follow-up, #112).
+
+### 18.14 Address book / contacts (#88)
+
+The wallet keeps a local address book so a user picks a saved recipient instead of pasting a raw
+`xch1…` string, and sees a recognizable name wherever a recipient is shown. Contacts are non-secret
+CLIENT data stored in `chrome.storage.local` — never `storage.sync`, never the offscreen vault — and
+are read live across the popup + `app.html` via `storage.onChanged` (§3.4). No new wasm and no chain
+reads: the address book is pure client state. (Sibling #74 — address-poisoning defenses — builds its
+lookalike-warning on this same store; the record shape is additive so #74 extends it without a migration.)
+
+- **Records (`wallet.contacts`).** An array of `Contact = { id, label, address, note?, createdAt,
+  updatedAt }`. `id` is a stable local id (`crypto.randomUUID`); `label` is a required, bounded
+  (≤60 chars) display name; `address` is a normalized (trimmed + lowercased) `xch1…` bech32m string;
+  `note` is optional, bounded (≤200 chars). Addresses are unique per book (a duplicate add/edit is
+  rejected). All parsing is defensive — malformed stored entries are dropped, never trusted.
+- **Address validity.** A contact address MUST satisfy the SAME `isChiaAddress` format gate the Send
+  form uses (prefix + charset + minimum length), so the address book and the Send form never disagree
+  about which strings are valid recipients. The authoritative bech32m decode still happens in the
+  offscreen vault when a spend is built; the book stores the canonical string only.
+- **Recent recipients (`wallet.recentRecipients`).** A newest-first, de-duplicated, capped
+  (`MAX_RECENTS = 8`) list of `{ address, lastUsedAt }`, recorded when a Send broadcasts successfully.
+  It surfaces recently-used addresses in the picker even before they are saved as contacts.
+- **CRUD + manager.** A manager screen (reached from the wallet Home "Address book" action and from the
+  Send picker's "Manage" link) adds, edits (inline), and deletes (two-step confirm) contacts, with an
+  empty state and react-intl copy + per-field validation across the 14 locales.
+- **Picker in Send.** The Send form offers a recipient picker (saved contacts + unsaved recents);
+  choosing one fills the recipient address. When the entered recipient matches a saved contact, the
+  form and the review step PREFER the label over the raw address (address shown as a muted subline).
+  Trade is offer-based (make/take/cancel take an `offer1…` string, not a recipient address), so the
+  picker does not apply there.
+- **Add-on-send.** In the Send review step, when the recipient is a valid address that is NOT already
+  saved, an inline "save this recipient" (name + Save) writes it to the address book without affecting
+  the send itself.
+- **Purity + tests.** All types + validation + CRUD-on-array + recent-tracking + the label lookup live
+  in a pure `contacts` module (no DOM/`chrome.*`); the `useContacts` hook is the storage seam and the
+  UI is thin glue. Unit tests cover the module + hook + components; an end-user Playwright e2e drives
+  the built popup (add a contact, pick it in Send, add-on-send, edit/delete).
