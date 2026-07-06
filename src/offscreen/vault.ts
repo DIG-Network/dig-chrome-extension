@@ -30,15 +30,38 @@ import {
   entropyToMnemonic,
   mnemonicToSeed,
 } from '@/lib/keystore/bip39';
-import { scanBalances, receiveAddress, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
-import type { ChainClient } from '@/offscreen/chain';
+import { scanBalances, receiveAddress, DEFAULT_GAP_LIMIT, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
+import { deriveAccounts } from '@/lib/keystore/derive';
+import type { ChainClient, ChainCoin } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { listNfts, prepareNftTransfer, type NftWasm, type WalletNft, type NftTransferSummary } from '@/offscreen/nfts';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
-import { decodeDappSpend, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
+import { decodeDappSpend, reconstructCoinSpends, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
 import { indexActivity, type ActivityWasm, type ActivityEvent } from '@/offscreen/activity';
 import { makeOffer, inspectOffer, takeOffer, cancelOffer, type OfferWasm, type OfferAsset, type OfferLeg, type OfferSummary } from '@/offscreen/offers';
 import type { ChainSpendBundle } from '@/offscreen/chain';
+
+/**
+ * A CHIP-0002 `getAssetBalance` result: the wallet-wide aggregate for one asset (XCH or a CAT), in
+ * base units as decimal strings. `confirmed === spendable` — the self-custody wallet does not hold
+ * coins reserved across dApp calls, so every unspent coin is spendable — and `spendableCoinCount` is
+ * how many coins back it.
+ */
+export interface WireAssetBalance {
+  confirmed: string;
+  spendable: string;
+  spendableCoinCount: number;
+}
+/**
+ * A CHIP-0002 `getAssetCoins` spendable coin: the coin's identity (camelCase, Goby-parity) + its coin
+ * name (id, hex) + `locked:false`. A dApp uses this to select coins before building a spend it then
+ * hands back to `signCoinSpends`.
+ */
+export interface WireSpendableCoin {
+  coin: { parentCoinInfo: string; puzzleHash: string; amount: string };
+  coinName: string;
+  locked: boolean;
+}
 
 /** Wire-safe (JSON, no bigint) asset descriptor crossing the SW boundary. */
 export type WireOfferAsset = { kind: 'xch' } | { kind: 'cat'; assetId: string };
@@ -81,9 +104,12 @@ export type VaultOp =
   | 'prepareNftTransfer'
   // dApp `window.chia` RPC (§5.5): identity read + approval-gated foreign-spend / message signing.
   | 'getPublicKeys'
+  | 'getAssetBalance'
+  | 'getAssetCoins'
   | 'decodeDappSpend'
   | 'signDappSpend'
-  | 'signMessage';
+  | 'signMessage'
+  | 'broadcastDappBundle';
 
 /** A request forwarded from the SW to the vault. `record` is the persisted DIGWX1 blob for ops that need it. */
 export interface VaultRequest {
@@ -126,6 +152,8 @@ export interface VaultRequest {
   message?: string;
   /** signMessage: an optional requested public key (hex); the wallet MUST own it or fails MISSING_KEY. */
   publicKey?: string;
+  /** broadcastDappBundle: the dApp bundle's aggregated BLS signature (hex) — the bundle is already signed. */
+  aggregatedSignature?: string;
 }
 
 /** The vault's reply. Never carries the persisted key; `mnemonic` is for one-time display only. */
@@ -166,6 +194,10 @@ export interface VaultResponse {
   nftSummary?: NftTransferSummary;
   /** getPublicKeys: the wallet's synthetic public keys (hex, both HD schemes, deduped). */
   publicKeys?: string[];
+  /** getAssetBalance: the wallet-wide aggregate for the requested asset (XCH or a CAT). */
+  assetBalance?: WireAssetBalance;
+  /** getAssetCoins: the wallet's spendable coins for the requested asset. */
+  assetCoins?: WireSpendableCoin[];
   /** decodeDappSpend: the tamper-resistant summary decoded from the dApp-supplied coin spends. */
   dappSummary?: DappSpendSummary;
   /** signDappSpend: the aggregated BLS signature (hex); signMessage: the message signature (hex). */
@@ -260,12 +292,18 @@ export class Vault {
           return await this.prepareNftTransfer(req, deps);
         case 'getPublicKeys':
           return await this.getPublicKeys(req, deps);
+        case 'getAssetBalance':
+          return await this.getAssetBalance(req, deps);
+        case 'getAssetCoins':
+          return await this.getAssetCoins(req, deps);
         case 'decodeDappSpend':
           return await this.decodeDappSpend(req, deps);
         case 'signDappSpend':
           return await this.signDappSpend(req, deps);
         case 'signMessage':
           return await this.signMessage(req, deps);
+        case 'broadcastDappBundle':
+          return await this.broadcastDappBundle(req, deps);
         default:
           return { success: false, code: 'BAD_REQUEST', message: `unknown vault op` };
       }
@@ -538,6 +576,64 @@ export class Vault {
   }
 
   /**
+   * The wallet's UNSPENT coins for one asset — XCH at the derived inner (p2) puzzle hashes, or a CAT
+   * at its CAT puzzle hash (`catPuzzleHash(tail, innerPh)`) over the same inner hashes — both HD
+   * schemes to `gapLimit`. Asset routing is purely by `assetId` (undefined / `'xch'` = native XCH;
+   * any other value = a CAT TAIL), the same rule the send flow uses (regression-guards the #121
+   * asset-drop). Returns `null` when locked / no wasm. Offscreen-only (derives from the held seed).
+   */
+  private async heldAssetCoins(deps: VaultDeps, assetId?: string, gapLimit?: number): Promise<ChainCoin[] | null> {
+    if (!deps.chia || !deps.chain) return null;
+    const seed = await this.heldSeed();
+    if (!seed) return null;
+    const chia = deps.chia;
+    const accounts = deriveAccounts(chia, seed, { schemes: ['unhardened', 'hardened'], count: gapLimit ?? DEFAULT_GAP_LIMIT });
+    const innerPhs = accounts.map((a) => a.puzzleHashHex);
+    const isCat = !!assetId && assetId.toLowerCase() !== 'xch';
+    if (!isCat) return deps.chain.unspentCoins(innerPhs);
+    const assetIdBytes = chia.fromHex(strip0x(assetId as string));
+    const catPhs = innerPhs.map((ph) => strip0x(chia.toHex(chia.catPuzzleHash(assetIdBytes, chia.fromHex(ph)))));
+    return deps.chain.unspentCoins(catPhs);
+  }
+
+  /**
+   * CHIP-0002 `getAssetBalance` for a dApp: the wallet-wide aggregate for one asset (any CAT by
+   * assetId, or native XCH). `confirmed === spendable` (no cross-call coin reservation) with the
+   * backing coin count. Read-only.
+   */
+  private async getAssetBalance(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const coins = await this.heldAssetCoins(deps, req.assetId, req.gapLimit);
+    if (!coins) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const total = coins.reduce((s, c) => s + c.amount, 0n).toString();
+    return { success: true, assetBalance: { confirmed: total, spendable: total, spendableCoinCount: coins.length } };
+  }
+
+  /**
+   * CHIP-0002 `getAssetCoins` for a dApp: the wallet's spendable coins for one asset (coin identity +
+   * name; `locked:false`). Read-only — a dApp selects coins from this to build a spend it then hands
+   * back to `signCoinSpends`.
+   */
+  private async getAssetCoins(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const coins = await this.heldAssetCoins(deps, req.assetId, req.gapLimit);
+    if (!coins) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia;
+    const assetCoins: WireSpendableCoin[] = coins.map((c) => ({
+      coin: {
+        parentCoinInfo: strip0x(chia.toHex(c.parentCoinInfo)),
+        puzzleHash: strip0x(chia.toHex(c.puzzleHash)),
+        amount: c.amount.toString(),
+      },
+      coinName: strip0x(chia.toHex(c.coinId())),
+      locked: false,
+    }));
+    return { success: true, assetCoins };
+  }
+
+  /**
    * Decode a tamper-resistant summary (§5.5) from dApp-supplied coin spends — what the approval window
    * shows. Never signs. Derived from the built spend + the wallet's own address/key sets (self-vs-
    * external classification + which signers we can satisfy).
@@ -592,6 +688,29 @@ export class Vault {
       if (msg.startsWith('MISSING_KEY')) return { success: false, code: 'MISSING_KEY', message: msg };
       throw e;
     }
+  }
+
+  /**
+   * BROADCAST a dApp-built, already-signed spend bundle (CHIP-0002 `sendTransaction`, the APPROVED
+   * step). Reassembles the wasm `SpendBundle` from the wire coin spends + the aggregated BLS signature
+   * (hex) and pushes it via coinset. The wallet is a RELAY here — it holds no key for this and does
+   * NOT re-sign; the approval window (which decoded a tamper-resistant summary from the coin spends)
+   * is the gate. Only reached after explicit user approval.
+   */
+  private async broadcastDappBundle(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.coinSpends || req.coinSpends.length === 0) return { success: false, code: 'BAD_REQUEST', message: 'coinSpends required' };
+    if (!req.aggregatedSignature) return { success: false, code: 'BAD_REQUEST', message: 'aggregatedSignature required' };
+    const chia = deps.chia as unknown as DappSignWasm & {
+      Signature: { fromBytes(bytes: Uint8Array): unknown };
+      SpendBundle: new (coinSpends: SigCoinSpend[], signature: unknown) => ChainSpendBundle;
+    };
+    const { coinSpends } = reconstructCoinSpends(chia, req.coinSpends);
+    const signature = chia.Signature.fromBytes(chia.fromHex(strip0x(req.aggregatedSignature)));
+    const bundle = new chia.SpendBundle(coinSpends, signature);
+    const push = await deps.chain.pushSpendBundle(bundle);
+    if (!push.success) return { success: false, code: 'PUSH_FAILED', message: push.error ?? 'broadcast failed' };
+    return { success: true };
   }
 }
 

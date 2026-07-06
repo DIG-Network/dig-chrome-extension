@@ -400,7 +400,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `12`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `13`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -421,7 +421,11 @@ offscreen vault; sign/message → the approval window) and added the approval-wi
 the in-window app-view framing bypass (§9.1). `11` (#67 P0-4) had `walletRpc` also answer the
 EIP-2255-shaped permission methods (`wallet_getPermissions` / `wallet_revokePermissions`) from the
 shared per-origin consent store, and added the Connected-sites actions `listConnectedSites`,
-`revokeConnectedSite`, `revokeAllConnectedSites` (§18.12).
+`revokeConnectedSite`, `revokeAllConnectedSites` (§18.12). `13` (#119) had `walletRpc` route the
+asset-generic reads (`getAssetBalance`, `getAssetCoins`, `filterUnlockedCoins`, `getNFTs`) and the
+value-moving writes (`chia_send`/`transfer`, `sendTransaction`, `createOffer`, `takeOffer`,
+`cancelOffer`) to the vault instead of the `4004` stub — writes join the approval-window queue
+(§18.12) — and made a user reject surface as CHIP-0002 `4002`.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -458,7 +462,7 @@ fix is entirely extension-side — on.dig.net's headers are not modified.
 | `toggleExtension` | Toggle `chia://` resolution on/off. |
 | `updateServerConfig` | Persist the dig-node/RPC host config. |
 | `updateRpcHost` | Background→content broadcast that the RPC host changed. |
-| `walletRpc` | Route one `window.chia` CHIP-0002 RPC to the self-custody wallet (per-origin gated): connect + reads → the offscreen vault; sign/message → the SW-summoned approval window. No WalletConnect fallback. |
+| `walletRpc` | Route one `window.chia` CHIP-0002 RPC to the self-custody wallet (per-origin gated): connect + reads (getAddress/getPublicKeys/getAssetBalance/getAssetCoins/filterUnlockedCoins/getNFTs) → the offscreen vault; sign/message + writes (transfer/sendTransaction/createOffer/takeOffer/cancelOffer) → the SW-summoned approval window. No WalletConnect fallback. |
 | `walletConsent` | Popup approves/revokes a dapp origin for wallet access. |
 | `dappApprovalList` / `dappApprovalResolve` | Approval-window channel (§18.12): read the pending dApp signing-request queue (decoded summaries) / return the user's approve-reject decision. |
 | `reportVerification` / `getVerification` | Record/read the active tab's verification state. |
@@ -1069,11 +1073,19 @@ gates every request.
   **Connected-sites** screen (Settings/Advanced) lists every origin (addresses, granted/last-used,
   methods) with per-site **revoke** + **revoke-all** over the `listConnectedSites` /
   `revokeConnectedSite` / `revokeAllConnectedSites` SW actions.
-- **Reads** (`chip0002_getPublicKeys`, `chia_getAddress`, `chip0002_chainId`) route straight to the
-  offscreen vault — no approval window (nothing is authorized). `getPublicKeys` returns the wallet's
-  synthetic public keys (both HD schemes, deduped).
-- **Signing** (`chip0002_signCoinSpends`) and **message signing** (`chip0002_signMessage`,
-  `chia_signMessageByAddress`) are APPROVAL-GATED. The SW enqueues the request and SUMMONS a dedicated
+- **Reads** route straight to the offscreen vault — no approval window (nothing is authorized):
+  `chip0002_chainId` (→ `"mainnet"`), `chip0002_getPublicKeys` (the wallet's synthetic public keys,
+  both HD schemes, deduped), `chia_getAddress` (→ `{ address }`), `chip0002_getAssetBalance`
+  (`{ type, assetId }` → `{ confirmed, spendable, spendableCoinCount }`, asset-generic: any CAT by
+  assetId or native XCH, both HD schemes; `confirmed === spendable` — the wallet holds no cross-call
+  coin reservation), `chip0002_getAssetCoins` (→ the wallet's spendable coins, `{ coin, coinName,
+  locked:false }[]`), `chip0002_filterUnlockedCoins` (echoes the supplied coins — none are cross-call
+  locked), and `chia_getNfts` (the wallet's NFTs, discovered by hint across both HD schemes). Asset
+  routing is by `assetId` end-to-end (a CAT is never treated as native XCH).
+- **Signing** (`chip0002_signCoinSpends`), **message signing** (`chip0002_signMessage`,
+  `chia_signMessageByAddress`), and the value-moving **writes** — `chia_send`/`transfer` (build → sign
+  → broadcast), `chia_sendTransaction` (broadcast a dApp-built, already-signed bundle), and the trade
+  offers `chia_createOffer` / `chia_takeOffer` / `chia_cancelOffer` — are APPROVAL-GATED. The SW enqueues the request and SUMMONS a dedicated
   approval window via `chrome.windows.create` (NOT `action.openPopup`, which needs a user gesture the
   background lacks). The `walletRpc` response stays pending until the user decides; a keepalive port
   (`dapp-approval-keepalive`) from the window keeps the MV3 SW + the offscreen vault alive through review.
@@ -1096,10 +1108,23 @@ gates every request.
   `high`; a `high` assessment renders a red risk banner (`role="alert"`) and GATES Approve behind an
   explicit "I understand the risk" acknowledgement. All heuristics are Chia-native and evaluated
   on-device — nothing is sent off the device, no external list is consulted.
-- **Approve → the offscreen vault signs** (`signDappSpend` reuses the §18.7 signer; `signMessage`
-  BLS-signs the raw message bytes) and the `walletRpc` promise resolves with the aggregated signature
-  (the dApp broadcasts — the extension does NOT push a dApp-signed bundle). **Reject** resolves with a
-  `4001`-class user-rejection error. The key never leaves the offscreen document.
+- **Writes build in the vault; the summary is decoded FROM THE BUILT ARTIFACT.** For each write the
+  approval window's `enrich` step calls the vault to BUILD (not broadcast): `prepareSend` (send —
+  routing XCH vs CAT by `assetId`), `prepareTrade` (take/cancel), `makeOffer` (create), or
+  `decodeDappSpend` (sendTransaction's bundle). The build holds the prepared spend under a `pendingId`
+  (or the built offer string) so the EXACT artifact whose summary was shown is the one acted on. A
+  malformed or multi-leg-offer request is refused `400` (→ `4000`) BEFORE any window is summoned.
+- **Approve** performs the built action in the offscreen vault and the `walletRpc` promise resolves:
+  signing (`signDappSpend` reuses the §18.7 signer → aggregated signature; the dApp broadcasts a
+  signed spend), message signing (BLS over the raw bytes), `confirmSend` (send → `{ id }`),
+  `confirmTrade` (take/cancel → `{ id }`), the released offer string (createOffer → `{ offer }`), or
+  `broadcastDappBundle` (sendTransaction reassembles the wasm `SpendBundle` from the wire coin spends +
+  aggregated signature and pushes it → `[{ status: 1 }]`; the wallet relays, holds no key for it). The
+  key never leaves the offscreen document. **Reject** resolves with a CHIP-0002 `4002 USER_REJECTED`
+  error (distinct from the `4001` a locked/not-connected wallet returns) and nothing is broadcast.
+- **Anti-drainer risk (P0-3) applies to dApp-BUILT spends** (`signCoinSpends` + `sendTransaction`),
+  where a page could hide a drain; a wallet-built send/offer's summary IS the explicit request.
 - **Queue.** Multiple requests queue; the window reviews one at a time and self-closes when the queue
-  drains. Unsupported (known but not-yet-wired) wallet methods return an honest `501`, never a silent
-  sign. The provider's bridge timeout (120 s) bounds how long a request may await a decision.
+  drains. Genuinely unimplemented wallet methods (DID/mint/…) return an honest `404` (→ CHIP-0002
+  `4004 METHOD_NOT_FOUND`), never a silent sign. The provider's bridge timeout (120 s) bounds how long
+  a request may await a decision.

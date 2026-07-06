@@ -177,6 +177,44 @@ describe('ApprovalWindow', () => {
     expect(screen.queryByTestId('approval-spend-summary')).not.toBeInTheDocument();
   });
 
+  it('renders a wallet-built send summary (recipient, amount, fee)', async () => {
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') {
+        return { requests: [signRequest({ id: 's1', method: 'chia_send', kind: 'send', summary: { asset: 'XCH', sent: '250000000000', change: '0', fee: '1000000', recipientPuzzleHashHex: 'ab'.repeat(16), coinCount: 1 } })], lockState: 'unlocked', summoned: true };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    expect(await screen.findByTestId('approval-send-summary')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-send-amount')).toHaveTextContent('0.25');
+    expect(screen.getByTestId('approval-send-fee')).toHaveTextContent('0.000001');
+    expect(screen.getByTestId('approval-approve')).toBeEnabled();
+  });
+
+  it('renders a two-sided trade summary (give vs receive) for takeOffer', async () => {
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') {
+        return { requests: [signRequest({ id: 'o1', method: 'chia_takeOffer', kind: 'takeOffer', summary: { offered: [{ asset: { kind: 'xch' }, amount: '100000000000' }], requested: [{ asset: { kind: 'cat', assetId: 'cc'.repeat(32) }, amount: '5', toPuzzleHashHex: 'ab' }] } })], lockState: 'unlocked', summoned: true };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    expect(await screen.findByTestId('approval-offer-summary')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-offer-give')).toHaveTextContent('0.1 XCH');
+    expect(screen.getByTestId('approval-offer-receive')).toHaveTextContent('5');
+  });
+
+  it('runs drainer risk assessment on a sendTransaction bundle (dApp-built spend)', async () => {
+    const drain = { ...SPEND_SUMMARY, sendingMojos: '1000000000000', changeMojos: '0', outputs: [{ puzzleHash: 'e3', amount: '1000000000000', isSelf: false }] };
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') return { requests: [signRequest({ id: 'tx1', method: 'chia_sendTransaction', kind: 'sendTransaction', summary: drain })], lockState: 'unlocked', summoned: true };
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    expect(await screen.findByTestId('approval-spend-summary')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-risk')).toHaveAttribute('data-risk-level', 'high');
+  });
+
   it('a lookalike origin warns and gates Approve behind an acknowledgement (#67 P0-2)', async () => {
     mockSw((m) => {
       if (m.action === 'dappApprovalList') return { requests: [signRequest({ originRisk: { verdict: 'warn', reason: 'LOOKALIKE' } })], lockState: 'unlocked', summoned: true };

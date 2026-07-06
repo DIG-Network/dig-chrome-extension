@@ -9,6 +9,8 @@ import {
   useResolveDappApprovalMutation,
   type DappApprovalRequest,
   type DappMessageSummary,
+  type DappSendSummary,
+  type DappOfferSummary,
 } from '@/features/wallet/custody/approvalApi';
 import type { DappSpendSummary } from '@/offscreen/dappSign';
 import { assessSpendRisk, type SpendRisk } from '@/lib/spend-risk';
@@ -97,8 +99,11 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
   const originWarn = originRisk?.verdict === 'warn';
 
   // Anti-drainer risk assessment (#67 P0-3), derived from the tamper-resistant decoded summary (never
-  // page text). Only coin-spend requests carry spend risk; a locked/undecodable request has no summary.
-  const reviewable = request.kind === 'signCoinSpends' && !request.needsUnlock && !request.decodeError && !originBlocked;
+  // page text). Only dApp-BUILT coin-spend requests (signCoinSpends + sendTransaction's bundle) carry
+  // spend risk — a wallet-built send/offer's summary IS the explicit request; a locked/undecodable
+  // request has no summary.
+  const isDappSpend = request.kind === 'signCoinSpends' || request.kind === 'sendTransaction';
+  const reviewable = isDappSpend && !request.needsUnlock && !request.decodeError && !originBlocked;
   const risk: SpendRisk = reviewable
     ? assessSpendRisk(request.summary as DappSpendSummary | null)
     : { level: 'none', findings: [], requiresExtraConfirm: false };
@@ -132,8 +137,12 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
         <p className="dig-error-text" role="alert" data-testid="approval-decode-error">
           <FormattedMessage id="dapp.approval.decodeError" />
         </p>
-      ) : request.kind === 'signCoinSpends' ? (
+      ) : isDappSpend ? (
         <SpendSummaryView summary={request.summary as DappSpendSummary | null} />
+      ) : request.kind === 'send' ? (
+        <SendSummaryView summary={request.summary as DappSendSummary | null} />
+      ) : request.kind === 'createOffer' || request.kind === 'takeOffer' || request.kind === 'cancelOffer' ? (
+        <OfferSummaryView summary={request.summary as DappOfferSummary | null} />
       ) : (
         <MessageSummaryView summary={request.summary as DappMessageSummary | null} />
       )}
@@ -337,6 +346,72 @@ function MessageSummaryView({ summary }: { summary: DappMessageSummary | null })
           <FormattedMessage id="dapp.approval.message.signedAs" values={{ key: short(summary.publicKey) }} />
         </p>
       )}
+    </div>
+  );
+}
+
+/** A trade leg (xch or a CAT) → a short display label with its amount. */
+function legLabel(leg: { asset: { kind: 'xch' } | { kind: 'cat'; assetId: string }; amount: string }): string {
+  return leg.asset.kind === 'xch' ? `${xch(leg.amount)} XCH` : `${leg.amount} ${short(leg.asset.assetId)}`;
+}
+
+/** The decoded wallet-built send summary — recipient, amount, and fee, from the built spend. */
+function SendSummaryView({ summary }: { summary: DappSendSummary | null }) {
+  if (!summary) {
+    return (
+      <p className="dig-muted" data-testid="approval-no-summary">
+        <FormattedMessage id="dapp.approval.decodeError" />
+      </p>
+    );
+  }
+  const isXch = !summary.asset || summary.asset.toLowerCase() === 'xch';
+  return (
+    <div data-testid="approval-send-summary">
+      <h2 className="dig-section-title" id="approval-req-title" style={{ marginTop: 0 }}>
+        <FormattedMessage id="wallet.action.send" />
+      </h2>
+      <dl className="dig-row" style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 6, margin: '8px 0' }}>
+        <dt className="dig-muted"><FormattedMessage id="dapp.approval.to" /></dt>
+        <dd className="dig-mono" data-testid="approval-send-to" style={{ margin: 0, textAlign: 'right', wordBreak: 'break-all' }}>{short(summary.recipientPuzzleHashHex)}</dd>
+        <dt className="dig-muted"><FormattedMessage id="dapp.approval.amount" /></dt>
+        <dd className="dig-mono" data-testid="approval-send-amount" style={{ margin: 0, textAlign: 'right' }}>{isXch ? `${xch(summary.sent)} XCH` : `${summary.sent} ${short(summary.asset)}`}</dd>
+        <dt className="dig-muted"><FormattedMessage id="dapp.approval.fee" /></dt>
+        <dd className="dig-mono" data-testid="approval-send-fee" style={{ margin: 0, textAlign: 'right' }}>{xch(summary.fee)} XCH</dd>
+      </dl>
+    </div>
+  );
+}
+
+/** The decoded two-sided trade summary — what the wallet gives vs receives, from the built offer. */
+function OfferSummaryView({ summary }: { summary: DappOfferSummary | null }) {
+  if (!summary) {
+    return (
+      <p className="dig-muted" data-testid="approval-no-summary">
+        <FormattedMessage id="dapp.approval.decodeError" />
+      </p>
+    );
+  }
+  return (
+    <div data-testid="approval-offer-summary">
+      <h2 className="dig-section-title" id="approval-req-title" style={{ marginTop: 0 }}>
+        <FormattedMessage id="wallet.action.trade" />
+      </h2>
+      <p className="dig-muted" style={{ margin: '8px 0 4px' }}>
+        <FormattedMessage id="dapp.approval.offer.give" />
+      </p>
+      <ul data-testid="approval-offer-give" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {summary.offered.map((leg, i) => (
+          <li key={`give-${i}`} className="dig-mono">{legLabel(leg)}</li>
+        ))}
+      </ul>
+      <p className="dig-muted" style={{ margin: '12px 0 4px' }}>
+        <FormattedMessage id="dapp.approval.offer.receive" />
+      </p>
+      <ul data-testid="approval-offer-receive" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {summary.requested.map((leg, i) => (
+          <li key={`receive-${i}`} className="dig-mono">{legLabel(leg)}</li>
+        ))}
+      </ul>
     </div>
   );
 }

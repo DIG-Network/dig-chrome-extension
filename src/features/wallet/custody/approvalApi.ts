@@ -2,6 +2,7 @@ import { api } from '@/api/api';
 import { ACTIONS } from '@/lib/messages';
 import type { LockState } from '@/features/wallet/walletSlice';
 import type { DappSpendSummary } from '@/offscreen/dappSign';
+import type { WireOfferSummary } from '@/offscreen/vault';
 import type { OriginRisk } from '@/lib/phishing';
 
 /**
@@ -17,14 +18,30 @@ export interface DappMessageSummary {
   publicKey: string | null;
 }
 
+/** The decoded summary for a wallet-built send (transfer/chia_send), from the built spend. */
+export interface DappSendSummary {
+  asset: string;
+  sent: string;
+  change: string;
+  fee: string;
+  recipientPuzzleHashHex: string;
+  coinCount: number;
+}
+
+/** The two-sided decoded summary for a trade (createOffer/takeOffer/cancelOffer). */
+export type DappOfferSummary = WireOfferSummary;
+
+/** The approval kinds the window renders (sign/message + the value-moving writes). */
+export type DappApprovalKind = 'signCoinSpends' | 'signMessage' | 'send' | 'sendTransaction' | 'createOffer' | 'takeOffer' | 'cancelOffer';
+
 /** One pending dApp signing request, as the approval window renders it. */
 export interface DappApprovalRequest {
   id: string;
   origin: string;
   method: string;
-  kind: 'signCoinSpends' | 'signMessage';
-  /** The tamper-resistant summary decoded FROM THE BUILT SPEND, or `null` when not yet decodable. */
-  summary: DappSpendSummary | DappMessageSummary | null;
+  kind: DappApprovalKind;
+  /** The tamper-resistant summary decoded FROM THE BUILT SPEND/OFFER, or `null` when not yet decodable. */
+  summary: DappSpendSummary | DappMessageSummary | DappSendSummary | DappOfferSummary | null;
   /** The wallet is locked; the summary can't be decoded until the user unlocks. */
   needsUnlock: boolean;
   /** The request could not be safely decoded (malformed); only Reject is offered. */
