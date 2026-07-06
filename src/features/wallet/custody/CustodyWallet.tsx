@@ -1,4 +1,4 @@
-import { FormattedMessage } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 import { FourState } from '@/components/FourState';
 import { AssetRow } from '@/components/AssetRow';
 import { ReceiveView } from '@/features/wallet/ReceiveView';
@@ -7,8 +7,11 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { setWalletView } from '@/features/ui/uiSlice';
 import { useStorageValue } from '@/lib/useStorageValue';
 import { useGetCustodyBalancesQuery, useGetReceiveAddressQuery } from '@/features/wallet/custodyApi';
+import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
+import { PortfolioHero } from '@/features/wallet/PortfolioHero';
+import { assetUsdValue, portfolioValue } from '@/features/wallet/portfolioValue';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
@@ -34,16 +37,26 @@ const SEG_OPTIONS: { value: WalletView; labelId: string }[] = [
  */
 export function CustodyWallet() {
   const dispatch = useAppDispatch();
+  const intl = useIntl();
   const walletView = useAppSelector((s) => s.ui.walletView);
   const advanced = useAppSelector((s) => s.ui.advanced);
   const [watchedCats] = useStorageValue<unknown>('wallet.watchedCats', []);
   const balances = useGetCustodyBalancesQuery();
   const receive = useGetReceiveAddressQuery();
+  const prices = useGetPricesQuery();
 
   const assets = custodyAssetBalances(balances.data?.balances, watchedCats);
   const hero = pickHeroBalance(assets);
+  const priceMap = prices.data ?? {};
+  const total = portfolioValue(assets, priceMap);
   const cached = balances.data?.cached === true;
   const [sending, setSending] = useState(false);
+
+  /** Format a row's fiat value as `≈ $x.xx`, or null when it can't be priced. */
+  const fiatLabelFor = (row: (typeof assets)[number]): string | null => {
+    const usd = assetUsdValue(row, priceMap);
+    return usd == null ? null : `≈ ${intl.formatNumber(usd, { style: 'currency', currency: 'USD' })}`;
+  };
 
   return (
     <div data-testid="custody-wallet">
@@ -53,9 +66,13 @@ export function CustodyWallet() {
         <p className="dig-muted" id="custody-portfolio-title" style={{ marginTop: 0 }}>
           <FormattedMessage id="wallet.portfolio.total" />
         </p>
-        <p className="dig-portfolio-value" data-testid="portfolio-value" style={{ margin: '2px 0 0' }}>
-          {hero.amountLabel} <span className="dig-muted">{hero.ticker}</span>
-        </p>
+        <PortfolioHero
+          total={total}
+          hero={hero}
+          pricesLoading={prices.isLoading}
+          pricesError={prices.isError}
+          onRetry={() => void prices.refetch()}
+        />
         {cached && (
           <p className="dig-muted" role="status" data-testid="balances-cached" style={{ marginBottom: 0 }}>
             <FormattedMessage id="custody.balances.cached" />
@@ -103,7 +120,8 @@ export function CustodyWallet() {
                   ticker={a.descriptor.ticker}
                   name={a.descriptor.name}
                   amountLabel={a.label}
-                  fiatLabel={null}
+                  fiatLabel={fiatLabelFor(a)}
+                  priceLoading={prices.isLoading}
                   testid={`asset-${a.descriptor.key}`}
                 />
               ))}

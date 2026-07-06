@@ -1,5 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { api } from '@/api/api';
+import { priceApi } from '@/features/wallet/priceApi';
 import { uiReducer } from '@/features/ui/uiSlice';
 import { walletReducer } from '@/features/wallet/walletSlice';
 // Register feature endpoints (side-effect imports wire them into the single api slice).
@@ -17,10 +18,13 @@ export function createStore() {
   return configureStore({
     reducer: {
       [api.reducerPath]: api.reducer,
+      // Prices ride a SEPARATE slice — they're fetched directly over HTTPS (public market data),
+      // not over the SW seam the `api` slice uses (see priceApi.ts).
+      [priceApi.reducerPath]: priceApi.reducer,
       ui: uiReducer,
       wallet: walletReducer,
     },
-    middleware: (getDefault) => getDefault().concat(api.middleware),
+    middleware: (getDefault) => getDefault().concat(api.middleware, priceApi.middleware),
     // Batch RTK Query store notifications on the microtask queue rather than the default
     // requestAnimationFrame. `raf` defers a coalescing callback to the next animation frame (a ~16 ms
     // macrotask); under jsdom that frame can fire after a test's window is torn down and throw from
