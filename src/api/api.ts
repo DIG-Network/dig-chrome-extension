@@ -13,6 +13,8 @@ export const TAGS = [
   'Address',
   // Self-custody NFTs / Collectibles (#56).
   'Collectibles',
+  // Coin control (#91): the per-asset unspent-coin list.
+  'Coins',
   // Self-custody dApp approval queue (#56 §5.5): the pending window.chia signing requests.
   'DappApprovals',
   // Connected sites / granular permissions (#67 P0-4): the origins the wallet is connected to.
