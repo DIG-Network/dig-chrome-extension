@@ -1,8 +1,10 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
+import { CONTACTS_KEY, RECENTS_KEY } from '@/features/contacts/useContacts';
+import { normalizeAddress, type Contact } from '@/features/contacts/contacts';
 import { DIG_ASSET_ID } from '@/lib/links';
 import golden from '@/lib/keystore/derive.golden.json';
 
@@ -24,6 +26,11 @@ function mockSw(router: (m: { action: string; [k: string]: unknown }) => unknown
 }
 
 const SUMMARY = { asset: 'XCH', sent: '250000000000', change: '749999000000', fee: '1000000', recipientPuzzleHashHex: 'ab', coinCount: 1 };
+
+beforeEach(async () => {
+  await chrome.storage.local.remove(CONTACTS_KEY);
+  await chrome.storage.local.remove(RECENTS_KEY);
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -92,6 +99,36 @@ describe('SendPanel', () => {
       expect.objectContaining({ action: 'prepareSend', assetId: DIG_ASSET_ID, amount: '1000' }),
       expect.any(Function),
     );
+  });
+
+  it('add-on-send: saves an unknown recipient in review → label preference flips + confirmation', async () => {
+    mockSw((m) => (m.action === 'prepareSend' ? { pendingId: 'p1', summary: SUMMARY } : { success: true }));
+    renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+    fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+    fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+    fireEvent.click(screen.getByTestId('send-review'));
+
+    // Unknown recipient → the inline saver is offered (raw address shown, not a label).
+    fireEvent.click(await screen.findByTestId('save-contact-open'));
+    fireEvent.change(screen.getByTestId('save-contact-label'), { target: { value: 'Alice' } });
+    fireEvent.click(screen.getByTestId('save-contact-save'));
+
+    expect(await screen.findByTestId('save-contact-saved')).toBeInTheDocument();
+    // The review recipient now prefers the just-saved label (same address-book instance).
+    expect(await screen.findByTestId('review-recipient-label')).toHaveTextContent('Alice');
+  });
+
+  it('shows a saved contact by label: picker fills the address + the form shows the name', async () => {
+    const contact: Contact = { id: 'c1', label: 'Alice', address: normalizeAddress(RECIPIENT), note: '', createdAt: 1, updatedAt: 1 };
+    await chrome.storage.local.set({ [CONTACTS_KEY]: [contact] });
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+
+    fireEvent.click(await screen.findByTestId('contact-picker-toggle'));
+    fireEvent.click(await screen.findByTestId('pick-contact-c1'));
+
+    expect((screen.getByTestId('send-recipient') as HTMLInputElement).value).toBe(normalizeAddress(RECIPIENT));
+    await waitFor(() => expect(screen.getByTestId('send-recipient-contact')).toHaveTextContent('Alice'));
   });
 
   it('shows the terminal failure state when the broadcast is rejected', async () => {
