@@ -96,8 +96,28 @@ import { DIG_ERR } from './error-codes';
  * `confirmSend` broadcast path) — routed to the offscreen vault; poll confirmation via the shared
  * `sendStatus`. New-NFT construction uses the shipped chia-wallet-sdk-wasm NFT launcher; no new wire
  * contract. Bulk/edition minting is a follow-up (#99). DID-owner assignment is a follow-up (#93).
+ *
+ * v17 (#93 DID management — create/list/transfer/profile/NFT-owner-assign): added `listDids`
+ * (discover the wallet's DIDs by hint, both HD schemes), `prepareDidCreate` (build + hold a new
+ * "simple" DID create for approval) + `confirmDidCreate`, `prepareDidTransfer` (build + hold a DID
+ * ownership transfer to another wallet) + `confirmDidTransfer`, `prepareDidProfileUpdate` (build +
+ * hold an on-chain profile-name / metadata change) + `confirmDidProfileUpdate`, and
+ * `prepareNftDidAssign` (build + hold assigning an owned DID as an owned NFT's `currentOwner` — the
+ * CHIP-0011 ownership-layer bonding handshake) + `confirmNftDidAssign` — every confirm reuses the
+ * vault's `confirmSend` broadcast path; poll confirmation via the shared `sendStatus`. DID
+ * create/transfer/profile-update are built from the shipped chia-wallet-sdk-wasm
+ * `Clvm.createEveDid`/`spendDid` primitives (no `Action`/`Spends` driver support exists for DIDs);
+ * NFT↔DID assignment is built from `Clvm.spendNft`/`spendDid` + the `TransferNft` condition (no
+ * `Spends.addDid` exists either — verified against the xch-dev/chia-wallet-sdk driver source). A
+ * profile (metadata) update needs an internal two-spend "settle" hop so a chain rescan can observe
+ * it (DID metadata is curried into the puzzle, unlike ownership/`p2PuzzleHash`, which ride the
+ * create-coin hint) — see `dids.ts`'s `prepareDidProfileUpdate` doc. No new wire contract. DID
+ * management is ADVANCED functionality: the wallet UI surfaces it in the fullscreen layout only
+ * (§145 tiering) — this message-protocol addition itself is surface-agnostic. Assigning a DID as an
+ * NFT's owner AT MINT TIME (vs. on an already-minted NFT, which this version covers) remains a
+ * follow-up seam with #92.
  */
-export const MESSAGE_PROTOCOL_VERSION = 16;
+export const MESSAGE_PROTOCOL_VERSION = 17;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -167,6 +187,17 @@ export const ACTIONS = Object.freeze({
   // ── NFT minting (#92): build a new NFT + broadcast (confirm reuses the confirmSend path) ──
   prepareNftMint: 'prepareNftMint',
   confirmNftMint: 'confirmNftMint',
+  // ── DID management (#93): create/list/transfer/profile a self-custody identity (confirm reuses confirmSend) ──
+  listDids: 'listDids',
+  prepareDidCreate: 'prepareDidCreate',
+  confirmDidCreate: 'confirmDidCreate',
+  prepareDidTransfer: 'prepareDidTransfer',
+  confirmDidTransfer: 'confirmDidTransfer',
+  prepareDidProfileUpdate: 'prepareDidProfileUpdate',
+  confirmDidProfileUpdate: 'confirmDidProfileUpdate',
+  // ── assign a wallet-owned DID as an NFT's owner (#93; confirm reuses confirmSend) ──
+  prepareNftDidAssign: 'prepareNftDidAssign',
+  confirmNftDidAssign: 'confirmNftDidAssign',
   // ── coin control (#91): per-asset coin listing + split / combine (confirmed via confirmSend) ──
   listCoins: 'listCoins',
   prepareSplit: 'prepareSplit',
@@ -436,6 +467,51 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.confirmNftMint]: {
     summary: 'Sign + BROADCAST a previously-prepared NFT mint (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.listDids]: {
+    summary: "List the wallet's DIDs (#93) — the offscreen vault derives both HD schemes, finds coins hinted to its inner puzzle hashes (coinset get_coin_records_by_hints), and reconstructs each DID from its parent spend. Read-only.",
+    request: '{ action }',
+    response: "{ dids:[{ launcherId, coinId, p2PuzzleHash, recoveryListHash, numVerificationsRequired }] } | { success:false, code, message }",
+  },
+  [ACTIONS.prepareDidCreate]: {
+    summary: "Build (not sign/broadcast) the CREATION of one new \"simple\" DID (no recovery list, 1 verification) owned by the wallet (#93), funded from a single wallet-owned XCH coin. Held under a pending id; returns the decoded (tamper-resistant) summary + the new launcher id to approve. Broadcast via confirmDidCreate.",
+    request: '{ action, fee?:string /* mojos */ }',
+    response: '{ pendingId:string, launcherId:string, didCreateSummary:{ launcherId, p2PuzzleHashHex, fee, coinCount } } | { success:false, code:\'NO_XCH_COINS\'|\'NO_SUITABLE_COIN\'|..., message }',
+  },
+  [ACTIONS.confirmDidCreate]: {
+    summary: 'Sign + BROADCAST a previously-prepared DID create (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareDidTransfer]: {
+    summary: "Build (not sign/broadcast) a transfer of the wallet's DID to another address in the offscreen vault (#93); hold it under a pending id and return the decoded summary to approve. The recipient's p2 puzzle hash is carried as the create-coin hint. A fee, when given, is paid from a separate wallet-owned XCH coin.",
+    request: '{ action, launcherId:string /* hex */, recipient:string /* xch1… */, fee?:string /* mojos */ }',
+    response: '{ pendingId:string, didSummary:{ launcherId, recipientPuzzleHashHex, fee, coinCount } } | { success:false, code:\'DID_NOT_FOUND\'|..., message }',
+  },
+  [ACTIONS.confirmDidTransfer]: {
+    summary: 'Sign + BROADCAST a previously-prepared DID transfer (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareDidProfileUpdate]: {
+    summary: "Build (not sign/broadcast) a PROFILE update of the wallet's DID (#93) — sets its on-chain metadata to a plain UTF-8 profileName, keeping the same owner/launcher id. Internally TWO chained DID spends (an ephemeral self-to-self hop) so the change is observable on a later rescan (metadata is curried into the puzzle, not carried by the create-coin hint). A fee, when given, is paid from a separate wallet-owned XCH coin.",
+    request: '{ action, launcherId:string /* hex */, profileName:string, fee?:string /* mojos */ }',
+    response: '{ pendingId:string, didProfileSummary:{ launcherId, profileName, fee, coinCount } } | { success:false, code:\'DID_NOT_FOUND\'|..., message }',
+  },
+  [ACTIONS.confirmDidProfileUpdate]: {
+    summary: 'Sign + BROADCAST a previously-prepared DID profile update (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareNftDidAssign]: {
+    summary: "Build (not sign/broadcast) assigning the wallet's DID as the OWNER of the wallet's NFT (#93) — the CHIP-0011 ownership-layer bonding handshake (a TransferNft condition on the NFT + a matching puzzle-announcement exchange with the DID), both spent in ONE bundle. Neither the NFT's nor the DID's custody changes. A fee, when given, is paid from a separate wallet-owned XCH coin.",
+    request: '{ action, launcherId:string /* the NFT, hex */, didLauncherId:string /* hex */, fee?:string /* mojos */ }',
+    response: '{ pendingId:string, nftDidAssignSummary:{ nftLauncherId, didLauncherId, fee, coinCount } } | { success:false, code:\'NFT_NOT_FOUND\'|\'DID_NOT_FOUND\'|..., message }',
+  },
+  [ACTIONS.confirmNftDidAssign]: {
+    summary: 'Sign + BROADCAST a previously-prepared NFT↔DID assignment (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ExternalLink } from '@/components/ExternalLink';
-import { validateSendForm, toBaseUnits, formatBaseUnits } from '@/lib/wallet-view';
+import { FourState } from '@/components/FourState';
+import { validateSendForm, toBaseUnits, formatBaseUnits, shortenAddress } from '@/lib/wallet-view';
+import { popOutToFullpage } from '@/lib/popout';
 import type { WalletNft } from '@/offscreen/nfts';
-import { usePrepareNftTransferMutation, useConfirmNftTransferMutation } from '@/features/collectibles/collectiblesApi';
+import { usePrepareNftTransferMutation, useConfirmNftTransferMutation, usePrepareNftDidAssignMutation, useConfirmNftDidAssignMutation } from '@/features/collectibles/collectiblesApi';
+import { useListDidsQuery } from '@/features/identity/identityApi';
 import { useLazySendStatusQuery } from '@/features/wallet/custodyApi';
 import {
   nftDisplayName,
@@ -17,16 +20,18 @@ import {
 
 const XCH_DECIMALS = 12;
 
-type Phase = 'detail' | 'form' | 'review' | 'sending' | 'confirmed' | 'failed';
+type Phase = 'detail' | 'form' | 'review' | 'sending' | 'confirmed' | 'failed' | 'assignPick' | 'assignReview' | 'assignSending' | 'assignConfirmed' | 'assignFailed';
 
 /**
- * One NFT's detail view + its transfer flow (§18.11). The detail shows the (CSP-safe) preview,
- * on-chain data (launcher id, edition, royalty, collection), and the metadata/license links. Transfer
- * reuses the Send state machine: form (recipient + fee) → review (decoded summary) → confirm (sign +
- * BROADCAST — the only real spend) → optimistic "Transferring…" → poll → Transferred / retry. Poll
- * uses the shared `sendStatus` (an NFT transfer is a coin spend). `pollMs` is injectable for tests.
+ * One NFT's detail view + its transfer + DID-owner-assignment flows (§18.11 / §18.17, #93). The
+ * detail shows the (CSP-safe) preview, on-chain data (launcher id, edition, royalty, collection —
+ * the assigned owner DID's launcher id, when set), and the metadata/license links. Transfer AND
+ * assigning a DID owner are ADVANCED → fullscreen only (#145); the popup shows an "open full screen"
+ * affordance instead of either. Both flows reuse the Send state machine: pick/form → review (decoded
+ * summary) → confirm (sign + BROADCAST — the only real spend) → poll → confirmed/retry. Poll uses the
+ * shared `sendStatus` (both are coin spends). `pollMs` is injectable for tests.
  */
-export function NftDetail({ nft, onBack, pollMs = 8000 }: { nft: WalletNft; onBack: () => void; pollMs?: number }) {
+export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft: WalletNft; isFull?: boolean; onBack: () => void; pollMs?: number }) {
   const intl = useIntl();
   const [phase, setPhase] = useState<Phase>('detail');
   const [recipient, setRecipient] = useState('');
@@ -34,9 +39,14 @@ export function NftDetail({ nft, onBack, pollMs = 8000 }: { nft: WalletNft; onBa
   const [localError, setLocalError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [spentCoinId, setSpentCoinId] = useState<string | null>(null);
+  const [selectedDidLauncherId, setSelectedDidLauncherId] = useState<string | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
 
   const [prepareTransfer, prep] = usePrepareNftTransferMutation();
   const [confirmTransfer, conf] = useConfirmNftTransferMutation();
+  const dids = useListDidsQuery(undefined, { skip: phase !== 'assignPick' });
+  const [prepareAssign, assignPrep] = usePrepareNftDidAssignMutation();
+  const [confirmAssign, assignConf] = useConfirmNftDidAssignMutation();
   const [pollStatus] = useLazySendStatusQuery();
 
   const imageSrc = nftImageSrc(nft);
@@ -71,14 +81,42 @@ export function NftDetail({ nft, onBack, pollMs = 8000 }: { nft: WalletNft; onBa
     }
   }
 
-  // Poll to a terminal state once broadcast (an input coin recorded spent = confirmed).
+  async function doPrepareAssign() {
+    if (!selectedDidLauncherId) {
+      setAssignError(intl.formatMessage({ id: 'nft.assign.error.pick' }));
+      return;
+    }
+    setAssignError(null);
+    const res = await prepareAssign({ launcherId: nft.launcherId, didLauncherId: selectedDidLauncherId });
+    if ('data' in res && res.data?.pendingId) {
+      setPendingId(res.data.pendingId);
+      setPhase('assignReview');
+    } else {
+      setAssignError(intl.formatMessage({ id: 'nft.assign.error.build' }));
+    }
+  }
+
+  async function doConfirmAssign() {
+    if (!pendingId) return;
+    setPhase('assignSending');
+    const res = await confirmAssign({ pendingId });
+    if ('data' in res && res.data?.spentCoinId) {
+      setSpentCoinId(res.data.spentCoinId);
+    } else {
+      setPhase('assignFailed');
+    }
+  }
+
+  // Poll to a terminal state once broadcast (an input coin recorded spent = confirmed) — covers both
+  // the transfer AND the DID-assignment flows (each sets its own terminal phase).
   useEffect(() => {
-    if (phase !== 'sending' || !spentCoinId) return;
+    if ((phase !== 'sending' && phase !== 'assignSending') || !spentCoinId) return;
+    const doneWith = phase === 'sending' ? 'confirmed' : 'assignConfirmed';
     let live = true;
     const timer = setInterval(async () => {
       const res = await pollStatus({ coinId: spentCoinId });
       if (live && 'data' in res && res.data?.confirmed) {
-        setPhase('confirmed');
+        setPhase(doneWith);
         clearInterval(timer);
       }
     }, pollMs);
@@ -135,9 +173,25 @@ export function NftDetail({ nft, onBack, pollMs = 8000 }: { nft: WalletNft; onBa
             </ul>
           )}
 
-          <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="nft-transfer-open" onClick={() => setPhase('form')}>
-            <FormattedMessage id="nft.transfer.button" />
-          </button>
+          {isFull ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="nft-transfer-open" onClick={() => setPhase('form')}>
+                <FormattedMessage id="nft.transfer.button" />
+              </button>
+              <button type="button" className="dig-btn dig-btn--block" data-testid="nft-assign-open" onClick={() => setPhase('assignPick')}>
+                <FormattedMessage id="nft.assign.button" />
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="nft-transfer-open" onClick={() => setPhase('form')}>
+                <FormattedMessage id="nft.transfer.button" />
+              </button>
+              <button type="button" className="dig-link" data-testid="nft-assign-fullscreen" onClick={() => void popOutToFullpage('#wallet/collectibles', true)}>
+                <FormattedMessage id="nft.assign.openFullscreen" />
+              </button>
+            </div>
+          )}
         </>
       )}
 
@@ -205,6 +259,86 @@ export function NftDetail({ nft, onBack, pollMs = 8000 }: { nft: WalletNft; onBa
         <div className="dig-state" data-state="error" role="alert" data-testid="nft-transfer-failed">
           <p><FormattedMessage id="nft.transfer.failed" /></p>
           <button type="button" className="dig-btn dig-btn--block" data-testid="nft-transfer-retry" onClick={() => setPhase('form')}>
+            <FormattedMessage id="state.retry" />
+          </button>
+        </div>
+      )}
+
+      {phase === 'assignPick' && (
+        <div data-testid="nft-assign-pick">
+          <h3 className="dig-heading"><FormattedMessage id="nft.assign.title" /></h3>
+          <p className="dig-muted" style={{ marginTop: 0 }}><FormattedMessage id="nft.assign.intro" /></p>
+          <FourState
+            isLoading={dids.isLoading}
+            isError={dids.isError}
+            isEmpty={!dids.isLoading && !dids.isError && (dids.data?.dids.length ?? 0) === 0}
+            onRetry={() => void dids.refetch()}
+            testid="nft-assign-dids"
+            loadingId="nft.assign.loading"
+            errorId="nft.assign.error.load"
+            emptyId="nft.assign.empty"
+          >
+            <ul className="dig-did-list" data-testid="nft-assign-did-list" style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'grid', gap: 8 }}>
+              {(dids.data?.dids ?? []).map((did) => (
+                <li key={did.launcherId}>
+                  <button
+                    type="button"
+                    className={selectedDidLauncherId === did.launcherId ? 'dig-btn dig-btn--primary' : 'dig-btn'}
+                    data-testid={`nft-assign-did-${did.launcherId}`}
+                    onClick={() => setSelectedDidLauncherId(did.launcherId)}
+                    style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                  >
+                    <span className="dig-mono">{did.profileName || shortenAddress(did.launcherId, 10, 8)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </FourState>
+          {assignError && <p className="dig-error-text" role="alert" data-testid="nft-assign-error">{assignError}</p>}
+          <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="nft-assign-review" onClick={() => void doPrepareAssign()} disabled={assignPrep.isLoading}>
+            <FormattedMessage id={assignPrep.isLoading ? 'custody.working' : 'nft.assign.review'} />
+          </button>
+          <button type="button" className="dig-link" data-testid="nft-assign-cancel" onClick={() => setPhase('detail')}>
+            <FormattedMessage id="nft.assign.cancel" />
+          </button>
+        </div>
+      )}
+
+      {phase === 'assignReview' && (
+        <div data-testid="nft-assign-review-panel">
+          <p className="dig-muted" style={{ marginTop: 0 }}><FormattedMessage id="nft.assign.review.intro" /></p>
+          <dl className="dig-summary">
+            <dt><FormattedMessage id="nft.assign.review.nft" /></dt>
+            <dd className="dig-mono">{nftDisplayName(nft)}</dd>
+            <dt><FormattedMessage id="nft.assign.review.did" /></dt>
+            <dd className="dig-mono" data-testid="nft-assign-review-did">{selectedDidLauncherId ? shortenAddress(selectedDidLauncherId, 10, 8) : ''}</dd>
+          </dl>
+          <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="nft-assign-confirm" onClick={() => void doConfirmAssign()} disabled={assignConf.isLoading}>
+            <FormattedMessage id="nft.assign.confirm" />
+          </button>
+          <button type="button" className="dig-link" data-testid="nft-assign-back" onClick={() => setPhase('assignPick')}>
+            <FormattedMessage id="nft.assign.back" />
+          </button>
+        </div>
+      )}
+
+      {phase === 'assignSending' && (
+        <div className="dig-state" data-state="loading" role="status" data-testid="nft-assign-sending">
+          <FormattedMessage id="nft.assign.sending" />
+        </div>
+      )}
+      {phase === 'assignConfirmed' && (
+        <div className="dig-state" data-state="success" role="status" data-testid="nft-assign-confirmed">
+          <p><FormattedMessage id="nft.assign.confirmed" /></p>
+          <button type="button" className="dig-btn dig-btn--block" data-testid="nft-assign-done" onClick={onBack}>
+            <FormattedMessage id="nft.assign.done" />
+          </button>
+        </div>
+      )}
+      {phase === 'assignFailed' && (
+        <div className="dig-state" data-state="error" role="alert" data-testid="nft-assign-failed">
+          <p><FormattedMessage id="nft.assign.failed" /></p>
+          <button type="button" className="dig-btn dig-btn--block" data-testid="nft-assign-retry" onClick={() => setPhase('assignPick')}>
             <FormattedMessage id="state.retry" />
           </button>
         </div>

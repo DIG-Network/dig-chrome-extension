@@ -35,7 +35,12 @@ const STUB = `
       { id: 'r:1', kind: 'received', asset: 'XCH', amount: '500000000000', counterparty: null, height: 5, timestamp: 1751000000, coinId: 'ab' },
       { id: 's:2', kind: 'sent', asset: 'XCH', amount: '120000000000', counterparty: 'xch1recipient', height: 4, timestamp: 1750900000, coinId: 'cd' }
     ], cursorHeight: 5 };
-    if (a === 'listNfts') return { nfts: [] };
+    if (a === 'listNfts') return { nfts: [
+      { launcherId: 'ab'.repeat(32), coinId: 'cd'.repeat(32), p2PuzzleHash: 'ef'.repeat(32), collectionId: null, editionNumber: '1', editionTotal: '1', royaltyBasisPoints: 250, royaltyPuzzleHash: '00'.repeat(32), dataUris: ['https://ipfs.example/1.png'], dataHash: null, metadataUris: [], metadataHash: null, licenseUris: [] },
+    ] };
+    if (a === 'listDids') return { dids: [
+      { launcherId: 'aa'.repeat(32), coinId: 'bb'.repeat(32), p2PuzzleHash: 'cc'.repeat(32), recoveryListHash: null, numVerificationsRequired: '1', profileName: 'Screenshot DID' },
+    ] };
     if (a === 'getDigNodeStatus') return { reachable: true, base: 'https://dig.local' };
     if (a === 'getControlStatus') return { mode: 'manage', localNode: true, base: 'https://dig.local', status: null, controlMethods: [] };
     if (a === 'getConnection') return { connected: false };
@@ -140,6 +145,73 @@ test('popup app-view (dApp opened in-window)', async ({ page }) => {
   await page.getByTestId('appview-frame').waitFor();
   await page.waitForTimeout(900);
   await page.screenshot({ path: 'e2e/__screenshots__/popup-appview.png' });
+});
+
+// DID management (#93): advanced → fullscreen only (§145). The fullscreen Identity view exposes
+// "Create DID" + per-DID "Transfer"/"Edit profile"; the popup shows a view-only list with an "open
+// full screen" affordance (never any of the forms).
+test('fullscreen identity (DID list)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/did');
+  await page.getByTestId('identity-panel').waitFor();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-identity.png' });
+});
+
+test('popup identity (view-only, create/transfer moved to full screen)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet/did');
+  await page.getByTestId('identity-create-fullscreen').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-identity.png' });
+});
+
+test('fullscreen create DID form', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/did');
+  await page.getByTestId('identity-create').click();
+  await page.getByTestId('did-create-form').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-did-create.png' });
+});
+
+test('fullscreen DID detail (transfer + edit profile)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/did');
+  await page.getByTestId(`did-tile-${'aa'.repeat(32)}`).click();
+  await page.getByTestId('did-detail').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-did-detail.png' });
+});
+
+test('fullscreen edit DID profile form', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/did');
+  await page.getByTestId(`did-tile-${'aa'.repeat(32)}`).click();
+  await page.getByTestId('did-profile-open').click();
+  await page.getByTestId('did-profile-form').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-did-profile.png' });
+});
+
+// Assign a wallet-owned DID as an NFT's owner (#93): advanced → fullscreen only (§145).
+test('fullscreen NFT detail (assign DID owner)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/collectibles');
+  await page.getByTestId(`nft-tile-${'ab'.repeat(32)}`).click();
+  await page.getByTestId('nft-detail').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-nft-detail.png' });
+});
+
+test('fullscreen assign DID owner (NFT ↔ DID picker)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/collectibles');
+  await page.getByTestId(`nft-tile-${'ab'.repeat(32)}`).click();
+  await page.getByTestId('nft-assign-open').click();
+  await page.getByTestId('nft-assign-pick').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-nft-assign.png' });
 });
 
 // Framing-failure fallback: an unreachable/refused embed → the blocked note (never a blank frame).
