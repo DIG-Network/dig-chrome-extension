@@ -3,7 +3,7 @@
  * layer. No chrome.*; every branch of TTL math + lock-state derivation is exercised here.
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   CUSTODY_ACTIONS,
@@ -19,7 +19,7 @@ import {
   DEFAULT_UNLOCK_TTL_MINUTES,
   MIN_UNLOCK_TTL_MINUTES,
   MAX_UNLOCK_TTL_MINUTES,
-} from '../custody-session.mjs';
+} from '@/lib/custody-session';
 
 test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
   assert.deepEqual(
@@ -67,7 +67,8 @@ test('isCustodyAction recognises custody actions and rejects others', () => {
 test('resolveTtlMinutes defaults, clamps, and floors', () => {
   assert.equal(resolveTtlMinutes(undefined), DEFAULT_UNLOCK_TTL_MINUTES);
   assert.equal(resolveTtlMinutes({}), DEFAULT_UNLOCK_TTL_MINUTES);
-  assert.equal(resolveTtlMinutes({ unlockTtlMinutes: 'nope' }), DEFAULT_UNLOCK_TTL_MINUTES);
+  // Intentional bad runtime value (non-number) — exercises the type-guard fallback branch.
+  assert.equal(resolveTtlMinutes({ unlockTtlMinutes: 'nope' as unknown as number }), DEFAULT_UNLOCK_TTL_MINUTES);
   assert.equal(resolveTtlMinutes({ unlockTtlMinutes: 5 }), 5);
   assert.equal(resolveTtlMinutes({ unlockTtlMinutes: 3.9 }), 3); // floored
   assert.equal(resolveTtlMinutes({ unlockTtlMinutes: 0 }), MIN_UNLOCK_TTL_MINUTES); // clamped up

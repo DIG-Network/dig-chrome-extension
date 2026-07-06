@@ -45,10 +45,6 @@ const EXTENSION_FILES = [
   // getCapabilities self-description). Both imported at runtime by background.js.
   'error-codes.mjs',
   'messages.mjs',
-  // Self-custody session logic (#56) — the offscreen-vault coordination decisions imported by the
-  // (not-yet-bundled) module service worker at runtime. MUST be copied or the SW fails to load its
-  // module graph (a released regression: background.js imported it but it was absent from this list).
-  'custody-session.mjs',
   // DIG Control Panel (dig://control parity) decision logic + the DIG Shields per-resource
   // proof ledger (#134, byte-mirror of the browser's dig/shields/dig_ledger.mjs). Imported by
   // the React shell (#shared/* alias), the background SW, and the dig-viewer.
@@ -695,8 +691,9 @@ async function bundleBackground() {
     target: ['chrome111'],
     legalComments: 'none',
     minify: false,
-    // #shared/* resolves to the repo-root shared .mjs leaves so they inline into the SW bundle.
-    alias: { '#shared': __dirname },
+    // @/* → src/* (migrated leaves) and #shared/* → repo root (leaves not yet moved under src/) —
+    // both inline into the SW bundle. Mirrors the tsconfig/vite/vitest path aliases.
+    alias: { '@': SRC_DIR, '#shared': __dirname },
     // Keep ./dig_client.js an external runtime import (see note above) — never inline it.
     plugins: [
       {
