@@ -90,6 +90,14 @@ export function AppView() {
     return () => window.removeEventListener('keydown', onKey);
   }, [app, dispatch]);
 
+  // Move focus into the dialog on open (WCAG 2.2) — the Back control, the first actionable element,
+  // so a keyboard/SR user lands inside the app-view rather than on the page behind it. (A hard Tab
+  // trap is intentionally NOT applied: the dApp iframe IS the content and must be keyboard-reachable.)
+  const backRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (app) backRef.current?.focus();
+  }, [app?.slug]);
+
   if (!app) return null;
 
   // A `load` fires for BOTH a successful embed AND a refused one (X-Frame-Options / CSP
@@ -113,7 +121,7 @@ export function AppView() {
   return (
     <div className="dig-appview" role="dialog" aria-modal="true" aria-label={app.name} data-testid="appview">
       <header className="dig-appview-bar">
-        <button type="button" className="dig-iconbtn" data-testid="appview-back" aria-label={intl.formatMessage({ id: 'appview.back' })} onClick={() => dispatch(closeApp())}>
+        <button ref={backRef} type="button" className="dig-iconbtn" data-testid="appview-back" aria-label={intl.formatMessage({ id: 'appview.back' })} onClick={() => dispatch(closeApp())}>
           ‹
         </button>
         <span className="dig-appview-title" data-testid="appview-title">{app.name}</span>

@@ -12,7 +12,7 @@ import { useSendAssetMutation } from '@/features/wallet/walletApi';
  */
 export function SendForm({ assets, onDone }: { assets: AssetBalance[]; onDone: () => void }) {
   const intl = useIntl();
-  const [send, { isLoading, isSuccess, isError, error, reset }] = useSendAssetMutation();
+  const [send, { isLoading, isSuccess, isError, reset }] = useSendAssetMutation();
   const options = useMemo(
     () =>
       assets.map((a) => ({
@@ -57,7 +57,7 @@ export function SendForm({ assets, onDone }: { assets: AssetBalance[]; onDone: (
             onDone();
           }}
         >
-          <FormattedMessage id="receive.title" defaultMessage="Done" />
+          <FormattedMessage id="send.done" />
         </button>
       </div>
     );
@@ -139,12 +139,11 @@ export function SendForm({ assets, onDone }: { assets: AssetBalance[]; onDone: (
       {isError && (
         <p className="dig-error-text" role="alert" data-testid="send-error">
           {intl.formatMessage({ id: 'state.error.generic' })}
-          {(error as { message?: string })?.message ? `: ${(error as { message?: string }).message}` : ''}
         </p>
       )}
 
       <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-submit" disabled={isLoading}>
-        <FormattedMessage id={isLoading ? 'wallet.connect.connecting' : 'send.submit'} />
+        <FormattedMessage id={isLoading ? 'send.sending' : 'send.submit'} />
       </button>
     </form>
   );

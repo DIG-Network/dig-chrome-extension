@@ -969,3 +969,33 @@ button.dig-widget:focus-visible {
 .dig-bugreport-inline .dig-link {
   font-size: 11px;
 }
+
+/* ── #53 polish: two referenced-but-previously-undefined classes ── */
+
+/* The primary custody balance (CustodyWallet) — a hero number like the Sage Home's .dig-hero-value,
+   so the wallet's most important figure isn't understated at body size. */
+.dig-portfolio-value {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 6px 0 2px;
+  letter-spacing: 0.3px;
+  font-family: var(--dig-mono);
+}
+
+/* Key/value review + receipt lists (Send review, NFT detail, activity receipt, trade review) — a
+   two-column definition list so terms and values align instead of falling back to raw <dl> indent. */
+.dig-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.dig-summary dt {
+  color: var(--dig-text-dim);
+}
+.dig-summary dd {
+  margin: 0;
+  text-align: right;
+  word-break: break-word;
+}
