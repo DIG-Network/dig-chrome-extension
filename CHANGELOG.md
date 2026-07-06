@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.41.0] - 2026-07-06
+
+### Features
+- **identity:** DID management (create/list/transfer/profile/NFT-owner-assign) (#58)
+
 ## [1.40.0] - 2026-07-06
 
 ### Features
