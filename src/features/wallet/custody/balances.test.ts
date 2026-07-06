@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { custodyAssetBalances } from './balances';
 import { DIG_ASSET_ID } from '@/lib/links';
+import { parseCatRegistry } from '@/features/wallet/catMetadata';
 
 describe('custodyAssetBalances', () => {
   it('maps XCH + $DIG from a scan onto the shared asset rows', () => {
@@ -34,5 +35,51 @@ describe('custodyAssetBalances', () => {
   it('handles an undefined scan (all null)', () => {
     const rows = custodyAssetBalances(undefined, []);
     expect(rows.every((r) => r.balance === null)).toBe(true);
+  });
+
+  it('auto-discovers a held CAT (in the scan, not watched) as a row (#87)', () => {
+    const tail = 'a'.repeat(64);
+    const rows = custodyAssetBalances({ xch: 0, cats: { [tail]: 4200 } }, []);
+    const cat = rows.find((r) => r.descriptor.assetId?.toLowerCase() === tail);
+    expect(cat?.balance).toBe(4200); // surfaced with NO watch list
+    expect(cat?.descriptor.ticker).toBe('CAT'); // no registry → generic ticker
+    expect(cat?.descriptor.name).toBe('aaaaaa…aaaa'); // short-form fallback
+    expect(cat?.descriptor.iconUrl).toBeNull();
+  });
+
+  it('enriches a discovered CAT with registry name/ticker/icon/decimals', () => {
+    const tail = 'c'.repeat(64);
+    const registry = parseCatRegistry({ tokens: [{ id: tail, name: 'Gamma Coin', code: 'GMA', denom: 1000, icon: `https://icons.dexie.space/${tail}.webp` }] });
+    const rows = custodyAssetBalances({ xch: 0, cats: { [tail]: 1500 } }, [], { registry });
+    const cat = rows.find((r) => r.descriptor.assetId?.toLowerCase() === tail)!;
+    expect(cat.descriptor.name).toBe('Gamma Coin');
+    expect(cat.descriptor.ticker).toBe('GMA');
+    expect(cat.descriptor.iconUrl).toBe(`https://icons.dexie.space/${tail}.webp`);
+    expect(cat.balance).toBe(1500);
+  });
+
+  it('hides a CAT the user hid, even if held', () => {
+    const tail = 'd'.repeat(64);
+    const rows = custodyAssetBalances({ xch: 0, cats: { [tail]: 9 } }, [], { hidden: [tail] });
+    expect(rows.find((r) => r.descriptor.assetId?.toLowerCase() === tail)).toBeUndefined();
+  });
+
+  it('keeps the built-in $DIG branding but takes its icon from the registry', () => {
+    const registry = parseCatRegistry({ tokens: [{ id: DIG_ASSET_ID, name: 'DIG Network', code: 'DIG', icon: `https://icons.dexie.space/${DIG_ASSET_ID}.webp` }] });
+    const rows = custodyAssetBalances({ xch: 0, cats: { [DIG_ASSET_ID]: 1000 } }, [], { registry });
+    const digRows = rows.filter((r) => r.descriptor.assetId?.toLowerCase() === DIG_ASSET_ID.toLowerCase());
+    expect(digRows).toHaveLength(1); // not duplicated as a discovered CAT
+    expect(digRows[0].descriptor.key).toBe('dig');
+    expect(digRows[0].descriptor.ticker).toBe('$DIG'); // canonical branding wins over registry "DIG"
+    expect(digRows[0].descriptor.iconUrl).toBe(`https://icons.dexie.space/${DIG_ASSET_ID}.webp`);
+  });
+
+  it('prefers a user-given watched name over the registry name', () => {
+    const tail = 'e'.repeat(64);
+    const registry = parseCatRegistry({ tokens: [{ id: tail, name: 'Registry Name', code: 'REG', denom: 1000 }] });
+    const rows = custodyAssetBalances({ xch: 0, cats: { [tail]: 1 } }, [{ assetId: tail, name: 'My Label' }], { registry });
+    const cat = rows.find((r) => r.descriptor.assetId?.toLowerCase() === tail)!;
+    expect(cat.descriptor.name).toBe('My Label');
+    expect(cat.descriptor.ticker).toBe('REG'); // ticker still from the registry
   });
 });

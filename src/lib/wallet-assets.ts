@@ -40,7 +40,12 @@ export interface AssetDescriptor {
   decimals: number;
   assetId: string | null;
   type: 'cat' | null;
+  /** Token icon URL (CAT registry), or null → the row shows a monogram badge. */
+  iconUrl?: string | null;
 }
+
+/** `chrome.storage.local` key for the user's hidden-CAT list (tails suppressed from the token list). */
+export const HIDDEN_CATS_KEY = 'wallet.hiddenCats';
 
 export function normalizeCatId(raw: unknown): string | null {
   if (raw == null) return null;
@@ -148,4 +153,55 @@ export function resolveSendAsset(value: string, watchedCats: unknown): { type: '
   const cat = parseWatchedCats(watchedCats).find((c) => c.assetId === id);
   if (!cat) return null;
   return { type: 'cat', assetId: id, decimals: CAT_DECIMALS, ticker: catDisplayName(cat) };
+}
+
+// ── Hidden CATs (#87/#95 manage-tokens) ────────────────────────────────────────────────────────────
+// A discovered CAT the user chose to hide from the token list. Stored as a plain array of tails under
+// `wallet.hiddenCats`. Hiding NEVER forgets the coins — it only suppresses the row; unhiding restores
+// it, and the balance is re-discovered on the next scan.
+
+/** Parse the persisted hidden-CAT list into a clean array of normalized tails (junk dropped). */
+export function parseHiddenCats(stored: unknown): string[] {
+  if (!Array.isArray(stored)) return [];
+  const out: string[] = [];
+  for (const entry of stored) {
+    const id = normalizeCatId(typeof entry === 'string' ? entry : (entry as { assetId?: unknown })?.assetId);
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** Add a tail to the hidden list (validated, deduped). Returns a NEW array (original if invalid). */
+export function addHiddenCat(list: unknown, rawId: string): string[] {
+  const current = parseHiddenCats(list);
+  const id = normalizeCatId(rawId);
+  if (!id || current.includes(id)) return current;
+  return [...current, id];
+}
+
+/** Remove a tail from the hidden list (tolerating 0x/case). Returns a NEW array (no-op if absent). */
+export function removeHiddenCat(list: unknown, rawId: string): string[] {
+  const id = normalizeCatId(rawId);
+  const current = parseHiddenCats(list);
+  if (!id) return current;
+  return current.filter((t) => t !== id);
+}
+
+/**
+ * The ordered, deduped set of NON-DIG CAT tails to show as token rows: the union of auto-discovered
+ * (held) tails and manually-watched tails, MINUS the hidden set (and minus DIG, which is always a
+ * built-in row). Held tails come first (in scan order), then any watched-but-not-held tails.
+ */
+export function catRowTails(heldTails: unknown, watched: unknown, hidden: unknown): string[] {
+  const dig = normalizeCatId(DIG_ASSET_ID);
+  const hiddenSet = new Set(parseHiddenCats(hidden));
+  const out: string[] = [];
+  const push = (raw: unknown) => {
+    const id = normalizeCatId(raw);
+    if (!id || id === dig || hiddenSet.has(id) || out.includes(id)) return;
+    out.push(id);
+  };
+  if (Array.isArray(heldTails)) for (const t of heldTails) push(t);
+  for (const c of parseWatchedCats(watched)) push(c.assetId);
+  return out;
 }

@@ -23,6 +23,10 @@ import {
   assetDescriptors,
   sendAssetOptions,
   resolveSendAsset,
+  parseHiddenCats,
+  addHiddenCat,
+  removeHiddenCat,
+  catRowTails,
 } from '@/lib/wallet-assets';
 import { DIG_ASSET_ID } from '@/lib/links';
 
@@ -124,4 +128,33 @@ test('resolveSendAsset maps a picker value to chia_send {type, assetId} + decima
   assert.equal(cat.decimals, 3);
   // unknown value → null (renderer falls back to XCH / shows an error)
   assert.equal(resolveSendAsset('mystery', []), null);
+});
+
+test('parseHiddenCats normalises + dedupes, tolerating junk', () => {
+  const a = 'a'.repeat(64);
+  assert.deepEqual(parseHiddenCats(null), []);
+  assert.deepEqual(parseHiddenCats([`0x${a.toUpperCase()}`, a, 'bad', 7]), [a]);
+  assert.deepEqual(parseHiddenCats([{ assetId: a }]), [a]);
+});
+
+test('addHiddenCat / removeHiddenCat manage the hidden set (validated, deduped)', () => {
+  const a = 'a'.repeat(64);
+  const b = 'b'.repeat(64);
+  assert.deepEqual(addHiddenCat([], a), [a]);
+  assert.deepEqual(addHiddenCat([a], `0x${a.toUpperCase()}`), [a]); // dedupe
+  assert.deepEqual(addHiddenCat([a], 'nope'), [a]); // invalid → unchanged
+  assert.deepEqual(removeHiddenCat([a, b], `0x${a.toUpperCase()}`), [b]);
+  assert.deepEqual(removeHiddenCat([a], 'c'.repeat(64)), [a]); // absent → no-op
+});
+
+test('catRowTails unions held + watched, drops DIG + hidden + dupes, held-first', () => {
+  const held = 'a'.repeat(64);
+  const watched = 'b'.repeat(64);
+  const hidden = 'c'.repeat(64);
+  const tails = catRowTails(
+    [held, hidden, DIG_ASSET_ID, `0x${held.toUpperCase()}`],
+    [{ assetId: watched, name: '' }, { assetId: held, name: '' }],
+    [hidden],
+  );
+  assert.deepEqual(tails, [held, watched]); // DIG excluded (built-in), hidden dropped, held before watched, deduped
 });
