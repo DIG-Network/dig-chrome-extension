@@ -16,6 +16,7 @@
     "https://*.dig.net/*",
     "https://coinset.org/*",
     "https://api.dexie.space/*",
+    "https://api.coingecko.com/*",
     "https://api.bugreport.dig.net/*",
     "https://explore.dig.net/*"
   ],
@@ -24,7 +25,7 @@
     "type": "module"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://rpc.dig.net https://*.dig.net https://coinset.org https://api.dexie.space https://api.bugreport.dig.net; frame-src 'self' https:; font-src 'self'; img-src 'self' data: https://explore.dig.net"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://rpc.dig.net https://*.dig.net https://coinset.org https://api.dexie.space https://api.coingecko.com https://api.bugreport.dig.net; frame-src 'self' https:; font-src 'self'; img-src 'self' data: https://explore.dig.net"
   },
   "content_scripts": [
     {
