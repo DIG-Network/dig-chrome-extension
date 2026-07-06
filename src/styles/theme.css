@@ -982,6 +982,43 @@ button.dig-widget:focus-visible {
   font-family: var(--dig-mono);
 }
 
+/* ── #86 price feed: fiat portfolio value + 24h change ── */
+
+/* The 24h change chip beneath the total — green up / red down, arrow + delta, tabular figures. */
+.dig-change {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dig-change--up {
+  color: var(--dig-good);
+}
+.dig-change--down {
+  color: var(--dig-bad);
+}
+
+/* The native crypto amount, shown small beneath the fiat total (secondary to the fiat figure). */
+.dig-portfolio-native {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A per-asset fiat cell whose price is still loading — a muted placeholder, never a fake value. */
+.dig-fiat-loading {
+  opacity: 0.55;
+}
+
+/* A text-style inline button (e.g. the "retry" affordance inside a muted status line). */
+.dig-linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--dig-accent-ink);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 /* Key/value review + receipt lists (Send review, NFT detail, activity receipt, trade review) — a
    two-column definition list so terms and values align instead of falling back to raw <dl> indent. */
 .dig-summary {

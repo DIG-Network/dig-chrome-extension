@@ -86,3 +86,9 @@ const chromeStub = {
 
 // @ts-expect-error — assign the partial stub onto the global for the extension code under test.
 globalThis.chrome = chromeStub;
+
+// No real network in unit tests. The price feed (priceApi) fetches CoinGecko/dexie via global
+// fetch; default it to a rejection so price-dependent UI is deterministically "unavailable" (its
+// graceful path) unless a test mocks fetch explicitly. Assigned (not spied) so per-test
+// vi.spyOn(globalThis,'fetch') overrides restore back to this after each test.
+globalThis.fetch = (() => Promise.reject(new Error('fetch disabled in unit tests'))) as typeof fetch;

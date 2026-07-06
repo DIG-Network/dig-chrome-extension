@@ -9,9 +9,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
-  // Only the screenshot spec — the SW-registration harness (e2e/sw/) has its own config
-  // (playwright.sw.config.ts): it loads the built unpacked extension, not the dist-web static server.
-  testMatch: '**/screenshots.spec.ts',
+  // The dist-web specs: the screenshot harness + the #86 price-feed end-user e2e (both drive the
+  // real popup bundle over the static server with a stubbed chrome.*). The SW-registration harness
+  // (e2e/sw/) has its own config (playwright.sw.config.ts) — it loads the built unpacked extension.
+  testMatch: ['**/screenshots.spec.ts', '**/prices.spec.ts'],
   fullyParallel: true,
   reporter: 'list',
   use: {
