@@ -7,17 +7,17 @@
  * files, so a change that alters one of them without updating SPEC.md fails here. Keep SPEC.md
  * and the code in lockstep — a failing test means one of the two drifted.
  */
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { MESSAGE_PROTOCOL_VERSION } from '../messages.mjs';
-import { DEFAULT_DIG_NODE_PORT, DIG_LOCAL_URL, digNodeCandidates } from '../server-config.mjs';
-import { DIG_LOADER_CODES } from '../error-codes.mjs';
+import { MESSAGE_PROTOCOL_VERSION } from '#shared/messages.mjs';
+import { DEFAULT_DIG_NODE_PORT, DIG_LOCAL_URL, digNodeCandidates } from '@/lib/server-config';
+import { DIG_LOADER_CODES } from '#shared/error-codes.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SPEC = readFileSync(join(ROOT, 'SPEC.md'), 'utf8');
 
 test('SPEC.md exists and is a normative spec (RFC-2119 voice)', () => {

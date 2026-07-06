@@ -7,7 +7,7 @@
  * these keys can never disagree on the default port.
  */
 import { DIG_BROWSER_URL } from '#shared/links.mjs';
-import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from '#shared/server-config.mjs';
+import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from '@/lib/server-config';
 import { digNodeInstallPrompt } from '#shared/dig-node-status.mjs';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>

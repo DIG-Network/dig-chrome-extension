@@ -34,11 +34,8 @@ const EXTENSION_FILES = [
   // QR renderer for the Receive view (bundled below to inline qrcode-generator for the browser).
   'qr.mjs',
   'dig-urn.mjs',
-  // Shared dig-node host config (one parser/default for the server.host key + the
-  // dig.local→localhost resolution order) + the branded, plain-language chia:// error
-  // page (white theme, never leaks crypto strings) + the dig-node install prompt/copy.
-  'server-config.mjs',
-  'error-page.mjs',
+  // The dig-node install prompt/copy. (server-config + error-page migrated to src/lib as TS — #68;
+  // they inline into the SW bundle + the vite page bundles, no longer plain-copied.)
   'dig-node-status.mjs',
   // Agent-friendly contracts: catalogued chia:// loader error codes (DIG_ERR_*, aligned with
   // docs error-codes.json) + the versioned background MESSAGE catalogue (ACTIONS enum +

@@ -206,22 +206,6 @@ declare module '#shared/qr.mjs' {
   export function qrSvg(text: string, size?: number): string;
 }
 
-declare module '#shared/server-config.mjs' {
-  /** The dig-node default port (8080). */
-  export const DEFAULT_DIG_NODE_PORT: number;
-  /** The default dig-node host string (`localhost:8080`). */
-  export const DEFAULT_DIG_NODE_HOST: string;
-  /** Parse a user-entered host (`host` / `host:port` / `http(s)://host[:port]`) into `{ url, port }`. */
-  export function parseServerHost(host: string): { url: string; port: number };
-  /** Render a `{ url, port }` back into a canonical host string. */
-  export function formatServerHost(url: string, port: number): string;
-  /** Resolve the reachable dig-node base URL for `host` (custom → dig.local → localhost), or `null`. */
-  export function resolveDigNode(
-    host: string,
-    opts?: { timeoutMs?: number; fetch?: typeof fetch },
-  ): Promise<string | null>;
-}
-
 declare module '#shared/dig-node-status.mjs' {
   /** The DIG node installer/download URL surfaced when no local node is reachable. */
   export const DIG_INSTALLER_URL: string;
@@ -258,20 +242,6 @@ declare module '#shared/apps.mjs' {
   export function classifyOmnibox(v: string): 'dig' | 'url' | 'search';
   /** Resolve a classified omnibox value to the destination URL to navigate to. */
   export function omniboxTarget(v: string): string;
-}
-
-declare module '#shared/error-page.mjs' {
-  /** Internal failure-string patterns that must never be shown to a user. */
-  export const INTERNAL_LEAK_PATTERNS: readonly RegExp[];
-  /** Map a raw failure message to a friendly, non-leaking, plain-language cause. */
-  export function friendlyCause(rawMessage: string | null | undefined): string;
-  /** Build the full HTML document for the branded, white-theme chia:// error page. */
-  export function buildErrorPageHtml(opts?: {
-    url?: string;
-    rawMessage?: string;
-    homeUrl?: string;
-    installPrompt?: { installLabel: string; installUrl: string };
-  }): string;
 }
 
 declare module '#shared/error-codes.mjs' {

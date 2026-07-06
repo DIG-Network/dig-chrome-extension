@@ -11,7 +11,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -21,9 +21,10 @@ import {
   DEFAULT_DIG_NODE_PORT,
   parseServerHost,
   formatServerHost,
-} from '../server-config.mjs';
+} from '@/lib/server-config';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// This test lives at src/lib/, so the repo root is two levels up.
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 test('default dig-node host is localhost:8080 (the dig-node port)', () => {
   assert.equal(DEFAULT_DIG_NODE_HOST, 'localhost:8080');

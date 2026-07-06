@@ -34,7 +34,7 @@ import initDigClient, {
 import { parseURN } from '#shared/dig-urn.mjs';
 
 // Branded, plain-language chia:// error page (white theme; never leaks crypto strings).
-import { buildErrorPageHtml } from '#shared/error-page.mjs';
+import { buildErrorPageHtml } from '@/lib/error-page';
 // Catalogued, stable chia:// loader error codes (DIG_ERR_*) + the coded-error envelope.
 // Aligned with docs.dig.net static/error-codes.json `dig-loader` surface.
 import { DIG_ERR, makeError } from '#shared/error-codes.mjs';
@@ -66,7 +66,7 @@ import { digNodeInstallPrompt, isDigNodeRequiredError } from '#shared/dig-node-s
 import {
   parseServerHost as parseDigNodeHost,
   resolveDigNode,
-} from '#shared/server-config.mjs';
+} from '@/lib/server-config';
 
 // DIG Control Panel decision logic (the dig://control parity surface): detect a local dig-node
 // → manage vs install, the catalogued control.* method names, and the honest hosted-RPC

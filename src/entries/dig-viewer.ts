@@ -7,7 +7,7 @@
  * Pure DOM + chrome.* glue (no meaningful branch logic of its own — the decision cores live in the
  * unit-tested `#shared/*` modules), which is why it lives under `src/entries/` (coverage-excluded).
  */
-import { friendlyCause } from '#shared/error-page.mjs';
+import { friendlyCause } from '@/lib/error-page';
 // Stable action names (no raw string literals) + the catalogued loader error codes so the viewer
 // exposes a machine-readable failure discriminant alongside the friendly human copy.
 import { ACTIONS } from '#shared/messages.mjs';

@@ -12,7 +12,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   DIG_LOCAL_URL,
@@ -20,7 +20,7 @@ import {
   digNodeCandidates,
   probeDigNode,
   resolveDigNode,
-} from '../server-config.mjs';
+} from '@/lib/server-config';
 
 test('DIG_LOCAL_URL is the bare branded http://dig.local (no port)', () => {
   assert.equal(DIG_LOCAL_URL, 'http://dig.local');
@@ -91,51 +91,51 @@ test('digNodeCandidates: a custom host is case-insensitively distinguished from 
 
 test('probeDigNode resolves true when fetch succeeds within the timeout', async () => {
   const okFetch = async () => ({ ok: true });
-  assert.equal(await probeDigNode('http://dig.local', { fetch: okFetch }), true);
+  assert.equal(await probeDigNode('http://dig.local', { fetch: okFetch as unknown as typeof globalThis.fetch }), true);
 });
 
 test('probeDigNode resolves false when fetch rejects (host unreachable)', async () => {
   const failFetch = async () => { throw new Error('Failed to fetch'); };
-  assert.equal(await probeDigNode('http://dig.local', { fetch: failFetch }), false);
+  assert.equal(await probeDigNode('http://dig.local', { fetch: failFetch as unknown as typeof globalThis.fetch }), false);
 });
 
 test('probeDigNode treats a no-cors opaque response (status 0) as reachable', async () => {
   // no-cors GETs come back opaque (ok=false, status=0) yet the socket WAS reachable.
   const opaqueFetch = async () => ({ ok: false, status: 0, type: 'opaque' });
-  assert.equal(await probeDigNode('http://localhost:8080', { fetch: opaqueFetch }), true);
+  assert.equal(await probeDigNode('http://localhost:8080', { fetch: opaqueFetch as unknown as typeof globalThis.fetch }), true);
 });
 
 test('resolveDigNode returns dig.local when it is reachable (preferred)', async () => {
-  const tried = [];
-  const fetch = async (url) => { tried.push(url); return { ok: true }; };
-  const r = await resolveDigNode('localhost:8080', { fetch });
+  const tried: string[] = [];
+  const fetch = async (url: string) => { tried.push(url); return { ok: true }; };
+  const r = await resolveDigNode('localhost:8080', { fetch: fetch as unknown as typeof globalThis.fetch });
   assert.equal(r, 'http://dig.local');
   // It must have probed dig.local first and short-circuited (not probe localhost).
   assert.deepEqual(tried, ['http://dig.local/']);
 });
 
 test('resolveDigNode falls back to localhost:port when dig.local is unreachable', async () => {
-  const tried = [];
-  const fetch = async (url) => {
+  const tried: string[] = [];
+  const fetch = async (url: string) => {
     tried.push(url);
     if (url.includes('dig.local')) throw new Error('ENOTFOUND dig.local');
     return { ok: true };
   };
-  const r = await resolveDigNode('localhost:8080', { fetch });
+  const r = await resolveDigNode('localhost:8080', { fetch: fetch as unknown as typeof globalThis.fetch });
   assert.equal(r, 'http://localhost:8080');
   assert.deepEqual(tried, ['http://dig.local/', 'http://localhost:8080/']);
 });
 
 test('resolveDigNode returns null when NO candidate is reachable (dig-node not running)', async () => {
   const fetch = async () => { throw new Error('Failed to fetch'); };
-  const r = await resolveDigNode('localhost:8080', { fetch });
+  const r = await resolveDigNode('localhost:8080', { fetch: fetch as unknown as typeof globalThis.fetch });
   assert.equal(r, null);
 });
 
 test('resolveDigNode probes ONLY the custom host when one is explicitly configured (regression)', async () => {
-  const tried = [];
-  const fetch = async (url) => { tried.push(url); return { ok: true }; };
-  const r = await resolveDigNode('my-node.example.com:9000', { fetch });
+  const tried: string[] = [];
+  const fetch = async (url: string) => { tried.push(url); return { ok: true }; };
+  const r = await resolveDigNode('my-node.example.com:9000', { fetch: fetch as unknown as typeof globalThis.fetch });
   assert.equal(r, 'http://my-node.example.com:9000');
   // Must NOT have probed dig.local or localhost — the custom host wins entirely (§5.3).
   assert.deepEqual(tried, ['http://my-node.example.com:9000/']);

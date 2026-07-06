@@ -29,7 +29,7 @@ export const DEFAULT_DIG_NODE_HOST = `localhost:${DEFAULT_DIG_NODE_PORT}`;
  * falls back to {@link DEFAULT_DIG_NODE_PORT} (8080); blank input falls back to the full
  * default host. The scheme is stripped — the caller decides http/https.
  */
-export function parseServerHost(host) {
+export function parseServerHost(host?: string | null): { url: string; port: number } {
   if (!host || !String(host).trim()) {
     return { url: 'localhost', port: DEFAULT_DIG_NODE_PORT };
   }
@@ -55,7 +55,7 @@ export function parseServerHost(host) {
 }
 
 /** Render `{ url, port }` back to the canonical `url:port` string. */
-export function formatServerHost(url, port) {
+export function formatServerHost(url: string, port: number): string {
   return `${url}:${port}`;
 }
 
@@ -98,7 +98,7 @@ const LOCAL_ALIAS_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'dig.local']
  * @returns {string[]} `['http://<custom-host>:<port>']`, or
  *   `['http://dig.local', 'http://localhost:<port>']` when no custom host is configured
  */
-export function digNodeCandidates(host) {
+export function digNodeCandidates(host?: string | null): string[] {
   const { url, port } = parseServerHost(host);
   if (url && !LOCAL_ALIAS_HOSTS.has(url.toLowerCase())) {
     return [`http://${url}:${port}`];
@@ -120,7 +120,10 @@ export function digNodeCandidates(host) {
  * @param {number} [opts.timeoutMs] abort after this many ms (default 1500)
  * @returns {Promise<boolean>} true if the node answered the socket
  */
-export async function probeDigNode(baseUrl, { fetch: fetchImpl = fetch, timeoutMs = 1500 } = {}) {
+export async function probeDigNode(
+  baseUrl: string,
+  { fetch: fetchImpl = fetch, timeoutMs = 1500 }: { fetch?: typeof fetch; timeoutMs?: number } = {},
+): Promise<boolean> {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
@@ -145,7 +148,10 @@ export async function probeDigNode(baseUrl, { fetch: fetchImpl = fetch, timeoutM
  * @param {object} [opts] forwarded to {@link probeDigNode} (`fetch`, `timeoutMs`)
  * @returns {Promise<string|null>} the reachable base URL, or null
  */
-export async function resolveDigNode(host, opts = {}) {
+export async function resolveDigNode(
+  host?: string | null,
+  opts: { fetch?: typeof fetch; timeoutMs?: number } = {},
+): Promise<string | null> {
   for (const base of digNodeCandidates(host)) {
     if (await probeDigNode(base, opts)) return base;
   }

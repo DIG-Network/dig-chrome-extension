@@ -8,9 +8,9 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildErrorPageHtml, friendlyCause, INTERNAL_LEAK_PATTERNS } from '../error-page.mjs';
+import { buildErrorPageHtml, friendlyCause, INTERNAL_LEAK_PATTERNS } from '@/lib/error-page';
 
 test('never leaks "decoy or wrong key" (or other internal crypto strings) to the user', () => {
   const html = buildErrorPageHtml({

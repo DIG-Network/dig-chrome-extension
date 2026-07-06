@@ -31,7 +31,7 @@ export const INTERNAL_LEAK_PATTERNS = [
 ];
 
 /** HTML-escape a string for safe interpolation into the page. */
-function escapeHtml(s) {
+function escapeHtml(s: unknown): string {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -44,7 +44,7 @@ function escapeHtml(s) {
  * Map a raw failure message to a friendly, non-leaking, plain-language cause.
  * Never returns any of the INTERNAL_LEAK_PATTERNS strings.
  */
-export function friendlyCause(rawMessage) {
+export function friendlyCause(rawMessage: string | null | undefined): string {
   const m = String(rawMessage || '');
   // Network-shaped failures.
   if (/failed to fetch|networkerror|load failed|ECONN|ENOTFOUND|timeout|timed out|offline|fetch failed/i.test(m)) {
@@ -72,7 +72,19 @@ export function friendlyCause(rawMessage) {
  *        (non-dig-node) errors so the installer link never shows spuriously.
  * @returns {string} a complete `<!DOCTYPE html> … </html>` document
  */
-export function buildErrorPageHtml({ url, rawMessage, homeUrl = 'https://dig.net', installPrompt } = {}) {
+export interface ErrorPageOptions {
+  url?: string;
+  rawMessage?: string;
+  homeUrl?: string;
+  installPrompt?: { installLabel?: string; installUrl?: string };
+}
+
+export function buildErrorPageHtml({
+  url,
+  rawMessage,
+  homeUrl = 'https://dig.net',
+  installPrompt,
+}: ErrorPageOptions = {}): string {
   const safeUrl = escapeHtml(url);
   const cause = escapeHtml(friendlyCause(rawMessage));
   const safeHome = escapeHtml(homeUrl);
