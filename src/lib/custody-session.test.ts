@@ -49,6 +49,8 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'listNfts',
       'prepareNftTransfer',
       'confirmNftTransfer',
+      'prepareNftMint',
+      'confirmNftMint',
       'listCoins',
       'prepareSplit',
       'prepareCombine',

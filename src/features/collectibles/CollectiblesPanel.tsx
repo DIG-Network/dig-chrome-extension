@@ -5,6 +5,7 @@ import { popOutToFullpage } from '@/lib/popout';
 import type { WalletNft } from '@/offscreen/nfts';
 import { useListCollectiblesQuery } from '@/features/collectibles/collectiblesApi';
 import { NftDetail, NftMedia } from '@/features/collectibles/NftDetail';
+import { MintNft } from '@/features/collectibles/MintNft';
 import { isFullpageSurface } from '@/features/collectibles/surface';
 import {
   nftDisplayName,
@@ -29,18 +30,40 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
   const isFull = full ?? isFullpageSurface();
   const list = useListCollectiblesQuery();
   const [selected, setSelected] = useState<WalletNft | null>(null);
+  const [minting, setMinting] = useState(false);
 
   const nfts = list.data?.nfts ?? [];
 
+  // Minting is ADVANCED functionality → fullscreen only. The compact popup stays streamlined (view-only,
+  // with an "open full screen to mint" affordance); the mint form never renders in the popup.
+  if (minting && isFull) {
+    return <MintNft onDone={() => setMinting(false)} />;
+  }
   if (selected) {
     return <NftDetail nft={selected} onBack={() => setSelected(null)} />;
   }
 
   return (
     <div data-testid="collectibles-panel">
-      <h2 className="dig-heading">
-        <FormattedMessage id="collectibles.title" />
-      </h2>
+      <div className="dig-toggle-row">
+        <h2 className="dig-heading" style={{ margin: 0 }}>
+          <FormattedMessage id="collectibles.title" />
+        </h2>
+        {isFull ? (
+          <button type="button" className="dig-btn dig-btn--primary" data-testid="collectibles-mint" onClick={() => setMinting(true)}>
+            <FormattedMessage id="mint.button" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="dig-link"
+            data-testid="collectibles-mint-fullscreen"
+            onClick={() => void popOutToFullpage('#wallet/collectibles', true)}
+          >
+            <FormattedMessage id="mint.openFullscreen" />
+          </button>
+        )}
+      </div>
       <FourState
         isLoading={list.isLoading}
         isError={list.isError}

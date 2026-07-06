@@ -82,6 +82,13 @@ interface NftClvm {
   standardSpend(syntheticKey: unknown, spend: unknown): unknown;
   delegatedSpend(conditions: unknown[]): unknown;
   coinSpends(): SigCoinSpend[];
+  /** Encode a {@link NftMetadata} into a CLVM `Program` bound to THIS allocator (mint path). */
+  nftMetadata(metadata: unknown): unknown;
+}
+/** The mint outputs returned by `finished.spend()` — the freshly-minted NFT(s) with their info. */
+interface NftMintOutputs {
+  nfts(): unknown[];
+  nft(id: unknown): { info: { launcherId: Uint8Array } };
 }
 
 /**
@@ -100,8 +107,31 @@ export interface NftWasm {
   Action: {
     send(id: unknown, puzzleHash: Uint8Array, amount: bigint, memos: unknown): unknown;
     fee(amount: bigint): unknown;
+    /** Mint one NFT: metadata (in `clvm`) + updater + royalty payout/bps + amount (1) + optional parent. */
+    mintNft(
+      clvm: NftClvm,
+      metadata: unknown,
+      metadataUpdaterPuzzleHash: Uint8Array,
+      royaltyPuzzleHash: Uint8Array,
+      royaltyBasisPoints: number,
+      amount: bigint,
+      parentId?: unknown,
+    ): unknown;
   };
   Id: { existing(assetId: Uint8Array): unknown };
+  /** CHIP-0007 metadata value (edition + data/metadata/license URIs + optional hashes). */
+  NftMetadata: new (
+    editionNumber: bigint,
+    editionTotal: bigint,
+    dataUris: string[],
+    dataHash: Uint8Array | undefined,
+    metadataUris: string[],
+    metadataHash: Uint8Array | undefined,
+    licenseUris: string[],
+    licenseHash?: Uint8Array,
+  ) => unknown;
+  /** Puzzle-hash constants — the default metadata-updater hash the mint stamps into the NFT. */
+  Constants: { nftMetadataUpdaterDefaultHash(): Uint8Array };
   // Derivation surface reused via a cast to SendFlowWasm.
   SecretKey: unknown;
 }
@@ -286,6 +316,133 @@ export async function prepareNftTransfer(
     summary: {
       launcherId: strip0x(opts.launcherId),
       recipientPuzzleHashHex: asHex(chia, destPuzzleHash),
+      fee: fee.toString(),
+      coinCount: coinSpends.length,
+    },
+  };
+}
+
+/** The CHIP-0007 metadata + royalty inputs to a mint (URIs plain, hashes hex, amounts optional). */
+export interface NftMintParams {
+  /** Data (media) URIs — REQUIRED (at least one); the primary asset the NFT points at. */
+  dataUris: string[];
+  /** SHA-256 of the data content (hex), optional but recommended for integrity. */
+  dataHash?: string;
+  /** Metadata JSON URIs (CHIP-0007 off-chain metadata document). */
+  metadataUris?: string[];
+  metadataHash?: string;
+  /** License document URIs. */
+  licenseUris?: string[];
+  licenseHash?: string;
+  /** Edition position — defaults to 1 / 1 (a one-of-one). */
+  editionNumber?: bigint;
+  editionTotal?: bigint;
+  /** Royalty in basis points (e.g. 250 = 2.5%); defaults to 0. */
+  royaltyBasisPoints?: number;
+  /** Royalty payout address (bech32m `xch1…`); defaults to the minter (index-0). */
+  royaltyAddress?: string;
+  /** Network fee in mojos; defaults to 0. */
+  fee?: bigint;
+}
+
+/** A prepared (unsigned) NFT mint: the coin spends, the keys to sign, the summary, and the launcher id. */
+export interface PreparedNftMint {
+  coinSpends: SigCoinSpend[];
+  secretKeys: SigSecretKey[];
+  summary: NftMintSummary;
+  /** The new NFT's singleton launcher id (hex) — its stable identity once broadcast. */
+  launcherId: string;
+}
+
+/** The decoded, tamper-resistant summary of a mint (decoded from the BUILT spend) for the user to approve. */
+export interface NftMintSummary {
+  launcherId: string;
+  dataUris: string[];
+  metadataUris: string[];
+  licenseUris: string[];
+  editionNumber: string;
+  editionTotal: string;
+  royaltyBasisPoints: number;
+  /** Where royalties are paid (hex) — the minter by default, or the chosen royalty address. */
+  royaltyPuzzleHashHex: string;
+  fee: string;
+  coinCount: number;
+}
+
+/**
+ * Prepare (build, don't sign/broadcast) a mint of ONE new NFT owned by this wallet (§18, #92). The
+ * NFT carries CHIP-0007 metadata (data/metadata/license URIs + optional hashes), a royalty percentage
+ * paid to the minter (or a chosen address), and a standard metadata updater. The singleton (amount 1)
+ * and change are funded from the wallet's XCH coins and returned to index-0, so the new NFT is minted
+ * to — and discoverable by — this wallet. Returns the coin spends, the signing keys, the launcher id,
+ * and a summary decoded from the built spend. Does NOT sign or broadcast — the vault's confirm step
+ * does that on explicit user approval (reusing the Send sign+broadcast+poll machinery).
+ *
+ * The metadata CLVM `Program` is built in the SAME `Clvm` the `Spends` driver consumes (a cross-arena
+ * metadata handle traps the wasm). Assigning the NFT to a DID owner at mint requires owning + co-
+ * spending that DID and is a follow-up with DID management (#93).
+ */
+export async function prepareNftMint(
+  chia: NftWasm,
+  chain: NftChain,
+  opts: { seed: Uint8Array; gapLimit?: number } & NftMintParams,
+): Promise<PreparedNftMint> {
+  if (!opts.dataUris || opts.dataUris.length === 0) throw new Error('NO_DATA_URI: a mint requires at least one data URI');
+  const fee = opts.fee ?? 0n;
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
+
+  const xchCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
+  if (xchCoins.length === 0) throw new Error('NO_XCH_COINS: the wallet has no XCH to fund the mint');
+
+  const clvm = new chia.Clvm();
+  const changePuzzleHash = chia.fromHex(keyring[0].puzzleHashHex); // the new NFT + change go here (self)
+  const spends = new chia.Spends(clvm, changePuzzleHash);
+  for (const c of xchCoins) spends.addXch(c);
+
+  const optHash = (hex?: string): Uint8Array | undefined => (hex ? chia.fromHex(strip0x(hex)) : undefined);
+  const metadataValue = new chia.NftMetadata(
+    opts.editionNumber ?? 1n,
+    opts.editionTotal ?? 1n,
+    opts.dataUris,
+    optHash(opts.dataHash),
+    opts.metadataUris ?? [],
+    optHash(opts.metadataHash),
+    opts.licenseUris ?? [],
+    optHash(opts.licenseHash),
+  );
+  const metadata = clvm.nftMetadata(metadataValue);
+  const royaltyPuzzleHash = opts.royaltyAddress ? chia.Address.decode(opts.royaltyAddress).puzzleHash : changePuzzleHash;
+  const royaltyBasisPoints = opts.royaltyBasisPoints ?? 0;
+
+  const actions: unknown[] = [
+    chia.Action.mintNft(clvm, metadata, chia.Constants.nftMetadataUpdaterDefaultHash(), royaltyPuzzleHash, royaltyBasisPoints, 1n, undefined),
+  ];
+  if (fee > 0n) actions.push(chia.Action.fee(fee));
+
+  const finished = spends.prepare(spends.apply(actions));
+  for (const ps of finished.pendingSpends()) {
+    const key = keyByPuzzleHash.get(asHex(chia, ps.p2PuzzleHash()));
+    if (!key) throw new Error('MISSING_KEY: a funding coin is not owned by this wallet');
+    finished.insert(ps.coin().coinId(), clvm.standardSpend(key.pk, clvm.delegatedSpend(ps.conditions())));
+  }
+  const outputs = finished.spend() as unknown as NftMintOutputs;
+  const launcherId = asHex(chia, outputs.nft(outputs.nfts()[0]).info.launcherId);
+
+  const coinSpends = clvm.coinSpends();
+  return {
+    coinSpends,
+    secretKeys: keyring.map((k) => k.sk),
+    launcherId,
+    summary: {
+      launcherId,
+      dataUris: opts.dataUris,
+      metadataUris: opts.metadataUris ?? [],
+      licenseUris: opts.licenseUris ?? [],
+      editionNumber: (opts.editionNumber ?? 1n).toString(),
+      editionTotal: (opts.editionTotal ?? 1n).toString(),
+      royaltyBasisPoints,
+      royaltyPuzzleHashHex: asHex(chia, royaltyPuzzleHash),
       fee: fee.toString(),
       coinCount: coinSpends.length,
     },
