@@ -129,8 +129,8 @@
 function injectRpcHostToPage() {
   try {
     // Use cachedRpcHost from middleware.js scope - always read current value. Default MUST
-    // match the dig-node's actual default port (8080), not the http-standard 80.
-    const rpcHost = typeof cachedRpcHost !== 'undefined' ? cachedRpcHost : 'localhost:8080';
+    // match the dig-node's actual canonical control port (9778, #132), not the http-standard 80.
+    const rpcHost = typeof cachedRpcHost !== 'undefined' ? cachedRpcHost : 'localhost:9778';
     
     // Set data attribute on document element (CSP-safe)
     if (document.documentElement) {
