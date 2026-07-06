@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.30.0] - 2026-07-06
+
+### Features
+- **wallet:** Phishing / malicious-origin protection before connect & sign (#67 P0-2) (#44)
+
 ## [1.29.1] - 2026-07-06
 
 ### Bug Fixes
