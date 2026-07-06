@@ -1,11 +1,13 @@
 {
   "name": "dig-browser-extension",
-  "version": "1.28.4",
+  "version": "1.28.5",
   "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
   "types": "messages.d.ts",
   "scripts": {
     "test": "npm run test:coverage",
+    "allow-scripts": "node scripts/allow-scripts.mjs",
+    "allow-scripts:check": "node scripts/allow-scripts.mjs --check",
     "test:node": "node --test tests/",
     "test:web": "vitest run --coverage",
     "test:coverage": "npm run test:node && npm run test:web",

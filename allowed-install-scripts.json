@@ -1,0 +1,14 @@
+{
+  "$comment": [
+    "Supply-chain allowlist (#67 P0-1a). `.npmrc` sets ignore-scripts=true, so NO dependency runs a",
+    "preinstall/install/postinstall by default. Only the packages listed here — reviewed as needing",
+    "a genuine, benign install script (native/platform-binary setup) — are re-run by",
+    "`npm run allow-scripts` after `npm ci`. Adding an entry is a security decision: verify the",
+    "package's install script does only what it claims before listing it. `scripts/allow-scripts.mjs`",
+    "fails if any installed dependency has an install script that is NOT listed here (drift gate)."
+  ],
+  "allow": [
+    "esbuild",
+    "@swc/core"
+  ]
+}
