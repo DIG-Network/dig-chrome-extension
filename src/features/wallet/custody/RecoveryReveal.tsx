@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
+import { SecretPhrase } from '@/features/wallet/custody/SecretPhrase';
 
 /**
  * Accessible recovery-phrase reveal (§5.6). Shows the 24 words behind a tap-to-reveal so a
  * shoulder-surfer can't read them on open, then renders a screen-reader-navigable ordered list
- * (NOT handwriting-only theatre — that regresses WCAG). An explicit Copy action writes to the
- * clipboard and AUTO-CLEARS it after a short delay; the on-screen phrase auto-hides too. Warnings
- * are firm and localized. The phrase is passed in (from the create flow) and never persisted.
+ * (NOT handwriting-only theatre — that regresses WCAG) inside a CLOSED shadow root
+ * ({@link SecretPhrase}, #67 P1-5) so the words can't be DOM-scraped by another extension or an
+ * injected page script. An explicit Copy action writes to the clipboard and AUTO-CLEARS it after a
+ * short delay; the on-screen phrase auto-hides too. Warnings are firm and localized. The phrase is
+ * passed in (from the create flow) and never persisted.
  */
 export function RecoveryReveal({
   mnemonic,
@@ -72,17 +75,7 @@ export function RecoveryReveal({
         </button>
       ) : (
         <>
-          <ol
-            data-testid="recovery-words"
-            aria-label="Your 24-word recovery phrase"
-            style={{ columns: 2, gap: 12, margin: '12px 0', paddingInlineStart: 24 }}
-          >
-            {words.map((w, i) => (
-              <li key={i} style={{ fontFamily: 'var(--dig-mono, monospace)', padding: '2px 0' }}>
-                {w}
-              </li>
-            ))}
-          </ol>
+          <SecretPhrase words={words} ariaLabel="Your 24-word recovery phrase" />
           <button type="button" className="dig-btn dig-btn--block" data-testid="recovery-copy" onClick={() => void copy()}>
             <FormattedMessage id={copied ? 'custody.recovery.copied' : 'custody.recovery.copy'} />
           </button>
