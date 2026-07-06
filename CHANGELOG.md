@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.37.0] - 2026-07-06
+
+### Features
+- **wallet:** CAT auto-discovery + token metadata (name/ticker/icon) (#52)
+
 ## [1.36.0] - 2026-07-06
 
 ### Features
