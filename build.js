@@ -66,10 +66,8 @@ const EXTENSION_FILES = [
   // The DIG Viewer page dig-viewer.html + its TS entry src/entries/dig-viewer.ts is BUILT BY VITE
   // into dist-web/ and copied into dist/ by buildWebApp() below (Vite emits dig-viewer.html now).
   // The SW still opens it via getURL('dig-viewer.html') (filename unchanged).
-  // Pure store-reference classifier/resolver (#55) — imported by the dig-viewer entry (the parent
-  // side of the in-page store interceptor bridge). The DOM-glue interceptor itself is BUNDLED below
-  // from store-interceptor.entry.mjs into dist/store-interceptor.js (not plain-copied).
-  'store-refs.mjs',
+  // (store-refs migrated to src/lib/store-refs.ts as TS — #68; it inlines into the store-interceptor
+  // esbuild bundle + the vite dig-viewer bundle, no longer plain-copied.)
   // dig-client WASM (ES module + binary) — required for client-side decryption in the module SW
   'dig_client.js',
   'dig_client_bg.wasm',
@@ -520,8 +518,9 @@ async function bundleStoreInterceptor() {
     target: ['chrome111'],
     legalComments: 'none',
     minify: false,
-    // Resolve `#shared/*` to the repo-root shared .mjs (store-refs) so it inlines into the IIFE.
-    alias: { '#shared': __dirname },
+    // Resolve `@/*` to src/* (store-refs now lives at src/lib) + keep `#shared/*` → repo root, so
+    // the pure logic inlines into the IIFE.
+    alias: { '@': SRC_DIR, '#shared': __dirname },
   });
   const out = fs.readFileSync(STORE_INTERCEPTOR_OUT, 'utf8');
   // Must be self-contained (store-refs inlined; no surviving ES import) and must NOT contain a

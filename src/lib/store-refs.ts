@@ -19,8 +19,34 @@
  * under `node --test`; the browser glue (store-interceptor + dig-viewer) is Playwright-tested.
  */
 
+/** A resolved store reference: a capsule (`storeId`[:`root`]) + a resource key (+ optional salt). */
+export interface StoreRef {
+  storeId: string;
+  root?: string | null;
+  resourceKey?: string;
+  salt?: string | null;
+}
+/** A parsed absolute DIG reference (`chia://` / `urn:dig:chia:`). */
+export interface ParsedDigRef {
+  storeId: string;
+  root: string | null;
+  resourceKey: string;
+  salt: string | null;
+}
+/** Context for {@link classifyReference}: the current capsule + the current document's key. */
+export interface ClassifyContext {
+  cfg?: { storeId?: string; root?: string | null; salt?: string | null } | null;
+  baseKey?: string;
+  pageOrigin?: string | null;
+}
+/** How the interceptor must treat a single reference. */
+export type ClassifiedRef =
+  | { kind: 'urn'; ref: StoreRef & { storeId: string; resourceKey: string } }
+  | { kind: 'relative'; ref: StoreRef & { storeId: string; resourceKey: string } }
+  | { kind: 'external' };
+
 /** Strip a `?query` and `#fragment` from a path/ref, leaving just the path portion. */
-export function stripQueryHash(p) {
+export function stripQueryHash(p: unknown): string {
   return String(p == null ? '' : p).split('#')[0].split('?')[0];
 }
 
@@ -29,7 +55,7 @@ export function stripQueryHash(p) {
  * A `..` that would escape the root is clamped at the root (never produces `/../`), matching the
  * on.dig.net resolver's path handling.
  */
-export function normalizePath(path) {
+export function normalizePath(path: unknown): string {
   const parts = String(path == null ? '' : path).split('/');
   const out = [];
   for (const part of parts) {
@@ -51,7 +77,7 @@ export function normalizePath(path) {
  * Resolving against the current doc's key (not a fixed entry) keeps multi-page stores correct:
  * `../assets/app.js` from `docs/sub/p.html` is `docs/assets/app.js`.
  */
-export function resolveRelativeResourceKey(baseKey, ref) {
+export function resolveRelativeResourceKey(baseKey: string | null | undefined, ref: unknown): string {
   const cleaned = stripQueryHash(ref);
   if (cleaned === '') return String(baseKey || '').replace(/^\/+/, '');
   if (cleaned.charAt(0) === '/') return normalizePath(cleaned).replace(/^\/+/, '');
@@ -67,7 +93,7 @@ export function resolveRelativeResourceKey(baseKey, ref) {
  * well-formed DIG ref. `storeId` (and `root`, when present) MUST be 64-hex; a missing resource
  * defaults to `index.html`. Mirrors on.dig.net `dig-embed.js` `parseDigRef`.
  */
-export function parseDigRef(raw) {
+export function parseDigRef(raw: unknown): ParsedDigRef | null {
   let s = String(raw == null ? '' : raw).trim();
   if (!s) return null;
   if (s.indexOf('urn:dig:chia:') === 0) s = s.slice('urn:dig:chia:'.length);
@@ -95,7 +121,7 @@ export function parseDigRef(raw) {
 }
 
 /** Build the same-capsule relative result, or `external` when there is no store to resolve into. */
-function relativeResult(path, cfg, baseKey) {
+function relativeResult(path: unknown, cfg: ClassifyContext['cfg'], baseKey?: string): ClassifiedRef {
   if (!cfg || !cfg.storeId) return { kind: 'external' };
   return {
     kind: 'relative',
@@ -119,7 +145,7 @@ function relativeResult(path, cfg, baseKey) {
  *                                    in-page `#anchor`/`javascript:`/empty): left untouched.
  * `ctx = { cfg: { storeId, root, salt }, baseKey, pageOrigin }`.
  */
-export function classifyReference(rawRef, ctx) {
+export function classifyReference(rawRef: unknown, ctx?: ClassifyContext): ClassifiedRef {
   const cfg = ctx && ctx.cfg;
   const baseKey = (ctx && ctx.baseKey) || 'index.html';
   const pageOrigin = ctx && ctx.pageOrigin;
@@ -168,7 +194,7 @@ export function classifyReference(rawRef, ctx) {
  * URN as the latest capsule); a concrete 64-hex root pins the capsule. A private-store salt rides
  * as `?salt=<hex>`.
  */
-export function buildDigUrl(ref) {
+export function buildDigUrl(ref: StoreRef): string {
   const storeId = ref.storeId;
   const root = ref.root && ref.root !== 'latest' ? ref.root : null;
   const resourceKey = ref.resourceKey || 'index.html';
@@ -182,7 +208,7 @@ export function buildDigUrl(ref) {
  * on.dig.net resolver SW / dig-embed `contentType` map — a store's resources MUST serve with the
  * same content type in the extension as on its `*.on.dig.net` subdomain. Keep in sync.
  */
-export function contentType(resourceKey) {
+export function contentType(resourceKey: string): string {
   const ext = (String(resourceKey || '').split('.').pop() || '').toLowerCase();
   return (
     {

@@ -142,39 +142,3 @@ declare module '#shared/dig-urn.mjs' {
   export function intToHex(bigInt: bigint, length?: number): string;
 }
 
-declare module '#shared/store-refs.mjs' {
-  /** A resolved store reference: a capsule (`storeId`[:`root`]) + a resource key (+ optional salt). */
-  export interface StoreRef {
-    storeId: string;
-    root?: string | null;
-    resourceKey?: string;
-    salt?: string | null;
-  }
-  /** A parsed absolute DIG reference (`chia://` / `urn:dig:chia:`). */
-  export interface ParsedDigRef {
-    storeId: string;
-    root: string | null;
-    resourceKey: string;
-    salt: string | null;
-  }
-  /** Context for {@link classifyReference}: the current capsule + the current document's key. */
-  export interface ClassifyContext {
-    cfg?: { storeId?: string; root?: string | null; salt?: string | null } | null;
-    baseKey?: string;
-    pageOrigin?: string | null;
-  }
-  /** How the interceptor must treat a single reference. */
-  export type ClassifiedRef =
-    | { kind: 'urn'; ref: StoreRef & { storeId: string; resourceKey: string } }
-    | { kind: 'relative'; ref: StoreRef & { storeId: string; resourceKey: string } }
-    | { kind: 'external' };
-  export function stripQueryHash(p: unknown): string;
-  export function normalizePath(path: unknown): string;
-  export function resolveRelativeResourceKey(baseKey: string, ref: string): string;
-  export function parseDigRef(raw: unknown): ParsedDigRef | null;
-  export function classifyReference(rawRef: unknown, ctx?: ClassifyContext): ClassifiedRef;
-  /** Build the `chia://` URL the background `proxyRequest` reads, from a resolved ref. */
-  export function buildDigUrl(ref: StoreRef): string;
-  /** Infer a MIME type from a resource key's extension (mirror of the on.dig.net contentType map). */
-  export function contentType(resourceKey: string): string;
-}

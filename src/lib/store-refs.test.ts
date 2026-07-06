@@ -10,7 +10,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   stripQueryHash,
@@ -20,20 +20,34 @@ import {
   classifyReference,
   contentType,
   buildDigUrl,
-} from '../store-refs.mjs';
+  type StoreRef,
+  type ClassifiedRef,
+} from '@/lib/store-refs';
 // Cross-check that a rewritten relative ref round-trips through the SAME parser the background
 // service worker uses for proxyRequest — proving the interceptor's URN is one the node accepts.
-import { parseURN } from '../dig-urn.mjs';
+import { parseURN } from '#shared/dig-urn.mjs';
 
 const STORE = 'a'.repeat(64);
 const STORE2 = 'c'.repeat(64);
 const ROOT = 'b'.repeat(64);
 const ROOT2 = 'd'.repeat(64);
 
+// Narrow a classification to its ref (throwing if it was 'external') — keeps the assertions terse.
+function refOf(c: ClassifiedRef): StoreRef {
+  if (c.kind === 'external') throw new Error('expected a ref-bearing classification, got external');
+  return c.ref;
+}
+
 // A capsule config as the interceptor holds it, with the current document's resource key as base.
-function ctx(baseKey = 'index.html', overrides = {}) {
+function ctx(
+  baseKey = 'index.html',
+  overrides: {
+    cfg?: { storeId?: string; root?: string | null; salt?: string | null };
+    pageOrigin?: string;
+  } = {},
+) {
   return {
-    cfg: { storeId: STORE, root: 'latest', salt: null, ...(overrides.cfg || {}) },
+    cfg: { storeId: STORE, root: 'latest' as string | null, salt: null as string | null, ...(overrides.cfg || {}) },
     baseKey,
     pageOrigin: overrides.pageOrigin || 'null',
   };
@@ -100,7 +114,7 @@ test('parseDigRef parses a rootless urn:dig:chia: URL with default resource', ()
 });
 
 test('parseDigRef extracts a ?salt= param and rejects non-DIG refs', () => {
-  assert.equal(parseDigRef(`chia://${STORE}/a.js?salt=deadBEEF`).salt, 'deadbeef');
+  assert.equal(parseDigRef(`chia://${STORE}/a.js?salt=deadBEEF`)!.salt, 'deadbeef');
   assert.equal(parseDigRef('https://example.com/x'), null);
   assert.equal(parseDigRef('./rel.css'), null);
   assert.equal(parseDigRef(`chia://not-hex/a.js`), null);
@@ -120,25 +134,25 @@ test('classifyReference: a relative asset becomes a same-capsule relative ref', 
 test('classifyReference: a root-absolute asset resolves against the store root', () => {
   const r = classifyReference('/img/logo.png', ctx('docs/page.html'));
   assert.equal(r.kind, 'relative');
-  assert.equal(r.ref.resourceKey, 'img/logo.png');
+  assert.equal(refOf(r).resourceKey, 'img/logo.png');
 });
 
 test('classifyReference: carries the pinned root + salt into the resolved ref', () => {
   const r = classifyReference('./app.js', ctx('index.html', { cfg: { storeId: STORE, root: ROOT, salt: 'ab12' } }));
-  assert.deepEqual(r.ref, { storeId: STORE, root: ROOT, resourceKey: 'app.js', salt: 'ab12' });
+  assert.deepEqual(refOf(r), { storeId: STORE, root: ROOT, resourceKey: 'app.js', salt: 'ab12' });
 });
 
 test('classifyReference: an absolute chia:// ref is a urn (may target another capsule)', () => {
   const r = classifyReference(`chia://${STORE2}:${ROOT2}/x.html`, ctx());
   assert.equal(r.kind, 'urn');
-  assert.deepEqual(r.ref, { storeId: STORE2, root: ROOT2, resourceKey: 'x.html', salt: null });
+  assert.deepEqual(refOf(r), { storeId: STORE2, root: ROOT2, resourceKey: 'x.html', salt: null });
 });
 
 test('classifyReference: a rootless chia:// ref inherits the capsule root/salt fallback', () => {
   const r = classifyReference(`chia://${STORE2}/x.html`, ctx('index.html', { cfg: { storeId: STORE, root: ROOT, salt: 'ff' } }));
   assert.equal(r.kind, 'urn');
-  assert.equal(r.ref.root, ROOT);
-  assert.equal(r.ref.salt, 'ff');
+  assert.equal(refOf(r).root, ROOT);
+  assert.equal(refOf(r).salt, 'ff');
 });
 
 test('classifyReference: external/opaque references are passed through untouched', () => {
@@ -167,7 +181,7 @@ test('classifyReference: a same-page-origin absolute URL folds back to a store-r
   const c = ctx('docs/page.html', { pageOrigin: 'https://x.on.dig.net' });
   const r = classifyReference('https://x.on.dig.net/img/logo.png', c);
   assert.equal(r.kind, 'relative');
-  assert.equal(r.ref.resourceKey, 'img/logo.png');
+  assert.equal(refOf(r).resourceKey, 'img/logo.png');
   // The bare origin (no path) folds to the store root and resolves against the current dir.
   assert.equal(classifyReference('https://x.on.dig.net', c).kind, 'relative');
 });
@@ -202,10 +216,10 @@ test('buildDigUrl pins a concrete root and appends the salt', () => {
 test('a rewritten relative ref round-trips through the background parseURN (rooted)', () => {
   // ./style.css on a rooted capsule → chia:// URN → parseURN yields the same capsule + resource.
   const cls = classifyReference('./style.css', ctx('index.html', { cfg: { storeId: STORE, root: ROOT, salt: null } }));
-  const url = buildDigUrl(cls.ref);
+  const url = buildDigUrl(refOf(cls));
   assert.equal(url, `chia://chia:${STORE}:${ROOT}/style.css`);
   assert.ok(url.startsWith('chia://')); // accepted by the background proxyRequest guard
-  const parsed = parseURN(url);
+  const parsed = parseURN(url)!;
   assert.equal(parsed.storeId, STORE);
   assert.equal(parsed.roothash, ROOT);
   assert.equal(parsed.resourceKey, 'style.css');
@@ -214,9 +228,9 @@ test('a rewritten relative ref round-trips through the background parseURN (root
 test('a rewritten relative ref round-trips through the background parseURN (latest)', () => {
   // /img/x.png on a latest capsule → rootless chia:// URN → parseURN yields the store + resource.
   const cls = classifyReference('/img/x.png', ctx('docs/p.html', { cfg: { storeId: STORE, root: 'latest', salt: null } }));
-  const url = buildDigUrl(cls.ref);
+  const url = buildDigUrl(refOf(cls));
   assert.equal(url, `chia://chia:${STORE}/img/x.png`);
-  const parsed = parseURN(url);
+  const parsed = parseURN(url)!;
   assert.equal(parsed.storeId, STORE);
   assert.equal(parsed.roothash, null);
   assert.equal(parsed.resourceKey, 'img/x.png');

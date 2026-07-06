@@ -17,7 +17,7 @@ import { classifyError, DIG_ERR, type DigErrorCode } from '@/lib/error-codes';
 import { parseURN, decodeUrnParam } from '#shared/dig-urn.mjs';
 // Build the chia:// URL for a resolved store reference — used to serve the in-page interceptor's
 // relative-asset reads (#55) back through the background proxyRequest (the §5.3 node ladder).
-import { buildDigUrl, type StoreRef } from '#shared/store-refs.mjs';
+import { buildDigUrl, type StoreRef } from '@/lib/store-refs';
 
 // One canonical verified label across popup / viewer / toolbar.
 const VERIFIED_LABEL = 'Verified on Chia';
