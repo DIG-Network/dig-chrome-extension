@@ -22,6 +22,7 @@
     "generate-icons": "node generate-icons.js",
     "prepare": "npm run build",
     "screenshots": "playwright test",
+    "test:prices": "playwright test e2e/prices.spec.ts",
     "test:sw": "playwright test --config=playwright.sw.config.ts"
   },
   "keywords": [
