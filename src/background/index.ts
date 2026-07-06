@@ -1,4 +1,20 @@
-// ES module service worker — background.js is loaded with "type": "module" in manifest.json.
+// @ts-nocheck
+// -----------------------------------------------------------------------------------------------
+// MV3 MODULE SERVICE WORKER (§6.4 reorg, #68). This is the extension's background service worker:
+// the chia:// read path, the §5.3 node ladder, the message router, self-custody routing, and the
+// webNavigation interception. It is BEHAVIOUR-FROZEN infrastructure RELOCATED here verbatim from
+// the old root `background.js` — a MOVE, not a rewrite. Like the content-script interception shims
+// (src/content/content.ts, page-script.ts) it carries a justified `// @ts-nocheck` + a scoped
+// eslint carve-out: it is ~2.7k lines of chrome.* runtime glue whose behaviour is validated by the
+// browser SW-registration harness (e2e/sw/) rather than by tsc/vitest, and typing it fully is a
+// separate follow-up that must not risk changing the shipped MV3 behaviour during this move.
+//
+// It is esbuild-BUNDLED into dist/background.js by build.js bundleBackground(): the pure #shared/*
+// leaves are inlined, and ./dig_client.js is kept EXTERNAL (a runtime sibling import) because it is
+// the wasm-bindgen ESM that loads dig_client_bg.wasm via import.meta.url + the runtime SRI pin.
+// -----------------------------------------------------------------------------------------------
+
+// ES module service worker — loaded with "type": "module" in manifest.json (dist/background.js).
 // importScripts() is NOT available in module workers; all URN helpers are inlined below.
 
 // ---- WASM glue import (module SW only) ----------------------------------------
@@ -15,15 +31,15 @@ import initDigClient, {
 
 // Shared URN parser — single source of truth in dig-urn.mjs (ES module).
 // background.js previously inlined a divergent copy; it now imports the one parser.
-import { parseURN } from './dig-urn.mjs';
+import { parseURN } from '#shared/dig-urn.mjs';
 
 // Branded, plain-language chia:// error page (white theme; never leaks crypto strings).
-import { buildErrorPageHtml } from './error-page.mjs';
+import { buildErrorPageHtml } from '#shared/error-page.mjs';
 // Catalogued, stable chia:// loader error codes (DIG_ERR_*) + the coded-error envelope.
 // Aligned with docs.dig.net static/error-codes.json `dig-loader` surface.
-import { DIG_ERR, makeError } from './error-codes.mjs';
+import { DIG_ERR, makeError } from '#shared/error-codes.mjs';
 // The versioned message catalogue: the frozen ACTIONS enum + getCapabilities self-description.
-import { ACTIONS, buildCapabilities, OFFSCREEN_TARGET } from './messages.mjs';
+import { ACTIONS, buildCapabilities, OFFSCREEN_TARGET } from '#shared/messages.mjs';
 // Self-custody session logic (#56): the offscreen-vault coordination decisions (pure; no chrome.*).
 import {
   KEYSTORE_KEY,
@@ -39,18 +55,18 @@ import {
   resolveCoinsetUrl,
   computeUnlockExpiry,
   computeLockSnapshot,
-} from './custody-session.mjs';
+} from '#shared/custody-session.mjs';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
-import { parseWatchedCats } from './wallet-assets.mjs';
+import { parseWatchedCats } from '#shared/wallet-assets.mjs';
 // dig-node install prompt + "dig-node required" error mapping (universal installer link).
-import { digNodeInstallPrompt, isDigNodeRequiredError } from './dig-node-status.mjs';
+import { digNodeInstallPrompt, isDigNodeRequiredError } from '#shared/dig-node-status.mjs';
 
 // Shared dig-node host config (one parser/default for the server.host key) + the local-node
 // resolution order (dig.local preferred, localhost:port fallback) and reachability probe.
 import {
   parseServerHost as parseDigNodeHost,
   resolveDigNode,
-} from './server-config.mjs';
+} from '#shared/server-config.mjs';
 
 // DIG Control Panel decision logic (the dig://control parity surface): detect a local dig-node
 // → manage vs install, the catalogued control.* method names, and the honest hosted-RPC
@@ -59,11 +75,11 @@ import {
   decideControlView,
   CONTROL_METHODS,
   isUnauthorizedControlResult,
-} from './dig-control.mjs';
+} from '#shared/dig-control.mjs';
 
 // DIG Shields per-resource proof LEDGER (#134, mirrored from the browser): the per-tab/
 // per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
-import { LedgerStore, groupLedger } from './dig-ledger.mjs';
+import { LedgerStore, groupLedger } from '#shared/dig-ledger.mjs';
 
 // Wallet broker: per-origin consent + CHIP-0002 routing for the injected window.chia
 // provider, backed by WalletConnect→Sage. The broker core (consent gate, method
@@ -75,13 +91,13 @@ import {
   getConnection as getWalletConnection,
   isOriginApproved,
   setOriginApproval,
-} from './wallet-broker.mjs';
+} from '#shared/wallet-broker.mjs';
 
 // Self-custody dApp `walletRpc` router + approval queue (#56 §5.5). When a self-custody wallet
 // exists, a dApp's window.chia request routes here: connect + reads hit the offscreen vault; a
 // sign/message request is enqueued and a dedicated approval window is summoned. The manager is
 // chrome-free (its consent lookups, the vault call, and the window summon are injected below).
-import { DappApprovalManager } from './dapp-approval.mjs';
+import { DappApprovalManager } from '#shared/dapp-approval.mjs';
 
 // SRI for the read-crypto WASM (same artifact + digest as hub.dig.net sw.js and apps/web/lib/dig-client.js).
 // Fail closed: a mismatch (tampered/wrong artifact) refuses to run unverified crypto.

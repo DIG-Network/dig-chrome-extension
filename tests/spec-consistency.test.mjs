@@ -64,7 +64,7 @@ test('SPEC lists every canonical dig-loader error code verbatim', () => {
 });
 
 test('SPEC pins the same read-crypto WASM SRI digest as background.js', () => {
-  const bg = readFileSync(join(ROOT, 'background.js'), 'utf8');
+  const bg = readFileSync(join(ROOT, 'src', 'background', 'index.ts'), 'utf8');
   const m = bg.match(/DIG_CLIENT_WASM_SHA256\s*=\s*"([0-9a-f]{64})"/);
   assert.ok(m, 'background.js must pin a 64-hex WASM SHA-256');
   assert.match(SPEC, /SHA-256/);

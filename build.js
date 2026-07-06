@@ -65,11 +65,16 @@ const EXTENSION_FILES = [
   'apps.mjs',
   'wallet-methods.mjs',
   'wallet-broker.mjs',
-  // Self-custody dApp walletRpc router + approval queue (#56 §5.5) — imported by background.js.
+  // Self-custody dApp walletRpc router + approval queue (#56 §5.5) — imported by the SW bundle.
   'dapp-approval.mjs',
   // WalletConnect → Sage transport (runs in the popup page).
   'wallet-wc.js',
-  'background.js',
+  // NB: background.js (the MV3 module service worker) is NOT plain-copied — it is a strict entry at
+  // src/background/index.ts that esbuild BUNDLES into dist/background.js by bundleBackground()
+  // below (#68): the pure #shared/* leaves are inlined; ./dig_client.js is kept EXTERNAL (the
+  // wasm-bindgen ESM that loads dig_client_bg.wasm via import.meta.url + the runtime SRI pin), so it
+  // is still plain-copied to dist root (below) + web_accessible.
+  //
   // NB: the three content-script-layer files are NOT plain-copied — they are strict-TS entries
   // under src/content/ that esbuild bundles into dist/middleware.js, dist/content.js, and
   // dist/page-script.js (SAME shipped filenames) by bundleContentScript()/bundlePageScript()/
@@ -671,6 +676,55 @@ async function bundleContentScripts() {
   }
 }
 
+// The MV3 module service worker (#68 — §6.4 reorg). src/background/index.ts is esbuild-BUNDLED into
+// dist/background.js as an ES module (manifest `"type": "module"`): the pure #shared/* leaves are
+// inlined, but ./dig_client.js is kept EXTERNAL — it is the wasm-bindgen ESM that loads
+// dig_client_bg.wasm via import.meta.url + the runtime SRI pin, so it MUST remain a runtime sibling
+// import (plain-copied to dist root + web_accessible_resource), never inlined.
+const BACKGROUND_SRC = path.join(SRC_DIR, 'background', 'index.ts');
+const BACKGROUND_OUT = path.join(DIST_DIR, 'background.js');
+
+async function bundleBackground() {
+  log('\n⚙️  Bundling module service worker (src/background/index.ts → dist/background.js, #68)...', 'blue');
+  await esbuild.build({
+    entryPoints: [BACKGROUND_SRC],
+    outfile: BACKGROUND_OUT,
+    bundle: true,
+    format: 'esm', // MV3 module service worker (manifest background.type === 'module')
+    platform: 'browser',
+    target: ['chrome111'],
+    legalComments: 'none',
+    minify: false,
+    // #shared/* resolves to the repo-root shared .mjs leaves so they inline into the SW bundle.
+    alias: { '#shared': __dirname },
+    // Keep ./dig_client.js an external runtime import (see note above) — never inline it.
+    plugins: [
+      {
+        name: 'external-dig-client',
+        setup(b) {
+          b.onResolve({ filter: /(^|\/)dig_client\.js$/ }, () => ({ path: './dig_client.js', external: true }));
+        },
+      },
+    ],
+    allowOverwrite: true,
+  });
+  const out = fs.readFileSync(BACKGROUND_OUT, 'utf8');
+  // dig_client.js MUST stay an external runtime import (not inlined) — the wasm URL + SRI depend on it.
+  if (!/from\s*["']\.\/dig_client\.js["']/.test(out)) {
+    throw new Error('Bundled background.js did not keep ./dig_client.js as an external import (wasm URL/SRI would break).');
+  }
+  // No surviving #shared/@dignetwork import (a leaf failed to inline → the SW would fail to load).
+  if (/from\s*["']#shared\//.test(out) || /from\s*["']@dignetwork\//.test(out)) {
+    throw new Error('Bundled background.js still has an unresolved #shared/ or @dignetwork/ import — a leaf did not inline.');
+  }
+  // A stable string unique to the real SW proves it bundled (not an empty/stub output).
+  if (!out.includes('DIG_CLIENT_WASM_SHA256')) {
+    throw new Error('Bundled background.js is missing the DIG_CLIENT_WASM_SHA256 SRI pin — wrong/empty bundle.');
+  }
+  const kb = (Buffer.byteLength(out) / 1024).toFixed(0);
+  log(`✓ Bundled: background.js (${kb} KB, ESM module SW; dig_client.js external, leaves inlined)`, 'green');
+}
+
 /** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
 async function vendorWalletConnect() {
   log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
@@ -734,6 +788,10 @@ async function main() {
   // Bundle the three content-script-layer entries (src/content/*.ts → dist/middleware.js,
   // dist/content.js, dist/page-script.js) as self-contained IIFE classic scripts (#68).
   await bundleContentScripts();
+
+  // Bundle the MV3 module service worker (src/background/index.ts → dist/background.js) as an ESM
+  // SW with the #shared/* leaves inlined + ./dig_client.js kept external (#68).
+  await bundleBackground();
 
   // Inject the shared WalletConnect project id into dist/wallet-wc.js (build-time only;
   // never a committed source literal, never logged).

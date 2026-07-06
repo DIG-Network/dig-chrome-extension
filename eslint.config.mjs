@@ -50,4 +50,18 @@ export default tseslint.config(
       'prefer-const': 'off',
     },
   },
+  {
+    // The MV3 module service worker (#68): ~2.7k lines of behaviour-frozen chrome.* runtime glue
+    // RELOCATED verbatim from the old root background.js (a MOVE, not a rewrite). Same infra-vs-
+    // React-shell bar as the content shims above — it carries `// @ts-nocheck` and is validated by
+    // the browser SW-registration harness (e2e/sw/), not the strict React-shell lint bar.
+    files: ['src/background/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/ban-ts-comment': 'off',
+      'no-useless-escape': 'off',
+      'prefer-const': 'off',
+    },
+  },
 );

@@ -34,13 +34,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => readFileSync(join(ROOT, f), 'utf8');
 
 test('background.js has no in-memory resource/content cache', () => {
-  const src = read('background.js');
+  const src = read('src/background/index.ts');
   assert.ok(!/resourceCache/.test(src), 'background.js must not define/use a resourceCache');
   assert.ok(!/getCacheStats|clearCache/.test(src), 'background.js must not handle cache-stat/clear actions');
 });
 
 test('background.js does not warm a cache via preloadResources', () => {
-  const src = read('background.js');
+  const src = read('src/background/index.ts');
   assert.ok(!/preloadResources/.test(src), 'background.js must not implement cache-warming preload');
 });
 
@@ -78,7 +78,7 @@ test('messages.mjs catalogues no cache-related actions', () => {
 });
 
 test('the client-side verify+decrypt trustless-read path is UNCHANGED (not removed by this fix)', () => {
-  const src = read('background.js');
+  const src = read('src/background/index.ts');
   assert.match(src, /verifyInclusion/, 'client-side merkle verification must remain');
   assert.match(src, /decryptChunk/, 'client-side decryption must remain');
   assert.match(src, /dig_client\.js/, 'the shared dig_client wasm must still be the crypto source');
