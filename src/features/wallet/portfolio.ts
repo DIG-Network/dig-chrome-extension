@@ -1,4 +1,4 @@
-import type { AssetBalance } from '@/features/wallet/walletApi';
+import type { AssetBalance } from '@/features/wallet/assetTypes';
 
 /** The hero balance shown at the top of Home. */
 export interface HeroBalance {
