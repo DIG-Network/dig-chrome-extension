@@ -332,4 +332,17 @@ export const en: Record<string, string> = {
   'dapp.approval.phishing.reason.blocklisted': 'This site is on the DIG blocklist of known phishing and wallet-drainer sites.',
   'dapp.approval.phishing.reason.lookalike': 'This web address looks like a DIG site but is not one — check the address bar carefully.',
   'dapp.approval.phishing.confirm': 'I understand this may be a fake site and want to continue anyway',
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  'sites.title': 'Connected sites',
+  'sites.subtitle': 'Sites you have connected your wallet to. You can revoke access at any time.',
+  'sites.loading': 'Loading connected sites…',
+  'sites.error': "Couldn't load connected sites.",
+  'sites.empty': 'No sites are connected to your wallet.',
+  'sites.granted': 'Connected {date}',
+  'sites.lastUsed': 'last used {date}',
+  'sites.addresses': '{count} address(es) shared',
+  'sites.revoke': 'Revoke',
+  'sites.revoke.aria': 'Revoke access for {host}',
+  'sites.revokeAll': 'Revoke all',
 };

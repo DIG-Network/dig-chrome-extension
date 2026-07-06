@@ -329,4 +329,17 @@ export const id: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "Situs ini ada di daftar blokir DIG untuk situs phishing dan penguras dompet yang diketahui.",
   "dapp.approval.phishing.reason.lookalike": "Alamat ini terlihat seperti situs DIG tetapi bukan — periksa bilah alamat dengan saksama.",
   "dapp.approval.phishing.confirm": "Saya memahami ini mungkin situs palsu dan tetap ingin melanjutkan",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "Situs yang terhubung",
+  "sites.subtitle": "Situs yang telah Anda hubungkan dengan dompet. Anda dapat mencabut akses kapan saja.",
+  "sites.loading": "Memuat situs yang terhubung…",
+  "sites.error": "Tidak dapat memuat situs yang terhubung.",
+  "sites.empty": "Tidak ada situs yang terhubung ke dompet Anda.",
+  "sites.granted": "Terhubung {date}",
+  "sites.lastUsed": "terakhir digunakan {date}",
+  "sites.addresses": "{count} alamat dibagikan",
+  "sites.revoke": "Cabut",
+  "sites.revoke.aria": "Cabut akses untuk {host}",
+  "sites.revokeAll": "Cabut semua",
 };

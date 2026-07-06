@@ -329,4 +329,17 @@ export const zhCN: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "此网站在 DIG 的已知钓鱼和盗币网站黑名单中。",
   "dapp.approval.phishing.reason.lookalike": "此网址看起来像 DIG 网站，但并非如此——请仔细核对地址栏。",
   "dapp.approval.phishing.confirm": "我知道这可能是假冒网站，仍要继续",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "已连接的网站",
+  "sites.subtitle": "你已将钱包连接到的网站。你可以随时撤销访问权限。",
+  "sites.loading": "正在加载已连接的网站…",
+  "sites.error": "无法加载已连接的网站。",
+  "sites.empty": "没有网站连接到你的钱包。",
+  "sites.granted": "连接于 {date}",
+  "sites.lastUsed": "上次使用 {date}",
+  "sites.addresses": "已共享 {count} 个地址",
+  "sites.revoke": "撤销",
+  "sites.revoke.aria": "撤销 {host} 的访问权限",
+  "sites.revokeAll": "全部撤销",
 };

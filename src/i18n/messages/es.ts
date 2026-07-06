@@ -329,4 +329,17 @@ export const es: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "Este sitio está en la lista de bloqueo de DIG de sitios de phishing y vaciado de billeteras conocidos.",
   "dapp.approval.phishing.reason.lookalike": "Esta dirección se parece a un sitio de DIG pero no lo es: revisa con cuidado la barra de direcciones.",
   "dapp.approval.phishing.confirm": "Entiendo que puede ser un sitio falso y quiero continuar de todos modos",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "Sitios conectados",
+  "sites.subtitle": "Sitios a los que has conectado tu billetera. Puedes revocar el acceso en cualquier momento.",
+  "sites.loading": "Cargando sitios conectados…",
+  "sites.error": "No se pudieron cargar los sitios conectados.",
+  "sites.empty": "No hay sitios conectados a tu billetera.",
+  "sites.granted": "Conectado el {date}",
+  "sites.lastUsed": "último uso {date}",
+  "sites.addresses": "{count} dirección(es) compartida(s)",
+  "sites.revoke": "Revocar",
+  "sites.revoke.aria": "Revocar el acceso de {host}",
+  "sites.revokeAll": "Revocar todo",
 };

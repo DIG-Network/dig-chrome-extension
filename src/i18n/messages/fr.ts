@@ -329,4 +329,17 @@ export const fr: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "Ce site figure sur la liste de blocage DIG des sites d’hameçonnage et de vidage de portefeuille connus.",
   "dapp.approval.phishing.reason.lookalike": "Cette adresse ressemble à un site DIG mais n’en est pas un — vérifiez attentivement la barre d’adresse.",
   "dapp.approval.phishing.confirm": "Je comprends que ce site peut être frauduleux et je veux continuer quand même",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "Sites connectés",
+  "sites.subtitle": "Sites auxquels vous avez connecté votre portefeuille. Vous pouvez révoquer l’accès à tout moment.",
+  "sites.loading": "Chargement des sites connectés…",
+  "sites.error": "Impossible de charger les sites connectés.",
+  "sites.empty": "Aucun site n’est connecté à votre portefeuille.",
+  "sites.granted": "Connecté le {date}",
+  "sites.lastUsed": "dernière utilisation {date}",
+  "sites.addresses": "{count} adresse(s) partagée(s)",
+  "sites.revoke": "Révoquer",
+  "sites.revoke.aria": "Révoquer l’accès de {host}",
+  "sites.revokeAll": "Tout révoquer",
 };

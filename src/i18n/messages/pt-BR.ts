@@ -329,4 +329,17 @@ export const ptBR: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "Este site está na lista de bloqueio da DIG de sites conhecidos de phishing e drenagem de carteiras.",
   "dapp.approval.phishing.reason.lookalike": "Este endereço parece um site da DIG, mas não é — verifique a barra de endereços com atenção.",
   "dapp.approval.phishing.confirm": "Entendo que este pode ser um site falso e quero continuar mesmo assim",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "Sites conectados",
+  "sites.subtitle": "Sites aos quais você conectou sua carteira. Você pode revogar o acesso a qualquer momento.",
+  "sites.loading": "Carregando sites conectados…",
+  "sites.error": "Não foi possível carregar os sites conectados.",
+  "sites.empty": "Nenhum site está conectado à sua carteira.",
+  "sites.granted": "Conectado em {date}",
+  "sites.lastUsed": "último uso {date}",
+  "sites.addresses": "{count} endereço(s) compartilhado(s)",
+  "sites.revoke": "Revogar",
+  "sites.revoke.aria": "Revogar o acesso de {host}",
+  "sites.revokeAll": "Revogar tudo",
 };

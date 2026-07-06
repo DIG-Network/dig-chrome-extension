@@ -329,4 +329,17 @@ export const zhTW: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "此網站在 DIG 的已知釣魚與盜幣網站黑名單中。",
   "dapp.approval.phishing.reason.lookalike": "此網址看起來像 DIG 網站，但並非如此——請仔細核對網址列。",
   "dapp.approval.phishing.confirm": "我知道這可能是假冒網站，仍要繼續",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "已連線的網站",
+  "sites.subtitle": "你已將錢包連線到的網站。你可以隨時撤銷存取權限。",
+  "sites.loading": "正在載入已連線的網站…",
+  "sites.error": "無法載入已連線的網站。",
+  "sites.empty": "沒有網站連線到你的錢包。",
+  "sites.granted": "連線於 {date}",
+  "sites.lastUsed": "上次使用 {date}",
+  "sites.addresses": "已分享 {count} 個地址",
+  "sites.revoke": "撤銷",
+  "sites.revoke.aria": "撤銷 {host} 的存取權限",
+  "sites.revokeAll": "全部撤銷",
 };

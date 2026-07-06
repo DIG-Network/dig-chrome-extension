@@ -92,6 +92,13 @@ import {
   getConnection as getWalletConnection,
   isOriginApproved,
   setOriginApproval,
+  // Granular revocable permissions + connected sites (#67 P0-4).
+  isPermissionMethod,
+  handlePermissionMethod,
+  listPermissions,
+  revokeOrigin,
+  revokeAllOrigins,
+  noteOriginUsage,
 } from '@/lib/wallet-broker';
 
 // Self-custody dApp `walletRpc` router + approval queue (#56 §5.5). When a self-custody wallet
@@ -1450,6 +1457,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       let env;
       try {
+        // Permission management (#67 P0-4): wallet_getPermissions / wallet_revokePermissions are
+        // answered from the shared per-origin consent store, independent of custody vs broker.
+        if (isPermissionMethod(message.method)) {
+          env = await handlePermissionMethod(chrome.storage.local, message.method, origin);
+          try { sendResponse(env); } catch { /* port closed */ }
+          return;
+        }
         const hasCustodyWallet = !!(await readKeystore());
         // Phishing gate (#67 P0-2): a blocklisted origin is refused for every method (the custody
         // path enforces this inside route()); this guards the WalletConnect→Sage broker path.
@@ -1479,6 +1493,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       } catch (e) {
         env = { status: 500, body: { error: (e && e.message) || 'wallet request failed' } };
       }
+      // Connected-sites bookkeeping (#67 P0-4): on a served request from an approved origin, record
+      // lastUsed + the invoked method (and the address on connect). Best-effort; no-op if not approved.
+      if (origin && env && env.status === 200) {
+        const isConnect = /(^|_)connect$/i.test(String(message.method || ''));
+        const data = env.body && env.body.data;
+        const address = isConnect && data && typeof data === 'object' ? data.address : undefined;
+        noteOriginUsage(chrome.storage.local, origin, { method: message.method, address }).catch(() => {});
+      }
       try { sendResponse(env); } catch { /* port closed */ }
     })();
     return true; // async
@@ -1503,6 +1525,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try { sendResponse(await dappApproval.resolve(message.id, !!message.approved)); }
       catch { try { sendResponse({ success: false, code: 'RESOLVE_FAILED', remaining: dappApproval.size() }); } catch { /* port closed */ } }
+    })();
+    return true; // async
+  }
+
+  // Connected sites (#67 P0-4) → SW: list every origin the wallet is connected to, as capability
+  // records (addresses/methods/grantedAt/lastUsed) for the Settings/Advanced Connected-sites screen.
+  if (message.action === ACTIONS.listConnectedSites) {
+    (async () => {
+      try { sendResponse({ sites: await listPermissions(chrome.storage.local) }); }
+      catch { try { sendResponse({ success: false, code: 'LIST_FAILED', message: 'could not read connected sites' }); } catch { /* port closed */ } }
+    })();
+    return true; // async
+  }
+
+  // Connected sites (#67 P0-4) → SW: revoke ONE origin's consent (it must re-request to reconnect).
+  if (message.action === ACTIONS.revokeConnectedSite) {
+    (async () => {
+      try { await revokeOrigin(chrome.storage.local, message.origin); sendResponse({ success: true }); }
+      catch { try { sendResponse({ success: false, code: 'REVOKE_FAILED', message: 'could not revoke site' }); } catch { /* port closed */ } }
+    })();
+    return true; // async
+  }
+
+  // Connected sites (#67 P0-4) → SW: revoke EVERY connected origin at once.
+  if (message.action === ACTIONS.revokeAllConnectedSites) {
+    (async () => {
+      try { await revokeAllOrigins(chrome.storage.local); sendResponse({ success: true }); }
+      catch { try { sendResponse({ success: false, code: 'REVOKE_FAILED', message: 'could not revoke sites' }); } catch { /* port closed */ } }
     })();
     return true; // async
   }

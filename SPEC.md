@@ -399,7 +399,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `10`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `11`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -417,7 +417,10 @@ added the NFT / Collectibles actions — `listNfts`, `prepareNftTransfer`, `conf
 `9` (#56 §5.5) made `walletRpc` route to the self-custody wallet when one exists (connect + reads → the
 offscreen vault; sign/message → the approval window) and added the approval-window channel
 `dappApprovalList` + `dappApprovalResolve` (§18.12). `10` (#66) added `appViewFraming` — install/remove
-the in-window app-view framing bypass (§9.1).
+the in-window app-view framing bypass (§9.1). `11` (#67 P0-4) had `walletRpc` also answer the
+EIP-2255-shaped permission methods (`wallet_getPermissions` / `wallet_revokePermissions`) from the
+shared per-origin consent store, and added the Connected-sites actions `listConnectedSites`,
+`revokeConnectedSite`, `revokeAllConnectedSites` (§18.12).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1053,6 +1056,17 @@ the unspoofable `sender.origin`) gates every request.
   A `warn` (lookalike) verdict lets the flow proceed but rides the approval queue so the window shows
   an interstitial the user must acknowledge. All original code, evaluated on-device — no imported
   Ethereum phishing list.
+- **Granular revocable permissions + Connected sites (P0-4).** Per-origin consent is a CAPABILITY
+  record, not a bare boolean: `wallet.origins[origin] = { approved, ts (grantedAt), addresses[],
+  methods[], lastUsed }` — backwards compatible (a legacy `{ approved, ts }` record still reads as
+  connected). On a served request the SW records `lastUsed` + the invoked method (+ the connect
+  address). Two EIP-2255-shaped (Chia-mapped) `window.chia` methods are answered from this shared store
+  (independent of custody vs broker): `wallet_getPermissions` → an array of `{ invoker, parentCapability:
+  'chia_connect', caveats:[{ type:'restrictReturnedAddresses', value: addresses }], date }` (empty when
+  none); `wallet_revokePermissions` → clears the origin's consent (a revoked site must re-request). A
+  **Connected-sites** screen (Settings/Advanced) lists every origin (addresses, granted/last-used,
+  methods) with per-site **revoke** + **revoke-all** over the `listConnectedSites` /
+  `revokeConnectedSite` / `revokeAllConnectedSites` SW actions.
 - **Reads** (`chip0002_getPublicKeys`, `chia_getAddress`, `chip0002_chainId`) route straight to the
   offscreen vault — no approval window (nothing is authorized). `getPublicKeys` returns the wallet's
   synthetic public keys (both HD schemes, deduped).
