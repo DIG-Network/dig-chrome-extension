@@ -13,7 +13,7 @@
  */
 
 import { buildKeyring, reconstructCats, type SendFlowWasm, type KeyringEntry } from '@/offscreen/sendFlow';
-import type { ChainClient, ChainCoin } from '@/offscreen/chain';
+import type { ChainClient } from '@/offscreen/chain';
 import type { SigCoinSpend, SigSecretKey } from '@/offscreen/signing';
 
 /** CLVM max cost when running a puzzle to read its output conditions. */
@@ -172,9 +172,9 @@ async function selectAssetCoins(
     const sel = coins.filter((c) => want.has(strip0x(chia.toHex(c.coinId()))));
     return { objs: sel, total: sel.reduce((s, c) => s + c.amount, 0n), count: sel.length };
   }
-  const cats = await reconstructCats(chia, chain, keyring, assetId as string);
-  const sel = cats.filter((c) => want.has(strip0x(chia.toHex((c as CatLike).coin.coinId()))));
-  return { objs: sel, total: sel.reduce((s, c) => s + (c as CatLike).coin.amount, 0n), count: sel.length };
+  const cats = (await reconstructCats(chia, chain, keyring, assetId as string)) as CatLike[];
+  const sel = cats.filter((c) => want.has(strip0x(chia.toHex(c.coin.coinId()))));
+  return { objs: sel, total: sel.reduce((s, c) => s + c.coin.amount, 0n), count: sel.length };
 }
 
 /** Insert each selected coin's standard inner spend, keyed by its puzzle hash; finalize the coin spends. */

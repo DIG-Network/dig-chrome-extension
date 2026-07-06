@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { toBaseUnits, formatBaseUnits, validateSendForm, shortenAddress, isChiaAddress } from '@/lib/wallet-view';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
-import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery, type PreparedSend } from '@/features/wallet/custodyApi';
+import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery, useGetCoinsQuery, type PreparedSend } from '@/features/wallet/custodyApi';
 import { ContactPicker } from '@/features/contacts/ContactPicker';
 import { useContacts } from '@/features/contacts/useContacts';
 
@@ -37,6 +37,9 @@ export function SendPanel({
   const [localError, setLocalError] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<PreparedSend | null>(null);
   const [spentCoinId, setSpentCoinId] = useState<string | null>(null);
+  // Coin control (#91): optional hand-picked funding coins (empty set = automatic selection).
+  const [pickCoins, setPickCoins] = useState(false);
+  const [selectedCoins, setSelectedCoins] = useState<Set<string>>(new Set());
 
   const [prepareSend, prep] = usePrepareSendMutation();
   const [confirmSend, conf] = useConfirmSendMutation();
@@ -52,6 +55,19 @@ export function SendPanel({
   const isXch = !assetId;
   const spendable = selected?.balance ?? 0;
   const feeMojos = safeBaseUnits(fee, XCH_DECIMALS);
+
+  // Coin control (#91): only fetch the coin list when the picker is open, for the selected asset.
+  const coinsQuery = useGetCoinsQuery({ ...(assetId ? { assetId } : {}) }, { skip: !pickCoins });
+  const pickerCoins = coinsQuery.data?.coins ?? [];
+
+  function toggleCoin(coinId: string) {
+    setSelectedCoins((prev) => {
+      const next = new Set(prev);
+      if (next.has(coinId)) next.delete(coinId);
+      else next.add(coinId);
+      return next;
+    });
+  }
 
   function setMax() {
     // XCH: leave room for the fee. CAT: the fee is paid in XCH, so Max is the full token balance.
@@ -72,11 +88,13 @@ export function SendPanel({
       return;
     }
     setLocalError(null);
+    const coinIds = pickCoins && selectedCoins.size > 0 ? [...selectedCoins] : undefined;
     const res = await prepareSend({
       recipient,
       amount: String(amountBase),
       fee: String(feeMojos),
       ...(assetId ? { assetId } : {}),
+      ...(coinIds ? { coinIds } : {}),
     });
     if ('data' in res && res.data?.pendingId) {
       setPrepared(res.data);
@@ -139,6 +157,7 @@ export function SendPanel({
               onChange={(e) => {
                 setAssetIdx(Number(e.target.value));
                 setAmount('');
+                setSelectedCoins(new Set()); // coin selection is per-asset (#91)
               }}
             >
               {assets.map((a, i) => (
@@ -171,6 +190,54 @@ export function SendPanel({
             <span><FormattedMessage id="send.fee" /></span>
             <input data-testid="send-fee" className="dig-input" value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />
           </label>
+
+          {/* Coin control (#91): optionally hand-pick which coins fund the send. */}
+          <div style={{ margin: '4px 0 12px' }}>
+            <button
+              type="button"
+              className="dig-link"
+              data-testid="send-choose-coins"
+              aria-expanded={pickCoins}
+              onClick={() => setPickCoins((v) => !v)}
+            >
+              <FormattedMessage id="send.coins.choose" />
+              {pickCoins && selectedCoins.size > 0 && (
+                <span className="dig-muted"> · <FormattedMessage id="send.coins.selected" values={{ count: selectedCoins.size }} /></span>
+              )}
+            </button>
+            {pickCoins && (
+              <div data-testid="send-coin-picker" style={{ marginTop: 6 }}>
+                <p className="dig-muted" style={{ margin: '0 0 6px' }}>
+                  <FormattedMessage id={selectedCoins.size === 0 ? 'send.coins.auto' : 'send.coins.selected'} values={{ count: selectedCoins.size }} />
+                </p>
+                {coinsQuery.isLoading ? (
+                  <p className="dig-muted" role="status"><FormattedMessage id="send.coins.loading" /></p>
+                ) : pickerCoins.length === 0 ? (
+                  <p className="dig-muted"><FormattedMessage id="send.coins.none" /></p>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 160, overflowY: 'auto' }}>
+                    {pickerCoins.map((c) => (
+                      <li key={c.coinId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                        <input
+                          type="checkbox"
+                          className="dig-check"
+                          data-testid={`send-coin-${c.coinId}`}
+                          checked={selectedCoins.has(c.coinId)}
+                          onChange={() => toggleCoin(c.coinId)}
+                          aria-label={`${formatBaseUnits(Number(c.amount), decimals)} ${ticker} — ${shortenAddress(c.coinId)}`}
+                        />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          {formatBaseUnits(Number(c.amount), decimals)} {ticker}{' '}
+                          <span className="dig-mono dig-muted" style={{ fontSize: '0.78em' }}>{shortenAddress(c.coinId)}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
           {localError && <p className="dig-error-text" role="alert" data-testid="send-error">{localError}</p>}
           <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-review" disabled={busy}>
             <FormattedMessage id={busy ? 'custody.working' : 'send.submit'} />
