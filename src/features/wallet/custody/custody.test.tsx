@@ -94,11 +94,18 @@ describe('NoWalletCard', () => {
 });
 
 describe('RecoveryReveal', () => {
-  it('hides the words until revealed, then lists all 24', () => {
-    renderWithProviders(<RecoveryReveal mnemonic={WORDS24} />);
+  it('hides the words until revealed, then renders 24 in a scrape-proof closed shadow root', () => {
+    const { container } = renderWithProviders(<RecoveryReveal mnemonic={WORDS24} />);
     expect(screen.queryByTestId('recovery-words')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('recovery-reveal-btn'));
-    expect(screen.getByTestId('recovery-words').querySelectorAll('li')).toHaveLength(24);
+    const host = screen.getByTestId('recovery-words');
+    // The secret lives in a CLOSED shadow root (#67 P1-5): host.shadowRoot is null and the words
+    // never appear in the light DOM, so another extension / injected script / the rest of our own
+    // UI cannot scrape them via document.querySelector or textContent harvesting.
+    expect(host.shadowRoot).toBeNull();
+    expect(host.querySelectorAll('li')).toHaveLength(0);
+    expect(container.textContent).not.toContain('alpha');
+    expect(host.getAttribute('data-word-count')).toBe('24');
   });
 
   it('copies to the clipboard and auto-clears it', async () => {
