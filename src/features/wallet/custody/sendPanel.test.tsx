@@ -131,6 +131,23 @@ describe('SendPanel', () => {
     await waitFor(() => expect(screen.getByTestId('send-recipient-contact')).toHaveTextContent('Alice'));
   });
 
+  it('coin picker (#91): choosing coins forwards them as coinIds to prepareSend', async () => {
+    const COIN = 'a1'.repeat(32);
+    const sw = mockSw((m) => {
+      if (m.action === 'listCoins') return { coins: [{ coinId: COIN, amount: '1000000000000', confirmedHeight: 3 }] };
+      if (m.action === 'prepareSend') return { pendingId: 'p1', summary: SUMMARY };
+      return { success: true };
+    });
+    renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+    fireEvent.click(screen.getByTestId('send-choose-coins'));
+    fireEvent.click(await screen.findByTestId(`send-coin-${COIN}`));
+    fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+    fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+    fireEvent.click(screen.getByTestId('send-review'));
+    expect(await screen.findByTestId('send-review-panel')).toBeInTheDocument();
+    expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareSend', coinIds: [COIN] }), expect.any(Function));
+  });
+
   it('shows the terminal failure state when the broadcast is rejected', async () => {
     mockSw((m) => {
       if (m.action === 'prepareSend') return { pendingId: 'p1', summary: SUMMARY };
