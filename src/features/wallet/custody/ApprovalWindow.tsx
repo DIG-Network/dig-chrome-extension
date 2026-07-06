@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { FormattedMessage, IntlProvider, useIntl } from 'react-intl';
 import { FourState } from '@/components/FourState';
 import { UnlockScreen } from '@/features/wallet/custody/UnlockScreen';
@@ -11,6 +11,7 @@ import {
   type DappMessageSummary,
 } from '@/features/wallet/custody/approvalApi';
 import type { DappSpendSummary } from '@/offscreen/dappSign';
+import { assessSpendRisk, type SpendRisk } from '@/lib/spend-risk';
 
 /**
  * {@link ApprovalWindow} wrapped in the react-intl provider bound to the store's active locale. The
@@ -84,8 +85,17 @@ export function ApprovalWindow() {
 /** Render + decide a single pending request. */
 function ApprovalRequestCard({ request, pending }: { request: DappApprovalRequest; pending: number }) {
   const [resolve, state] = useResolveDappApprovalMutation();
+  const [ack, setAck] = useState(false);
   const busy = state.isLoading;
   const decide = (approved: boolean) => void resolve({ id: request.id, approved });
+
+  // Anti-drainer risk assessment, derived from the tamper-resistant decoded summary (never page
+  // text). Only coin-spend requests carry spend risk; a locked/undecodable request has no summary.
+  const reviewable = request.kind === 'signCoinSpends' && !request.needsUnlock && !request.decodeError;
+  const risk: SpendRisk = reviewable
+    ? assessSpendRisk(request.summary as DappSpendSummary | null)
+    : { level: 'none', findings: [], requiresExtraConfirm: false };
+  const blockedOnAck = risk.requiresExtraConfirm && !ack;
 
   return (
     <section className="dig-card" data-testid="approval-request" aria-labelledby="approval-req-title">
@@ -113,6 +123,17 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
         <MessageSummaryView summary={request.summary as DappMessageSummary | null} />
       )}
 
+      {reviewable && risk.findings.length > 0 && <RiskBanner risk={risk} />}
+
+      {reviewable && risk.requiresExtraConfirm && (
+        <label className="dig-check" data-testid="approval-risk-ack" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 12 }}>
+          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} data-testid="approval-risk-ack-input" />
+          <span className="dig-muted">
+            <FormattedMessage id="dapp.approval.risk.confirm" />
+          </span>
+        </label>
+      )}
+
       {pending > 1 && (
         <p className="dig-muted" data-testid="approval-queue-count" style={{ marginTop: 12 }}>
           <FormattedMessage id="dapp.approval.queueCount" values={{ count: pending - 1 }} />
@@ -137,16 +158,44 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
         {!request.decodeError && (
           <button
             type="button"
-            className="dig-btn dig-btn--primary dig-btn--block"
+            className={`dig-btn dig-btn--block ${risk.level === 'high' ? 'dig-btn--danger' : 'dig-btn--primary'}`}
             data-testid="approval-approve"
             onClick={() => decide(true)}
-            disabled={busy || request.needsUnlock}
+            disabled={busy || request.needsUnlock || blockedOnAck}
           >
             <FormattedMessage id={busy ? 'dapp.approval.working' : 'dapp.approval.approve'} />
           </button>
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * The anti-drainer risk banner (#67 P0-3). Renders each finding of the tamper-resistant risk
+ * assessment as a plain-language warning; `role="alert"` announces it to assistive tech. High risk
+ * uses the error style; a caution-only assessment uses the warn style.
+ */
+function RiskBanner({ risk }: { risk: SpendRisk }) {
+  return (
+    <div
+      role="alert"
+      data-testid="approval-risk"
+      data-risk-level={risk.level}
+      className={risk.level === 'high' ? 'dig-banner dig-banner--danger' : 'dig-banner dig-banner--warn'}
+      style={{ marginTop: 12, padding: 12, borderRadius: 8 }}
+    >
+      <p className="dig-section-title" style={{ margin: '0 0 6px' }}>
+        <FormattedMessage id={risk.level === 'high' ? 'dapp.approval.risk.title.high' : 'dapp.approval.risk.title.caution'} />
+      </p>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        {risk.findings.map((f) => (
+          <li key={f.code} data-testid={`approval-risk-${f.code}`} className={f.severity === 'high' ? 'dig-error-text' : 'dig-muted'}>
+            <FormattedMessage id={`dapp.approval.risk.${f.code}`} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

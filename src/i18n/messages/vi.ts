@@ -312,4 +312,13 @@ export const vi: Record<string, string> = {
   "dapp.approval.approve": "Phê duyệt",
   "dapp.approval.reject": "Từ chối",
   "dapp.approval.working": "Đang xử lý…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "Rủi ro cao — hãy kiểm tra kỹ",
+  "dapp.approval.risk.title.caution": "Hãy kiểm tra trước khi phê duyệt",
+  "dapp.approval.risk.confirm": "Tôi hiểu rủi ro và vẫn muốn phê duyệt",
+  "dapp.approval.risk.DRAIN_ALL": "Yêu cầu này gửi gần như toàn bộ số tiền đã chọn đến một địa chỉ bên ngoài ví của bạn.",
+  "dapp.approval.risk.HIGH_FEE": "Phí mạng cao bất thường.",
+  "dapp.approval.risk.CANNOT_SIGN": "Ví của bạn không thể ký đầy đủ yêu cầu này.",
+  "dapp.approval.risk.FOREIGN_INPUTS": "Yêu cầu này bao gồm các coin mà ví của bạn không sở hữu; số tiền hiển thị không thể được xác minh đầy đủ.",
 };

@@ -312,4 +312,13 @@ export const de: Record<string, string> = {
   "dapp.approval.approve": "Genehmigen",
   "dapp.approval.reject": "Ablehnen",
   "dapp.approval.working": "Wird verarbeitet…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "Hohes Risiko — sorgfältig prüfen",
+  "dapp.approval.risk.title.caution": "Vor dem Genehmigen prüfen",
+  "dapp.approval.risk.confirm": "Ich verstehe das Risiko und möchte trotzdem genehmigen",
+  "dapp.approval.risk.DRAIN_ALL": "Diese Anfrage sendet nahezu alle ausgewählten Mittel an eine Adresse außerhalb Ihrer Wallet.",
+  "dapp.approval.risk.HIGH_FEE": "Die Netzwerkgebühr ist ungewöhnlich hoch.",
+  "dapp.approval.risk.CANNOT_SIGN": "Ihre Wallet kann diese Anfrage nicht vollständig signieren.",
+  "dapp.approval.risk.FOREIGN_INPUTS": "Diese Anfrage enthält Coins, die Ihrer Wallet nicht gehören; die angezeigten Beträge können nicht vollständig überprüft werden.",
 };

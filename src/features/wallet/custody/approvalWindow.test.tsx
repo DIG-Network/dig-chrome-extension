@@ -135,4 +135,31 @@ describe('ApprovalWindow', () => {
     renderWithProviders(<ApprovalWindow />);
     expect(await screen.findByTestId('approval-cannot-sign')).toBeInTheDocument();
   });
+
+  it('shows a high-risk drainer banner and gates Approve behind an explicit acknowledgement (#67 P0-3)', async () => {
+    const drain = { ...SPEND_SUMMARY, sendingMojos: '1000000000000', changeMojos: '0', outputs: [{ puzzleHash: 'e3', amount: '1000000000000', isSelf: false }] };
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') return { requests: [signRequest({ summary: drain })], lockState: 'unlocked', summoned: true };
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    const banner = await screen.findByTestId('approval-risk');
+    expect(banner).toHaveAttribute('data-risk-level', 'high');
+    expect(screen.getByTestId('approval-risk-DRAIN_ALL')).toBeInTheDocument();
+    // Approve is disabled until the risk acknowledgement is checked.
+    expect(screen.getByTestId('approval-approve')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('approval-risk-ack-input'));
+    expect(screen.getByTestId('approval-approve')).toBeEnabled();
+  });
+
+  it('does not show a risk banner for a normal payment and Approve is enabled (#67 P0-3)', async () => {
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') return { requests: [signRequest()], lockState: 'unlocked', summoned: true };
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    expect(await screen.findByTestId('approval-request')).toBeInTheDocument();
+    expect(screen.queryByTestId('approval-risk')).not.toBeInTheDocument();
+    expect(screen.getByTestId('approval-approve')).toBeEnabled();
+  });
 });

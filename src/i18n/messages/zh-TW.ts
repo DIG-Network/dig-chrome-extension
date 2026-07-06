@@ -312,4 +312,13 @@ export const zhTW: Record<string, string> = {
   "dapp.approval.approve": "核准",
   "dapp.approval.reject": "拒絕",
   "dapp.approval.working": "處理中…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "高風險 — 請仔細核對",
+  "dapp.approval.risk.title.caution": "批准前請核對",
+  "dapp.approval.risk.confirm": "我了解風險，仍要批准",
+  "dapp.approval.risk.DRAIN_ALL": "此請求會將所選資金幾乎全部傳送到您錢包之外的地址。",
+  "dapp.approval.risk.HIGH_FEE": "網路手續費異常高。",
+  "dapp.approval.risk.CANNOT_SIGN": "您的錢包無法完整簽署此請求。",
+  "dapp.approval.risk.FOREIGN_INPUTS": "此請求包含並非您錢包所擁有的幣；所示金額無法完全核實。",
 };

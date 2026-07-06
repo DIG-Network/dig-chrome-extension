@@ -312,4 +312,13 @@ export const ru: Record<string, string> = {
   "dapp.approval.approve": "Подтвердить",
   "dapp.approval.reject": "Отклонить",
   "dapp.approval.working": "Обработка…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "Высокий риск — проверьте внимательно",
+  "dapp.approval.risk.title.caution": "Проверьте перед подтверждением",
+  "dapp.approval.risk.confirm": "Я понимаю риск и всё равно хочу подтвердить",
+  "dapp.approval.risk.DRAIN_ALL": "Этот запрос отправляет почти все выбранные средства на адрес за пределами вашего кошелька.",
+  "dapp.approval.risk.HIGH_FEE": "Комиссия сети необычно велика.",
+  "dapp.approval.risk.CANNOT_SIGN": "Ваш кошелёк не может полностью подписать этот запрос.",
+  "dapp.approval.risk.FOREIGN_INPUTS": "Этот запрос включает монеты, которые не принадлежат вашему кошельку; показанные суммы нельзя полностью проверить.",
 };

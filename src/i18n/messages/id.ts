@@ -312,4 +312,13 @@ export const id: Record<string, string> = {
   "dapp.approval.approve": "Setujui",
   "dapp.approval.reject": "Tolak",
   "dapp.approval.working": "Memproses…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "Risiko tinggi — periksa dengan saksama",
+  "dapp.approval.risk.title.caution": "Periksa sebelum menyetujui",
+  "dapp.approval.risk.confirm": "Saya memahami risikonya dan tetap ingin menyetujui",
+  "dapp.approval.risk.DRAIN_ALL": "Permintaan ini mengirim hampir seluruh dana yang dipilih ke alamat di luar dompet Anda.",
+  "dapp.approval.risk.HIGH_FEE": "Biaya jaringan sangat besar secara tidak wajar.",
+  "dapp.approval.risk.CANNOT_SIGN": "Dompet Anda tidak dapat menandatangani permintaan ini sepenuhnya.",
+  "dapp.approval.risk.FOREIGN_INPUTS": "Permintaan ini menyertakan koin yang bukan milik dompet Anda; jumlah yang ditampilkan tidak dapat diverifikasi sepenuhnya.",
 };
