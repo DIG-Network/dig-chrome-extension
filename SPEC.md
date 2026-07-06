@@ -540,7 +540,7 @@ machine, falling back to the hosted read tier only when no local node is reachab
    `['http://dig.local', 'http://localhost:<port>']`:
    - `http://dig.local` (port 80, branded) — tried FIRST.
    - `http://localhost:<port>` — the always-on fallback (`<port>` from the configured
-     `server.host`, default **8080**).
+     `server.host`, default **9778** — the canonical dig-node control port, #132).
 
 An implementation MUST NOT destructure only `{ port }` from the parsed host and discard `url` —
 doing so silently drops a configured custom host and is a conformance defect (the historical
@@ -571,7 +571,7 @@ The extension MUST expose a first-class, persisted way for the user to set a cus
 
 - `server.host` (options page) — the local dig-node host (`host`, `host:port`, or
   `http(s)://host[:port]`), parsed by `parseServerHost` into `{ url, port }` with an
-  out-of-range/absent port falling back to 8080. A value naming something other than a local
+  out-of-range/absent port falling back to 9778. A value naming something other than a local
   alias (§8.1) overrides the `dig.local`/`localhost` ladder entirely.
 - `digRpcEndpoint` (options page) — the hosted fallback endpoint, overriding `rpc.dig.net`.
 
@@ -712,7 +712,7 @@ extension MUST NOT diverge from it.
 
 | Setting | Storage key / source | Default | Effect |
 |---|---|---|---|
-| Local dig-node host | `server.host` | `localhost:8080` | a local-alias host (`localhost`/`dig.local`) keeps the `dig.local`-first ladder; a genuinely custom host wins ENTIRELY over that ladder (§8.1) |
+| Local dig-node host | `server.host` | `localhost:9778` | a local-alias host (`localhost`/`dig.local`) keeps the `dig.local`-first ladder; a genuinely custom host wins ENTIRELY over that ladder (§8.1) |
 | Hosted RPC endpoint | `digRpcEndpoint` | `https://rpc.dig.net/` | fallback when no local node is reachable |
 | Resolution on/off | popup (`toggleExtension`) | on | disables `chia://` resolution |
 | Search engine | `updateSearchConfig` | DIG omnibox (`dig`) | omnibox/search config |

@@ -26,9 +26,9 @@ test('SPEC.md exists and is a normative spec (RFC-2119 voice)', () => {
   assert.match(SPEC, /RFC 2119/);
 });
 
-test('SPEC documents the actual default dig-node port (8080)', () => {
-  assert.equal(DEFAULT_DIG_NODE_PORT, 8080);
-  assert.match(SPEC, /8080/);
+test('SPEC documents the actual default dig-node port (9778, #132)', () => {
+  assert.equal(DEFAULT_DIG_NODE_PORT, 9778);
+  assert.match(SPEC, /9778/);
 });
 
 test('SPEC documents the branded local dig-node address (dig.local, port 80)', () => {
