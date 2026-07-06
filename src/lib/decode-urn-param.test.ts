@@ -12,16 +12,16 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { decodeUrnParam, parseURN } from '../dig-urn.mjs';
+import { decodeUrnParam, parseURN } from '@/lib/dig-urn';
 
 const STORE = 'a'.repeat(64);
 const ROOT = 'b'.repeat(64);
 const URN = `chia://chia:${STORE}:${ROOT}/index.html`;
 
 // Emulate the viewer read: URLSearchParams.get() decodes exactly once.
-const getParam = (encoded) => new URLSearchParams('urn=' + encoded).get('urn');
+const getParam = (encoded: string): string => new URLSearchParams('urn=' + encoded).get('urn') ?? '';
 
 test('decodeUrnParam leaves an already-decoded URN untouched', () => {
   assert.equal(decodeUrnParam(URN), URN);

@@ -3,16 +3,25 @@
  * Centralized module for URN parsing, encoding, and URL conversion
  */
 
+/** A parsed Digstore URN; a null `roothash` references the store's latest capsule. */
+export interface ParsedUrn {
+  chain: string;
+  storeId: string;
+  roothash: string | null;
+  resourceKey: string;
+  salt: string | null;
+}
+
 // Base36 encoding/decoding for store IDs (64 hex chars -> max 50 base36 chars)
-function hexToInt(hex) {
+function hexToInt(hex: string): bigint {
   try {
     return BigInt('0x' + hex);
-  } catch (e) {
+  } catch {
     throw new Error(`Invalid hex string: ${hex}`);
   }
 }
 
-function intToBase36(bigInt) {
+function intToBase36(bigInt: bigint): string {
   if (bigInt === 0n) return '0';
   let result = '';
   const base = 36n;
@@ -27,7 +36,7 @@ function intToBase36(bigInt) {
   return result;
 }
 
-function base36ToInt(base36) {
+function base36ToInt(base36: string): bigint {
   let result = 0n;
   const base = 36n;
   for (let i = 0; i < base36.length; i++) {
@@ -45,8 +54,8 @@ function base36ToInt(base36) {
   return result;
 }
 
-function intToHex(bigInt, length = 64) {
-  let hex = bigInt.toString(16);
+function intToHex(bigInt: bigint, length = 64): string {
+  const hex = bigInt.toString(16);
   return hex.padStart(length, '0');
 }
 
@@ -55,7 +64,7 @@ function intToHex(bigInt, length = 64) {
  * @param {string} storeId - 64-character hexadecimal store ID
  * @returns {string} Base36 encoded store ID
  */
-function encodeStoreId(storeId) {
+function encodeStoreId(storeId: string): string {
   if (!/^[a-f0-9]{64}$/i.test(storeId)) {
     throw new Error('Invalid store ID format');
   }
@@ -68,7 +77,7 @@ function encodeStoreId(storeId) {
  * @param {string} encoded - Base36 encoded store ID
  * @returns {string} 64-character hexadecimal store ID
  */
-function decodeStoreId(encoded) {
+function decodeStoreId(encoded: string): string {
   const int = base36ToInt(encoded);
   return intToHex(int, 64);
 }
@@ -91,7 +100,7 @@ function decodeStoreId(encoded) {
  * @param {string} raw - the (possibly multiply-encoded) urn param value
  * @returns {string} the fully-decoded URN (empty string for non-string input)
  */
-function decodeUrnParam(raw) {
+function decodeUrnParam(raw: string | null | undefined): string {
   let v = typeof raw === 'string' ? raw : '';
   for (let i = 0; i < 5 && /%[0-9a-fA-F]{2}/.test(v); i++) {
     let dec;
@@ -126,7 +135,7 @@ function decodeUrnParam(raw) {
  * @param {string} urnString - URN string (with or without `chia://` / `urn:dig:` prefix)
  * @returns {Object|null} `{ chain, storeId, roothash, resourceKey, salt }` or null if invalid
  */
-function parseURN(urnString) {
+function parseURN(urnString: string): ParsedUrn | null {
   if (!urnString || typeof urnString !== 'string') {
     return null;
   }
@@ -184,7 +193,7 @@ function parseURN(urnString) {
  * @param {string} pathname - Path from request
  * @returns {string|null} URN string or null if invalid
  */
-function resolveHostToURN(hostname, pathname) {
+function resolveHostToURN(hostname: string, pathname: string): string | null {
   // Support both dig.local and localhost as base domains
   const baseDomains = ['dig.local', 'localhost', '127.0.0.1'];
   let baseDomain = null;
@@ -224,6 +233,7 @@ function resolveHostToURN(hostname, pathname) {
   }
   
   // Handle subdomain format
+  if (subdomainPart == null) return null;
   const subdomains = subdomainPart.split('.');
   
   if (subdomains.length === 1) {
@@ -263,7 +273,7 @@ function resolveHostToURN(hostname, pathname) {
  * @param {number} options.port - Port number (default: 80)
  * @returns {string|null} Content server URL or null if invalid URN
  */
-function urnToContentServerUrl(urn, options = {}) {
+function urnToContentServerUrl(urn: string, options: { host?: string; port?: number } = {}): string | null {
   const parsed = parseURN(urn);
   if (!parsed) {
     return null;

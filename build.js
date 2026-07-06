@@ -25,17 +25,13 @@ const EXTENSION_FILES = [
   // (popup.js / popup-wallet.js / popup.css) was superseded by the React shell (#56) and removed.
   //
   // The pure view-models + contract leaves the SW/pages used to import at the repo root have ALL
-  // migrated to src/ as TypeScript (#68) — wallet-view/-assets/-offers, links, dig-node-status,
-  // dig-control, dig-ledger, apps, qr, error-codes/-page, messages, wallet-methods,
+  // migrated to src/ as TypeScript (#68) — dig-urn, wallet-view/-assets/-offers, links,
+  // dig-node-status, dig-control, dig-ledger, apps, qr, error-codes/-page, messages, wallet-methods,
   // dig-provider-core, agent-surface, wallet-broker, dapp-approval, server-config, custody-session,
   // store-refs. They now inline into the esbuild SW bundle + the vite React/page bundles (no longer
   // plain-copied); agent-surface is esbuild-transpiled at build time by generateAgentSurface().
-  //
-  // Only dig-urn (still consumed by the dev-only server/server.js as a runtime .mjs) remains a
-  // plain-copied root view-model for now.
-  'dig-urn.mjs',
-  // WalletConnect → Sage transport (runs in the popup page).
-  'wallet-wc.js',
+  // (The legacy vanilla-popup wallet-wc.js was superseded by src/features/wallet/transport.ts and
+  // removed; the dig_client wasm-bindgen glue below is a vendored/generated artifact, not app logic.)
   // NB: background.js (the MV3 module service worker) is NOT plain-copied — it is a strict entry at
   // src/background/index.ts that esbuild BUNDLES into dist/background.js by bundleBackground()
   // below (#68): the pure #shared/* leaves are inlined; ./dig_client.js is kept EXTERNAL (the
@@ -75,13 +71,6 @@ const FAVICON_PATH = path.join(SRC_DIR, 'favicon.png');
 // The vendored WalletConnect SignClient ESM (built by scripts/bundle-walletconnect.js).
 // Copied into dist/vendor/ so the popup's wallet-wc.js import resolves under MV3 CSP.
 const WC_VENDOR_REL = path.join('vendor', 'walletconnect-sign-client.js');
-
-// Where the hub bakes the shared Reown/WalletConnect project id (the SAME relay project id
-// every DIG surface uses). Read at BUILD time and injected into dist/wallet-wc.js as the
-// DEFAULT project id — NEVER written into a tracked source file or printed. (Client-public
-// identifier, so it may land in the dist/ artifact the same way the hub ships NEXT_PUBLIC_*.)
-const HUB_ENV_LOCAL = path.resolve(__dirname, '..', 'hub.dig.net', 'apps', 'web', '.env.local');
-const PROJECT_ID_ENV_KEY = 'NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID';
 
 // Colors for console output
 const colors = {
@@ -334,67 +323,9 @@ function injectAppVersion() {
   }
 }
 
-/**
- * Resolve the shared WalletConnect project id at build time.
- * Precedence: WALLETCONNECT_PROJECT_ID env var → hub apps/web/.env.local (NEXT_PUBLIC_…).
- * Returns '' if neither is available (build still succeeds; the options-page field then
- * remains the only way to set one). NEVER prints the value.
- */
-function readProjectId() {
-  const fromEnv = (process.env.WALLETCONNECT_PROJECT_ID || '').trim();
-  if (fromEnv) return fromEnv;
-
-  try {
-    if (fs.existsSync(HUB_ENV_LOCAL)) {
-      const text = fs.readFileSync(HUB_ENV_LOCAL, 'utf8');
-      for (const raw of text.split(/\r?\n/)) {
-        const line = raw.trim();
-        if (!line || line.startsWith('#')) continue;
-        const eq = line.indexOf('=');
-        if (eq === -1) continue;
-        const key = line.slice(0, eq).trim();
-        if (key !== PROJECT_ID_ENV_KEY) continue;
-        let val = line.slice(eq + 1).trim();
-        // Strip surrounding quotes if present.
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.slice(1, -1);
-        }
-        return val.trim();
-      }
-    }
-  } catch {
-    /* fall through to '' — never surface the file contents */
-  }
-  return '';
-}
-
-/**
- * Inject the build-time default project id into dist/wallet-wc.js by replacing the source
- * sentinel `const DEFAULT_PROJECT_ID = '';`. The SOURCE file keeps '' (no committed literal);
- * only the dist/ artifact carries the baked value. The value is never logged.
- */
-function injectProjectId(projectId) {
-  const distWalletWc = path.join(DIST_DIR, 'wallet-wc.js');
-  if (!fs.existsSync(distWalletWc)) {
-    log('⚠️  dist/wallet-wc.js missing — cannot inject project id.', 'yellow');
-    return false;
-  }
-  const src = fs.readFileSync(distWalletWc, 'utf8');
-  const SENTINEL = /const DEFAULT_PROJECT_ID = '';/;
-  if (!SENTINEL.test(src)) {
-    log('⚠️  Project-id injection point not found in wallet-wc.js (sentinel changed?).', 'yellow');
-    return false;
-  }
-  // JSON.stringify keeps the value an opaque JS string literal; no value echoed to logs.
-  const replaced = src.replace(SENTINEL, `const DEFAULT_PROJECT_ID = ${JSON.stringify(projectId)};`);
-  fs.writeFileSync(distWalletWc, replaced);
-  if (projectId) {
-    log('✓ Injected default WalletConnect project id into dist/wallet-wc.js', 'green');
-  } else {
-    log('⚠️  No WalletConnect project id available — dist default left empty (set one in DIG settings).', 'yellow');
-  }
-  return true;
-}
+// (The build-time WalletConnect projectId injection was removed with the legacy wallet-wc.js — #68.
+// The live React shell sources the projectId from chrome.storage `wallet.projectId`, set on the DIG
+// options page — see src/features/wallet/transport.ts + src/entries/options.ts.)
 
 /**
  * Generate dist/agent-surface.json — the machine-readable self-description of the extension
@@ -712,10 +643,6 @@ async function main() {
   // Bundle the MV3 module service worker (src/background/index.ts → dist/background.js) as an ESM
   // SW with the #shared/* leaves inlined + ./dig_client.js kept external (#68).
   await bundleBackground();
-
-  // Inject the shared WalletConnect project id into dist/wallet-wc.js (build-time only;
-  // never a committed source literal, never logged).
-  injectProjectId(readProjectId());
 
   // Emit the machine-readable agent-surface index (single source of truth: messages.mjs etc).
   const surface = await generateAgentSurface();

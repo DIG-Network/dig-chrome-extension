@@ -14,7 +14,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   parseURN,
@@ -26,7 +26,7 @@ import {
   intToBase36,
   base36ToInt,
   intToHex,
-} from '../dig-urn.mjs';
+} from '@/lib/dig-urn';
 
 const STORE = 'a'.repeat(64);
 const ROOT = 'b'.repeat(64);
@@ -230,7 +230,7 @@ test('urnToContentServerUrl: empty resourceKey yields a trailing slash', () => {
 test('a content-server URL host resolves back to the same URN (latest)', () => {
   const enc = encodeStoreId(STORE);
   const urn = resolveHostToURN(`${enc}.dig.local`, '/index.html');
-  assert.deepEqual(parseURN(urn), {
+  assert.deepEqual(parseURN(urn!), {
     chain: 'chia', storeId: STORE, roothash: null, resourceKey: 'index.html', salt: null,
   });
 });
@@ -239,7 +239,7 @@ test('a content-server URL host resolves back to the same URN (specific capsule)
   const encStore = encodeStoreId(STORE);
   const encRoot = encodeStoreId(ROOT);
   const urn = resolveHostToURN(`${encStore}.${encRoot}.dig.local`, '/x.js');
-  assert.deepEqual(parseURN(urn), {
+  assert.deepEqual(parseURN(urn!), {
     chain: 'chia', storeId: STORE, roothash: ROOT, resourceKey: 'x.js', salt: null,
   });
 });

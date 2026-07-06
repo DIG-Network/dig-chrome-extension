@@ -31,7 +31,7 @@ import initDigClient, {
 
 // Shared URN parser — single source of truth in dig-urn.mjs (ES module).
 // background.js previously inlined a divergent copy; it now imports the one parser.
-import { parseURN } from '#shared/dig-urn.mjs';
+import { parseURN } from '@/lib/dig-urn';
 
 // Branded, plain-language chia:// error page (white theme; never leaks crypto strings).
 import { buildErrorPageHtml } from '@/lib/error-page';

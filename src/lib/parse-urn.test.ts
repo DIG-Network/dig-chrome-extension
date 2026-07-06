@@ -13,9 +13,9 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { parseURN } from '../dig-urn.mjs';
+import { parseURN } from '@/lib/dig-urn';
 
 const STORE = 'a'.repeat(64);
 const ROOT = 'b'.repeat(64);
@@ -57,18 +57,18 @@ test('extracts ?salt=<hex> and strips it from the path (background.js behaviour)
 });
 
 test('uppercase hex is lowercased', () => {
-  const p = parseURN(`urn:dig:chia:${STORE.toUpperCase()}`);
+  const p = parseURN(`urn:dig:chia:${STORE.toUpperCase()}`)!;
   assert.equal(p.storeId, STORE);
   assert.equal(p.chain, 'chia');
 });
 
 test('empty resourceKey when none present', () => {
-  assert.equal(parseURN(`urn:dig:chia:${STORE}`).resourceKey, '');
+  assert.equal(parseURN(`urn:dig:chia:${STORE}`)!.resourceKey, '');
 });
 
 test('invalid input returns null', () => {
   assert.equal(parseURN(''), null);
-  assert.equal(parseURN(null), null);
+  assert.equal(parseURN(null as unknown as string), null);
   assert.equal(parseURN('not-a-urn'), null);
   assert.equal(parseURN('urn:dig:chia:tooshort/x'), null);
 });

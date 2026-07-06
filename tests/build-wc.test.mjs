@@ -24,36 +24,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 
-// A deterministic, fake-but-realistic project id (32 hex chars, the Reown format). Used
-// only to verify INJECTION happens — it is not a real relay credential. Passed via env,
-// which takes precedence over the hub's .env.local in readProjectId(), so the assertions
-// are deterministic AND never reference the real shared project id.
-const TEST_PROJECT_ID = 'deadbeefdeadbeefdeadbeefdeadbeef';
-
-// Run the real build ONCE, synchronously, at module load — before any test registers — with
-// the test project id forced via env. Bundles WC + bakes the project id into dist/. Building
+// Run the real build ONCE, synchronously, at module load — before any test registers — so every
+// assertion below sees THIS build's dist/ (the vendored WalletConnect SignClient bundle). Building
 // here (not in a test.before hook) avoids cross-file hook/process ordering ambiguity under
-// `node --test`, guaranteeing every assertion below sees THIS build's dist/. (~a few seconds
-// for esbuild.) `execFileSync` throws on a non-zero exit, failing the suite loudly.
+// `node --test`. (~a few seconds for esbuild.) `execFileSync` throws on a non-zero exit, failing
+// the suite loudly. (#68: the legacy wallet-wc.js + its build-time project-id injection were
+// removed — the live React shell sources the projectId from chrome.storage — so those assertions
+// are gone; the vendored SignClient bundle below is still built + consumed by transport.ts.)
 execFileSync(process.execPath, ['build.js'], {
   cwd: ROOT,
-  env: { ...process.env, WALLETCONNECT_PROJECT_ID: TEST_PROJECT_ID },
   stdio: 'ignore',
-});
-
-test('source wallet-wc.js keeps the empty project-id sentinel (no committed literal)', () => {
-  const src = fs.readFileSync(path.join(ROOT, 'wallet-wc.js'), 'utf8');
-  assert.match(src, /const DEFAULT_PROJECT_ID = '';/, 'source must NOT bake a project id');
-});
-
-test('build injects a non-empty default project id into dist/wallet-wc.js', () => {
-  const dist = fs.readFileSync(path.join(DIST, 'wallet-wc.js'), 'utf8');
-  // The empty sentinel must be gone, replaced by the injected value.
-  assert.doesNotMatch(dist, /const DEFAULT_PROJECT_ID = '';/, 'sentinel should be replaced');
-  const m = dist.match(/const DEFAULT_PROJECT_ID = "([^"]*)";/);
-  assert.ok(m, 'injected default project id literal present');
-  assert.ok(m[1].length > 0, 'injected default project id is non-empty');
-  assert.equal(m[1], TEST_PROJECT_ID, 'injected value matches the build-time project id');
 });
 
 test('vendored WalletConnect bundle exists in dist/vendor/ and is non-trivial', () => {

@@ -25,7 +25,7 @@ import {
 } from '@/lib/store-refs';
 // Cross-check that a rewritten relative ref round-trips through the SAME parser the background
 // service worker uses for proxyRequest — proving the interceptor's URN is one the node accepts.
-import { parseURN } from '#shared/dig-urn.mjs';
+import { parseURN } from '@/lib/dig-urn';
 
 const STORE = 'a'.repeat(64);
 const STORE2 = 'c'.repeat(64);

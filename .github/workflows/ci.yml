@@ -27,11 +27,13 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci || npm install
-      # No lint/typecheck script is defined yet — --if-present makes these no-op until added.
-      - run: npm run lint --if-present
-      - run: npm run typecheck --if-present
-      # node --test under c8; .c8rc.json gates lines/branches/functions/statements at >=80%
-      # (check-coverage: true) — a run below the floor FAILS the job.
+      - run: npm run lint
+      - run: npm run typecheck
+      # test:coverage = test:node (node --test — the build/wiring assertion suite) + test:web
+      # (vitest --coverage over all of src/, gated at >=80% lines/branches/functions/statements via
+      # vitest.config.ts thresholds — a run below the floor FAILS the job). Now that all app logic
+      # lives in src/ (#68), vitest is the single coverage gate; the node suite carries the
+      # build-integration assertions (SW bundling contract, WC vendoring, copy consistency).
       - run: npm run test:coverage
 
   build:
