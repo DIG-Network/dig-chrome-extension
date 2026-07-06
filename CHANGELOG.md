@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.28.2] - 2026-07-06
+
+### Refactor
+- Complete §6.4 reorg — migrate root modules to src/, bundle the MV3 SW (#68) (#36)
+
 ## [1.28.1] - 2026-07-05
 
 ### Refactor
