@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.34.0] - 2026-07-06
+
+### Features
+- **wallet:** Wire the full window.chia method surface through the self-custody vault (#49)
+
 ## [1.33.0] - 2026-07-06
 
 ### Features
