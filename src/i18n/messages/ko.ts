@@ -329,4 +329,17 @@ export const ko: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "이 사이트는 알려진 피싱·지갑 탈취 사이트에 대한 DIG 차단 목록에 있습니다.",
   "dapp.approval.phishing.reason.lookalike": "이 주소는 DIG 사이트처럼 보이지만 아닙니다 — 주소창을 주의 깊게 확인하세요.",
   "dapp.approval.phishing.confirm": "가짜 사이트일 수 있음을 이해했으며 계속 진행합니다",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "연결된 사이트",
+  "sites.subtitle": "지갑을 연결한 사이트입니다. 언제든지 접근을 취소할 수 있습니다.",
+  "sites.loading": "연결된 사이트를 불러오는 중…",
+  "sites.error": "연결된 사이트를 불러오지 못했습니다.",
+  "sites.empty": "지갑에 연결된 사이트가 없습니다.",
+  "sites.granted": "{date}에 연결됨",
+  "sites.lastUsed": "마지막 사용 {date}",
+  "sites.addresses": "{count}개 주소 공유됨",
+  "sites.revoke": "취소",
+  "sites.revoke.aria": "{host}의 접근 취소",
+  "sites.revokeAll": "모두 취소",
 };

@@ -329,4 +329,17 @@ export const hi: Record<string, string> = {
   "dapp.approval.phishing.reason.blocklisted": "यह साइट ज्ञात फ़िशिंग और वॉलेट-ड्रेनर साइटों की DIG ब्लॉकलिस्ट में है।",
   "dapp.approval.phishing.reason.lookalike": "यह वेब पता DIG साइट जैसा दिखता है पर वह नहीं है — पता बार को ध्यान से जाँचें।",
   "dapp.approval.phishing.confirm": "मैं समझता/समझती हूँ कि यह नकली साइट हो सकती है और फिर भी जारी रखना चाहता/चाहती हूँ",
+
+  // ── Connected sites / granular permissions (#67 P0-4) ──
+  "sites.title": "कनेक्ट की गई साइटें",
+  "sites.subtitle": "वे साइटें जिनसे आपने अपना वॉलेट कनेक्ट किया है। आप कभी भी एक्सेस रद्द कर सकते हैं।",
+  "sites.loading": "कनेक्ट की गई साइटें लोड हो रही हैं…",
+  "sites.error": "कनेक्ट की गई साइटें लोड नहीं हो सकीं।",
+  "sites.empty": "आपके वॉलेट से कोई साइट कनेक्ट नहीं है।",
+  "sites.granted": "{date} को कनेक्ट किया गया",
+  "sites.lastUsed": "अंतिम उपयोग {date}",
+  "sites.addresses": "{count} पते साझा किए गए",
+  "sites.revoke": "रद्द करें",
+  "sites.revoke.aria": "{host} की एक्सेस रद्द करें",
+  "sites.revokeAll": "सभी रद्द करें",
 };

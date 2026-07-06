@@ -23,6 +23,8 @@ export const TAGS = [
   'Collectibles',
   // Self-custody dApp approval queue (#56 §5.5): the pending window.chia signing requests.
   'DappApprovals',
+  // Connected sites / granular permissions (#67 P0-4): the origins the wallet is connected to.
+  'ConnectedSites',
 ] as const;
 
 /**
