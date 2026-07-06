@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.29.1] - 2026-07-06
+
+### Bug Fixes
+- **ux:** Send copy bug, modal focus-trap, undefined CSS classes (#53 audit polish) (#43)
+
 ## [1.29.0] - 2026-07-06
 
 ### Features
