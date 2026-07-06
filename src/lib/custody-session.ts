@@ -84,6 +84,49 @@ export function isCustodyAction(action: unknown): boolean {
   return typeof action === 'string' && (CUSTODY_ACTIONS as readonly string[]).includes(action);
 }
 
+/** A `prepareSend` custody message from the popup (the fields the SW forwards to the vault). */
+export interface PrepareSendMessage {
+  recipient?: string;
+  amount?: string;
+  fee?: string;
+  /**
+   * The CAT asset id (TAIL hex) for a token send; omitted / `'xch'` for a native XCH send. This is
+   * the field #121 regressed on: the SW handler dropped it, so a selected CAT was silently built as
+   * native XCH (the vault decides `isCat` purely from `assetId`).
+   */
+  assetId?: string;
+}
+
+/** The `prepareSend` request the SW forwards to the offscreen vault. */
+export interface PrepareSendVaultRequest {
+  op: 'prepareSend';
+  recipient?: string;
+  amount?: string;
+  fee?: string;
+  assetId?: string;
+  coinsetUrl: string;
+}
+
+/**
+ * Build the offscreen-vault request for a `prepareSend` custody action. It MUST forward `assetId`:
+ * the vault routes native-XCH vs CAT purely on this field, so dropping it (the #121 bug) silently
+ * turns a token send into a native-XCH send. Pure so the forwarding is unit-tested (the inline SW
+ * mapping was untestable, which is why the drop shipped).
+ */
+export function prepareSendVaultRequest(
+  message: PrepareSendMessage,
+  coinsetUrl: string,
+): PrepareSendVaultRequest {
+  return {
+    op: 'prepareSend',
+    recipient: message.recipient,
+    amount: message.amount,
+    fee: message.fee,
+    assetId: message.assetId,
+    coinsetUrl,
+  };
+}
+
 /** Clamp a settings TTL (minutes) into the allowed range, falling back to the default. */
 export function resolveTtlMinutes(settings?: CustodySettings | null): number {
   const raw = settings && typeof settings.unlockTtlMinutes === 'number' ? settings.unlockTtlMinutes : NaN;

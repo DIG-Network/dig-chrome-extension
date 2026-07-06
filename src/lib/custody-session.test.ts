@@ -19,6 +19,7 @@ import {
   DEFAULT_UNLOCK_TTL_MINUTES,
   MIN_UNLOCK_TTL_MINUTES,
   MAX_UNLOCK_TTL_MINUTES,
+  prepareSendVaultRequest,
 } from '@/lib/custody-session';
 
 test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
@@ -53,6 +54,28 @@ test('resolveCoinsetUrl uses the override when set, else the coinset default', (
   assert.equal(resolveCoinsetUrl({}), DEFAULT_COINSET_URL);
   assert.equal(resolveCoinsetUrl({ chainRpcUrl: '  ' }), DEFAULT_COINSET_URL);
   assert.equal(resolveCoinsetUrl({ chainRpcUrl: 'https://my.node/rpc' }), 'https://my.node/rpc');
+});
+
+// Regression #121 (money-critical): the SW prepareSend handler MUST forward `assetId` to the vault.
+// Dropping it made the vault (`isCat = !!req.assetId`) build a native XCH send for a selected CAT —
+// a wrong-asset transfer shipped in v1.31.0. This is the exact mapping the SW handler now uses.
+test('prepareSendVaultRequest forwards the CAT assetId to the vault (#121)', () => {
+  const req = prepareSendVaultRequest(
+    { recipient: 'xch1recipient', amount: '5', fee: '0', assetId: '87ed22cdf4133b8d25f2bc79ec4a5ff2333fd89b0ae3a456320eb75ec6be25be' },
+    'https://api.coinset.org',
+  );
+  assert.equal(req.op, 'prepareSend');
+  assert.equal(req.recipient, 'xch1recipient');
+  assert.equal(req.amount, '5');
+  assert.equal(req.fee, '0');
+  assert.equal(req.coinsetUrl, 'https://api.coinset.org');
+  // The load-bearing assertion: the token's TAIL must reach the vault so it builds a CAT, not XCH.
+  assert.equal(req.assetId, '87ed22cdf4133b8d25f2bc79ec4a5ff2333fd89b0ae3a456320eb75ec6be25be');
+});
+
+test('prepareSendVaultRequest omits assetId for a native XCH send', () => {
+  const req = prepareSendVaultRequest({ recipient: 'xch1r', amount: '1', fee: '0' }, DEFAULT_COINSET_URL);
+  assert.equal(req.assetId, undefined);
 });
 
 test('isCustodyAction recognises custody actions and rejects others', () => {
