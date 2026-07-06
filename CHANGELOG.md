@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.39.0] - 2026-07-06
+
+### Features
+- **wallet:** Multiple keys / wallet switcher (#90) (#56)
+
 ## [1.38.0] - 2026-07-06
 
 ### Features
