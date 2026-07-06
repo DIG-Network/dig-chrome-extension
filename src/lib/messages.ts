@@ -308,9 +308,9 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: "{ balances:{ xch:number, cats:{ [assetId]:number } }, cached?:boolean } | { success:false, code, message }",
   },
   [ACTIONS.prepareSend]: {
-    summary: 'Build (not sign/broadcast) an XCH send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve.',
-    request: '{ action, recipient:string /* xch1… */, amount:string /* mojos */, fee?:string /* mojos */ }',
-    response: "{ pendingId:string, summary:{ asset:'XCH', sent, change, fee, recipientPuzzleHashHex, coinCount } } | { success:false, code, message }",
+    summary: 'Build (not sign/broadcast) an XCH or CAT send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve. A CAT send carries the token TAIL as assetId (omitted / "xch" = native XCH); the vault routes on assetId (#121).',
+    request: '{ action, recipient:string /* xch1… */, amount:string /* base units */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */ }',
+    response: "{ pendingId:string, summary:{ asset:'XCH'|<assetId>, sent, change, fee, recipientPuzzleHashHex, coinCount } } | { success:false, code, message }",
   },
   [ACTIONS.confirmSend]: {
     summary: 'Sign + BROADCAST a previously-prepared send (the approved step — the only place a real spend is pushed). Returns an input coin id to poll.',

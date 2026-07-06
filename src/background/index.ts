@@ -56,6 +56,7 @@ import {
   resolveCoinsetUrl,
   computeUnlockExpiry,
   computeLockSnapshot,
+  prepareSendVaultRequest,
 } from '@/lib/custody-session';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from '@/lib/wallet-assets';
@@ -926,7 +927,9 @@ async function handleCustodyAction(message) {
     }
     case ACTIONS.prepareSend: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareSend', recipient: message.recipient, amount: message.amount, fee: message.fee, coinsetUrl });
+      // Forward assetId (#121): the vault decides native-XCH vs CAT purely from it; dropping it
+      // silently sent a selected token as native XCH. The mapping is a pure, unit-tested helper.
+      return callVault(prepareSendVaultRequest(message, coinsetUrl));
     }
     case ACTIONS.confirmSend: {
       // The ONLY place a real spend is broadcast — reached only after the user approves in the UI.
