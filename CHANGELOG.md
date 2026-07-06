@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.28.4] - 2026-07-06
+
+### Bug Fixes
+- **wallet:** Render recovery-phrase reveal in a closed shadow root (DOM-scrape protection) (#38)
+
 ## [1.28.3] - 2026-07-06
 
 ### Bug Fixes
