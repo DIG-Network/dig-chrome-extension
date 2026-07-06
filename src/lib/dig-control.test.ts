@@ -13,7 +13,7 @@
  * Honest-status constraint (CLAUDE.md): the mutating control.* methods are loopback-only AND
  * gated by a local control token read from `<config_dir>/control-token`. A browser extension
  * has no filesystem access, so it CANNOT present the token — the dig-node answers control.* with
- * UNAUTHORIZED (-32020). The extension therefore drives only OPEN methods to show read-only node
+ * UNAUTHORIZED (-32030). The extension therefore drives only OPEN methods to show read-only node
  * status, and deep-links full management to the native DIG Browser (which CAN present the token).
  * These tests pin the catalogued method names, the fallback target, the manage-vs-install branch,
  * and the UNAUTHORIZED→manage-in-browser classification — byte-consistent with the node.
@@ -40,7 +40,9 @@ import {
 // ---- Catalogued control.* method surface (must match dig-node control.rs / meta.rs) ----
 
 test('CONTROL_METHODS catalogues EXACTLY the dig-node control surface (byte-consistent)', () => {
-  // The 12 control methods served by dig-companion/src/control.rs dispatch_control().
+  // The control methods served by dig-node/crates/dig-node-service/src/control.rs dispatch_control()
+  // (source of truth after #209 moved the node out of dig-companion). Includes the subscription +
+  // peer-status surface added on the node.
   assert.deepEqual([...CONTROL_METHODS].sort(), [
     'control.cache.clear',
     'control.cache.get',
@@ -51,9 +53,13 @@ test('CONTROL_METHODS catalogues EXACTLY the dig-node control surface (byte-cons
     'control.hostedStores.pin',
     'control.hostedStores.status',
     'control.hostedStores.unpin',
+    'control.listSubscriptions',
+    'control.peerStatus',
     'control.status',
+    'control.subscribe',
     'control.sync.status',
     'control.sync.trigger',
+    'control.unsubscribe',
   ]);
 });
 
@@ -69,9 +75,10 @@ test('CONTROL_TOKEN_HEADER matches the dig-node header name (X-Dig-Control-Token
 });
 
 test('CONTROL_ERR mirrors the dig-node control error codes (meta.rs ErrorCode)', () => {
-  assert.equal(CONTROL_ERR.UNAUTHORIZED, -32020);
-  assert.equal(CONTROL_ERR.NOT_SUPPORTED, -32021);
-  assert.equal(CONTROL_ERR.CONTROL_ERROR, -32022);
+  // dig-node/crates/dig-node-service/src/meta.rs ErrorCode (source of truth, #209).
+  assert.equal(CONTROL_ERR.UNAUTHORIZED, -32030);
+  assert.equal(CONTROL_ERR.NOT_SUPPORTED, -32031);
+  assert.equal(CONTROL_ERR.CONTROL_ERROR, -32032);
 });
 
 test('isControlMethod recognises catalogued control methods and rejects read methods', () => {
@@ -90,12 +97,13 @@ test('isControlMethod recognises catalogued control methods and rejects read met
 // ---- UNAUTHORIZED classification (the MV3 honest-status path) ----
 
 test('isUnauthorizedControlResult detects the dig-node UNAUTHORIZED error envelope', () => {
-  // The dig-node answers control.* without a token with code -32020.
-  assert.equal(isUnauthorizedControlResult({ error: { code: -32020 } }), true);
-  assert.equal(isUnauthorizedControlResult({ error: { code: -32020, data: { code: 'UNAUTHORIZED' } } }), true);
+  // The dig-node answers control.* without a token with code -32030 (meta.rs ErrorCode::Unauthorized).
+  assert.equal(isUnauthorizedControlResult({ error: { code: -32030 } }), true);
+  assert.equal(isUnauthorizedControlResult({ error: { code: -32030, data: { code: 'UNAUTHORIZED' } } }), true);
   // A successful result, or any other error, is NOT an authorization failure.
   assert.equal(isUnauthorizedControlResult({ result: { running: true } }), false);
   assert.equal(isUnauthorizedControlResult({ error: { code: -32601 } }), false);
+  assert.equal(isUnauthorizedControlResult({ error: { code: -32020 } }), false); // the OLD code no longer matches
   assert.equal(isUnauthorizedControlResult(null), false);
   assert.equal(isUnauthorizedControlResult(undefined), false);
 });
@@ -185,6 +193,11 @@ test('controlPanelViewModel: an open node that returned control.status → manag
   assert.equal(vm.upstream, 'https://rpc.dig.net');
   // Even an open node deep-links full (mutating) management to the native browser.
   assert.equal(vm.deepLinkBrowser, true);
+  // CLARITY (#131): in manage mode reads resolve LOCALLY — the line must not claim hosted reads.
+  assert.match(vm.readFallbackLine, /local/i);
+  assert.ok(!/hosted network/i.test(vm.readFallbackLine), 'manage mode must not say reads use the hosted network');
+  // The manage note affirms the full experience.
+  assert.match(vm.note, /full/i);
 });
 
 test('controlPanelViewModel: a token-gated node (UNAUTHORIZED) → manage, node-present, no stats', () => {
@@ -224,6 +237,9 @@ test('controlInstallPrompt is plain-language, names the dig-node + installer, no
   assert.match(p.title + ' ' + p.body, /install|download|run/i);
   // Honest about the hosted fallback: reads keep working without a node.
   assert.match(p.body, /hosted|rpc\.dig\.net|without/i);
+  // CLARITY (#131): the copy must make clear the node is needed for the FULL experience + running.
+  assert.match(p.title + ' ' + p.body, /full experience/i, 'should sell the full experience');
+  assert.match(p.body, /read-only|running/i, 'should say the node must run / without it is read-only');
   // No protocol jargon leaking into the default copy.
   assert.ok(!/retrieval[_\s-]?key|merkle|singleton|CHIP-?0035/i.test(p.title + ' ' + p.body));
   // The installer URL is the universal installer releases page (same as dig-node-status.mjs).

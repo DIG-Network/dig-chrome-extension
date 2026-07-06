@@ -20,7 +20,7 @@
  * {@link CONTROL_TOKEN_HEADER} header, or `params._control_token`) read from
  * `<config_dir>/control-token`. A browser extension has NO filesystem access, so it cannot read
  * that token — the node answers control.* with UNAUTHORIZED ({@link CONTROL_ERR}.UNAUTHORIZED,
- * -32020). The extension therefore drives only the OPEN surface to show read-only node status
+ * -32030). The extension therefore drives only the OPEN surface to show read-only node status
  * (and classifies an UNAUTHORIZED reply via {@link isUnauthorizedControlResult}), then deep-links
  * full management to the native DIG Browser's dig://control, which CAN present the token. This
  * mirrors the README parity matrix: control endpoint NAMES + detection order stay identical to
@@ -28,14 +28,16 @@
  * working that the extension cannot actually drive.
  *
  * The dig-node DOES reflect the `chrome-extension://` CORS origin and allows the control-token
- * header (dig-companion/src/server.rs), so the extension can reach the loopback node — the only
+ * header (dig-node-service/src/server.rs), so the extension can reach the loopback node — the only
  * gap is the token, by design.
  *
  * Plain ES module (no chrome.* / DOM): importable by background.js, the popup, and unit-testable
  * under `node --test`. The node resolver + fetch are injectable so the branch is fully testable.
  *
- * Source of truth for the catalogued names/codes: modules/dig-companion/src/control.rs +
- * modules/dig-companion/src/meta.rs.
+ * Source of truth for the catalogued names/codes (after #209 moved the node out of dig-companion):
+ * modules/apps/dig-node/crates/dig-node-service/src/control.rs +
+ * modules/apps/dig-node/crates/dig-node-service/src/meta.rs (drift-guarded by that crate's
+ * openrpc_drift_guard.rs). Keep this mirror in lock-step with them.
  */
 
 import { DIG_INSTALLER_URL } from './dig-node-status';
@@ -47,14 +49,14 @@ export const HOSTED_RPC_FALLBACK = 'https://rpc.dig.net/';
  * The request header the dig-node expects the local control token in (mirrors
  * `params._control_token`). Defined here so the extension's control bridge names it identically
  * to the node, even though the extension cannot READ the token to populate it. Source:
- * dig-companion/src/control.rs `CONTROL_TOKEN_HEADER`.
+ * dig-node/crates/dig-node-service/src/control.rs `CONTROL_TOKEN_HEADER`.
  */
 export const CONTROL_TOKEN_HEADER = 'X-Dig-Control-Token';
 
 /**
  * The catalogued CONTROL/admin JSON-RPC methods the dig-node serves (the node-management surface
  * the DIG Browser's dig://control drives). Byte-identical to the `dispatch_control` arms in
- * dig-companion/src/control.rs — change them together. Frozen so a caller cannot mutate the list.
+ * dig-node/crates/dig-node-service/src/control.rs — change them together. Frozen so a caller cannot mutate the list.
  * @readonly
  */
 export const CONTROL_METHODS = Object.freeze([
@@ -70,21 +72,26 @@ export const CONTROL_METHODS = Object.freeze([
   'control.hostedStores.status',
   'control.sync.status',
   'control.sync.trigger',
+  // Subscription + peer surface (dig-node-service adds these to dispatch_control).
+  'control.subscribe',
+  'control.unsubscribe',
+  'control.listSubscriptions',
+  'control.peerStatus',
 ]);
 
 /**
- * The stable control-plane error codes the dig-node mints (dig-companion/src/meta.rs
+ * The stable control-plane error codes the dig-node mints (dig-node-service/src/meta.rs
  * `ErrorCode`). The extension branches on these numeric codes (and the UPPER_SNAKE `data.code`),
  * never on prose.
  * @readonly
  */
 export const CONTROL_ERR = Object.freeze({
   /** control.* called without a valid local control token (the extension's expected reply). */
-  UNAUTHORIZED: -32020,
+  UNAUTHORIZED: -32030,
   /** A control op the node build can't perform (e.g. §21 sync with no identity). */
-  NOT_SUPPORTED: -32021,
+  NOT_SUPPORTED: -32031,
   /** A control op failed at runtime. */
-  CONTROL_ERROR: -32022,
+  CONTROL_ERROR: -32032,
 });
 
 /**
@@ -222,7 +229,6 @@ export interface ControlView {
 export function controlPanelViewModel(view: ControlView | null | undefined) {
   const v: ControlView = view || {};
   const readFallback = v.readFallback || HOSTED_RPC_FALLBACK;
-  const readFallbackLine = `Reads currently use the hosted network (${readFallback}).`;
 
   if (v.mode === 'manage' && v.localNode) {
     const s = v.status || null;
@@ -236,10 +242,12 @@ export function controlPanelViewModel(view: ControlView | null | undefined) {
         }
       : null;
     const note = v.authRequired
-      ? 'Your dig-node is running. Full management (host stores, set the cache cap, trigger sync) ' +
+      ? 'Your dig-node is running — you have the full DIG experience: chia:// content resolves ' +
+        'locally on your machine. Full node management (host stores, set the cache cap, trigger sync) ' +
         'needs the native DIG Browser, which can authorize node control on your machine.'
-      : 'Your dig-node is running locally — chia:// content resolves on your machine. For full ' +
-        'node management, use the native DIG Browser.';
+      : 'Your dig-node is running — you have the full DIG experience: chia:// content resolves ' +
+        'locally on your machine (faster, private, works offline once cached). For full node ' +
+        'management, use the native DIG Browser.';
     return {
       mode: 'manage',
       nodeOnline: true,
@@ -253,7 +261,8 @@ export function controlPanelViewModel(view: ControlView | null | undefined) {
       deepLinkBrowser: true,
       note,
       install: controlInstallPrompt(),
-      readFallbackLine,
+      // In manage mode reads resolve through the LOCAL node, not the hosted fallback.
+      readFallbackLine: 'Reads resolve locally through your dig-node — private and fast.',
     };
   }
 
@@ -268,7 +277,8 @@ export function controlPanelViewModel(view: ControlView | null | undefined) {
     deepLinkBrowser: true,
     note: '',
     install: controlInstallPrompt(),
-    readFallbackLine,
+    // Honest: without a node the extension is READ-ONLY through the hosted network.
+    readFallbackLine: `No local dig-node detected — the extension is running in read-only mode through the hosted network (${readFallback}). Install the dig-node for the full experience.`,
   };
 }
 
@@ -283,12 +293,13 @@ export function controlPanelViewModel(view: ControlView | null | undefined) {
  */
 export function controlInstallPrompt(): { title: string; body: string; installLabel: string; installUrl: string } {
   return {
-    title: 'Run your own DIG node',
+    title: 'Install the dig-node for the full experience',
     body:
-      'Install the dig-node to run a DIG node on your own machine: it resolves chia:// content ' +
-      'locally (faster, private, works offline once cached) and lets you host and manage stores. ' +
-      'It installs in one step on Windows, macOS, and Linux. Without it, the extension keeps ' +
-      'working through the hosted network (rpc.dig.net).',
+      'The DIG extension works best with the dig-node installed and RUNNING on your machine — that is ' +
+      'what unlocks the full experience: it resolves chia:// content locally (faster, private, works ' +
+      'offline once cached) and lets you host and manage your own stores. It installs in one step on ' +
+      'Windows, macOS, and Linux. Without it the extension still works, but only in read-only mode ' +
+      'through the hosted network (rpc.dig.net) — you can’t host, and every read goes through DIG’s servers.',
     installLabel: 'Download the dig-node',
     installUrl: DIG_INSTALLER_URL,
   };
