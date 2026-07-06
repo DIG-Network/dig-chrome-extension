@@ -10,9 +10,9 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { qrSvg } from '../qr.mjs';
+import { qrSvg } from '@/lib/qr';
 
 test('qrSvg returns a sized SVG with a white ground and dark modules', () => {
   const svg = qrSvg('xch1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzzzzzz', 200);

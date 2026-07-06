@@ -8,7 +8,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   DIG_APPS,
@@ -16,7 +16,7 @@ import {
   WEB_SEARCH_URL,
   classifyOmnibox,
   omniboxTarget,
-} from '../apps.mjs';
+} from '@/lib/apps';
 
 const STORE = 'a'.repeat(64);
 
@@ -29,7 +29,7 @@ test('app directory lists the four ecosystem apps with correct hosts', () => {
 });
 
 test('TibetSwap is marked as a $DIG (token) destination', () => {
-  const tibet = DIG_APPS.find((a) => a.host === 'v2.tibetswap.io');
+  const tibet = DIG_APPS.find((a) => a.host === 'v2.tibetswap.io')!;
   assert.equal(tibet.dig, true);
   // $DIG sigil on first reference (SYSTEM.md "Token: $DIG").
   assert.equal(tibet.chip, 'Buy $DIG');

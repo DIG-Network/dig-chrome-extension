@@ -23,7 +23,7 @@ import qrcode from 'qrcode-generator';
  * @param {number} [size=180] the SVG's width/height in CSS px
  * @returns {string} an `<svg>…</svg>` string
  */
-export function qrSvg(text, size = 180) {
+export function qrSvg(text: string, size = 180): string {
   const qr = qrcode(0, 'M');
   qr.addData(String(text == null ? '' : text));
   qr.make();

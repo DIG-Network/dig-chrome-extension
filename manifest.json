@@ -71,7 +71,6 @@
         "agent-surface.json",
         "dig_client.js",
         "dig_client_bg.wasm",
-        "apps.mjs",
         "wallet-methods.mjs",
         "wallet-broker.mjs",
         "vendor/walletconnect-sign-client.js"

@@ -1,7 +1,7 @@
 /**
  * DIG Home (new-tab override, newtab.html) — a search⇄app-store switcher, the ecosystem app
  * directory, and an omnibox that routes store ids / chia:// URLs to the DIG Network and everything
- * else to web search. The directory + omnibox classifier come from the shared `#shared/apps.mjs`
+ * else to web search. The directory + omnibox classifier come from the shared `@/lib/apps`
  * so they're a single (unit-tested) source of truth. Pure DOM + chrome.* glue, built by Vite as a
  * standalone extension page under `src/entries/`.
  *
@@ -9,7 +9,7 @@
  * scheme), so we hand it to the background SW (`navigateToDigUrl`), which redirects the tab to the
  * in-extension dig-viewer (verified + decrypted render).
  */
-import { DIG_APPS, DIG_HOME_FOOTER_LINKS, classifyOmnibox, omniboxTarget } from '#shared/apps.mjs';
+import { DIG_APPS, DIG_HOME_FOOTER_LINKS, classifyOmnibox, omniboxTarget } from '@/lib/apps';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.getElementById(id) as T | null;

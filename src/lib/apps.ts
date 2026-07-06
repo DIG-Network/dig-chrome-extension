@@ -14,7 +14,18 @@
  * Each: { name, host, url, glyph (emoji), blurb, chip, dig? }.
  * `dig: true` marks an on-DIG-Network destination (styled with the Chia/mint chip).
  */
-export const DIG_APPS = [
+/** One DIG Home app-directory entry. `dig: true` marks an on-DIG-Network destination. */
+export interface DigApp {
+  name: string;
+  host: string;
+  url: string;
+  glyph: string;
+  blurb: string;
+  chip: string;
+  dig?: boolean;
+}
+
+export const DIG_APPS: DigApp[] = [
   {
     name: 'DIGHUb',
     host: 'hub.dig.net',
@@ -62,7 +73,13 @@ const DIG_ASSET_ID =
  * venues in order (TibetSwap, dexie.space, xch.9mm.pro — mirrors hub `GET_DIG_SOURCES`), so
  * the new-tab footer offers the same acquisition paths as the rest of the ecosystem.
  */
-export const DIG_HOME_FOOTER_LINKS = [
+/** One footer link shown beneath DIG Home. */
+export interface FooterLink {
+  label: string;
+  url: string;
+}
+
+export const DIG_HOME_FOOTER_LINKS: FooterLink[] = [
   { label: 'DIG Network', url: 'https://dig.net' },
   { label: 'DIGHUb', url: 'https://hub.dig.net' },
   { label: 'Docs', url: 'https://docs.dig.net' },
@@ -84,7 +101,7 @@ export const WEB_SEARCH_URL = 'https://duckduckgo.com/?q=';
  * @param {string} v raw omnibox value
  * @returns {'dig'|'url'|'search'}
  */
-export function classifyOmnibox(v) {
+export function classifyOmnibox(v: string): 'dig' | 'url' | 'search' {
   v = (v || '').trim();
   if (!v) return 'search';
   if (/^chia:\/\//i.test(v) || /^urn:dig:/i.test(v)) return 'dig';
@@ -102,7 +119,7 @@ export function classifyOmnibox(v) {
  * @param {string} v raw omnibox value
  * @returns {string} destination URL
  */
-export function omniboxTarget(v) {
+export function omniboxTarget(v: string): string {
   v = (v || '').trim();
   const kind = classifyOmnibox(v);
   if (kind === 'dig') {

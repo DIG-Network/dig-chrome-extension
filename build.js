@@ -25,14 +25,12 @@ const EXTENSION_FILES = [
   // (popup.js / popup-wallet.js / popup.css) was superseded by the React shell (#56) and has been
   // removed. The pure view-models below are still copied because the vanilla service worker imports
   // them at runtime; the React bundle inlines its own copies via the #shared/* alias.
-  // Pure popup view-models (tab routing, wallet number/validation logic, §5.3 resolve verdict).
-  'tabs.mjs',
+  // Pure popup view-models (wallet number/validation logic, §5.3 resolve verdict). (tabs.mjs was
+  // dead — superseded by src/app/tabs.ts — and removed; qr migrated to src/lib as TS — #68.)
   'wallet-view.mjs',
   // Wallet asset registry + tracked-CAT list, and the offers (make/inspect/take/cancel) model.
   'wallet-assets.mjs',
   'wallet-offers.mjs',
-  // QR renderer for the Receive view (bundled below to inline qrcode-generator for the browser).
-  'qr.mjs',
   'dig-urn.mjs',
   // Agent-friendly contracts: catalogued chia:// loader error codes (DIG_ERR_*, aligned with
   // docs error-codes.json) + the versioned background MESSAGE catalogue (ACTIONS enum +
@@ -48,8 +46,7 @@ const EXTENSION_FILES = [
   // newtab.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
   // DIG settings (options_ui) — options.html + src/entries/options.ts (+ its co-located
   // options.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
-  // Shared app directory + omnibox classifier (NTP) and wallet method/broker modules.
-  'apps.mjs',
+  // Wallet method/broker modules. (apps migrated to src/lib as TS — #68.)
   'wallet-methods.mjs',
   'wallet-broker.mjs',
   // Self-custody dApp walletRpc router + approval queue (#56 §5.5) — imported by the SW bundle.
@@ -520,34 +517,8 @@ async function bundleWalletMethods() {
   log('✓ Bundled: wallet-methods.mjs (self-contained ESM, browser-safe)', 'green');
 }
 
-// qr.mjs imports the `qrcode-generator` package (a BARE specifier browsers + MV3 can't resolve).
-// Bundle it to a self-contained ESM at build time (esbuild inlines the package while preserving the
-// `qrSvg` export), so the popup's `import './qr.mjs'` resolves in the browser with no source change.
-const QR_SRC = path.join(__dirname, 'qr.mjs');
-const QR_OUT = path.join(DIST_DIR, 'qr.mjs');
-
-async function bundleQr() {
-  log('\n🔳 Bundling qr.mjs (inline qrcode-generator for the browser)...', 'blue');
-  await esbuild.build({
-    entryPoints: [QR_SRC],
-    outfile: QR_OUT,
-    bundle: true,
-    format: 'esm',
-    platform: 'browser',
-    target: ['chrome111'],
-    legalComments: 'none',
-    minify: false,
-    allowOverwrite: true,
-  });
-  const out = fs.readFileSync(QR_OUT, 'utf8');
-  if (/from\s+['"]qrcode-generator['"]/.test(out)) {
-    throw new Error('dist/qr.mjs still has a bare qrcode-generator import — the package did not inline.');
-  }
-  if (!out.includes('qrSvg')) {
-    throw new Error('Bundled qr.mjs is missing the qrSvg export.');
-  }
-  log('✓ Bundled: qr.mjs (self-contained ESM, browser-safe)', 'green');
-}
+// (qr.mjs migrated to src/lib/qr.ts as TS — #68; qrcode-generator now inlines into the vite React
+// bundles that import @/lib/qr, so no separate esbuild bundle step / dist/qr.mjs is needed.)
 
 // The in-page STORE INTERCEPTOR (#55) runs inside the sandboxed, opaque-origin `data:` frame that
 // dig-viewer renders store HTML into. An opaque frame can neither import an ES module nor fetch a
@@ -764,10 +735,6 @@ async function main() {
   // Bundle wallet-methods.mjs so its @dignetwork/chia-provider re-export resolves in the browser +
   // MV3 SW (bare specifiers don't). Must run AFTER copyFiles (which places the raw copy).
   await bundleWalletMethods();
-
-  // Bundle qr.mjs so its qrcode-generator import resolves in the browser (bare specifier). Runs
-  // AFTER copyFiles (which places the raw copy) so the inlined bundle overwrites it.
-  await bundleQr();
 
   // Bundle the in-page store interceptor (#55) into dist/store-interceptor.js as a self-contained
   // IIFE (store-refs.mjs inlined) so dig-viewer can inline it into the sandboxed store frame.

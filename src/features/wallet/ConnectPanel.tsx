@@ -1,5 +1,5 @@
 import { FormattedMessage } from 'react-intl';
-import { qrSvg } from '#shared/qr.mjs';
+import { qrSvg } from '@/lib/qr';
 import { useWalletConnect } from '@/features/wallet/useWalletConnect';
 
 /**

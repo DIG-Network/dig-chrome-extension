@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FormattedMessage } from 'react-intl';
-import { qrSvg } from '#shared/qr.mjs';
+import { qrSvg } from '@/lib/qr';
 import { shortenAddress } from '#shared/wallet-view.mjs';
 
 /**
