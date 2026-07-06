@@ -18,6 +18,7 @@ import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
+import { CoinControlPanel } from '@/features/wallet/custody/CoinControlPanel';
 import { TradePanel } from '@/features/wallet/custody/TradePanel';
 import { ContactsManager } from '@/features/contacts/ContactsManager';
 import { CustodyActivity } from '@/features/wallet/custody/CustodyActivity';
@@ -55,7 +56,7 @@ export function CustodyWallet() {
   const priceMap = prices.data ?? {};
   const total = portfolioValue(assets, priceMap);
   const cached = balances.data?.cached === true;
-  const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'contacts' | 'tokens'>('assets');
+  const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'contacts' | 'tokens' | 'coins'>('assets');
 
   /** Format a row's fiat value as `≈ $x.xx`, or null when it can't be priced. */
   const fiatLabelFor = (row: (typeof assets)[number]): string | null => {
@@ -107,6 +108,10 @@ export function CustodyWallet() {
         <ManageTokens assets={assets} onClose={() => setHomePanel('assets')} />
       )}
 
+      {walletView === 'home' && homePanel === 'coins' && (
+        <CoinControlPanel assets={assets} onClose={() => setHomePanel('assets')} />
+      )}
+
       {walletView === 'home' && homePanel === 'assets' && (
         <>
           <div className="dig-action-bar" style={{ display: 'flex', gap: 8, margin: '4px 0 14px' }}>
@@ -121,9 +126,14 @@ export function CustodyWallet() {
             <h2 className="dig-heading" style={{ margin: 0 }}>
               <FormattedMessage id="wallet.assets.title" />
             </h2>
-            <button type="button" className="dig-link" data-testid="action-manage-tokens" onClick={() => setHomePanel('tokens')}>
-              <FormattedMessage id="tokens.manage.open" />
-            </button>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button type="button" className="dig-link" data-testid="action-coins" onClick={() => setHomePanel('coins')}>
+                <FormattedMessage id="coins.open" />
+              </button>
+              <button type="button" className="dig-link" data-testid="action-manage-tokens" onClick={() => setHomePanel('tokens')}>
+                <FormattedMessage id="tokens.manage.open" />
+              </button>
+            </div>
           </div>
           <FourState
             isLoading={balances.isLoading}

@@ -26,6 +26,11 @@ const STUB = `
     if (a === 'getLockState') return { lockState: 'unlocked' };
     if (a === 'getCustodyBalances') return { balances: { xch: 2510000000000, cats: {} } };
     if (a === 'getReceiveAddress') return { address: 'xch1qqqqdigmobileoshomescreendemoaddressqqqqqqqqqqqqqqqqqqqqzzzz' };
+    if (a === 'listCoins') return { coins: [
+      { coinId: 'a'.repeat(64), amount: '1500000000000', confirmedHeight: 5012345 },
+      { coinId: 'b'.repeat(64), amount: '1000000000000', confirmedHeight: 5012300 },
+      { coinId: 'c'.repeat(64), amount: '10000000000', confirmedHeight: 5011000 }
+    ] };
     if (a === 'getActivity') return { events: [
       { id: 'r:1', kind: 'received', asset: 'XCH', amount: '500000000000', counterparty: null, height: 5, timestamp: 1751000000, coinId: 'ab' },
       { id: 's:2', kind: 'sent', asset: 'XCH', amount: '120000000000', counterparty: 'xch1recipient', height: 4, timestamp: 1750900000, coinId: 'cd' }
@@ -84,6 +89,25 @@ for (const screen of ['home', 'wallet', 'apps', 'network']) {
     await page.screenshot({ path: `e2e/__screenshots__/fullscreen-${screen}.png` });
   });
 }
+
+// Coin control (#91): the Coins panel — list of individual coins + split/combine actions.
+test('popup coins (coin control)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet');
+  await page.getByTestId('action-coins').click();
+  await page.getByTestId('coin-control').waitFor();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-coins.png' });
+});
+
+test('fullscreen coins (coin control)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet');
+  await page.getByTestId('action-coins').click();
+  await page.getByTestId('coin-control').waitFor();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-coins.png' });
+});
 
 // In-window dApp app-view (§2.4a): tap a launcher icon → the dApp opens INSIDE the frame.
 test('popup app-view (dApp opened in-window)', async ({ page }) => {

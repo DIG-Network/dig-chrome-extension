@@ -401,7 +401,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `13`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `14`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -426,7 +426,9 @@ shared per-origin consent store, and added the Connected-sites actions `listConn
 asset-generic reads (`getAssetBalance`, `getAssetCoins`, `filterUnlockedCoins`, `getNFTs`) and the
 value-moving writes (`chia_send`/`transfer`, `sendTransaction`, `createOffer`, `takeOffer`,
 `cancelOffer`) to the vault instead of the `4004` stub — writes join the approval-window queue
-(§18.12) — and made a user reject surface as CHIP-0002 `4002`.
+(§18.12) — and made a user reject surface as CHIP-0002 `4002`. `14` (#91) added the coin-control
+actions — `listCoins`, `prepareSplit`, `prepareCombine` (§18.15) — and an optional `coinIds` on
+`prepareSend` to hand-pick the funding coins.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1220,3 +1222,39 @@ lookalike-warning on this same store; the record shape is additive so #74 extend
   in a pure `contacts` module (no DOM/`chrome.*`); the `useContacts` hook is the storage seam and the
   UI is thin glue. Unit tests cover the module + hook + components; an end-user Playwright e2e drives
   the built popup (add a contact, pick it in Send, add-on-send, edit/delete).
+
+### 18.15 Coin control (#91)
+
+The wallet gives the user visibility + control over their individual coins, built on the SAME
+`Spends`/`Action` driver as Send (§18.8) — NO new spend type, NO new wasm. All of it runs in the
+offscreen vault (it holds the seed) and is routed purely by `assetId` (undefined / `'xch'` = native
+XCH; any other value = a CAT TAIL), guarding the #121 asset-drop class. Split/combine are proven
+consensus-valid against the wasm Simulator through the real driver path (never a mock).
+
+- **List (`listCoins`, read-only).** The wallet's UNSPENT coins for one asset — native XCH at the
+  derived inner (p2) puzzle hashes, or a CAT at its CAT puzzle hash (`catPuzzleHash(tail, innerPh)`)
+  over the same inner hashes — both HD schemes to the scan gap limit. Each coin carries its id
+  (hex), amount (base units), and confirmed height (`get_coin_records_by_puzzle_hashes`,
+  `includeSpentCoins:false`).
+- **Coin selection in Send.** `prepareSend` accepts an optional `coinIds`: when present, ONLY those
+  coins fund the spend (the driver's auto-selection is overridden by filtering the fetched coins to
+  the selection). A selection that matches no owned coin fails loudly (`NO_SELECTED_COINS`) rather
+  than silently auto-selecting.
+- **Split (`prepareSplit`).** One or more coins → `outputs` (≥2) DISTINCT self coins, each to a
+  distinct wallet address, amounts dividing as evenly as possible (the remainder on the last piece).
+  For XCH the fee comes out of the split amount; for a CAT the amount is conserved (a CAT cannot pay
+  an XCH fee) and XCH coins fund the fee. CAT outputs carry the recipient (self) inner p2 hash as the
+  create-coin hint, keeping them discoverable.
+- **Combine (`prepareCombine`).** Two or more coins → a SINGLE self coin (consolidate dust). For XCH
+  the fee comes out of the combined amount; for a CAT the amount is conserved and XCH coins fund the fee.
+- **Self-send invariant (MUST).** Split/combine summaries are decoded FROM THE BUILT SPEND (§5.5):
+  every CREATE_COIN output puzzle hash MUST be a wallet-owned XCH or CAT puzzle hash — a build that
+  would pay any address outside the wallet throws `SELF_SEND_VIOLATION` and is never broadcast. The
+  summary reports `{ asset, kind, inputCoinCount, outputCoinCount, total, fee }`.
+- **Approve + broadcast.** Split/combine build (not sign/broadcast) and are held under a pending id;
+  the UI approves, and the shared `confirmSend` signs + broadcasts (the ONLY place a real coin-op
+  spend is pushed) and returns an input coin id to poll via `sendStatus`.
+- **UI.** A Coins panel (reached from the wallet Home) lists the selected asset's coins with
+  multi-select, and offers plain-language Split ("make a coin of an exact size" / change
+  denominations) and Combine ("combine small coins"), plus a "Choose coins" disclosure in Send to
+  hand-pick the funding coins. Four states + react-intl across the 14 locales.

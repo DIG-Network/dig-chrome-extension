@@ -45,8 +45,20 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'listNfts',
       'prepareNftTransfer',
       'confirmNftTransfer',
+      'listCoins',
+      'prepareSplit',
+      'prepareCombine',
     ].sort(),
   );
+});
+
+// Coin control (#91): a hand-picked coin selection must reach the vault so it overrides auto-selection.
+test('prepareSendVaultRequest forwards a hand-picked coin selection (#91)', () => {
+  const req = prepareSendVaultRequest(
+    { recipient: 'xch1r', amount: '5', fee: '0', coinIds: ['aa', 'bb'] },
+    DEFAULT_COINSET_URL,
+  );
+  assert.deepEqual(req.coinIds, ['aa', 'bb']);
 });
 
 test('resolveCoinsetUrl uses the override when set, else the coinset default', () => {

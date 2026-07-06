@@ -77,6 +77,9 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'listNfts',
   'prepareNftTransfer',
   'confirmNftTransfer',
+  'listCoins',
+  'prepareSplit',
+  'prepareCombine',
 ] as const);
 
 /** True if `action` is a custody action the SW routes to the offscreen vault. */
@@ -95,6 +98,8 @@ export interface PrepareSendMessage {
    * native XCH (the vault decides `isCat` purely from `assetId`).
    */
   assetId?: string;
+  /** Coin control (#91): hand-picked coin ids (hex) to fund the send, overriding auto-selection. */
+  coinIds?: string[];
 }
 
 /** The `prepareSend` request the SW forwards to the offscreen vault. */
@@ -104,6 +109,7 @@ export interface PrepareSendVaultRequest {
   amount?: string;
   fee?: string;
   assetId?: string;
+  coinIds?: string[];
   coinsetUrl: string;
 }
 
@@ -123,6 +129,7 @@ export function prepareSendVaultRequest(
     amount: message.amount,
     fee: message.fee,
     assetId: message.assetId,
+    ...(message.coinIds && message.coinIds.length ? { coinIds: message.coinIds } : {}),
     coinsetUrl,
   };
 }
