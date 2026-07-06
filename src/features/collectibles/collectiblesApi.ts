@@ -2,18 +2,20 @@ import { api } from '@/api/api';
 import { ACTIONS } from '@/lib/messages';
 import type { WalletNft, NftTransferSummary, NftMintSummary } from '@/offscreen/nfts';
 import type { WireNftMintParams } from '@/offscreen/vault';
+import type { NftDidAssignSummary } from '@/offscreen/didAssign';
 
 /**
  * Collectibles (NFTs) endpoints (#56) — routed over the SW seam (`chromeBaseQuery` →
  * `chrome.runtime.sendMessage` → the background SW → the offscreen keystore vault), like the other
- * self-custody surfaces. The decrypted key never crosses this boundary. Transfer reuses the send
- * machinery: `confirmNftTransfer` maps to the vault's `confirmSend` broadcast path, and confirmation
- * is polled with the shared `sendStatus` (custodyApi's `useLazySendStatusQuery`). Injects into the
- * single `api` slice.
+ * self-custody surfaces. The decrypted key never crosses this boundary. Transfer + DID-assignment
+ * reuse the send machinery: `confirmNftTransfer`/`confirmNftDidAssign` map to the vault's
+ * `confirmSend` broadcast path, and confirmation is polled with the shared `sendStatus` (custodyApi's
+ * `useLazySendStatusQuery`). Injects into the single `api` slice.
  */
 
 export type { WalletNft, NftTransferSummary, NftMintSummary } from '@/offscreen/nfts';
 export type { WireNftMintParams } from '@/offscreen/vault';
+export type { NftDidAssignSummary } from '@/offscreen/didAssign';
 
 export const collectiblesApi = api.injectEndpoints({
   endpoints: (build) => ({
@@ -50,6 +52,21 @@ export const collectiblesApi = api.injectEndpoints({
       query: (arg) => ({ action: ACTIONS.confirmNftMint, ...arg }),
       invalidatesTags: ['Collectibles', 'Activity', 'Balances'],
     }),
+
+    // Build (not broadcast) assigning an owned DID as this NFT's owner (#93) → pending id + summary.
+    prepareNftDidAssign: build.mutation<
+      { pendingId: string; nftDidAssignSummary: NftDidAssignSummary },
+      { launcherId: string; didLauncherId: string; fee?: string }
+    >({
+      query: (arg) => ({ action: ACTIONS.prepareNftDidAssign, ...arg }),
+    }),
+
+    // Sign + BROADCAST a prepared NFT↔DID assignment (the approved step). Invalidates collectibles +
+    // identity (the DID's on-chain state didn't change, but the assignment reads its list) + ledger.
+    confirmNftDidAssign: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
+      query: (arg) => ({ action: ACTIONS.confirmNftDidAssign, ...arg }),
+      invalidatesTags: ['Collectibles', 'Identity', 'Activity', 'Balances'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -60,4 +77,6 @@ export const {
   useConfirmNftTransferMutation,
   usePrepareNftMintMutation,
   useConfirmNftMintMutation,
+  usePrepareNftDidAssignMutation,
+  useConfirmNftDidAssignMutation,
 } = collectiblesApi;

@@ -154,10 +154,21 @@ function copyFiles() {
   EXTENSION_FILES.forEach(file => {
     const src = path.join(__dirname, file);
     const dest = path.join(DIST_DIR, file);
-    
+
     if (fs.existsSync(src)) {
-      fs.copyFileSync(src, dest);
-      log(`✓ Copied: ${file}`, 'green');
+      if (file === 'manifest.json') {
+        // #139: manifest.json's version MUST track package.json's — inject it at build time
+        // rather than trusting a hand-edited literal that silently drifts (it had: 1.29.1 vs
+        // package.json's 1.37.1). package.json is the single source of truth for the shipped
+        // version (§6.7 app-version attribution); manifest.json's source-tree copy is untouched.
+        const manifest = JSON.parse(fs.readFileSync(src, 'utf8'));
+        manifest.version = require('./package.json').version;
+        fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
+        log(`✓ Copied: ${file} (version synced to package.json)`, 'green');
+      } else {
+        fs.copyFileSync(src, dest);
+        log(`✓ Copied: ${file}`, 'green');
+      }
     }
   });
   

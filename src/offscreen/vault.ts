@@ -36,6 +36,8 @@ import type { ChainClient, ChainCoin } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { listCoins as buildCoinList, prepareSplit as buildSplit, prepareCombine as buildCombine, type CoinsWasm, type CoinInfo, type CoinOpSummary } from '@/offscreen/coins';
 import { listNfts, prepareNftTransfer, prepareNftMint, type NftWasm, type WalletNft, type NftTransferSummary, type NftMintSummary } from '@/offscreen/nfts';
+import { listDids, prepareDidCreate, prepareDidTransfer, prepareDidProfileUpdate, type DidWasm, type WalletDid, type DidCreateSummary, type DidTransferSummary, type DidProfileUpdateSummary } from '@/offscreen/dids';
+import { prepareNftDidAssign, type AssignWasm, type NftDidAssignSummary } from '@/offscreen/didAssign';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
 import { decodeDappSpend, reconstructCoinSpends, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
 import { indexActivity, type ActivityWasm, type ActivityEvent } from '@/offscreen/activity';
@@ -108,6 +110,13 @@ export type VaultOp =
   | 'prepareNftTransfer'
   // NFT minting (#92): build a new NFT (CHIP-0007 metadata + royalty); broadcast via confirmSend.
   | 'prepareNftMint'
+  // DID management (#93): create/list/transfer/profile-update a self-custody identity; broadcast via confirmSend.
+  | 'listDids'
+  | 'prepareDidCreate'
+  | 'prepareDidTransfer'
+  | 'prepareDidProfileUpdate'
+  // Assign a wallet-owned DID as an NFT's owner (#93); broadcast via confirmSend.
+  | 'prepareNftDidAssign'
   // Coin control (#91): per-asset coin listing + split / combine self-sends.
   | 'listCoins'
   | 'prepareSplit'
@@ -182,8 +191,13 @@ export interface VaultRequest {
   offerStr?: string;
   /** prepareTrade: whether to TAKE (fund + accept) or CANCEL (reclaim) the offer. */
   tradeKind?: 'take' | 'cancel';
-  /** prepareNftTransfer: the NFT's singleton launcher id (hex). */
+  /** prepareNftTransfer / prepareDidTransfer / prepareDidProfileUpdate: the asset's launcher id (hex).
+   * prepareNftDidAssign: the NFT's launcher id (the DID's is {@link didLauncherId}). */
   launcherId?: string;
+  /** prepareNftDidAssign (#93): the DID's launcher id (hex) to assign as the NFT's owner. */
+  didLauncherId?: string;
+  /** prepareDidProfileUpdate (#93): the new on-chain profile name (plain UTF-8). */
+  profileName?: string;
   /** prepareNftMint (#92): the CHIP-0007 metadata + royalty + fee inputs for a new NFT. */
   nftMint?: WireNftMintParams;
   /** decodeDappSpend / signDappSpend: the dApp-supplied coin spends (CHIP-0002 wire, hex fields). */
@@ -236,6 +250,16 @@ export interface VaultResponse {
   nftMintSummary?: NftMintSummary;
   /** prepareNftMint (#92): the new NFT's launcher id (hex). */
   launcherId?: string;
+  /** listDids (#93): the wallet's DIDs (both HD schemes), wire-safe. */
+  dids?: WalletDid[];
+  /** prepareDidCreate (#93): the decoded (tamper-resistant) create summary to approve. */
+  didCreateSummary?: DidCreateSummary;
+  /** prepareDidTransfer (#93): the decoded transfer summary to approve. */
+  didSummary?: DidTransferSummary;
+  /** prepareDidProfileUpdate (#93): the decoded profile-update summary to approve. */
+  didProfileSummary?: DidProfileUpdateSummary;
+  /** prepareNftDidAssign (#93): the decoded NFT↔DID assignment summary to approve. */
+  nftDidAssignSummary?: NftDidAssignSummary;
   /** listCoins: the wallet's unspent coins for the requested asset. */
   coins?: CoinInfo[];
   /** prepareSplit / prepareCombine: the decoded (tamper-resistant) coin-op summary to approve. */
@@ -361,6 +385,16 @@ export class Vault {
           return await this.prepareNftTransfer(req, deps);
         case 'prepareNftMint':
           return await this.prepareNftMint(req, deps);
+        case 'listDids':
+          return await this.listDids(req, deps);
+        case 'prepareDidCreate':
+          return await this.prepareDidCreate(req, deps);
+        case 'prepareDidTransfer':
+          return await this.prepareDidTransfer(req, deps);
+        case 'prepareDidProfileUpdate':
+          return await this.prepareDidProfileUpdate(req, deps);
+        case 'prepareNftDidAssign':
+          return await this.prepareNftDidAssign(req, deps);
         case 'listCoins':
           return await this.listCoins(req, deps);
         case 'prepareSplit':
@@ -703,6 +737,113 @@ export class Vault {
     const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
     this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
     return { success: true, pendingId, nftMintSummary: prepared.summary, launcherId: prepared.launcherId };
+  }
+
+  /** LIST the wallet's DIDs (#93) — both HD schemes, discovered by hint. Read-only. */
+  private async listDids(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const dids = await listDids(deps.chia as unknown as DidWasm, deps.chain, {
+      seed,
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    return { success: true, dids };
+  }
+
+  /**
+   * CREATE a new "simple" DID owned by this wallet (#93) — builds + holds the spend under a pending id
+   * (broadcast via the shared `confirmSend`); returns the decoded, tamper-resistant summary + the new
+   * launcher id. Does NOT sign or broadcast.
+   */
+  private async prepareDidCreate(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as DidWasm;
+    const prepared = await prepareDidCreate(chia, deps.chain, {
+      seed,
+      fee: BigInt(req.fee ?? '0'),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    return { success: true, pendingId, didCreateSummary: prepared.summary, launcherId: prepared.launcherId };
+  }
+
+  /**
+   * Prepare (build, don't sign/broadcast) a transfer of the wallet's DID and HOLD it under a pending id
+   * — the SAME pending map + `confirmSend` broadcast path as a coin send (#93). The UI approves via
+   * `confirmSend` (mapped from `confirmDidTransfer`) and polls via `sendStatus`.
+   */
+  private async prepareDidTransfer(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.launcherId || !req.recipient) return { success: false, code: 'BAD_REQUEST', message: 'launcherId + recipient required' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as DidWasm;
+    const prepared = await prepareDidTransfer(chia, deps.chain, {
+      seed,
+      launcherId: req.launcherId,
+      recipient: req.recipient,
+      fee: BigInt(req.fee ?? '0'),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    return { success: true, pendingId, didSummary: prepared.summary };
+  }
+
+  /**
+   * Prepare (build, don't sign/broadcast) a PROFILE update of the wallet's DID and HOLD it under a
+   * pending id (#93) — the SAME pending map + `confirmSend` broadcast path as a coin send.
+   */
+  private async prepareDidProfileUpdate(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.launcherId || !req.profileName) return { success: false, code: 'BAD_REQUEST', message: 'launcherId + profileName required' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as DidWasm;
+    const prepared = await prepareDidProfileUpdate(chia, deps.chain, {
+      seed,
+      launcherId: req.launcherId,
+      profileName: req.profileName,
+      fee: BigInt(req.fee ?? '0'),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    return { success: true, pendingId, didProfileSummary: prepared.summary };
+  }
+
+  /**
+   * Prepare (build, don't sign/broadcast) assigning the wallet's DID as the OWNER of the wallet's NFT
+   * and HOLD it under a pending id (#93) — the SAME pending map + `confirmSend` broadcast path.
+   */
+  private async prepareNftDidAssign(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.launcherId || !req.didLauncherId) return { success: false, code: 'BAD_REQUEST', message: 'launcherId (NFT) + didLauncherId required' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as AssignWasm;
+    const prepared = await prepareNftDidAssign(chia, deps.chain, {
+      seed,
+      nftLauncherId: req.launcherId,
+      didLauncherId: req.didLauncherId,
+      fee: BigInt(req.fee ?? '0'),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    return { success: true, pendingId, nftDidAssignSummary: prepared.summary };
   }
 
   /**

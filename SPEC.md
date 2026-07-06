@@ -401,7 +401,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `16`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `17`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -431,7 +431,11 @@ actions — `listCoins`, `prepareSplit`, `prepareCombine` (§18.15) — and an o
 `prepareSend` to hand-pick the funding coins. `15` (#90) added the multi-wallet actions —
 `listWallets`, `switchWallet`, `renameWallet`, `removeWallet` (§18.16). `16` (#92) added the NFT-mint
 actions — `prepareNftMint` (build a new NFT — CHIP-0007 metadata + royalty) and `confirmNftMint`
-(sign + broadcast, reusing the `confirmSend` path) (§18.11).
+(sign + broadcast, reusing the `confirmSend` path) (§18.11). `17` (#93) added the DID-management
+actions — `listDids`, `prepareDidCreate` + `confirmDidCreate`, `prepareDidTransfer` +
+`confirmDidTransfer`, `prepareDidProfileUpdate` + `confirmDidProfileUpdate`, and
+`prepareNftDidAssign` + `confirmNftDidAssign` (every confirm action reuses the `confirmSend` path)
+(§18.17).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1321,3 +1325,111 @@ key.
   accessible manager sheet: switch (active-aware, inline unlock when a wallet needs its password),
   rename (inline), remove (two-step confirm, never the last), add (create / import), and lock. Four
   states + react-intl across the 14 locales.
+
+### 18.17 DID management (#93)
+
+DIDs (Decentralized Identifiers) are created, listed, and transferred from `chia-wallet-sdk-wasm`
+primitives so the spends match the canonical `chia-sdk-driver` construction byte-for-byte (they
+interoperate with Sage / dexie). Both money paths are proven consensus-valid by Simulator tests
+(create → list → transfer → assert the DID moves and the recipient can rediscover it). The decrypted
+key never leaves the offscreen vault. **Surface tiering (§6 hub-adjacent rule, mirrored ecosystem-wide,
+#145): DID management is ADVANCED functionality and renders in the fullscreen (expanded) layout ONLY.**
+The compact popup shows, at most, a view-only DID list with an "open full screen" affordance — it never
+mounts the create or transfer form.
+
+- **No `Action`/`Spends` driver support for DIDs.** Unlike NFTs/CATs, `chia-wallet-sdk-wasm` has no
+  `Action.mintDid`/`Spends.addDid` — a DID is built from the lower-level `Clvm.createEveDid(
+  parentCoinId, p2PuzzleHash)` / `Clvm.spendDid(did, innerSpend)` primitives directly, funded from a
+  SINGLE wallet-owned XCH coin (the launcher's parent coin id must be known before the spend is built,
+  so the driver's multi-coin auto-selection does not apply). A wallet whose largest coin cannot cover
+  the DID amount (1 mojo) plus the fee fails `NO_SUITABLE_COIN`; multi-coin funding is a follow-up.
+- **Discovery model.** A DID is a singleton whose OUTER coin puzzle hash is the DID-layer puzzle — NOT
+  the wallet's inner (p2/standard) puzzle hash — so it is NOT found by a puzzle-hash scan. Every DID
+  spend (create or transfer) hints the owner's inner p2 puzzle hash via the create-coin memo, so the
+  wallet finds its DID coins via coinset `get_coin_records_by_hints` over its derived inner puzzle
+  hashes (both HD schemes, to the scan gap limit). For each hinted unspent coin, the PARENT spend is
+  fetched and `Puzzle.parseChildDid(parentCoin, parentSolution, coin)` reconstructs the child `Did`
+  (parallel to `Puzzle.parseChildNft`, except the wasm binding also wants the target child coin to
+  disambiguate DID recovery outputs). A coin is one of the wallet's DIDs iff the reconstructed child IS
+  that coin and its `info.p2PuzzleHash` is one of the wallet's derived inner puzzle hashes.
+- **LIST** (`listDids`, read-only): returns, per DID, `{ launcherId, coinId, p2PuzzleHash,
+  recoveryListHash (hex, or null), numVerificationsRequired, profileName (UTF-8, or null) }` — deduped
+  by launcher id. `profileName` decodes the DID's on-chain `metadata` atom as UTF-8; a nil/non-string
+  metadata (a freshly created DID, or a foreign DID never profile-updated) decodes to `null`.
+- **CREATE** (`prepareDidCreate`, no broadcast): builds one new "simple" DID (no recovery list,
+  `numVerificationsRequired = 1`) owned by the wallet. `Clvm.createEveDid(fundingCoin.coinId(),
+  fundingCoin.puzzleHash)` returns the eve `Did` plus the `parentConditions` the funding coin's spend
+  must carry (the launcher creation + its binding announcement); the funding coin is spent directly via
+  `Clvm.spendStandardCoin` (bypassing the `Spends`/`FinishedSpends` driver, which has no DID action).
+  The eve DID is then spent once via `Clvm.spendDid` to commit its real (non-eve) lineage, re-committing
+  to the same owner. The unsigned coin spends are held under a pending id with the decoded,
+  tamper-resistant summary `{ launcherId, p2PuzzleHashHex, fee, coinCount }` and the new `launcherId`. A
+  wallet with no XCH is rejected `NO_XCH_COINS`; a wallet with no single coin covering the amount + fee
+  is rejected `NO_SUITABLE_COIN`. A DID with a real recovery list is a follow-up if a use case needs it.
+- **CONFIRM CREATE** (`confirmDidCreate`): signs + broadcasts the held create — reusing the vault's
+  `confirmSend` broadcast path (the ONLY place a create is pushed); confirmation is polled via the
+  shared `sendStatus`. Mainnet-only.
+- **PREPARE TRANSFER** (`prepareDidTransfer`, no broadcast): recompute the new owner's DID-layer inner
+  puzzle hash from a `DidInfo` carrying the recipient's p2 puzzle hash (same launcher id / recovery
+  list / verifications / metadata as the current DID), then `Clvm.spendDid(did, standardSpend(ownerPk,
+  delegatedSpend([createCoin(newInnerPuzzleHash, 1, hintMemo)])))` — the recipient's inner p2 puzzle
+  hash is carried as the create-coin hint so they discover it. A fee, when given, is paid from a
+  SEPARATE wallet-owned XCH coin (the DID's own coin carries only 1 mojo). The unsigned coin spends are
+  held under a pending id with the decoded summary `{ launcherId, recipientPuzzleHashHex, fee,
+  coinCount }`. Transferring a DID the wallet does not hold is rejected `DID_NOT_FOUND`.
+- **CONFIRM TRANSFER** (`confirmDidTransfer`): signs + broadcasts the held transfer — reusing the
+  vault's `confirmSend` broadcast path (the ONLY place a transfer is pushed); confirmation is polled via
+  the shared `sendStatus`. Mainnet-only.
+- **PREPARE PROFILE UPDATE** (`prepareDidProfileUpdate`, no broadcast): sets the DID's on-chain
+  `metadata` to a plain UTF-8 `profileName` atom (`Clvm.alloc(profileName)`), keeping the same launcher
+  id / owner / recovery list / verifications. Unlike a transfer, this needs **TWO chained DID spends**
+  (a same-bundle ephemeral hop), not one: a chain rescan reconstructs a DID's `metadata` from its
+  PARENT coin's OWN curried value — never from the create-coin hint (unlike `p2PuzzleHash`, which a
+  rescan reads directly off the hint) — confirmed against `chia-sdk-driver`'s `Did::parse_child`
+  (xch-dev/chia-wallet-sdk `crates/chia-sdk-driver/src/primitives/did.rs`), whose own doc states a
+  metadata change "cannot be parsed... without additional context" from one spend alone. The fix
+  (`Did::update`'s documented pattern — "settle the DID's updated metadata and make it parseable by
+  wallets"): spend once (commits the new metadata into an EPHEMERAL intermediate coin's own reveal via
+  `did.child(p2PuzzleHash, newMetadata)`), then spend that ephemeral coin again self-to-self (same
+  target inner puzzle hash) — a later rescan reads the ephemeral coin as the final coin's parent and
+  recovers the correct metadata. A fee, when given, is paid from a SEPARATE wallet-owned XCH coin. The
+  unsigned coin spends (both hops) are held under a pending id with the decoded summary
+  `{ launcherId, profileName, fee, coinCount }`. Updating a DID the wallet does not hold is rejected
+  `DID_NOT_FOUND`.
+- **CONFIRM PROFILE UPDATE** (`confirmDidProfileUpdate`): signs + broadcasts the held update — reusing
+  the vault's `confirmSend` broadcast path; confirmation is polled via the shared `sendStatus`.
+  Mainnet-only.
+- **PREPARE NFT↔DID ASSIGNMENT** (`prepareNftDidAssign`, no broadcast): assigns a wallet-owned DID as
+  the OWNER (`currentOwner`) of a wallet-owned NFT — the CHIP-0011 ownership-layer bonding handshake,
+  byte-identical to `chia-sdk-driver`'s `Nft::assign_owner` + `UpdateNftAction` (verified against
+  xch-dev/chia-wallet-sdk `crates/chia-sdk-driver/src/primitives/nft.rs` +
+  `actions/update_nft.rs`, since chia-wallet-sdk-wasm 0.33 exposes no `Spends.addDid`/`Action` helper
+  for it — confirmed against `crates/chia-sdk-bindings/src/action_system.rs` at HEAD too). Built from
+  `Clvm.spendNft`/`spendDid` directly:
+  1. The NFT re-creates itself at the SAME p2 puzzle hash (custody unchanged) and additionally emits a
+     `TransferNft` condition (opcode -10): `(didLauncherId, [], didInnerPuzzleHash)` — the ownership
+     layer automatically creates a matching puzzle announcement from this.
+  2. The DID re-creates itself unchanged (same p2 puzzle hash AND metadata — no "settle" hop needed
+     here, since neither field changes) and additionally: asserts the announcement id
+     `sha256(nftFullPuzzleHash ‖ 0xAD 0x4C ‖ treeHash(list(didLauncherId, [], didInnerPuzzleHash)))`
+     (`assignment_puzzle_announcement_id`, byte-identical to the Rust helper of the same name), and
+     creates its OWN puzzle announcement carrying the NFT's launcher id — the exact reciprocal the
+     ownership layer's automatic assertion expects.
+  Both spends land in ONE bundle, so the handshake is atomic. Unlike DID metadata, NFT ownership IS
+  immediately observable by a naive one-spend chain rescan — the `TransferNft` condition carries the
+  new owner in plaintext in the p2 spend's output conditions (`listNfts`'s `collectionId` field
+  reflects it). Neither the NFT's nor the DID's custody changes. A fee, when given, is paid from a
+  SEPARATE wallet-owned XCH coin (both the NFT and DID coins carry only 1 mojo each). The unsigned coin
+  spends are held under a pending id with the decoded summary
+  `{ nftLauncherId, didLauncherId, fee, coinCount }`. Assigning an NFT or DID the wallet does not hold
+  is rejected `NFT_NOT_FOUND` / `DID_NOT_FOUND` respectively.
+- **CONFIRM NFT↔DID ASSIGNMENT** (`confirmNftDidAssign`): signs + broadcasts the held assignment —
+  reusing the vault's `confirmSend` broadcast path; confirmation is polled via the shared `sendStatus`.
+  Mainnet-only.
+- **UI.** An Identity panel (reached from the wallet's segmented views) lists the wallet's DIDs
+  (view-only in BOTH surfaces, showing the profile name when set); in the fullscreen layout it
+  additionally offers "Create DID" and, per DID, "Transfer" and "Edit profile" — the popup shows an
+  "open full screen" link for these instead of embedding the forms. The Collectibles NFT detail view
+  offers "Assign DID owner" (fullscreen only), picking from the wallet's listed DIDs. Four states +
+  react-intl across the 14 locales. Assigning a DID as an NFT's owner AT MINT TIME (§18.11, vs. on an
+  already-minted NFT, which this section covers) remains a follow-up seam noted on #92.

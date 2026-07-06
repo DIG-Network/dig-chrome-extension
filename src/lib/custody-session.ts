@@ -87,6 +87,17 @@ export const CUSTODY_ACTIONS = Object.freeze([
   // NFT minting (#92): build + broadcast a new NFT.
   'prepareNftMint',
   'confirmNftMint',
+  // DID management (#93): create/list/transfer/profile-update a self-custody identity, and assign a
+  // wallet-owned DID as an owned NFT's owner.
+  'listDids',
+  'prepareDidCreate',
+  'confirmDidCreate',
+  'prepareDidTransfer',
+  'confirmDidTransfer',
+  'prepareDidProfileUpdate',
+  'confirmDidProfileUpdate',
+  'prepareNftDidAssign',
+  'confirmNftDidAssign',
   'listCoins',
   'prepareSplit',
   'prepareCombine',

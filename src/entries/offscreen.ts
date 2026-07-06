@@ -25,8 +25,8 @@ function getChia(): Promise<OffscreenWasm> {
   return chiaPromise;
 }
 
-const NEEDS_CHIA = new Set<VaultRequest['op']>(['getReceiveAddress', 'scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity', 'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listCoins', 'prepareSplit', 'prepareCombine', 'getPublicKeys', 'getAssetBalance', 'getAssetCoins', 'decodeDappSpend', 'signDappSpend', 'signMessage', 'broadcastDappBundle']);
-const NEEDS_CHAIN = new Set<VaultRequest['op']>(['scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity', 'makeOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listCoins', 'prepareSplit', 'prepareCombine', 'getAssetBalance', 'getAssetCoins', 'broadcastDappBundle']);
+const NEEDS_CHIA = new Set<VaultRequest['op']>(['getReceiveAddress', 'scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity', 'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listDids', 'prepareDidCreate', 'prepareDidTransfer', 'prepareDidProfileUpdate', 'prepareNftDidAssign', 'listCoins', 'prepareSplit', 'prepareCombine', 'getPublicKeys', 'getAssetBalance', 'getAssetCoins', 'decodeDappSpend', 'signDappSpend', 'signMessage', 'broadcastDappBundle']);
+const NEEDS_CHAIN = new Set<VaultRequest['op']>(['scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity', 'makeOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listDids', 'prepareDidCreate', 'prepareDidTransfer', 'prepareDidProfileUpdate', 'prepareNftDidAssign', 'listCoins', 'prepareSplit', 'prepareCombine', 'getAssetBalance', 'getAssetCoins', 'broadcastDappBundle']);
 
 async function depsFor(req: VaultRequest & { coinsetUrl?: string }): Promise<VaultDeps> {
   if (!NEEDS_CHIA.has(req.op)) return {};
