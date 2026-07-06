@@ -401,7 +401,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `15`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `16`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -429,7 +429,9 @@ value-moving writes (`chia_send`/`transfer`, `sendTransaction`, `createOffer`, `
 (§18.12) — and made a user reject surface as CHIP-0002 `4002`. `14` (#91) added the coin-control
 actions — `listCoins`, `prepareSplit`, `prepareCombine` (§18.15) — and an optional `coinIds` on
 `prepareSend` to hand-pick the funding coins. `15` (#90) added the multi-wallet actions —
-`listWallets`, `switchWallet`, `renameWallet`, `removeWallet` (§18.16).
+`listWallets`, `switchWallet`, `renameWallet`, `removeWallet` (§18.16). `16` (#92) added the NFT-mint
+actions — `prepareNftMint` (build a new NFT — CHIP-0007 metadata + royalty) and `confirmNftMint`
+(sign + broadcast, reusing the `confirmSend` path) (§18.11).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1032,10 +1034,11 @@ assets MUST differ.
 
 ### 18.11 NFTs / Collectibles
 
-NFTs are read and transferred from `chia-wallet-sdk-wasm` primitives so the spends match the canonical
-`chia-sdk-driver` construction byte-for-byte (they interoperate with Sage / dexie). The transfer money
-path is proven consensus-valid by a Simulator test (mint → list → transfer → assert the NFT moves and
-the recipient can rediscover it). The decrypted key never leaves the offscreen vault.
+NFTs are read, minted, and transferred from `chia-wallet-sdk-wasm` primitives so the spends match the
+canonical `chia-sdk-driver` construction byte-for-byte (they interoperate with Sage / dexie). Both money
+paths are proven consensus-valid by Simulator tests (mint → list → transfer → assert the NFT moves and
+the recipient can rediscover it; and mint → list → assert the minted NFT's metadata/royalty/owner). The
+decrypted key never leaves the offscreen vault.
 
 - **Discovery model.** An NFT is a singleton whose OUTER coin puzzle hash is the singleton/ownership
   puzzle — NOT the wallet's inner (p2/standard) puzzle hash — so it is NOT found by a puzzle-hash scan.
@@ -1062,6 +1065,24 @@ the recipient can rediscover it). The decrypted key never leaves the offscreen v
   `confirmSend` broadcast path (an NFT transfer is a coin spend). It is the ONLY place the transfer is
   pushed (the user-approved step); confirmation is polled via the shared `sendStatus`. Mainnet-only
   (signed with the mainnet AGG_SIG_ME genesis).
+- **MINT** (`prepareNftMint`, no broadcast — #92): build ONE new NFT owned by this wallet. The
+  CHIP-0007 metadata (`NftMetadata`: editionNumber/editionTotal, dataUris + optional dataHash,
+  metadataUris + optional metadataHash, licenseUris + optional licenseHash) is encoded via
+  `Clvm.nftMetadata` in the driver's `Clvm` (same-allocator invariant), then
+  `Action.mintNft(clvm, metadata, Constants.nftMetadataUpdaterDefaultHash(), royaltyPuzzleHash,
+  royaltyBasisPoints, 1, undefined)` mints the singleton (amount `1`) funded from the wallet's XCH coins,
+  with change AND the new NFT's inner p2 puzzle hash returning to index-0 (so the minter owns and can
+  rediscover it). The royalty payout defaults to the minter's index-0 puzzle hash, or a caller-supplied
+  bech32m address. A standard inner spend is inserted for each pending coin; the unsigned coin spends are
+  held under a pending id with the decoded, tamper-resistant summary `{ launcherId, dataUris,
+  metadataUris, licenseUris, editionNumber, editionTotal, royaltyBasisPoints, royaltyPuzzleHashHex, fee,
+  coinCount }` and the new `launcherId`. A mint with no data URI is rejected `BAD_REQUEST`; a wallet with
+  no XCH is rejected `NO_XCH_COINS`.
+- **CONFIRM MINT** (`confirmNftMint`): signs + broadcasts the held mint — reusing the vault's
+  `confirmSend` broadcast path (the ONLY place a mint is pushed); confirmation is polled via the shared
+  `sendStatus`. Mainnet-only. Bulk/edition minting (many NFTs in one spend) is a follow-up (#99);
+  assigning the new NFT to a DID owner at mint requires owning + co-spending that DID and is a follow-up
+  with DID management (#93).
 
 ### 18.12 dApp `window.chia` requests & the SW-summoned approval window (§5.5)
 

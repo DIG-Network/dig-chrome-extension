@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { listNfts, prepareNftTransfer, type NftWasm, type NftChain } from './nfts';
+import { listNfts, prepareNftTransfer, prepareNftMint, type NftWasm, type NftChain } from './nfts';
 import { buildKeyring, signAndBundle, type SendFlowWasm } from './sendFlow';
 import { signCoinSpends, TESTNET11_AGG_SIG_ME, type SigningWasm } from './signing';
 import type { ChainClient, ChainCoin, ChainCoinSpend, ChainSpendBundle } from './chain';
@@ -217,5 +217,97 @@ describe('nfts — mint, list, transfer (Simulator-validated)', () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
     const chain = { getCoinSpend: async () => null, unspentCoins: async () => [] } as unknown as NftChain;
     await expect(listNfts(asNft(), chain, { seed, gapLimit: 2 })).rejects.toThrow(/HINT_LOOKUP_UNAVAILABLE/);
+  });
+});
+
+describe('nfts — mint via prepareNftMint (Simulator-validated, #92)', () => {
+  const DATA_URI = 'https://example.test/img.png';
+  const META_URI = 'https://example.test/meta.json';
+  const LICENSE_URI = 'https://example.test/license.txt';
+  const DATA_HASH = 'ab'.repeat(32);
+
+  /** A funded sim + the minter's keyring (index-0 holds 5 XCH). */
+  async function fundedMinter(count = 2): Promise<{ seed: Uint8Array; ring: ReturnType<typeof buildKeyring>; sim: SimHandle; chain: NftChain }> {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { count });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 5_000_000_000_000n);
+    return { seed, ring, sim, chain: simChain(sim) };
+  }
+
+  it('mints an NFT owned by the wallet with the given CHIP-0007 metadata + royalty', async () => {
+    const { seed, ring, chain } = await fundedMinter();
+    const prepared = await prepareNftMint(asNft(), chain, {
+      seed,
+      dataUris: [DATA_URI],
+      dataHash: DATA_HASH,
+      metadataUris: [META_URI],
+      licenseUris: [LICENSE_URI],
+      royaltyBasisPoints: 250,
+      gapLimit: 2,
+    });
+    // The summary is decoded from the built spend → asserting it proves what will be minted.
+    expect(prepared.launcherId).toMatch(/^[0-9a-f]{64}$/);
+    expect(prepared.summary.royaltyBasisPoints).toBe(250);
+    expect(prepared.summary.dataUris).toEqual([DATA_URI]);
+    expect(prepared.summary.metadataUris).toEqual([META_URI]);
+    expect(prepared.summary.licenseUris).toEqual([LICENSE_URI]);
+    expect(prepared.summary.editionNumber).toBe('1');
+    // Royalty defaults to the minter (index-0).
+    expect(prepared.summary.royaltyPuzzleHashHex).toBe(ring[0].puzzleHashHex);
+
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
+
+    // The Simulator accepted it → the NFT is now discoverable by, and owned by, the minter.
+    const nfts = await listNfts(asNft(), chain, { seed, gapLimit: 2 });
+    expect(nfts).toHaveLength(1);
+    expect(nfts[0].launcherId).toBe(prepared.launcherId);
+    expect(nfts[0].p2PuzzleHash).toBe(ring[0].puzzleHashHex);
+    expect(nfts[0].royaltyBasisPoints).toBe(250);
+    expect(nfts[0].dataUris).toEqual([DATA_URI]);
+    expect(nfts[0].dataHash).toBe(DATA_HASH);
+    expect(nfts[0].metadataUris).toEqual([META_URI]);
+    expect(nfts[0].licenseUris).toEqual([LICENSE_URI]);
+  });
+
+  it('pays a fee from the wallet when minting', async () => {
+    const { seed, chain } = await fundedMinter();
+    const prepared = await prepareNftMint(asNft(), chain, { seed, dataUris: [DATA_URI], fee: 1_000_000n, gapLimit: 2 });
+    expect(prepared.summary.fee).toBe('1000000');
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
+    const nfts = await listNfts(asNft(), chain, { seed, gapLimit: 2 });
+    expect(nfts.map((n) => n.launcherId)).toContain(prepared.launcherId);
+  });
+
+  it('routes the royalty payout to a specified address when given', async () => {
+    const { seed, chain } = await fundedMinter();
+    const royaltySeed = await mnemonicToSeed(RECIPIENT_MNEMONIC);
+    const royaltyRing = buildKeyring(asFlow(), royaltySeed, { count: 2 });
+    const prepared = await prepareNftMint(asNft(), chain, {
+      seed,
+      dataUris: [DATA_URI],
+      royaltyBasisPoints: 500,
+      royaltyAddress: addressOf(royaltyRing[0].puzzleHashHex),
+      gapLimit: 2,
+    });
+    expect(prepared.summary.royaltyPuzzleHashHex).toBe(royaltyRing[0].puzzleHashHex);
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
+    const nfts = await listNfts(asNft(), chain, { seed, gapLimit: 2 });
+    expect(nfts[0].royaltyPuzzleHash).toBe(royaltyRing[0].puzzleHashHex);
+    expect(nfts[0].royaltyBasisPoints).toBe(500);
+  });
+
+  it('rejects a mint with no data URI (nothing to mint)', async () => {
+    const { seed, chain } = await fundedMinter();
+    await expect(prepareNftMint(asNft(), chain, { seed, dataUris: [], gapLimit: 2 })).rejects.toThrow(/NO_DATA_URI/);
+  });
+
+  it('rejects a mint when the wallet has no XCH to fund it', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const sim = new chia.Simulator(); // no coins funded
+    await expect(prepareNftMint(asNft(), simChain(sim), { seed, dataUris: [DATA_URI], gapLimit: 2 })).rejects.toThrow();
   });
 });

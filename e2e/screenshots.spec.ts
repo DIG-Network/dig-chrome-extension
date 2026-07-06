@@ -35,6 +35,7 @@ const STUB = `
       { id: 'r:1', kind: 'received', asset: 'XCH', amount: '500000000000', counterparty: null, height: 5, timestamp: 1751000000, coinId: 'ab' },
       { id: 's:2', kind: 'sent', asset: 'XCH', amount: '120000000000', counterparty: 'xch1recipient', height: 4, timestamp: 1750900000, coinId: 'cd' }
     ], cursorHeight: 5 };
+    if (a === 'listNfts') return { nfts: [] };
     if (a === 'getDigNodeStatus') return { reachable: true, base: 'https://dig.local' };
     if (a === 'getControlStatus') return { mode: 'manage', localNode: true, base: 'https://dig.local', status: null, controlMethods: [] };
     if (a === 'getConnection') return { connected: false };
@@ -107,6 +108,25 @@ test('fullscreen coins (coin control)', async ({ page }) => {
   await page.getByTestId('coin-control').waitFor();
   await page.waitForTimeout(500);
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-coins.png' });
+});
+
+// NFT minting (#92): advanced → fullscreen only. The fullscreen collectibles view exposes "Mint NFT";
+// the popup shows a view-only "Mint in full screen" affordance (never the form).
+test('fullscreen mint (NFT minting form)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/collectibles');
+  await page.getByTestId('collectibles-mint').click();
+  await page.getByTestId('mint-form').waitFor();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-mint.png' });
+});
+
+test('popup collectibles (view-only, mint moved to full screen)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet/collectibles');
+  await page.getByTestId('collectibles-mint-fullscreen').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-collectibles.png' });
 });
 
 // In-window dApp app-view (§2.4a): tap a launcher icon → the dApp opens INSIDE the frame.

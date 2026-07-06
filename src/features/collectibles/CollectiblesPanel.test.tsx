@@ -96,6 +96,24 @@ describe('CollectiblesPanel', () => {
     expect((await axe(container, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([]);
   });
 
+  it('exposes "Mint NFT" and opens the mint form on the fullscreen surface (#92)', async () => {
+    mockSw((m) => (m.action === 'listNfts' ? { nfts: [] } : { success: true }));
+    renderWithProviders(<CollectiblesPanel full />);
+    const mint = await screen.findByTestId('collectibles-mint');
+    expect(mint).toBeInTheDocument();
+    expect(screen.queryByTestId('collectibles-mint-fullscreen')).not.toBeInTheDocument();
+    fireEvent.click(mint);
+    expect(await screen.findByTestId('mint-form')).toBeInTheDocument();
+  });
+
+  it('offers only a "mint in full screen" affordance on the popup surface — never the mint form (#92)', async () => {
+    mockSw((m) => (m.action === 'listNfts' ? { nfts: [] } : { success: true }));
+    renderWithProviders(<CollectiblesPanel full={false} />);
+    expect(await screen.findByTestId('collectibles-mint-fullscreen')).toBeInTheDocument();
+    expect(screen.queryByTestId('collectibles-mint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mint-form')).not.toBeInTheDocument();
+  });
+
   it('opens the detail view when a tile is clicked', async () => {
     mockSw((m) => (m.action === 'listNfts' ? { nfts: [nft()] } : { success: true }));
     renderWithProviders(<CollectiblesPanel full />);

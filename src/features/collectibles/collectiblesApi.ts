@@ -1,6 +1,7 @@
 import { api } from '@/api/api';
 import { ACTIONS } from '@/lib/messages';
-import type { WalletNft, NftTransferSummary } from '@/offscreen/nfts';
+import type { WalletNft, NftTransferSummary, NftMintSummary } from '@/offscreen/nfts';
+import type { WireNftMintParams } from '@/offscreen/vault';
 
 /**
  * Collectibles (NFTs) endpoints (#56) — routed over the SW seam (`chromeBaseQuery` →
@@ -11,7 +12,8 @@ import type { WalletNft, NftTransferSummary } from '@/offscreen/nfts';
  * single `api` slice.
  */
 
-export type { WalletNft, NftTransferSummary } from '@/offscreen/nfts';
+export type { WalletNft, NftTransferSummary, NftMintSummary } from '@/offscreen/nfts';
+export type { WireNftMintParams } from '@/offscreen/vault';
 
 export const collectiblesApi = api.injectEndpoints({
   endpoints: (build) => ({
@@ -34,6 +36,20 @@ export const collectiblesApi = api.injectEndpoints({
       query: (arg) => ({ action: ACTIONS.confirmNftTransfer, ...arg }),
       invalidatesTags: ['Collectibles', 'Activity', 'Balances'],
     }),
+
+    // Build (not broadcast) a new-NFT mint (#92) → the pending id + launcher id + decoded summary.
+    prepareNftMint: build.mutation<
+      { pendingId: string; launcherId: string; nftMintSummary: NftMintSummary },
+      { nftMint: WireNftMintParams }
+    >({
+      query: (arg) => ({ action: ACTIONS.prepareNftMint, ...arg }),
+    }),
+
+    // Sign + BROADCAST a prepared NFT mint (the approved step). Invalidates collectibles + ledger.
+    confirmNftMint: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
+      query: (arg) => ({ action: ACTIONS.confirmNftMint, ...arg }),
+      invalidatesTags: ['Collectibles', 'Activity', 'Balances'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -42,4 +58,6 @@ export const {
   useListCollectiblesQuery,
   usePrepareNftTransferMutation,
   useConfirmNftTransferMutation,
+  usePrepareNftMintMutation,
+  useConfirmNftMintMutation,
 } = collectiblesApi;

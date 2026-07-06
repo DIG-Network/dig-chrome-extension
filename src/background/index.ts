@@ -1078,6 +1078,18 @@ async function handleCustodyAction(message) {
       if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft transfer failed' };
     }
+    case ACTIONS.prepareNftMint: {
+      // Build (not broadcast) a new-NFT mint (#92): CHIP-0007 metadata + royalty; held for approval.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareNftMint', nftMint: message.nftMint, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.confirmNftMint: {
+      // The ONLY place a prepared NFT mint is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft mint failed' };
+    }
     case ACTIONS.listCoins: {
       // Read-only per-asset coin listing (coin control #91). Routed on assetId (#121).
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
