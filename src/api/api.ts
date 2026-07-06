@@ -11,6 +11,8 @@ export const TAGS = [
   // Self-custody (#56): lock state + derived receive addresses.
   'LockState',
   'Address',
+  // Multi-wallet switcher (#90): the wallet registry metadata list.
+  'Wallets',
   // Self-custody NFTs / Collectibles (#56).
   'Collectibles',
   // Coin control (#91): the per-asset unspent-coin list.

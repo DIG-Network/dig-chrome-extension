@@ -90,6 +90,9 @@ export type VaultOp =
   | 'unlockWallet'
   | 'lockWallet'
   | 'revealPhrase'
+  // Multi-wallet switcher (#90): activate an already-unlocked wallet / drop one wallet's cached key.
+  | 'switchWallet'
+  | 'forgetWallet'
   | 'getVaultState'
   | 'getReceiveAddress'
   | 'scanBalances'
@@ -122,6 +125,12 @@ export interface VaultRequest {
   password?: string;
   mnemonic?: string;
   label?: string;
+  /**
+   * Multi-wallet id (#90): which registry wallet this op targets. create/import/unlock cache the
+   * decrypted key under this id and make it active; switchWallet/forgetWallet act on it. Omitted =
+   * the legacy single-wallet slot.
+   */
+  walletId?: string;
   /** Use the STRONG (256 MiB) Argon2 preset for a high-value wallet. */
   strong?: boolean;
   /** The persisted keystore record (SW reads it from storage for unlock / reveal). */
@@ -233,9 +242,20 @@ interface PendingSend {
   inputCoinIds: string[];
 }
 
+/** The vault slot a legacy (pre-#90) single-wallet caller uses when it supplies no wallet id. */
+const DEFAULT_WALLET_ID = 'default';
+
 export class Vault {
-  /** The decrypted BIP-39 entropy — the ONLY secret held, in memory only. */
-  private entropy: Uint8Array | null = null;
+  /**
+   * The decrypted BIP-39 entropy per UNLOCKED wallet, keyed by wallet id — the ONLY secret held, in
+   * memory only (§5.1). Several of the user's OWN wallets may be unlocked at once within the shared
+   * unlock window so switching between them is instant; every key is zeroized together on lock. A
+   * legacy single-wallet caller (no walletId) uses the {@link DEFAULT_WALLET_ID} slot.
+   */
+  private keys = new Map<string, Uint8Array>();
+
+  /** The active wallet id — the wallet every derived op (derive / scan / send / sign) reads. */
+  private activeId: string | null = null;
 
   /** Prepared sends awaiting user approval → confirm (cleared on confirm / lock). */
   private pending = new Map<string, PendingSend>();
@@ -243,23 +263,29 @@ export class Vault {
   /** Prepared trades (take/cancel) — a signed bundle held between approval and broadcast. */
   private pendingTrades = new Map<string, { bundle: ChainSpendBundle; inputCoinId: string }>();
 
-  /** True iff a decrypted key is currently held in memory. */
+  /** True iff the ACTIVE wallet's decrypted key is currently held in memory. */
   hasKey(): boolean {
-    return this.entropy !== null;
+    return this.activeId !== null && this.keys.has(this.activeId);
   }
 
-  /** Zeroize + drop the held secret (best-effort). Idempotent. Also drops any pending sends. */
+  /** Zeroize + drop EVERY held secret (best-effort). Idempotent. Also drops any pending sends. */
   lock(): void {
-    if (this.entropy) this.entropy.fill(0);
-    this.entropy = null;
+    for (const e of this.keys.values()) e.fill(0);
+    this.keys.clear();
+    this.activeId = null;
     this.pending.clear();
     this.pendingTrades.clear();
   }
 
-  /** Replace the held entropy, zeroizing any prior copy first. */
-  private hold(entropy: Uint8Array): void {
-    this.lock();
-    this.entropy = entropy;
+  /**
+   * Hold `entropy` for `walletId` (zeroizing any prior copy for the SAME id) and make it active. Other
+   * unlocked wallets are left intact so switching back to them stays instant (§90).
+   */
+  private hold(entropy: Uint8Array, walletId: string = DEFAULT_WALLET_ID): void {
+    const prev = this.keys.get(walletId);
+    if (prev) prev.fill(0);
+    this.keys.set(walletId, entropy);
+    this.activeId = walletId;
   }
 
   /** Dispatch one vault request. Never throws — failures come back as `{success:false, code}`. */
@@ -277,6 +303,10 @@ export class Vault {
         case 'lockWallet':
           this.lock();
           return { success: true, hasKey: false };
+        case 'switchWallet':
+          return this.switchWallet(req);
+        case 'forgetWallet':
+          return this.forgetWallet(req);
         case 'getVaultState':
           return { success: true, hasKey: this.hasKey() };
         case 'getReceiveAddress':
@@ -342,7 +372,7 @@ export class Vault {
       ...(req.label ? { label: req.label } : {}),
       ...(deps.argon2Fn ? { argon2Fn: deps.argon2Fn } : {}),
     });
-    this.hold(entropy);
+    this.hold(entropy, req.walletId);
     return { success: true, hasKey: true, record, mnemonic, usedFallback };
   }
 
@@ -357,7 +387,7 @@ export class Vault {
       ...(req.label ? { label: req.label } : {}),
       ...(deps.argon2Fn ? { argon2Fn: deps.argon2Fn } : {}),
     });
-    this.hold(entropy);
+    this.hold(entropy, req.walletId);
     return { success: true, hasKey: true, record, usedFallback };
   }
 
@@ -366,8 +396,38 @@ export class Vault {
       return { success: false, code: 'BAD_REQUEST', message: 'password and record required' };
     }
     const entropy = await decryptEntropy(req.record, req.password, deps.argon2Fn);
-    this.hold(entropy);
+    this.hold(entropy, req.walletId);
     return { success: true, hasKey: true };
+  }
+
+  /**
+   * Make another ALREADY-UNLOCKED wallet active (instant, no password). Returns `NEEDS_UNLOCK` when
+   * the target wallet's key is not cached this session, so the SW prompts for its password and then
+   * unlocks it. Switching drops the previous wallet's pending sends/trades (they are keyed to its
+   * coins/keys).
+   */
+  private switchWallet(req: VaultRequest): VaultResponse {
+    if (!req.walletId) return { success: false, code: 'BAD_REQUEST', message: 'walletId required' };
+    if (!this.keys.has(req.walletId)) return { success: false, code: 'NEEDS_UNLOCK', message: 'wallet not unlocked' };
+    this.activeId = req.walletId;
+    this.pending.clear();
+    this.pendingTrades.clear();
+    return { success: true, hasKey: true };
+  }
+
+  /** Zeroize + drop ONE wallet's cached key (used when removing a wallet). Idempotent. */
+  private forgetWallet(req: VaultRequest): VaultResponse {
+    if (req.walletId) {
+      const e = this.keys.get(req.walletId);
+      if (e) e.fill(0);
+      this.keys.delete(req.walletId);
+      if (this.activeId === req.walletId) {
+        this.activeId = null;
+        this.pending.clear();
+        this.pendingTrades.clear();
+      }
+    }
+    return { success: true, hasKey: this.hasKey() };
   }
 
   /**
@@ -384,10 +444,16 @@ export class Vault {
     return { success: true, mnemonic };
   }
 
-  /** Derive the held wallet's BIP-39 seed from the in-memory entropy (never leaves the vault). */
+  /** The active wallet's held entropy (or null when the active wallet is locked / absent). */
+  private activeEntropy(): Uint8Array | null {
+    return this.activeId ? this.keys.get(this.activeId) ?? null : null;
+  }
+
+  /** Derive the active wallet's BIP-39 seed from its in-memory entropy (never leaves the vault). */
   private async heldSeed(): Promise<Uint8Array | null> {
-    if (!this.entropy) return null;
-    return mnemonicToSeed(entropyToMnemonic(this.entropy));
+    const entropy = this.activeEntropy();
+    if (!entropy) return null;
+    return mnemonicToSeed(entropyToMnemonic(entropy));
   }
 
   private async getReceiveAddress(deps: VaultDeps): Promise<VaultResponse> {

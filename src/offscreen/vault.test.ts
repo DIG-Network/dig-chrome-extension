@@ -123,6 +123,71 @@ describe('offscreen Vault', () => {
   });
 });
 
+describe('offscreen Vault multi-wallet (#90)', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  it('holds several wallets at once and switches the active one instantly (no re-unlock)', async () => {
+    const v = new Vault();
+    expect((await v.handle({ op: 'createWallet', walletId: 'A', password: PW }, deps)).success).toBe(true);
+    expect((await v.handle({ op: 'createWallet', walletId: 'B', password: PW }, deps)).success).toBe(true);
+    // B is active (last held); switching back to A is instant, no password.
+    expect(v.hasKey()).toBe(true);
+    const sw = await v.handle({ op: 'switchWallet', walletId: 'A' }, deps);
+    expect(sw.success).toBe(true);
+    expect(sw.hasKey).toBe(true);
+  });
+
+  it('the ACTIVE wallet drives the derived receive address (switching re-derives)', async () => {
+    const v = new Vault();
+    await v.handle({ op: 'importWallet', walletId: 'A', password: PW, mnemonic: golden.mnemonic }, deps);
+    await v.handle({ op: 'createWallet', walletId: 'B', password: PW }, deps); // fresh random → now active
+    const addrB = await v.handle({ op: 'getReceiveAddress' }, { ...deps, chia });
+    await v.handle({ op: 'switchWallet', walletId: 'A' }, deps);
+    const addrA = await v.handle({ op: 'getReceiveAddress' }, { ...deps, chia });
+    expect(addrA.address).toBe(golden.unhardened[0].address);
+    expect(addrA.address).not.toBe(addrB.address); // switching genuinely re-derives the active wallet
+  });
+
+  it('switchWallet to a wallet not unlocked this session returns NEEDS_UNLOCK', async () => {
+    const v = new Vault();
+    await v.handle({ op: 'createWallet', walletId: 'A', password: PW }, deps);
+    const res = await v.handle({ op: 'switchWallet', walletId: 'ghost' }, deps);
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('NEEDS_UNLOCK');
+  });
+
+  it('switchWallet without a walletId is BAD_REQUEST', async () => {
+    expect((await new Vault().handle({ op: 'switchWallet' }, deps)).code).toBe('BAD_REQUEST');
+  });
+
+  it('forgetWallet drops one wallet key; forgetting the active one locks the session', async () => {
+    const v = new Vault();
+    await v.handle({ op: 'createWallet', walletId: 'A', password: PW }, deps);
+    await v.handle({ op: 'createWallet', walletId: 'B', password: PW }, deps); // B active
+    // Forget the NON-active A → B stays active + unlocked, but A can no longer be switched to.
+    expect((await v.handle({ op: 'forgetWallet', walletId: 'A' }, deps)).success).toBe(true);
+    expect(v.hasKey()).toBe(true);
+    expect((await v.handle({ op: 'switchWallet', walletId: 'A' }, deps)).code).toBe('NEEDS_UNLOCK');
+    // Forget the ACTIVE B → nothing held.
+    const f2 = await v.handle({ op: 'forgetWallet', walletId: 'B' }, deps);
+    expect(f2.hasKey).toBe(false);
+    expect(v.hasKey()).toBe(false);
+  });
+
+  it('lock zeroizes EVERY held wallet key', async () => {
+    const v = new Vault();
+    await v.handle({ op: 'createWallet', walletId: 'A', password: PW }, deps);
+    await v.handle({ op: 'createWallet', walletId: 'B', password: PW }, deps);
+    v.lock();
+    expect(v.hasKey()).toBe(false);
+    expect((await v.handle({ op: 'switchWallet', walletId: 'A' }, deps)).code).toBe('NEEDS_UNLOCK');
+    expect((await v.handle({ op: 'switchWallet', walletId: 'B' }, deps)).code).toBe('NEEDS_UNLOCK');
+  });
+});
+
 describe('Vault dApp RPC ops (#56 §5.5)', () => {
   let chia: ScanWasm;
   beforeAll(async () => {

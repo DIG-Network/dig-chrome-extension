@@ -58,6 +58,22 @@ import {
   computeLockSnapshot,
   prepareSendVaultRequest,
 } from '@/lib/custody-session';
+// Multi-wallet registry (#90): the pure decision layer over the DIGWX1 keystore — migrate a legacy
+// single record into a registry, and the add/rename/remove/active-selection transforms. The SW owns
+// the chrome.storage.* I/O around these pure helpers.
+import {
+  WALLETS_KEY,
+  migrateRegistry,
+  addWallet,
+  renameWallet as renameWalletEntry,
+  removeWallet as removeWalletEntry,
+  findWallet,
+  activeRecord,
+  nextActiveId,
+  toMeta,
+  normalizeLabel,
+  defaultLabel,
+} from '@/lib/wallet-registry';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from '@/lib/wallet-assets';
 import { DIG_ASSET_ID } from '@/lib/links';
@@ -796,6 +812,46 @@ async function readWalletSettings() {
   return out[SETTINGS_KEY] || {};
 }
 
+// ─── Multi-wallet registry (#90) ────────────────────────────────────────────────────────────────
+// The registry is three storage keys: WALLETS_KEY (every wallet's encrypted record + metadata),
+// ACTIVE_WALLET_KEY (the active id), and KEYSTORE_KEY (a MIRROR of the active record so every legacy
+// single-wallet read path keeps working). loadRegistry() normalizes them (migrating a pre-#90 single
+// keystore into a one-entry registry ONCE), and persistRegistry() writes all three atomically.
+
+/** Persist the normalized registry state: the records+metadata, the active id, and the active mirror. */
+async function persistRegistry(state) {
+  await chrome.storage.local.set({
+    [WALLETS_KEY]: state.wallets,
+    [ACTIVE_WALLET_KEY]: state.activeId,
+    [KEYSTORE_KEY]: state.keystore, // mirror the active record for the legacy read paths
+  });
+}
+
+/** Read + normalize the registry; migrate a legacy single keystore into a one-entry registry once. */
+async function loadRegistry() {
+  const [ks, wl, act] = await Promise.all([
+    chrome.storage.local.get(KEYSTORE_KEY),
+    chrome.storage.local.get(WALLETS_KEY),
+    chrome.storage.local.get(ACTIVE_WALLET_KEY),
+  ]);
+  const hadRegistry = Array.isArray(wl[WALLETS_KEY]) && wl[WALLETS_KEY].length > 0;
+  const state = migrateRegistry({
+    legacyKeystore: ks[KEYSTORE_KEY] || null,
+    wallets: wl[WALLETS_KEY] || null,
+    activeId: act[ACTIVE_WALLET_KEY] || null,
+    now: Date.now(),
+    genId: () => crypto.randomUUID(),
+  });
+  // Only write back on the one-time legacy→registry migration, to avoid needless storage churn.
+  if (!hadRegistry && state.wallets.length > 0) await persistRegistry(state);
+  return state;
+}
+
+/** Drop the active-wallet balance/activity caches — they are wallet-specific and stale after a switch. */
+async function clearActiveWalletCaches() {
+  try { await chrome.storage.local.remove([BALANCES_CACHE_KEY, ACTIVITY_CACHE_KEY]); } catch { /* ignore */ }
+}
+
 /** Start (or extend) the unlock window: persist the non-secret expiry + arm the auto-lock alarm. */
 async function startUnlockWindow() {
   const ttl = resolveTtlMinutes(await readWalletSettings());
@@ -843,31 +899,99 @@ async function handleCustodyAction(message) {
       await lockVaultNow();
       return { lockState: LOCK_STATE.LOCKED };
     case ACTIONS.createWallet: {
-      const res = await callVault({ op: 'createWallet', password: message.password, label: message.label, strong: message.strong });
+      // ADD a wallet: fresh id, its own DIGWX1 record, appended to the registry + made active (#90).
+      const state = await loadRegistry();
+      const walletId = crypto.randomUUID();
+      const label = normalizeLabel(message.label, defaultLabel(state.wallets.length + 1));
+      const res = await callVault({ op: 'createWallet', walletId, password: message.password, label, strong: message.strong });
       if (!res || res.success === false) return res || { success: false, code: 'CUSTODY_ERROR', message: 'create failed' };
-      await chrome.storage.local.set({ [KEYSTORE_KEY]: res.record, [ACTIVE_WALLET_KEY]: message.label || 'main' });
+      const entry = { id: walletId, label, record: res.record, createdAt: Date.now() };
+      await persistRegistry({ wallets: addWallet(state.wallets, entry), activeId: walletId, keystore: res.record });
+      await clearActiveWalletCaches();
       await startUnlockWindow();
-      return { lockState: LOCK_STATE.UNLOCKED, mnemonic: res.mnemonic, usedFallback: res.usedFallback };
+      return { lockState: LOCK_STATE.UNLOCKED, mnemonic: res.mnemonic, usedFallback: res.usedFallback, activeWalletId: walletId };
     }
     case ACTIONS.importWallet: {
-      const res = await callVault({ op: 'importWallet', mnemonic: message.mnemonic, password: message.password, label: message.label, strong: message.strong });
+      // ADD an imported wallet: fresh id, its own record, appended + made active (#90).
+      const state = await loadRegistry();
+      const walletId = crypto.randomUUID();
+      const label = normalizeLabel(message.label, defaultLabel(state.wallets.length + 1));
+      const res = await callVault({ op: 'importWallet', walletId, mnemonic: message.mnemonic, password: message.password, label, strong: message.strong });
       if (!res || res.success === false) return res || { success: false, code: 'CUSTODY_ERROR', message: 'import failed' };
-      await chrome.storage.local.set({ [KEYSTORE_KEY]: res.record, [ACTIVE_WALLET_KEY]: message.label || 'main' });
+      const entry = { id: walletId, label, record: res.record, createdAt: Date.now() };
+      await persistRegistry({ wallets: addWallet(state.wallets, entry), activeId: walletId, keystore: res.record });
+      await clearActiveWalletCaches();
       await startUnlockWindow();
-      return { lockState: LOCK_STATE.UNLOCKED, usedFallback: res.usedFallback };
+      return { lockState: LOCK_STATE.UNLOCKED, usedFallback: res.usedFallback, activeWalletId: walletId };
     }
     case ACTIONS.unlockWallet: {
-      const record = await readKeystore();
-      if (!record) return { success: false, code: 'NO_WALLET', message: 'no wallet to unlock' };
-      const res = await callVault({ op: 'unlockWallet', password: message.password, record });
+      // Unlock the ACTIVE wallet, caching its key in the vault under the active id (#90).
+      const state = await loadRegistry();
+      if (!state.keystore) return { success: false, code: 'NO_WALLET', message: 'no wallet to unlock' };
+      const res = await callVault({ op: 'unlockWallet', walletId: state.activeId, password: message.password, record: state.keystore });
       if (!res || res.success === false) return res || { success: false, code: 'UNLOCK_FAILED', message: 'unlock failed' };
       await startUnlockWindow();
-      return { lockState: LOCK_STATE.UNLOCKED, usedFallback: res.usedFallback };
+      return { lockState: LOCK_STATE.UNLOCKED, usedFallback: res.usedFallback, activeWalletId: state.activeId };
     }
     case ACTIONS.revealPhrase: {
       const record = await readKeystore();
       if (!record) return { success: false, code: 'NO_WALLET', message: 'no wallet' };
       return callVault({ op: 'revealPhrase', password: message.password, record });
+    }
+    case ACTIONS.listWallets: {
+      // Record-FREE metadata + the active id (the encrypted records never leave the SW).
+      const state = await loadRegistry();
+      return { wallets: toMeta(state.wallets, state.activeId), activeWalletId: state.activeId };
+    }
+    case ACTIONS.switchWallet: {
+      // Activate another wallet. Instant if its key is already cached in the vault; else, with a
+      // password, unlock it now; else NEEDS_UNLOCK so the UI prompts for that wallet's password.
+      const state = await loadRegistry();
+      const target = findWallet(state.wallets, message.walletId);
+      if (!target) return { success: false, code: 'NO_WALLET', message: 'unknown wallet' };
+      let res = await callVault({ op: 'switchWallet', walletId: target.id });
+      if (!res || res.success === false) {
+        if (res && res.code === 'NEEDS_UNLOCK') {
+          if (!message.password) return { success: false, code: 'NEEDS_UNLOCK', message: 'wallet locked' };
+          res = await callVault({ op: 'unlockWallet', walletId: target.id, password: message.password, record: target.record });
+          if (!res || res.success === false) return res || { success: false, code: 'UNLOCK_FAILED', message: 'unlock failed' };
+        } else {
+          return res || { success: false, code: 'CUSTODY_ERROR', message: 'switch failed' };
+        }
+      }
+      await persistRegistry({ wallets: state.wallets, activeId: target.id, keystore: target.record });
+      await clearActiveWalletCaches();
+      await startUnlockWindow();
+      return { lockState: LOCK_STATE.UNLOCKED, activeWalletId: target.id };
+    }
+    case ACTIONS.renameWallet: {
+      const state = await loadRegistry();
+      const label = normalizeLabel(message.label, '');
+      if (!label) return { success: false, code: 'BAD_REQUEST', message: 'label required' };
+      if (!findWallet(state.wallets, message.walletId)) return { success: false, code: 'NO_WALLET', message: 'unknown wallet' };
+      const wallets = renameWalletEntry(state.wallets, message.walletId, label);
+      await persistRegistry({ wallets, activeId: state.activeId, keystore: activeRecord(wallets, state.activeId) });
+      return { success: true, wallets: toMeta(wallets, state.activeId), activeWalletId: state.activeId };
+    }
+    case ACTIONS.removeWallet: {
+      // Drop a wallet (zeroize its cached key). Never remove the last wallet; re-home the active one.
+      const state = await loadRegistry();
+      if (!findWallet(state.wallets, message.walletId)) return { success: false, code: 'NO_WALLET', message: 'unknown wallet' };
+      if (state.wallets.length <= 1) return { success: false, code: 'LAST_WALLET', message: 'cannot remove the last wallet' };
+      const wasActive = state.activeId === message.walletId;
+      const wallets = removeWalletEntry(state.wallets, message.walletId);
+      const activeId = nextActiveId(wallets, wasActive ? null : state.activeId);
+      await callVault({ op: 'forgetWallet', walletId: message.walletId });
+      let lockState = LOCK_STATE.UNLOCKED;
+      if (wasActive) {
+        // Keep the session unlocked only if the new active wallet's key is still cached; else lock so
+        // the gate prompts to unlock it.
+        const sw = await callVault({ op: 'switchWallet', walletId: activeId });
+        if (!sw || sw.success === false) { await lockVaultNow(); lockState = LOCK_STATE.LOCKED; }
+      }
+      await persistRegistry({ wallets, activeId, keystore: activeRecord(wallets, activeId) });
+      await clearActiveWalletCaches();
+      return { success: true, wallets: toMeta(wallets, activeId), activeWalletId: activeId, lockState };
     }
     case ACTIONS.getReceiveAddress:
       return callVault({ op: 'getReceiveAddress' });
