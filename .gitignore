@@ -35,3 +35,6 @@ npm-debug.log*
 # Playwright (screenshot harness — screenshots under e2e/__screenshots__ are committed as design artifacts)
 test-results/
 playwright-report/
+
+# Agent worktrees / local tooling
+.claude/
