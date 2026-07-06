@@ -144,7 +144,7 @@ export function CustodyWallet() {
                   fiatLabel={fiatLabelFor(a)}
                   iconUrl={a.descriptor.iconUrl}
                   priceLoading={prices.isLoading}
-                  testid={`asset-${a.descriptor.key}`}
+                  testid={a.descriptor.key === 'cat' ? `asset-cat-${a.descriptor.assetId}` : `asset-${a.descriptor.key}`}
                 />
               ))}
             </div>

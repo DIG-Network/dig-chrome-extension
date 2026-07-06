@@ -37,6 +37,29 @@ export async function mapWithConcurrency<T, R>(
 }
 
 /**
+ * Reject with a `TIMEOUT` error if `promise` does not settle within `ms`. Guards against a chain read
+ * that never settles (a dead/blocked endpoint — the wasm coinset `RpcClient` has NO built-in timeout,
+ * so without this a scan hangs the wallet forever instead of falling back to the cached snapshot).
+ * `ms <= 0` disables the timeout (returns the promise unchanged). The timer is always cleared.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, label = 'request'): Promise<T> {
+  if (!(ms > 0)) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`TIMEOUT: ${label} exceeded ${ms}ms`)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
  * Run `fn`, retrying on rejection up to `retries` extra attempts with exponential backoff
  * (`baseDelayMs * 2^attempt`). The LAST error is rethrown once attempts are exhausted. `retries: 0`
  * means a single attempt (no retry). Backoff sleep is injectable for tests.

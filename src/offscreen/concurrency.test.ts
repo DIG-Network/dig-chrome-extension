@@ -1,5 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
-import { mapWithConcurrency, withRetry } from './concurrency';
+import { mapWithConcurrency, withRetry, withTimeout } from './concurrency';
+
+describe('withTimeout', () => {
+  it('resolves when the promise settles in time', async () => {
+    await expect(withTimeout(Promise.resolve(7), 1000)).resolves.toBe(7);
+  });
+
+  it('rejects with TIMEOUT when the promise hangs past ms', async () => {
+    await expect(withTimeout(new Promise(() => {}), 20, 'chain read')).rejects.toThrow(/TIMEOUT: chain read/);
+  });
+
+  it('propagates a rejection unchanged', async () => {
+    await expect(withTimeout(Promise.reject(new Error('boom')), 1000)).rejects.toThrow('boom');
+  });
+
+  it('disables the timeout for ms <= 0 (returns the promise as-is)', async () => {
+    await expect(withTimeout(Promise.resolve('ok'), 0)).resolves.toBe('ok');
+  });
+});
 
 describe('mapWithConcurrency', () => {
   it('maps every item preserving input order', async () => {
