@@ -1,6 +1,6 @@
 import { assetDescriptors } from '@/lib/wallet-assets';
 import { formatBaseUnits } from '@/lib/wallet-view';
-import type { AssetBalance } from '@/features/wallet/walletApi';
+import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { CustodyBalances } from '@/features/wallet/custodyApi';
 
 const strip0x = (h: string | null | undefined): string => String(h ?? '').replace(/^0x/i, '').toLowerCase();

@@ -11,8 +11,9 @@ Home, injects a `window.chia` wallet, and shows a verified badge.
   (DIGHUb, XCH Annuity, TibetSwap, Docs), a Search ⇄ App Store switcher, and a DuckDuckGo
   web-search fallback. Ported from the native browser's NTP.
 - **`window.chia` provider**: dapps get a CHIP-0002 `window.chia` on every page — the same
-  surface the native browser injects. Extensions can't run an in-process wallet, so it's
-  brokered over **WalletConnect → Sage**, with per-origin connect consent. The provider is
+  surface the native browser injects. It is backed by the extension's own **self-custody wallet**:
+  connect + reads are served from the offscreen key vault and sign requests are approved in a
+  dedicated window, with per-origin connect consent. There is no WalletConnect. The provider is
   **self-describing**: `window.chia.version`, `window.chia.info`
   (`{ isDIG, transport, edition }`), `window.chia.methods`, and a local
   `request({ method:'chip0002_getMethods' })` introspection call; thrown errors use the
@@ -22,8 +23,9 @@ Home, injects a `window.chia` wallet, and shows a verified badge.
   failure shows a distinct red state.
 - **Toolbar actions — Wallet · Shield · Control Panel** (popup): the popup leads with a
   three-action toolbar mirroring the native DIG Browser's toolbar, each switching to its panel:
-  - **Wallet** — balance (XCH + $DIG), connect/disconnect (WalletConnect → Sage), and a
-    "Get $DIG ↗" link. The extension equivalent of the browser's docked `dig://wallet`.
+  - **Wallet** — the self-custody wallet: create/import a 24-word phrase, unlock, then balances
+    (XCH + $DIG + tracked CATs), send/receive, trade, and collectibles — all signed locally in the
+    offscreen vault. The extension equivalent of the browser's docked `dig://wallet`.
   - **Shield** — the **DIG Shields** surface for the active tab: the aggregate verified/failed
     verdict, the capsule (`storeId:rootHash`) disclosure, and the **per-resource proof ledger**
     (#134) — each resolved resource's inclusion-proof verdict grouped **Verified (N) / Failed
@@ -39,8 +41,8 @@ Home, injects a `window.chia` wallet, and shows a verified badge.
     when no local node is present, reads transparently fall back to `rpc.dig.net` (stated honestly).
 - **DIG settings** (options page): the dig-node host (`localhost:8080`, or an explicitly
   configured custom host that wins entirely over the auto ladder) with a "dig-node not
-  running" affordance, the upstream RPC endpoint, and the WalletConnect project id. The
-  extension does not cache resolved content — caching is a dig-node job.
+  running" affordance and the upstream RPC endpoint. The extension does not cache resolved
+  content — caching is a dig-node job.
 
 > Some native-browser features are **impossible in MV3** and stay browser-only: network-stack
 > `chia://` scheme interception (the extension renders via an in-extension viewer instead),
@@ -124,7 +126,6 @@ To register `chia://` as a system-wide protocol handler (eliminates "scheme does
 
 - `npm run build` - Validates and prepares the extension in the `dist/` folder
 - `npm run build:zip` - Builds the extension and creates a zip file for distribution
-- `npm run vendor:wc` - (Re)bundles the WalletConnect SignClient into `vendor/` (esbuild)
 - `npm run server` - Starts the Express test server (recommended)
 - `npm run server:stub` - Starts the simple stub server (alternative)
 - `npm run generate-icons` - Generates icon placeholder files (icons should be created using `create-icons.html`)
@@ -133,28 +134,11 @@ The build script will:
 - ✅ Validate all required extension files
 - ✅ Check for icons (optional, but recommended)
 - ✅ Copy all files to a `dist/` directory ready for installation
-- ✅ Vendor the WalletConnect SignClient (see below) and bake the WC project id
+- ✅ Bundle the injected `window.chia` provider + the MV3 service worker
 - ✅ Optionally create a zip file for distribution
 
-### WalletConnect → Sage wiring
-
-Live wallet pairing needs two build-time pieces (both handled by `npm run build`):
-
-1. **Vendored SignClient.** An MV3 extension page's CSP (`script-src 'self'`) blocks loading
-   the WalletConnect SignClient from a CDN, so the build bundles `@walletconnect/sign-client`
-   (+ deps) into a single same-origin ESM at `vendor/walletconnect-sign-client.js` via esbuild.
-   The bundle is **eval-free** (MV3 forbids `eval`/`new Function`); the build asserts this and
-   fails if a dependency reintroduces dynamic codegen. `popup/wallet-wc.js` imports it at
-   runtime. The bundle is a generated artifact (git-ignored) — regenerate with `npm run vendor:wc`.
-
-2. **WalletConnect (Reown) project id.** The build bakes a **default** project id into
-   `dist/wallet-wc.js` so pairing works out of the box. It is read at build time from
-   `WALLETCONNECT_PROJECT_ID` (env), falling back to the hub's
-   `apps/web/.env.local` `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` when building inside the
-   ecosystem superproject. In CI, set the `WALLETCONNECT_PROJECT_ID` repo/org secret. The
-   project id is **never** committed as a source literal; the options page field remains a
-   per-user override. (It is a client-public identifier, like the hub's `NEXT_PUBLIC_*`, so it
-   may appear in the built `dist/` artifact.)
+The extension is a **self-custody wallet** — it holds its own key in the offscreen vault and signs
+locally. There is no WalletConnect: no vendored SignClient, no relay, and no project id to configure.
 
 ## Usage
 

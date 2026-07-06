@@ -152,24 +152,30 @@ function shortAddr(a: string): string {
   return a.length > 14 ? `${a.slice(0, 8)}…${a.slice(-4)}` : a;
 }
 
-/** Reflect wallet connection state (label + dot) from the shared WC connection store. */
+/**
+ * Reflect the self-custody wallet state (label + dot) from the SW's authoritative lock state.
+ * The extension IS the wallet (no WalletConnect): an UNLOCKED wallet shows its receive address; a
+ * locked / absent wallet shows the neutral "Wallet" pill.
+ */
 async function reflectWallet(): Promise<void> {
   const wallet = $('wallet');
   const label = $('walletLabel');
   if (!wallet) return;
-  let connected = false;
+  let unlocked = false;
   let address = '';
   try {
-    const { 'wallet.connection': conn } = await chrome.storage.local.get('wallet.connection');
-    const c = conn as { connected?: boolean; address?: string } | undefined;
-    connected = !!c?.connected;
-    address = c?.address || '';
+    const lock = (await chrome.runtime.sendMessage({ action: 'getLockState' })) as { lockState?: string } | undefined;
+    unlocked = lock?.lockState === 'unlocked';
+    if (unlocked) {
+      const r = (await chrome.runtime.sendMessage({ action: 'getReceiveAddress' })) as { address?: string } | undefined;
+      address = r?.address || '';
+    }
   } catch {
-    /* storage unavailable — show the default disconnected state */
+    /* SW unavailable — show the default (locked) state */
   }
-  if (connected) {
+  if (unlocked) {
     wallet.classList.add('connected');
-    if (label) label.textContent = address ? shortAddr(address) : 'Connected';
+    if (label) label.textContent = address ? shortAddr(address) : 'Wallet';
   } else {
     wallet.classList.remove('connected');
     if (label) label.textContent = 'Wallet';
@@ -195,9 +201,12 @@ function init(): void {
     });
   }
 
-  // Keep the wallet pill fresh if the connection changes while DIG Home is open.
+  // Keep the wallet pill fresh if the wallet's lock state changes while DIG Home is open: the
+  // encrypted keystore blob (local) or the non-secret unlock-expiry (session) moving.
   chrome.storage?.onChanged?.addListener((changes, area) => {
-    if (area === 'local' && changes['wallet.connection']) void reflectWallet();
+    if ((area === 'local' && changes['wallet.keystore']) || (area === 'session' && changes['wallet.unlockExpiry'])) {
+      void reflectWallet();
+    }
   });
 }
 

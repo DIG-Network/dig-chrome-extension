@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
-import type { AssetBalance } from '@/features/wallet/walletApi';
+import type { AssetBalance } from '@/features/wallet/assetTypes';
 
 const xch = (bal: number | null): AssetBalance => ({
   descriptor: { key: 'xch', ticker: 'XCH', name: 'Chia', decimals: 12, assetId: null, type: null },

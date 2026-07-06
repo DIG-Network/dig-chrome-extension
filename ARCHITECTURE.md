@@ -43,7 +43,7 @@ pinned digest before any crypto runs — a mismatch fails closed.
 | `error-codes.mjs` | **Catalogued chia:// loader error codes** (`DIG_ERR_*`) + `classifyError`/`makeError`. The four canonical codes mirror docs.dig.net `error-codes.json` `dig-loader`. |
 | `dig-control.mjs` | **DIG Control Panel** decision logic (the `dig://control` parity surface): `decideControlView` (detect a local dig-node → manage vs install), `controlPanelViewModel`, the catalogued `CONTROL_METHODS` (`control.*`), `CONTROL_ERR` codes, and `controlInstallPrompt`. Byte-consistent with the dig-node control RPC contract (`dig-companion` `control.rs`/`meta.rs`). Imported by `background.js` (the `getControlStatus` handler + `controlRpc` bridge) and the popup. |
 | `dig-ledger.mjs` | **DIG Shields per-resource proof ledger** (#134) — `LedgerStore`, `groupLedger`, `inclusionProofDisplay`, `executionProofDisplay`. A **byte-mirror** of the native browser's `dig/shields/dig_ledger.mjs`; the dig-viewer records each resolved resource's inclusion verdict into the active tab's ledger (the `recordLedgerEntry` action) and the popup's Shield action lists it. Execution proofs are kept honest (never green-checked when mock/absent). |
-| `dig-provider-core.mjs` / `wallet-methods.mjs` | Thin re-exports of the canonical **`@dignetwork/chia-provider`** package (the single source of truth for the `window.chia` surface, shared byte-for-byte with the native DIG Browser). Kept as import points so the SW/broker/agent-surface/tests import them unchanged. |
+| `dig-provider-core.mjs` / `wallet-methods.mjs` | Thin re-exports of the canonical **`@dignetwork/chia-provider`** package (the single source of truth for the `window.chia` surface, shared byte-for-byte with the native DIG Browser). Kept as import points so the SW/UI/agent-surface/tests import them unchanged. |
 | `dig-provider.entry.mjs` → `dist/dig-provider.js` | The MAIN-world injected provider: `build.js` esbuild-bundles this entry (which wraps the package's `buildProvider` with the extension's postMessage transport) into a self-contained IIFE. NOT a hand-copied surface. |
 | `agent-surface.mjs` → `dist/agent-surface.json` | Machine-readable self-description (actions + wallet methods + error codes + provider surface) generated at build time from the modules above. |
 | `dig_client.js` + `dig_client_bg.wasm` | SRI-pinned read-crypto WASM (`retrievalKey`, `deriveKey`, `verifyInclusion`, `decryptChunk`). **Do not edit** — it is the byte-identical cross-system crypto artifact (see `../../SYSTEM.md`). |
@@ -125,7 +125,8 @@ The injected `window.chia` is BUILT FROM the shared **`@dignetwork/chia-provider
 the single source of truth for the DIG provider contract, consumed identically by the native DIG
 Browser and this extension so the two can never drift. `build.js` esbuild-bundles
 `dig-provider.entry.mjs` (which wraps the package's `buildProvider` with the extension's
-`window.postMessage` → content-script → background-SW → WalletConnect→Sage transport) into
+`window.postMessage` → content-script → background-SW transport, which routes to the self-custody
+wallet — the offscreen vault + the SW-summoned approval window; no WalletConnect) into
 `dist/dig-provider.js` as a self-contained MAIN-world IIFE.
 
 The surface is a Goby/CHIP-0002/Sage-WC2 superset: besides `isDIG`/`request`/`connect`/`on`/`off`
@@ -147,7 +148,7 @@ node build.js --json  # machine mode: ONE JSON result on stdout, prose on stderr
 ```
 
 Build exit codes: `0` success · `2` validation failed (a required source file is missing) ·
-`3` a build step failed (vendoring / artifact write).
+`3` a build step failed (bundling / artifact write).
 
 `build.js` fails if any required file is missing. Load the unpacked extension from
 `dist/` via `chrome://extensions` → Developer mode → Load unpacked.

@@ -7,7 +7,6 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const esbuild = require('esbuild');
-const { bundle: bundleWalletConnect, OUT_FILE: WC_VENDOR_FILE } = require('./scripts/bundle-walletconnect');
 
 // CLI flags. `--json` (machine mode) emits ONE JSON object to stdout, routes all human prose
 // to stderr, and suppresses color — the ecosystem-wide CLI convention (AGENT_FRIENDLY.md).
@@ -30,8 +29,8 @@ const EXTENSION_FILES = [
   // dig-provider-core, agent-surface, wallet-broker, dapp-approval, server-config, custody-session,
   // store-refs. They now inline into the esbuild SW bundle + the vite React/page bundles (no longer
   // plain-copied); agent-surface is esbuild-transpiled at build time by generateAgentSurface().
-  // (The legacy vanilla-popup wallet-wc.js was superseded by src/features/wallet/transport.ts and
-  // removed; the dig_client wasm-bindgen glue below is a vendored/generated artifact, not app logic.)
+  // (The extension is a self-custody wallet — no WalletConnect client, no vendored SignClient; the
+  // dig_client wasm-bindgen glue below is a vendored/generated artifact, not app logic.)
   // NB: background.js (the MV3 module service worker) is NOT plain-copied — it is a strict entry at
   // src/background/index.ts that esbuild BUNDLES into dist/background.js by bundleBackground()
   // below (#68): the pure #shared/* leaves are inlined; ./dig_client.js is kept EXTERNAL (the
@@ -67,10 +66,6 @@ const DIST_DIR = path.join(__dirname, 'dist');
 const ICONS_DIR = path.join(__dirname, 'icons');
 const SRC_DIR = path.join(__dirname, 'src');
 const FAVICON_PATH = path.join(SRC_DIR, 'favicon.png');
-
-// The vendored WalletConnect SignClient ESM (built by scripts/bundle-walletconnect.js).
-// Copied into dist/vendor/ so the popup's wallet-wc.js import resolves under MV3 CSP.
-const WC_VENDOR_REL = path.join('vendor', 'walletconnect-sign-client.js');
 
 // Colors for console output
 const colors = {
@@ -251,7 +246,7 @@ const WEB_OUT_DIR = path.join(__dirname, 'dist-web');
  * emits the SHIPPED popup.html + app.html (with hashed, self-hosted asset references) plus the
  * bundled JS/CSS + vendored fonts. Plain Vite (not CRXJS) is used ONLY for the React pages so
  * build.js keeps owning the hand-tuned MV3 service worker, content scripts, injected provider,
- * WalletConnect vendoring, store interceptor, and the --zip release path unchanged.
+ * store interceptor, and the --zip release path unchanged.
  */
 function buildWebApp() {
   log('\n⚛️  Building React shell (Vite: popup.html + app.html)...', 'blue');
@@ -322,10 +317,6 @@ function injectAppVersion() {
     log(`✓ Injected app version ${version} into ${page}`, 'green');
   }
 }
-
-// (The build-time WalletConnect projectId injection was removed with the legacy wallet-wc.js — #68.
-// The live React shell sources the projectId from chrome.storage `wallet.projectId`, set on the DIG
-// options page — see src/features/wallet/transport.ts + src/entries/options.ts.)
 
 /**
  * Generate dist/agent-surface.json — the machine-readable self-description of the extension
@@ -584,22 +575,6 @@ async function bundleBackground() {
   log(`✓ Bundled: background.js (${kb} KB, ESM module SW; dig_client.js external, leaves inlined)`, 'green');
 }
 
-/** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
-async function vendorWalletConnect() {
-  log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
-  try {
-    await bundleWalletConnect();
-  } catch (e) {
-    log(`❌ WalletConnect bundling failed: ${e.message}`, 'red');
-    throw e;
-  }
-  const distVendorDir = path.join(DIST_DIR, 'vendor');
-  fs.mkdirSync(distVendorDir, { recursive: true });
-  const dest = path.join(distVendorDir, 'walletconnect-sign-client.js');
-  fs.copyFileSync(WC_VENDOR_FILE, dest);
-  log('✓ Copied: vendor/walletconnect-sign-client.js', 'green');
-}
-
 async function main() {
   log('🚀 Building DIG Network Browser Extension...\n', 'blue');
 
@@ -624,9 +599,6 @@ async function main() {
   // its build in all three §6.7 forms: a visible footer, <meta name="app-version">, and (via the
   // page script) window.__APP_VERSION__. The SOURCE keeps the __APP_VERSION__ placeholder.
   injectAppVersion();
-
-  // Vendor the WalletConnect SignClient (same-origin ESM for MV3) into dist/vendor/.
-  await vendorWalletConnect();
 
   // Bundle the injected window.chia provider from the shared @dignetwork/chia-provider package
   // into dist/dig-provider.js (single IIFE for the page MAIN world).

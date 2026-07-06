@@ -1,10 +1,10 @@
 /**
  * DIG settings (options.html) — the ONE settings home. The extension is a pure RPC consumer (it
  * does NOT cache resolved content — caching is a dig-node job), so this page only configures: the
- * dig-node host (`server.host`) with a reachability check, the upstream DIG RPC endpoint, and the
- * WalletConnect project id. Pure DOM glue, built by Vite as a standalone extension page under
- * `src/entries/`; the shared parser/resolver come from `#shared/*` so the background read path and
- * these keys can never disagree on the default port.
+ * dig-node host (`server.host`) with a reachability check and the upstream DIG RPC endpoint. Pure
+ * DOM glue, built by Vite as a standalone extension page under `src/entries/`; the shared
+ * parser/resolver come from `#shared/*` so the background read path and these keys can never
+ * disagree on the default port.
  */
 import { DIG_BROWSER_URL } from '@/lib/links';
 import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from '@/lib/server-config';
@@ -83,30 +83,6 @@ async function saveRpc(): Promise<void> {
   await chrome.storage.local.set({ digRpcEndpoint: endpoint });
 }
 
-// ---- Wallet project id ----
-async function loadProjectId(): Promise<void> {
-  const input = $<HTMLInputElement>('projectId');
-  if (!input) return;
-  try {
-    const { 'wallet.projectId': pid } = await chrome.storage.local.get('wallet.projectId');
-    input.value = (pid as string) || '';
-  } catch {
-    /* ignore */
-  }
-}
-
-async function saveProjectId(): Promise<void> {
-  const input = $<HTMLInputElement>('projectId');
-  if (!input) return;
-  const pid = (input.value || '').trim();
-  await chrome.storage.local.set({ 'wallet.projectId': pid });
-  const note = $('walletNote');
-  if (note) {
-    note.textContent = pid ? 'Project id saved.' : 'Enter a project id to enable wallet pairing.';
-    note.className = 'note' + (pid ? ' ok' : '');
-  }
-}
-
 function debounce(fn: () => void, ms: number): () => void {
   let t: ReturnType<typeof setTimeout>;
   return () => {
@@ -118,7 +94,6 @@ function debounce(fn: () => void, ms: number): () => void {
 function init(): void {
   void loadCompanion();
   void loadRpc();
-  void loadProjectId();
 
   const companionHost = $<HTMLInputElement>('companionHost');
   companionHost?.addEventListener('input', debounce(() => void saveCompanion(), 400));
@@ -135,10 +110,6 @@ function init(): void {
     if (rpcEndpoint) rpcEndpoint.value = DEFAULT_RPC;
     void saveRpc();
   });
-
-  const projectId = $<HTMLInputElement>('projectId');
-  projectId?.addEventListener('input', debounce(() => void saveProjectId(), 400));
-  projectId?.addEventListener('blur', () => void saveProjectId());
 
   const browserLink = $<HTMLAnchorElement>('browserLink');
   if (browserLink) {

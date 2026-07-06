@@ -1,30 +1,26 @@
 import { configureStore } from '@reduxjs/toolkit';
-import { api, type ThunkExtra } from '@/api/api';
+import { api } from '@/api/api';
 import { uiReducer } from '@/features/ui/uiSlice';
 import { walletReducer } from '@/features/wallet/walletSlice';
-import { wcTransport, type WalletTransport } from '@/features/wallet/transport';
 // Register feature endpoints (side-effect imports wire them into the single api slice).
-import '@/features/wallet/walletApi';
 import '@/features/wallet/custodyApi';
 import '@/features/resolver/resolverApi';
 import '@/features/shield/shieldApi';
 import '@/features/control/controlApi';
 
 /**
- * Create the Redux store. The wallet transport is injected as the thunk `extra` argument so the
- * RTK Query wallet endpoints have a testable seam (a mock transport in unit tests, the live
- * WalletConnect transport in the extension).
+ * Create the Redux store. Every server/backend interaction routes over the SW seam
+ * (`chromeBaseQuery` → `chrome.runtime.sendMessage`), so no transport is injected — unit tests
+ * drive the same store with a mocked `chrome.runtime.sendMessage`.
  */
-export function createStore(transport: WalletTransport = wcTransport) {
-  const extra: ThunkExtra = { transport };
+export function createStore() {
   return configureStore({
     reducer: {
       [api.reducerPath]: api.reducer,
       ui: uiReducer,
       wallet: walletReducer,
     },
-    middleware: (getDefault) =>
-      getDefault({ thunk: { extraArgument: extra } }).concat(api.middleware),
+    middleware: (getDefault) => getDefault().concat(api.middleware),
     // Batch RTK Query store notifications on the microtask queue rather than the default
     // requestAnimationFrame. `raf` defers a coalescing callback to the next animation frame (a ~16 ms
     // macrotask); under jsdom that frame can fire after a test's window is torn down and throw from
@@ -36,7 +32,7 @@ export function createStore(transport: WalletTransport = wcTransport) {
   });
 }
 
-/** The app store singleton (live transport). Tests use `createStore(mockTransport)`. */
+/** The app store singleton. Tests build a fresh one with `createStore()` + a mocked SW. */
 export const store = createStore();
 
 export type AppStore = ReturnType<typeof createStore>;

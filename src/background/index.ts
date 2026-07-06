@@ -83,14 +83,11 @@ import {
 // per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
 import { LedgerStore, groupLedger } from '@/lib/dig-ledger';
 
-// Wallet broker: per-origin consent + CHIP-0002 routing for the injected window.chia
-// provider, backed by WalletConnect→Sage. The broker core (consent gate, method
-// validation, envelope shaping) is in wallet-broker.mjs; the live WC session runs in the
-// popup page (MV3 SWs can't hold a relay socket), so the SW-side transport proxies
-// requests to the popup when it's open and otherwise reports "not connected".
+// Wallet consent + permissions store: the per-origin consent gate for the injected window.chia
+// provider plus the EIP-2255-shaped permission methods. There is NO WalletConnect broker — the
+// self-custody dApp router (dapp-approval) serves connect/read/sign against the offscreen vault;
+// this module owns only the shared per-origin consent map + connected-sites permissions.
 import {
-  brokerRequest,
-  getConnection as getWalletConnection,
   isOriginApproved,
   setOriginApproval,
   // Granular revocable permissions + connected sites (#67 P0-4).
@@ -222,43 +219,6 @@ function digErrorPageUrl(url, error) {
   const html = buildErrorPageHtml({ url, rawMessage, installPrompt });
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
-
-// ---- Wallet transport (SW side) -----------------------------------------------
-// The live WalletConnect SignClient runs in the popup page (it needs IndexedDB + a
-// long-lived relay socket, which an MV3 service worker cannot keep alive). The SW
-// brokers each window.chia request through this transport, which proxies to the popup
-// via chrome.runtime.sendMessage. If the popup isn't open, there is no live session, so
-// isConnected() reports the persisted connection flag and request() asks the popup
-// (failing cleanly when it's closed — the provider then surfaces "pair Sage in the popup").
-const walletTransport = {
-  async isConnected() {
-    const conn = await getWalletConnection(chrome.storage.local);
-    return !!(conn && conn.connected);
-  },
-  request({ method, params }) {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const done = (fn, arg) => { if (!settled) { settled = true; fn(arg); } };
-      try {
-        chrome.runtime.sendMessage(
-          { action: 'walletProxyToPopup', method, params },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              // No popup listening → no live relay session.
-              done(reject, new Error('Wallet popup is not open — open the extension and pair Sage'));
-              return;
-            }
-            if (!response) { done(reject, new Error('No response from wallet')); return; }
-            if (response.error) { done(reject, new Error(response.error)); return; }
-            done(resolve, response.data);
-          }
-        );
-      } catch (e) {
-        done(reject, e instanceof Error ? e : new Error(String(e)));
-      }
-    });
-  },
-};
 
 // Open the popup to collect per-origin consent. Programmatic popup opening isn't
 // universally available, so consent is collected out-of-band: the provider's connect()
@@ -1451,48 +1411,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // NOTE: sender.origin (when present) is the unspoofable origin; we prefer it over the
   // message-supplied origin so a compromised content script can't lie.
   //
-  // Routing (§5.5): when a SELF-CUSTODY wallet exists, route to the custody manager — connect +
+  // Routing (§5.5): every window.chia request routes to the SELF-CUSTODY dApp manager — connect +
   // reads go straight to the offscreen vault, and sign/message requests are enqueued + summon the
-  // approval window (the promise stays pending until the user decides). Otherwise fall back to the
-  // legacy WalletConnect → Sage broker (unchanged behaviour for users without a custody wallet).
+  // approval window (the promise stays pending until the user decides). A blocklisted origin is
+  // refused inside route() (#67 P0-2 phishing gate). There is NO WalletConnect/Sage fallback: the
+  // extension IS the wallet, so a request with no/locked wallet resolves to 202 (pending, awaiting
+  // approval) or a locked-class error, prompting the user to create/unlock a wallet in the extension.
   if (message.action === 'walletRpc') {
     const origin = (sender && sender.origin) || message.origin;
     (async () => {
       let env;
       try {
         // Permission management (#67 P0-4): wallet_getPermissions / wallet_revokePermissions are
-        // answered from the shared per-origin consent store, independent of custody vs broker.
+        // answered from the shared per-origin consent store.
         if (isPermissionMethod(message.method)) {
           env = await handlePermissionMethod(chrome.storage.local, message.method, origin);
           try { sendResponse(env); } catch { /* port closed */ }
           return;
         }
-        const hasCustodyWallet = !!(await readKeystore());
-        // Phishing gate (#67 P0-2): a blocklisted origin is refused for every method (the custody
-        // path enforces this inside route()); this guards the WalletConnect→Sage broker path.
-        const originRisk = hasCustodyWallet ? null : await assessOriginNow(origin);
-        if (originRisk && originRisk.verdict === 'block') {
-          env = { status: 403, body: { error: 'This site is flagged as dangerous and was blocked.' } };
-        } else if (hasCustodyWallet) {
-          env = await dappApproval.route({ method: message.method, params: message.params || {}, origin });
-        } else {
-          env = await brokerRequest(
-            {
-              storage: chrome.storage.local,
-              transport: walletTransport,
-              // For a not-yet-approved origin, record it as pending so the popup can prompt;
-              // do NOT auto-approve (the user approves in the popup → connect() resolves on poll).
-              requestConsent: async (o) => {
-                const approved = await isOriginApproved(chrome.storage.local, o);
-                if (!approved) await recordPendingOrigin(o);
-                return approved;
-              },
-            },
-            message.method,
-            message.params || {},
-            origin
-          );
-        }
+        env = await dappApproval.route({ method: message.method, params: message.params || {}, origin });
       } catch (e) {
         env = { status: 500, body: { error: (e && e.message) || 'wallet request failed' } };
       }
