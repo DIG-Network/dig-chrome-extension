@@ -100,6 +100,16 @@ import {
 // chrome-free (its consent lookups, the vault call, and the window summon are injected below).
 import { DappApprovalManager } from '@/lib/dapp-approval';
 
+// Phishing / malicious-origin protection (#67 P0-2). A DIG-curated blocklist is refreshed on an
+// interval into chrome.storage.local; a blocked origin is refused before connect and every request.
+import {
+  assessOrigin,
+  parseBlocklistPayload,
+  PHISHING_BLOCKLIST_KEY,
+  DEFAULT_BLOCKLIST_URL,
+  BLOCKLIST_REFRESH_MS,
+} from '@/lib/phishing';
+
 // SRI for the read-crypto WASM (same artifact + digest as hub.dig.net sw.js and apps/web/lib/dig-client.js).
 // Fail closed: a mismatch (tampered/wrong artifact) refuses to run unverified crypto.
 const DIG_CLIENT_WASM_SHA256 = "ff486be806f908a2a90780e499a04dbd34e10e3b97be0470cb9ee841a1e49e77";
@@ -1025,6 +1035,40 @@ try {
   });
 } catch { /* windows API unavailable */ }
 
+// ─── Phishing blocklist (#67 P0-2) ─────────────────────────────────────────────────────────────
+// Load the refreshed DIG-curated blocklist from storage (the bundled seed is unioned in assessOrigin).
+async function loadBlocklistDomains() {
+  try {
+    const out = await chrome.storage.local.get(PHISHING_BLOCKLIST_KEY);
+    const rec = out[PHISHING_BLOCKLIST_KEY];
+    return rec && Array.isArray(rec.domains) ? rec.domains : [];
+  } catch { return []; }
+}
+// Assess an origin against the current (seed ∪ refreshed) blocklist + DIG-lookalike heuristics.
+async function assessOriginNow(origin) {
+  return assessOrigin(origin, await loadBlocklistDomains());
+}
+// Best-effort refresh of the DIG-curated blocklist. A failed/absent endpoint keeps the last list
+// (never wipes a good list with an empty payload). Called on startup + on an interval alarm.
+async function refreshPhishingBlocklist() {
+  try {
+    const res = await fetch(DEFAULT_BLOCKLIST_URL, { cache: 'no-store' });
+    if (!res.ok) return;
+    const domains = parseBlocklistPayload(await res.json());
+    if (domains.length > 0) {
+      await chrome.storage.local.set({ [PHISHING_BLOCKLIST_KEY]: { domains, fetchedAt: Date.now() } });
+    }
+  } catch { /* best-effort; keep the last-known list */ }
+}
+const PHISHING_REFRESH_ALARM = 'phishing-refresh';
+try {
+  chrome.alarms.create(PHISHING_REFRESH_ALARM, { periodInMinutes: Math.max(1, Math.round(BLOCKLIST_REFRESH_MS / 60000)) });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm && alarm.name === PHISHING_REFRESH_ALARM) refreshPhishingBlocklist();
+  });
+} catch { /* alarms unavailable */ }
+refreshPhishingBlocklist();
+
 // The SW-side router + queue. Consent, the offscreen vault, and the window summon are injected so
 // the module stays chrome-free + unit-tested (dapp-approval.test.mjs).
 const dappApproval = new DappApprovalManager({
@@ -1032,6 +1076,7 @@ const dappApproval = new DappApprovalManager({
   recordPendingOrigin: (o) => recordPendingOrigin(o),
   callVault: (req) => callVault(req),
   summonWindow: () => summonApprovalWindow(),
+  assessOrigin: (o) => assessOriginNow(o),
   gapLimit: SCAN_GAP_LIMIT,
   randomId: () => crypto.randomUUID(),
 });
@@ -1406,7 +1451,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let env;
       try {
         const hasCustodyWallet = !!(await readKeystore());
-        if (hasCustodyWallet) {
+        // Phishing gate (#67 P0-2): a blocklisted origin is refused for every method (the custody
+        // path enforces this inside route()); this guards the WalletConnect→Sage broker path.
+        const originRisk = hasCustodyWallet ? null : await assessOriginNow(origin);
+        if (originRisk && originRisk.verdict === 'block') {
+          env = { status: 403, body: { error: 'This site is flagged as dangerous and was blocked.' } };
+        } else if (hasCustodyWallet) {
           env = await dappApproval.route({ method: message.method, params: message.params || {}, origin });
         } else {
           env = await brokerRequest(

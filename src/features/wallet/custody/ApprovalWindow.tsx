@@ -12,6 +12,7 @@ import {
 } from '@/features/wallet/custody/approvalApi';
 import type { DappSpendSummary } from '@/offscreen/dappSign';
 import { assessSpendRisk, type SpendRisk } from '@/lib/spend-risk';
+import type { OriginRisk } from '@/lib/phishing';
 
 /**
  * {@link ApprovalWindow} wrapped in the react-intl provider bound to the store's active locale. The
@@ -89,13 +90,21 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
   const busy = state.isLoading;
   const decide = (approved: boolean) => void resolve({ id: request.id, approved });
 
-  // Anti-drainer risk assessment, derived from the tamper-resistant decoded summary (never page
-  // text). Only coin-spend requests carry spend risk; a locked/undecodable request has no summary.
-  const reviewable = request.kind === 'signCoinSpends' && !request.needsUnlock && !request.decodeError;
+  // Phishing/lookalike verdict for the requesting origin (#67 P0-2). A blocked origin is refused
+  // (reject-only, no summary shown); a lookalike must be acknowledged before Approve.
+  const originRisk = request.originRisk;
+  const originBlocked = originRisk?.verdict === 'block';
+  const originWarn = originRisk?.verdict === 'warn';
+
+  // Anti-drainer risk assessment (#67 P0-3), derived from the tamper-resistant decoded summary (never
+  // page text). Only coin-spend requests carry spend risk; a locked/undecodable request has no summary.
+  const reviewable = request.kind === 'signCoinSpends' && !request.needsUnlock && !request.decodeError && !originBlocked;
   const risk: SpendRisk = reviewable
     ? assessSpendRisk(request.summary as DappSpendSummary | null)
     : { level: 'none', findings: [], requiresExtraConfirm: false };
-  const blockedOnAck = risk.requiresExtraConfirm && !ack;
+  const needsAck = risk.requiresExtraConfirm || originWarn;
+  const blockedOnAck = needsAck && !ack;
+  const canApprove = !request.decodeError && !originBlocked;
 
   return (
     <section className="dig-card" data-testid="approval-request" aria-labelledby="approval-req-title">
@@ -106,7 +115,13 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
         {request.origin}
       </p>
 
-      {request.needsUnlock ? (
+      {originRisk && originRisk.verdict !== 'ok' && <OriginRiskBanner risk={originRisk} />}
+
+      {originBlocked ? (
+        <p className="dig-error-text" role="alert" data-testid="approval-origin-blocked">
+          <FormattedMessage id="dapp.approval.phishing.blocked.note" />
+        </p>
+      ) : request.needsUnlock ? (
         <div data-testid="approval-locked">
           <p className="dig-muted" style={{ marginTop: 0 }}>
             <FormattedMessage id="dapp.approval.locked.note" />
@@ -125,11 +140,11 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
 
       {reviewable && risk.findings.length > 0 && <RiskBanner risk={risk} />}
 
-      {reviewable && risk.requiresExtraConfirm && (
+      {!originBlocked && needsAck && (
         <label className="dig-check" data-testid="approval-risk-ack" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 12 }}>
           <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} data-testid="approval-risk-ack-input" />
           <span className="dig-muted">
-            <FormattedMessage id="dapp.approval.risk.confirm" />
+            <FormattedMessage id={originWarn ? 'dapp.approval.phishing.confirm' : 'dapp.approval.risk.confirm'} />
           </span>
         </label>
       )}
@@ -155,10 +170,10 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
         >
           <FormattedMessage id="dapp.approval.reject" />
         </button>
-        {!request.decodeError && (
+        {canApprove && (
           <button
             type="button"
-            className={`dig-btn dig-btn--block ${risk.level === 'high' ? 'dig-btn--danger' : 'dig-btn--primary'}`}
+            className={`dig-btn dig-btn--block ${risk.level === 'high' || originWarn ? 'dig-btn--danger' : 'dig-btn--primary'}`}
             data-testid="approval-approve"
             onClick={() => decide(true)}
             disabled={busy || request.needsUnlock || blockedOnAck}
@@ -168,6 +183,32 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * The phishing / malicious-origin interstitial (#67 P0-2). A `block` verdict (the origin is on the
+ * DIG blocklist) is a hard danger banner; a `warn` verdict (a lookalike of a real DIG surface) is a
+ * caution the user must acknowledge. `role="alert"` announces it to assistive tech.
+ */
+function OriginRiskBanner({ risk }: { risk: OriginRisk }) {
+  const blocked = risk.verdict === 'block';
+  const reasonId = risk.reason === 'BLOCKLISTED' ? 'dapp.approval.phishing.reason.blocklisted' : 'dapp.approval.phishing.reason.lookalike';
+  return (
+    <div
+      role="alert"
+      data-testid="approval-origin-risk"
+      data-origin-verdict={risk.verdict}
+      className={blocked ? 'dig-banner dig-banner--danger' : 'dig-banner dig-banner--warn'}
+      style={{ marginTop: 12, marginBottom: 4, padding: 12, borderRadius: 8 }}
+    >
+      <p className="dig-section-title dig-error-text" style={{ margin: '0 0 6px' }}>
+        <FormattedMessage id={blocked ? 'dapp.approval.phishing.title.blocked' : 'dapp.approval.phishing.title.warn'} />
+      </p>
+      <p className="dig-muted" style={{ margin: 0 }}>
+        <FormattedMessage id={reasonId} />
+      </p>
+    </div>
   );
 }
 

@@ -1042,6 +1042,17 @@ the unspoofable `sender.origin`) gates every request.
   out-of-band); an approved origin returns `{ address, network }` from the offscreen vault (or a
   `401`-class error when the wallet is locked). Every non-connect method REQUIRES an already-approved
   origin (else `401`).
+- **Phishing / malicious-origin protection (P0-2).** Every request's origin is assessed by
+  `assessOrigin` (`src/lib/phishing.ts`, pure) against a DIG-curated blocklist (refreshed on a 6-hour
+  alarm from `rpc.dig.net/phishing-blocklist.json` into `chrome.storage.local` under
+  `phishing.blocklist`, best-effort — a failed/absent fetch keeps the last list; a bundled seed is
+  always unioned in) plus DIG-lookalike heuristics (a homoglyph whose IDN-decoded confusable skeleton
+  resolves to a legit DIG surface, or a subdomain-spoof placing a real DIG domain left of the true
+  attacker registrable domain). A `block` verdict REFUSES the origin `403` before it can connect — it
+  is never recorded pending, never approved — and (defense-in-depth) is re-checked on the broker path.
+  A `warn` (lookalike) verdict lets the flow proceed but rides the approval queue so the window shows
+  an interstitial the user must acknowledge. All original code, evaluated on-device — no imported
+  Ethereum phishing list.
 - **Reads** (`chip0002_getPublicKeys`, `chia_getAddress`, `chip0002_chainId`) route straight to the
   offscreen vault — no approval window (nothing is authorized). `getPublicKeys` returns the wallet's
   synthetic public keys (both HD schemes, deduped).

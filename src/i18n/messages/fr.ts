@@ -321,4 +321,12 @@ export const fr: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "Les frais de réseau sont anormalement élevés.",
   "dapp.approval.risk.CANNOT_SIGN": "Votre portefeuille ne peut pas signer entièrement cette demande.",
   "dapp.approval.risk.FOREIGN_INPUTS": "Cette demande inclut des pièces que votre portefeuille ne possède pas ; les montants affichés ne peuvent pas être entièrement vérifiés.",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "Site dangereux bloqué",
+  "dapp.approval.phishing.title.warn": "Ce site pourrait usurper l’identité de DIG",
+  "dapp.approval.phishing.blocked.note": "Ce site a été bloqué pour vous protéger. Vous ne pouvez que rejeter cette demande.",
+  "dapp.approval.phishing.reason.blocklisted": "Ce site figure sur la liste de blocage DIG des sites d’hameçonnage et de vidage de portefeuille connus.",
+  "dapp.approval.phishing.reason.lookalike": "Cette adresse ressemble à un site DIG mais n’en est pas un — vérifiez attentivement la barre d’adresse.",
+  "dapp.approval.phishing.confirm": "Je comprends que ce site peut être frauduleux et je veux continuer quand même",
 };

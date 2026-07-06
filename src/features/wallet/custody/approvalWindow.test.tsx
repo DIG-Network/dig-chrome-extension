@@ -162,4 +162,31 @@ describe('ApprovalWindow', () => {
     expect(screen.queryByTestId('approval-risk')).not.toBeInTheDocument();
     expect(screen.getByTestId('approval-approve')).toBeEnabled();
   });
+
+  it('a blocklisted origin shows a hard interstitial and offers only Reject (#67 P0-2)', async () => {
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') return { requests: [signRequest({ originRisk: { verdict: 'block', reason: 'BLOCKLISTED' } })], lockState: 'unlocked', summoned: true };
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    const banner = await screen.findByTestId('approval-origin-risk');
+    expect(banner).toHaveAttribute('data-origin-verdict', 'block');
+    expect(screen.getByTestId('approval-origin-blocked')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-reject')).toBeInTheDocument();
+    expect(screen.queryByTestId('approval-approve')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('approval-spend-summary')).not.toBeInTheDocument();
+  });
+
+  it('a lookalike origin warns and gates Approve behind an acknowledgement (#67 P0-2)', async () => {
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') return { requests: [signRequest({ originRisk: { verdict: 'warn', reason: 'LOOKALIKE' } })], lockState: 'unlocked', summoned: true };
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    const banner = await screen.findByTestId('approval-origin-risk');
+    expect(banner).toHaveAttribute('data-origin-verdict', 'warn');
+    expect(screen.getByTestId('approval-approve')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('approval-risk-ack-input'));
+    expect(screen.getByTestId('approval-approve')).toBeEnabled();
+  });
 });

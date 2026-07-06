@@ -321,4 +321,12 @@ export const hi: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "नेटवर्क शुल्क असामान्य रूप से अधिक है।",
   "dapp.approval.risk.CANNOT_SIGN": "आपका वॉलेट इस अनुरोध पर पूरी तरह हस्ताक्षर नहीं कर सकता।",
   "dapp.approval.risk.FOREIGN_INPUTS": "इस अनुरोध में ऐसे कॉइन शामिल हैं जो आपके वॉलेट के नहीं हैं; दिखाई गई राशियों की पूरी तरह पुष्टि नहीं की जा सकती।",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "खतरनाक साइट अवरुद्ध की गई",
+  "dapp.approval.phishing.title.warn": "यह साइट DIG की नकल कर सकती है",
+  "dapp.approval.phishing.blocked.note": "आपकी सुरक्षा के लिए यह साइट अवरुद्ध कर दी गई। आप इस अनुरोध को केवल अस्वीकार कर सकते हैं।",
+  "dapp.approval.phishing.reason.blocklisted": "यह साइट ज्ञात फ़िशिंग और वॉलेट-ड्रेनर साइटों की DIG ब्लॉकलिस्ट में है।",
+  "dapp.approval.phishing.reason.lookalike": "यह वेब पता DIG साइट जैसा दिखता है पर वह नहीं है — पता बार को ध्यान से जाँचें।",
+  "dapp.approval.phishing.confirm": "मैं समझता/समझती हूँ कि यह नकली साइट हो सकती है और फिर भी जारी रखना चाहता/चाहती हूँ",
 };
