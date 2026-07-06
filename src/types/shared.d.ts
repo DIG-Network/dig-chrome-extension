@@ -10,24 +10,6 @@
  * source of truth means the popup, the vanilla SW, and `node --test` never drift.)
  */
 
-declare module '#shared/messages.mjs' {
-  export const MESSAGE_PROTOCOL_VERSION: number;
-  export const ACTIONS: Readonly<Record<string, string>>;
-  export const BRIDGE: Readonly<Record<string, string>>;
-  /** Discriminator on SW→offscreen-vault messages (#56). */
-  export const OFFSCREEN_TARGET: string;
-  export function isKnownAction(action: string): boolean;
-  export function buildCapabilities(extensionVersion?: string): {
-    version: string;
-    messageProtocol: number;
-    actions: string[];
-    walletMethods: string[];
-    stateChangingMethods: string[];
-    errorCodes: string[];
-    bridge: Record<string, string>;
-  };
-}
-
 declare module '#shared/links.mjs' {
   export const HUB_URL: string;
   export const DIG_NETWORK_URL: string;
@@ -45,13 +27,6 @@ declare module '#shared/links.mjs' {
   export function spaceScanCoinUrl(id: string | null): string | null;
   export function spaceScanAddressUrl(address: string | null): string | null;
   export const RESOURCE_LINKS: Array<{ id: string; label: string; url: string; external: boolean }>;
-}
-
-declare module '#shared/wallet-methods.mjs' {
-  export const WALLET_METHODS: readonly string[];
-  export const STATE_CHANGING_METHODS: readonly string[];
-  export function normalizeMethod(method: string): string;
-  export function isSupportedMethod(method: string): boolean;
 }
 
 declare module '#shared/wallet-view.mjs' {
@@ -141,35 +116,6 @@ declare module '#shared/wallet-offers.mjs' {
     raw: unknown,
     opts?: { watchedCats?: unknown },
   ): { offered: OfferLeg[]; requested: OfferLeg[]; fee: number; feeLabel: string };
-}
-
-declare module '#shared/error-codes.mjs' {
-  /** The catalogued chia:// loader error codes (mirror docs.dig.net error-codes.json). */
-  export type DigErrorCode =
-    | 'DIG_ERR_PROOF_MISMATCH'
-    | 'DIG_ERR_DECRYPT_TAG'
-    | 'DIG_ERR_NOT_FOUND'
-    | 'DIG_ERR_NETWORK'
-    | 'DIG_ERR_INVALID_URN'
-    | 'DIG_ERR_DIGNODE_REQUIRED';
-  export const DIG_ERR: Readonly<Record<DigErrorCode, DigErrorCode>>;
-  /** The canonical cross-surface `dig-loader` subset (exactly the four shared codes). */
-  export const DIG_LOADER_CODES: readonly DigErrorCode[];
-  export interface ErrorCatalogueEntry {
-    code: DigErrorCode;
-    message: string;
-    canonical: boolean;
-  }
-  export const ERROR_CATALOGUE: readonly ErrorCatalogueEntry[];
-  /** Classify a raw failure (string or Error) into a stable DigErrorCode. */
-  export function classifyError(input: string | Error | null | undefined): DigErrorCode;
-  export interface CodedError {
-    success: false;
-    code: DigErrorCode;
-    message: string;
-  }
-  /** Build a `{ success:false, code, message }` envelope, classifying unless `codeOverride` is given. */
-  export function makeError(input: string | Error | null | undefined, codeOverride?: DigErrorCode): CodedError;
 }
 
 declare module '#shared/dig-urn.mjs' {

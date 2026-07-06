@@ -23,15 +23,15 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { ACTIONS, MESSAGE_CATALOGUE } from '../messages.mjs';
+import { ACTIONS, MESSAGE_CATALOGUE } from '@/lib/messages';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const read = (f) => readFileSync(join(ROOT, f), 'utf8');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const read = (f: string) => readFileSync(join(ROOT, f), 'utf8');
 
 test('background.js has no in-memory resource/content cache', () => {
   const src = read('src/background/index.ts');

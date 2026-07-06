@@ -22,8 +22,50 @@
  * keeps the SW + offscreen vault alive through review.
  */
 
-import { normalizeMethod, isSupportedMethod } from './wallet-methods.mjs';
-import { ok, pending, err } from './wallet-broker.mjs';
+import { normalizeMethod, isSupportedMethod } from './wallet-methods';
+import { ok, pending, err, type BrokerEnvelope } from './wallet-broker';
+
+/** A response from the offscreen vault (only the fields this router reads; extra keys tolerated). */
+export interface VaultResponse {
+  success?: boolean;
+  code?: string;
+  message?: string;
+  address?: string;
+  publicKeys?: unknown;
+  signature?: unknown;
+  signerPublicKey?: unknown;
+  dappSummary?: unknown;
+  [k: string]: unknown;
+}
+/** A request forwarded to the offscreen vault. */
+export interface VaultRequest {
+  op: string;
+  [k: string]: unknown;
+}
+/** The chrome-facing dependencies injected into {@link DappApprovalManager}. */
+export interface DappApprovalDeps {
+  isOriginApproved(origin: string): Promise<boolean>;
+  recordPendingOrigin(origin: string): Promise<void>;
+  callVault(request: VaultRequest): Promise<VaultResponse>;
+  summonWindow(): Promise<void> | void;
+  gapLimit?: number;
+  randomId?: () => string;
+}
+/** One queued approval-gated request (SW-memory only; never sent raw to the window). */
+export interface QueueEntry {
+  id: string;
+  origin: string;
+  method: string;
+  kind: 'signCoinSpends' | 'signMessage';
+  params: { coinSpends?: unknown; message?: string; publicKey?: unknown };
+  summary?: unknown;
+  needsUnlock?: boolean;
+  decodeError?: boolean;
+  createdAt: number;
+  resolve: (value: BrokerEnvelope) => void;
+}
+/** A raw `window.chia` request param object (tolerant of shapes). */
+type RpcParams = Record<string, unknown> | null | undefined;
 
 /** Read methods routed straight to the vault (no approval — nothing is authorized). */
 export const CUSTODY_READ_METHODS = new Set(['chip0002_chainId', 'chip0002_getPublicKeys', 'chia_getAddress']);
@@ -38,7 +80,9 @@ export const CUSTODY_MESSAGE_METHODS = new Set(['chip0002_signMessage', 'chia_si
  * @param {string} method
  * @returns {'connect'|'read'|'sign'|'message'|'unsupported'|'unknown'}
  */
-export function classifyCustodyMethod(method) {
+export function classifyCustodyMethod(
+  method: string,
+): 'connect' | 'read' | 'sign' | 'message' | 'unsupported' | 'unknown' {
   const norm = normalizeMethod(method);
   if (norm === 'chip0002_connect') return 'connect';
   if (CUSTODY_READ_METHODS.has(norm)) return 'read';
@@ -49,7 +93,7 @@ export function classifyCustodyMethod(method) {
 }
 
 /** Extract dApp-supplied coin spends from a signCoinSpends param object (tolerant of shapes). */
-function extractCoinSpends(params) {
+function extractCoinSpends(params: RpcParams): unknown[] | null {
   if (!params) return null;
   const cs = params.coinSpends ?? params.coin_spends ?? params.spends;
   return Array.isArray(cs) && cs.length > 0 ? cs : null;
@@ -68,13 +112,16 @@ const defaultId = () => `dapp-${Date.now()}-${++_seq}`;
  *   - `gapLimit?: number`, `randomId?: () => string`
  */
 export class DappApprovalManager {
-  constructor(deps) {
+  private deps: DappApprovalDeps;
+  /** pendingId → the queued entry (SW memory). */
+  private queue: Map<string, QueueEntry>;
+
+  constructor(deps: DappApprovalDeps) {
     this.deps = deps;
-    /** @type {Map<string, object>} pendingId → { id, origin, method, kind, params, summary?, resolve } */
     this.queue = new Map();
   }
 
-  size() {
+  size(): number {
     return this.queue.size;
   }
 
@@ -115,7 +162,15 @@ export class DappApprovalManager {
 
   /** Route one `window.chia` request. Resolves immediately for read/connect; for sign/message the
    *  returned promise stays pending until {@link resolveApproval}. */
-  async route({ method, params, origin }) {
+  async route({
+    method,
+    params,
+    origin,
+  }: {
+    method: string;
+    params?: RpcParams;
+    origin?: string;
+  }): Promise<BrokerEnvelope> {
     if (!origin) return err(400, 'Missing origin');
     const kind = classifyCustodyMethod(method);
     const norm = normalizeMethod(method);
@@ -153,7 +208,7 @@ export class DappApprovalManager {
     return err(404, `Unsupported method: ${norm}`);
   }
 
-  async #routeRead(norm) {
+  async #routeRead(norm: string): Promise<BrokerEnvelope> {
     if (norm === 'chip0002_chainId') return ok('mainnet');
     if (norm === 'chia_getAddress') {
       const r = await this.deps.callVault({ op: 'getReceiveAddress' });
@@ -168,15 +223,27 @@ export class DappApprovalManager {
     return err(404, `Unsupported method: ${norm}`);
   }
 
-  #lockedOr(r) {
+  #lockedOr(r: VaultResponse | null | undefined): BrokerEnvelope {
     if (r && r.code === 'LOCKED') return err(401, 'Wallet is locked — unlock it in the DIG extension');
     return err(502, (r && r.message) || 'Wallet request failed');
   }
 
   /** Register a request needing approval, summon the window, and return the pending decision promise. */
-  #enqueue({ origin, method, kind, params, summary }) {
+  #enqueue({
+    origin,
+    method,
+    kind,
+    params,
+    summary,
+  }: {
+    origin: string;
+    method: string;
+    kind: QueueEntry['kind'];
+    params: QueueEntry['params'];
+    summary?: unknown;
+  }): Promise<BrokerEnvelope> {
     const id = (this.deps.randomId || defaultId)();
-    return new Promise((resolve) => {
+    return new Promise<BrokerEnvelope>((resolve) => {
       this.queue.set(id, { id, origin, method, kind, params, summary, createdAt: Date.now(), resolve });
       // Summon AFTER registering so the window's first list() includes this request.
       Promise.resolve(this.deps.summonWindow()).catch(() => {});
@@ -188,7 +255,10 @@ export class DappApprovalManager {
    * offscreen document) and the original request promise resolves with the signature; reject → it
    * resolves with a user-rejection error. Returns an ack with the remaining queue size.
    */
-  async resolve(id, approved) {
+  async resolve(
+    id: string,
+    approved: boolean,
+  ): Promise<{ success: boolean; code?: string; message?: string; remaining?: number }> {
     const entry = this.queue.get(id);
     if (!entry) return { success: false, code: 'NO_PENDING', message: 'no such request' };
     this.queue.delete(id);
@@ -200,7 +270,7 @@ export class DappApprovalManager {
     return { success: true, remaining: this.queue.size };
   }
 
-  async #performApproved(entry) {
+  async #performApproved(entry: QueueEntry): Promise<BrokerEnvelope> {
     if (entry.kind === 'signCoinSpends') {
       const res = await this.deps.callVault({ op: 'signDappSpend', coinSpends: entry.params.coinSpends, gapLimit: this.deps.gapLimit });
       if (!res || res.success === false) {

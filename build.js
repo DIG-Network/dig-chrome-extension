@@ -32,13 +32,10 @@ const EXTENSION_FILES = [
   'wallet-assets.mjs',
   'wallet-offers.mjs',
   'dig-urn.mjs',
-  // Agent-friendly contracts: catalogued chia:// loader error codes (DIG_ERR_*, aligned with
-  // docs error-codes.json) + the versioned background MESSAGE catalogue (ACTIONS enum +
-  // getCapabilities self-description). Both imported at runtime by background.js.
-  'error-codes.mjs',
-  'messages.mjs',
-  // (dig-node-status + dig-control + dig-ledger migrated to src/lib as TS — #68; they inline into
-  // the SW bundle + the vite page bundles, no longer plain-copied.)
+  // (error-codes + messages + wallet-methods + dig-provider-core + agent-surface migrated to
+  // src/lib (+ src/agent-surface.ts) as TS — #68; they inline into the SW + vite bundles, and
+  // agent-surface is esbuild-transpiled at build time by generateAgentSurface(). dig-node-status +
+  // dig-control + dig-ledger + apps + qr likewise migrated.)
   // Ecosystem funnel: shared link constants. (The first-run welcome page welcome.html + its TS
   // entry src/entries/welcome.ts is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.)
   'links.mjs',
@@ -46,11 +43,8 @@ const EXTENSION_FILES = [
   // newtab.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
   // DIG settings (options_ui) — options.html + src/entries/options.ts (+ its co-located
   // options.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
-  // Wallet method/broker modules. (apps migrated to src/lib as TS — #68.)
-  'wallet-methods.mjs',
-  'wallet-broker.mjs',
-  // Self-custody dApp walletRpc router + approval queue (#56 §5.5) — imported by the SW bundle.
-  'dapp-approval.mjs',
+  // (apps + wallet-methods + wallet-broker + dapp-approval migrated to src/lib as TS — #68; they
+  // inline into the SW bundle + the vite React bundles, no longer plain-copied.)
   // WalletConnect → Sage transport (runs in the popup page).
   'wallet-wc.js',
   // NB: background.js (the MV3 module service worker) is NOT plain-copied — it is a strict entry at
@@ -422,14 +416,33 @@ function injectProjectId(projectId) {
  */
 async function generateAgentSurface() {
   log('\n🤖 Generating agent-surface.json...', 'blue');
-  // agent-surface.mjs is ESM; build.js is CommonJS → load it via dynamic import().
-  const { buildAgentSurface } = await import('./agent-surface.mjs');
-  const version = require('./package.json').version;
-  const surface = buildAgentSurface(version);
-  const dest = path.join(DIST_DIR, 'agent-surface.json');
-  fs.writeFileSync(dest, JSON.stringify(surface, null, 2));
-  log('✓ Wrote: agent-surface.json', 'green');
-  return surface;
+  // src/agent-surface.ts is TypeScript importing @/lib/* leaves (which themselves inline bare
+  // @dignetwork/* deps). Node (CommonJS build.js) can't `import()` a .ts, so esbuild-BUNDLE it to a
+  // temp ESM (with the @ alias resolved + deps inlined), then dynamic-import that to run
+  // buildAgentSurface. The temp file is removed afterward.
+  const { pathToFileURL } = require('url');
+  const tmp = path.join(DIST_DIR, '.agent-surface.bundle.mjs');
+  await esbuild.build({
+    entryPoints: [path.join(SRC_DIR, 'agent-surface.ts')],
+    outfile: tmp,
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    target: ['node20'],
+    legalComments: 'none',
+    alias: { '@': SRC_DIR },
+  });
+  try {
+    const { buildAgentSurface } = await import(pathToFileURL(tmp).href);
+    const version = require('./package.json').version;
+    const surface = buildAgentSurface(version);
+    const dest = path.join(DIST_DIR, 'agent-surface.json');
+    fs.writeFileSync(dest, JSON.stringify(surface, null, 2));
+    log('✓ Wrote: agent-surface.json', 'green');
+    return surface;
+  } finally {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
+  }
 }
 
 // The MAIN-world injected provider entry (imports @dignetwork/chia-provider's buildProvider and
@@ -481,41 +494,9 @@ async function bundleProvider() {
   log(`✓ Bundled: dig-provider.js (${kb} KB, shared @dignetwork/chia-provider surface)`, 'green');
 }
 
-// wallet-methods.mjs re-exports the CHIP-0002 method surface from the @dignetwork/chia-provider
-// package (a BARE specifier). Browsers + MV3 module service workers cannot resolve bare specifiers,
-// so the raw copy breaks the whole module graph that imports it (the popup controller AND the
-// background SW, via messages.mjs). Bundle it to a self-contained ESM at build time — esbuild
-// inlines the package while preserving the same named exports, so every consumer's `import
-// './wallet-methods.mjs'` resolves in the browser with no source change.
-const WALLET_METHODS_SRC = path.join(__dirname, 'wallet-methods.mjs');
-const WALLET_METHODS_OUT = path.join(DIST_DIR, 'wallet-methods.mjs');
-// After bundling there must be NO surviving bare @dignetwork import (that would re-break the graph).
-const BARE_DIGNETWORK_IMPORT = /from\s+['"]@dignetwork\//;
-
-async function bundleWalletMethods() {
-  log('\n🧩 Bundling wallet-methods.mjs (inline @dignetwork/chia-provider for the browser)...', 'blue');
-  await esbuild.build({
-    entryPoints: [WALLET_METHODS_SRC],
-    outfile: WALLET_METHODS_OUT,
-    bundle: true,
-    format: 'esm',
-    platform: 'browser',
-    target: ['chrome111'],
-    legalComments: 'none',
-    minify: false,
-    allowOverwrite: true,
-  });
-  const out = fs.readFileSync(WALLET_METHODS_OUT, 'utf8');
-  if (BARE_DIGNETWORK_IMPORT.test(out)) {
-    throw new Error('dist/wallet-methods.mjs still has a bare @dignetwork import — the package did not inline.');
-  }
-  for (const needle of ['WALLET_METHODS', 'STATE_CHANGING_METHODS', 'normalizeMethod']) {
-    if (!out.includes(needle)) {
-      throw new Error(`Bundled wallet-methods.mjs is missing export "${needle}".`);
-    }
-  }
-  log('✓ Bundled: wallet-methods.mjs (self-contained ESM, browser-safe)', 'green');
-}
+// (wallet-methods migrated to src/lib/wallet-methods.ts as TS — #68. Its @dignetwork/chia-provider
+// re-export now inlines into the SW bundle + the vite React bundles that import @/lib/wallet-methods,
+// so the standalone dist/wallet-methods.mjs esbuild step is gone.)
 
 // (qr.mjs migrated to src/lib/qr.ts as TS — #68; qrcode-generator now inlines into the vite React
 // bundles that import @/lib/qr, so no separate esbuild bundle step / dist/qr.mjs is needed.)
@@ -731,10 +712,6 @@ async function main() {
   // Bundle the injected window.chia provider from the shared @dignetwork/chia-provider package
   // into dist/dig-provider.js (single IIFE for the page MAIN world).
   await bundleProvider();
-
-  // Bundle wallet-methods.mjs so its @dignetwork/chia-provider re-export resolves in the browser +
-  // MV3 SW (bare specifiers don't). Must run AFTER copyFiles (which places the raw copy).
-  await bundleWalletMethods();
 
   // Bundle the in-page store interceptor (#55) into dist/store-interceptor.js as a self-contained
   // IIFE (store-refs.mjs inlined) so dig-viewer can inline it into the sandboxed store frame.

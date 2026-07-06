@@ -10,8 +10,8 @@
 import { friendlyCause } from '@/lib/error-page';
 // Stable action names (no raw string literals) + the catalogued loader error codes so the viewer
 // exposes a machine-readable failure discriminant alongside the friendly human copy.
-import { ACTIONS } from '#shared/messages.mjs';
-import { classifyError, DIG_ERR, type DigErrorCode } from '#shared/error-codes.mjs';
+import { ACTIONS } from '@/lib/messages';
+import { classifyError, DIG_ERR, type DigErrorCode } from '@/lib/error-codes';
 // Shared URN parser — derive the capsule (storeId:rootHash) + resource path so the per-resource
 // proof verdict can be recorded into the DIG Shields ledger (#134).
 import { parseURN, decodeUrnParam } from '#shared/dig-urn.mjs';

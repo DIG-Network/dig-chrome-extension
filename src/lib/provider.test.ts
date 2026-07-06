@@ -1,3 +1,7 @@
+// @vitest-environment node
+// This suite runs in the Node environment (not jsdom): it drives the pure provider core (no DOM)
+// and, in one test, invokes esbuild in-process to assert the injected-provider bundle — esbuild
+// requires a real Node TextEncoder/Uint8Array, which jsdom does not provide.
 /**
  * Tests for the injected window.chia provider's self-describing surface + error contract.
  *
@@ -18,19 +22,18 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
-  WALLET_PROVIDER_VERSION,
   PROVIDER_INFO,
   PROVIDER_ERROR_CODES,
   buildProvider,
   mapEnvelopeToError,
-} from '../dig-provider-core.mjs';
-import { WALLET_METHODS } from '../wallet-methods.mjs';
+} from '@/lib/dig-provider-core';
+import { WALLET_METHODS } from '@/lib/wallet-methods';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -113,7 +116,7 @@ test('request throws an error carrying a standard code on a 4xx', async () => {
   });
   await assert.rejects(
     () => provider.request({ method: 'chip0002_getPublicKeys' }),
-    (e) => { assert.equal(e.code, 4100); return true; }
+    (e: unknown) => { assert.equal((e as { code?: number }).code, 4100); return true; }
   );
 });
 
@@ -122,7 +125,7 @@ test('the injected provider entry (src/entries/dig-provider.entry.ts) derives wi
   // @dignetwork/chia-provider (the single source of truth). Guard that the entry actually wires
   // buildProvider from the package and supplies the extension's postMessage transport, so the
   // injected surface can never drift from the package (the old duplication caused exactly that).
-  const entry = readFileSync(join(__dirname, '..', 'src', 'entries', 'dig-provider.entry.ts'), 'utf8');
+  const entry = readFileSync(join(__dirname, '..', '..', 'src', 'entries', 'dig-provider.entry.ts'), 'utf8');
   assert.match(entry, /from ['"]@dignetwork\/chia-provider['"]/, 'entry must import from @dignetwork/chia-provider');
   assert.match(entry, /buildProvider/, 'entry must call the package buildProvider');
   assert.match(entry, /window\.chia\s*=\s*buildProvider/, 'window.chia must be the package buildProvider output');
@@ -136,7 +139,7 @@ test('build.js bundles dist/dig-provider.js as a self-contained IIFE carrying th
   // bundle can never ship a stub.
   const esbuild = await import('esbuild');
   const out = await esbuild.build({
-    entryPoints: [join(__dirname, '..', 'src', 'entries', 'dig-provider.entry.ts')],
+    entryPoints: [join(__dirname, '..', '..', 'src', 'entries', 'dig-provider.entry.ts')],
     bundle: true,
     format: 'iife',
     platform: 'browser',
@@ -161,8 +164,8 @@ test('build.js bundles dist/dig-provider.js as a self-contained IIFE carrying th
 
 /** A bridgeCall spy that records (method, params) and returns canned data per method. */
 function spyBridge() {
-  const calls = [];
-  const bridgeCall = async (method, params) => {
+  const calls: Array<{ method: string; params?: unknown }> = [];
+  const bridgeCall = async (method: string, params?: unknown) => {
     calls.push({ method, params });
     if (method === 'chia_getAddress') return { status: 200, body: { data: { address: 'xch1testaddr' } } };
     if (method === 'chia_send') return { status: 200, body: { data: { id: '0xspend' } } };
@@ -201,7 +204,7 @@ test('Goby-legacy direct methods exist on the provider object', () => {
     'cancelOffer', 'signMessageByAddress', 'getNFTs', 'getNFTInfo', 'walletSwitchChain',
     'walletWatchAsset', 'requestAccounts', 'accounts',
   ]) {
-    assert.equal(typeof p[m], 'function', `${m} is a direct method`);
+    assert.equal(typeof (p as unknown as Record<string, unknown>)[m], 'function', `${m} is a direct method`);
   }
 });
 
@@ -242,7 +245,7 @@ test('requestAccounts() connects then returns the address list + caches selected
 test('accounts() throws 4900 when not connected, returns addresses once connected', async () => {
   const { bridgeCall } = spyBridge();
   const p = buildProvider({ bridgeCall, version: '1.0.0' });
-  await assert.rejects(() => p.accounts(), (e) => { assert.equal(e.code, 4900); return true; });
+  await assert.rejects(() => p.accounts(), (e: unknown) => { assert.equal((e as { code?: number }).code, 4900); return true; });
   await p.connect();
   assert.deepEqual(await p.accounts(), ['xch1testaddr']);
 });
@@ -254,7 +257,7 @@ test('walletSwitchChain accepts mainnet locally and rejects other chains as unsu
   assert.equal(calls.length, 0, 'mainnet switch is answered locally, no bridge call');
   await assert.rejects(
     () => p.walletSwitchChain({ chainId: 'testnet11' }),
-    (e) => { assert.equal(e.code, 4200); return true; },
+    (e: unknown) => { assert.equal((e as { code?: number }).code, 4200); return true; },
   );
 });
 

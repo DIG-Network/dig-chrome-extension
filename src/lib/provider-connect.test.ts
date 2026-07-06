@@ -17,20 +17,20 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildProvider } from '../dig-provider-core.mjs';
+import { buildProvider } from '@/lib/dig-provider-core';
 
 test('connect() resolves, flips isConnected, and fires the connect event', async () => {
-  const events = [];
+  const events: unknown[] = [];
   const provider = buildProvider({
-    bridgeCall: async (method) => {
+    bridgeCall: async (method: string) => {
       assert.equal(method, 'chip0002_connect');
       return { status: 200, body: { data: { connected: true } } };
     },
     version: '1.0.0',
   });
-  provider.on('connect', (d) => events.push(d));
+  provider.on('connect', (d: unknown) => events.push(d));
   const r = await provider.connect();
   assert.deepEqual(r, { connected: true });
   assert.equal(provider.isConnected(), true);
@@ -40,7 +40,7 @@ test('connect() resolves, flips isConnected, and fires the connect event', async
 test('connect() passes the eager flag through to the bridge', async () => {
   let seenParams = null;
   const provider = buildProvider({
-    bridgeCall: async (_method, params) => { seenParams = params; return { status: 200, body: { data: {} } }; },
+    bridgeCall: async (_method: string, params?: unknown) => { seenParams = params; return { status: 200, body: { data: {} } }; },
   });
   await provider.connect(true);
   assert.deepEqual(seenParams, { eager: true });
@@ -49,7 +49,7 @@ test('connect() passes the eager flag through to the bridge', async () => {
 test('request({method:"connect"}) dispatches into connect()', async () => {
   let calls = 0;
   const provider = buildProvider({
-    bridgeCall: async (method) => { calls++; assert.equal(method, 'chip0002_connect'); return { status: 200, body: { data: { ok: 1 } } }; },
+    bridgeCall: async (method: string) => { calls++; assert.equal(method, 'chip0002_connect'); return { status: 200, body: { data: { ok: 1 } } }; },
   });
   const r = await provider.request({ method: 'connect', params: { eager: false } });
   assert.deepEqual(r, { ok: 1 });
@@ -71,7 +71,7 @@ test('connect() polls through 202 pending-approval responses then resolves', asy
   // fast, while still interleaving correctly with the awaited (real-async) bridgeCall. This is
   // more robust than fake timer ticks, which don't reliably interleave with awaited promises.
   const realSetTimeout = globalThis.setTimeout;
-  globalThis.setTimeout = (fn, _ms, ...args) => realSetTimeout(fn, 0, ...args);
+  globalThis.setTimeout = ((fn: (...a: unknown[]) => void, _ms?: number, ...args: unknown[]) => realSetTimeout(fn, 0, ...args)) as unknown as typeof globalThis.setTimeout;
   try {
     let attempt = 0;
     const provider = buildProvider({
@@ -96,14 +96,14 @@ test('connect() propagates a non-pending error instead of looping forever', asyn
   });
   await assert.rejects(
     () => provider.connect(),
-    (e) => { assert.equal(e.code, 4100); return true; }
+    (e: unknown) => { assert.equal((e as { code?: number }).code, 4100); return true; }
   );
   assert.equal(provider.isConnected(), false);
 });
 
 test('off() removes a previously-registered connect listener', async () => {
-  const seen = [];
-  const handler = (d) => seen.push(d);
+  const seen: unknown[] = [];
+  const handler = (d: unknown) => seen.push(d);
   const provider = buildProvider({
     bridgeCall: async () => ({ status: 200, body: { data: { n: 1 } } }),
   });

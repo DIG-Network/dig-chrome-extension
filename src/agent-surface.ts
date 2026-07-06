@@ -13,17 +13,17 @@
  * Plain ES module (no chrome.* / DOM) so it runs in the build and under `node --test`.
  */
 
-import { MESSAGE_PROTOCOL_VERSION, ACTIONS, BRIDGE, MESSAGE_CATALOGUE } from './messages.mjs';
-import { DIG_ERR, ERROR_CATALOGUE } from './error-codes.mjs';
-import { WALLET_METHODS, STATE_CHANGING_METHODS } from './wallet-methods.mjs';
-import { PROVIDER_INFO, PROVIDER_ERROR_CODES, WALLET_PROVIDER_VERSION } from './dig-provider-core.mjs';
+import { MESSAGE_PROTOCOL_VERSION, ACTIONS, BRIDGE, MESSAGE_CATALOGUE } from '@/lib/messages';
+import { DIG_ERR, ERROR_CATALOGUE } from '@/lib/error-codes';
+import { WALLET_METHODS, STATE_CHANGING_METHODS } from '@/lib/wallet-methods';
+import { PROVIDER_INFO, PROVIDER_ERROR_CODES, WALLET_PROVIDER_VERSION } from '@/lib/dig-provider-core';
 
 /**
  * Build the agent-surface document.
  * @param {string} version  the extension version (from package.json / the manifest)
  * @returns {object} a JSON-serialisable self-description
  */
-export function buildAgentSurface(version) {
+export function buildAgentSurface(version?: string) {
   return {
     name: 'dig-chrome-extension',
     version: version || 'unknown',

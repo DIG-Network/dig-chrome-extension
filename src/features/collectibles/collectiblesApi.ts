@@ -1,5 +1,5 @@
 import { api } from '@/api/api';
-import { ACTIONS } from '#shared/messages.mjs';
+import { ACTIONS } from '@/lib/messages';
 import type { WalletNft, NftTransferSummary } from '@/offscreen/nfts';
 
 /**

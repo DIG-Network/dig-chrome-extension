@@ -9,12 +9,12 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildAgentSurface } from '../agent-surface.mjs';
-import { ACTIONS } from '../messages.mjs';
-import { DIG_ERR } from '../error-codes.mjs';
-import { WALLET_METHODS } from '../wallet-methods.mjs';
+import { buildAgentSurface } from '@/agent-surface';
+import { ACTIONS } from '@/lib/messages';
+import { DIG_ERR } from '@/lib/error-codes';
+import { WALLET_METHODS } from '@/lib/wallet-methods';
 
 test('buildAgentSurface emits a versioned, self-describing object', () => {
   const s = buildAgentSurface('1.1.0');

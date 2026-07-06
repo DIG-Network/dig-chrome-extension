@@ -10,7 +10,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   MESSAGE_PROTOCOL_VERSION,
@@ -19,7 +19,7 @@ import {
   MESSAGE_CATALOGUE,
   isKnownAction,
   buildCapabilities,
-} from '../messages.mjs';
+} from '@/lib/messages';
 
 test('MESSAGE_PROTOCOL_VERSION is a positive integer (the contract version)', () => {
   assert.equal(typeof MESSAGE_PROTOCOL_VERSION, 'number');
@@ -57,7 +57,7 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'getCapabilities',
   ];
   for (const a of handled) {
-    assert.equal(ACTIONS[a], a, `ACTIONS is missing "${a}"`);
+    assert.equal((ACTIONS as Record<string, string>)[a], a, `ACTIONS is missing "${a}"`);
   }
 });
 
@@ -80,7 +80,7 @@ test('MESSAGE_CATALOGUE documents every action with a typed request/response sha
 
 test('MESSAGE_CATALOGUE has no entries for unknown actions (no drift the other way)', () => {
   for (const action of Object.keys(MESSAGE_CATALOGUE)) {
-    assert.equal(ACTIONS[action], action, `catalogue has stray action "${action}" not in ACTIONS`);
+    assert.equal((ACTIONS as Record<string, string>)[action], action, `catalogue has stray action "${action}" not in ACTIONS`);
   }
 });
 

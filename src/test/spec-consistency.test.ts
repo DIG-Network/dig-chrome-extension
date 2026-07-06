@@ -13,9 +13,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { MESSAGE_PROTOCOL_VERSION } from '#shared/messages.mjs';
+import { MESSAGE_PROTOCOL_VERSION } from '@/lib/messages';
 import { DEFAULT_DIG_NODE_PORT, DIG_LOCAL_URL, digNodeCandidates } from '@/lib/server-config';
-import { DIG_LOADER_CODES } from '#shared/error-codes.mjs';
+import { DIG_LOADER_CODES } from '@/lib/error-codes';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SPEC = readFileSync(join(ROOT, 'SPEC.md'), 'utf8');

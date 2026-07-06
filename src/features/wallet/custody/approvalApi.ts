@@ -1,5 +1,5 @@
 import { api } from '@/api/api';
-import { ACTIONS } from '#shared/messages.mjs';
+import { ACTIONS } from '@/lib/messages';
 import type { LockState } from '@/features/wallet/walletSlice';
 import type { DappSpendSummary } from '@/offscreen/dappSign';
 

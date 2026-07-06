@@ -16,8 +16,8 @@
  * shell (via the #shared/* alias) AND tests under `node --test` can all import it.
  */
 
-import { WALLET_METHODS, STATE_CHANGING_METHODS } from './wallet-methods.mjs';
-import { DIG_ERR } from './error-codes.mjs';
+import { WALLET_METHODS, STATE_CHANGING_METHODS } from './wallet-methods';
+import { DIG_ERR } from './error-codes';
 
 /**
  * Version of THIS message contract (the action set + their request/response shapes). Bump
@@ -397,7 +397,7 @@ export const MESSAGE_CATALOGUE = Object.freeze({
 });
 
 /** True if `action` is a catalogued, known message action. */
-export function isKnownAction(action) {
+export function isKnownAction(action: unknown): boolean {
   return typeof action === 'string' && Object.prototype.hasOwnProperty.call(ACTIONS, action);
 }
 
@@ -413,7 +413,15 @@ export function isKnownAction(action) {
  *   errorCodes: string[], bridge: Record<string,string>
  * }}
  */
-export function buildCapabilities(extensionVersion) {
+export function buildCapabilities(extensionVersion?: string): {
+  version: string;
+  messageProtocol: number;
+  actions: string[];
+  walletMethods: string[];
+  stateChangingMethods: string[];
+  errorCodes: string[];
+  bridge: Record<string, string>;
+} {
   return {
     version: extensionVersion || 'unknown',
     messageProtocol: MESSAGE_PROTOCOL_VERSION,

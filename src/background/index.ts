@@ -37,9 +37,9 @@ import { parseURN } from '#shared/dig-urn.mjs';
 import { buildErrorPageHtml } from '@/lib/error-page';
 // Catalogued, stable chia:// loader error codes (DIG_ERR_*) + the coded-error envelope.
 // Aligned with docs.dig.net static/error-codes.json `dig-loader` surface.
-import { DIG_ERR, makeError } from '#shared/error-codes.mjs';
+import { DIG_ERR, makeError } from '@/lib/error-codes';
 // The versioned message catalogue: the frozen ACTIONS enum + getCapabilities self-description.
-import { ACTIONS, buildCapabilities, OFFSCREEN_TARGET } from '#shared/messages.mjs';
+import { ACTIONS, buildCapabilities, OFFSCREEN_TARGET } from '@/lib/messages';
 // Self-custody session logic (#56): the offscreen-vault coordination decisions (pure; no chrome.*).
 import {
   KEYSTORE_KEY,
@@ -91,13 +91,13 @@ import {
   getConnection as getWalletConnection,
   isOriginApproved,
   setOriginApproval,
-} from '#shared/wallet-broker.mjs';
+} from '@/lib/wallet-broker';
 
 // Self-custody dApp `walletRpc` router + approval queue (#56 §5.5). When a self-custody wallet
 // exists, a dApp's window.chia request routes here: connect + reads hit the offscreen vault; a
 // sign/message request is enqueued and a dedicated approval window is summoned. The manager is
 // chrome-free (its consent lookups, the vault call, and the window summon are injected below).
-import { DappApprovalManager } from '#shared/dapp-approval.mjs';
+import { DappApprovalManager } from '@/lib/dapp-approval';
 
 // SRI for the read-crypto WASM (same artifact + digest as hub.dig.net sw.js and apps/web/lib/dig-client.js).
 // Fail closed: a mismatch (tampered/wrong artifact) refuses to run unverified crypto.

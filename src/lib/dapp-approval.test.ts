@@ -11,20 +11,31 @@
  * Pure (chrome-free): the vault call, consent lookups, and window summon are injected deps.
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { DappApprovalManager, classifyCustodyMethod } from '../dapp-approval.mjs';
+import {
+  DappApprovalManager,
+  classifyCustodyMethod,
+  type VaultRequest,
+  type VaultResponse,
+} from '@/lib/dapp-approval';
 
 const ORIGIN = 'https://dapp.example';
 
 /** A manager wired with in-memory fakes; `vault` maps a vault op → its canned response. */
-function makeManager({ approved = new Set([ORIGIN]), vault = {} } = {}) {
-  const calls = { vault: [], summon: 0, pending: [] };
+function makeManager({
+  approved = new Set([ORIGIN]),
+  vault = {},
+}: {
+  approved?: Set<string>;
+  vault?: Record<string, (req: VaultRequest) => VaultResponse>;
+} = {}) {
+  const calls: { vault: VaultRequest[]; summon: number; pending: string[] } = { vault: [], summon: 0, pending: [] };
   let n = 0;
   const deps = {
-    isOriginApproved: async (o) => approved.has(o),
-    recordPendingOrigin: async (o) => { calls.pending.push(o); },
-    callVault: async (req) => {
+    isOriginApproved: async (o: string) => approved.has(o),
+    recordPendingOrigin: async (o: string) => { calls.pending.push(o); },
+    callVault: async (req: VaultRequest): Promise<VaultResponse> => {
       calls.vault.push(req);
       const fn = vault[req.op];
       return fn ? fn(req) : { success: false, code: 'NO_STUB', message: req.op };
@@ -63,7 +74,7 @@ test('connect: an approved + unlocked origin gets the wallet address', async () 
   const { m } = makeManager({ vault: { getReceiveAddress: () => ({ success: true, address: 'xch1abc' }) } });
   const env = await m.route({ method: 'connect', params: {}, origin: ORIGIN });
   assert.equal(env.status, 200);
-  assert.equal(env.body.data.address, 'xch1abc');
+  assert.equal((env.body.data as { address?: string }).address, 'xch1abc');
 });
 
 test('connect: approved but locked → 4001-class error (unlock required)', async () => {
@@ -108,7 +119,7 @@ test('sign: signCoinSpends enqueues, summons the window, and resolves on approve
   assert.equal(items.length, 1);
   assert.equal(items[0].origin, ORIGIN);
   assert.equal(items[0].kind, 'signCoinSpends');
-  assert.equal(items[0].summary.changeMojos, '1000');
+  assert.equal((items[0].summary as { changeMojos?: string }).changeMojos, '1000');
 
   const ack = await m.resolve(items[0].id, true);
   assert.equal(ack.remaining, 0);
@@ -126,7 +137,7 @@ test('sign: reject resolves the request with an error and drains the queue', asy
   await m.resolve(id, false);
   const env = await p;
   assert.equal(env.status, 401); // 4001-class user rejection
-  assert.match(env.body.error, /reject/i);
+  assert.match(env.body.error!, /reject/i);
   assert.equal(m.size(), 0);
 });
 
@@ -141,17 +152,17 @@ test('sign: enrich marks a locked wallet as needing unlock (no summary, not auto
 });
 
 test('message: signMessage carries the message summary and signs on approve', async () => {
-  const { m } = makeManager({ vault: { signMessage: (r) => ({ success: true, signature: '1'.repeat(192), signerPublicKey: 'a'.repeat(96), echo: r.message }) } });
+  const { m } = makeManager({ vault: { signMessage: (r: VaultRequest) => ({ success: true, signature: '1'.repeat(192), signerPublicKey: 'a'.repeat(96), echo: r.message }) } });
   const p = m.route({ method: 'signMessage', params: { message: 'hello dig' }, origin: ORIGIN });
   await Promise.resolve();
   const item = m.list()[0];
   assert.equal(item.kind, 'signMessage');
-  assert.equal(item.summary.message, 'hello dig');
+  assert.equal((item.summary as { message?: string }).message, 'hello dig');
   await m.resolve(item.id, true);
   const env = await p;
   assert.equal(env.status, 200);
-  assert.equal(env.body.data.signature, '1'.repeat(192));
-  assert.equal(env.body.data.publicKey, 'a'.repeat(96));
+  assert.equal((env.body.data as { signature?: string }).signature, '1'.repeat(192));
+  assert.equal((env.body.data as { publicKey?: string }).publicKey, 'a'.repeat(96));
 });
 
 test('resolve: an unknown id is a no-op NO_PENDING', async () => {

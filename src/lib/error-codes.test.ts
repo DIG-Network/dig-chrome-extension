@@ -8,7 +8,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   DIG_ERR,
@@ -16,7 +16,7 @@ import {
   ERROR_CATALOGUE,
   classifyError,
   makeError,
-} from '../error-codes.mjs';
+} from '@/lib/error-codes';
 
 test('DIG_ERR is a frozen enum of UPPER_SNAKE codes', () => {
   assert.ok(Object.isFrozen(DIG_ERR), 'DIG_ERR must be frozen');
@@ -36,8 +36,8 @@ test('the four canonical dig-loader codes match docs.dig.net error-codes.json ex
     'DIG_ERR_NETWORK',
   ];
   for (const code of canonical) {
-    assert.equal(DIG_ERR[code], code, `${code} must exist in DIG_ERR`);
-    assert.ok(DIG_LOADER_CODES.includes(code), `${code} must be in DIG_LOADER_CODES`);
+    assert.equal((DIG_ERR as Record<string, string>)[code], code, `${code} must exist in DIG_ERR`);
+    assert.ok((DIG_LOADER_CODES as readonly string[]).includes(code), `${code} must be in DIG_LOADER_CODES`);
   }
   // DIG_LOADER_CODES is exactly the canonical four (the cross-surface subset) — extension-only
   // codes (INVALID_URN, DIGNODE_REQUIRED) live in DIG_ERR but are NOT part of the shared surface.
@@ -89,7 +89,7 @@ test('classifyError accepts an Error object (reads .code then .message)', () => 
   const e = new Error('Invalid URN format');
   assert.equal(classifyError(e), DIG_ERR.DIG_ERR_INVALID_URN);
   const tagged = new Error('whatever');
-  tagged.code = DIG_ERR.DIG_ERR_DECRYPT_TAG; // an already-coded error keeps its code
+  (tagged as { code?: string }).code = DIG_ERR.DIG_ERR_DECRYPT_TAG; // an already-coded error keeps its code
   assert.equal(classifyError(tagged), DIG_ERR.DIG_ERR_DECRYPT_TAG);
 });
 

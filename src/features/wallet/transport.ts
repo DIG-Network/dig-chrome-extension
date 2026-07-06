@@ -13,7 +13,7 @@
  * injectable implementation so the wallet endpoints are unit-testable without a live relay.
  */
 
-import { WALLET_METHODS } from '#shared/wallet-methods.mjs';
+import { WALLET_METHODS } from '@/lib/wallet-methods';
 import { storageGet, storageSet } from '@/lib/messaging';
 
 export const CHAIN = 'chia:mainnet';

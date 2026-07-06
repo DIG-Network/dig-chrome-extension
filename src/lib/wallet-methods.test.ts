@@ -8,7 +8,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   WALLET_METHODS,
@@ -20,7 +20,7 @@ import {
   remapGobyParams,
   isSupportedMethod,
   isStateChanging,
-} from '../wallet-methods.mjs';
+} from '@/lib/wallet-methods';
 
 test('surface matches SYSTEM.md dig-wallet method set', () => {
   // CHIP-0002 core

@@ -1,5 +1,5 @@
 import { api } from '@/api/api';
-import { ACTIONS } from '#shared/messages.mjs';
+import { ACTIONS } from '@/lib/messages';
 
 /** `getControlStatus` — the raw node-detection + best-effort control.status payload. */
 export interface ControlStatusResponse {

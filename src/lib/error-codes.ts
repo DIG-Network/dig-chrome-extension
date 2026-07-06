@@ -28,8 +28,22 @@
  * is the literal `"DIG_ERR_NETWORK"`), making the code usable as both an identifier and a
  * wire value. Frozen so a caller cannot mutate the contract at runtime.
  *
- * @typedef {('DIG_ERR_PROOF_MISMATCH'|'DIG_ERR_DECRYPT_TAG'|'DIG_ERR_NOT_FOUND'|'DIG_ERR_NETWORK'|'DIG_ERR_INVALID_URN'|'DIG_ERR_DIGNODE_REQUIRED')} DigErrorCode
  */
+export type DigErrorCode =
+  | 'DIG_ERR_PROOF_MISMATCH'
+  | 'DIG_ERR_DECRYPT_TAG'
+  | 'DIG_ERR_NOT_FOUND'
+  | 'DIG_ERR_NETWORK'
+  | 'DIG_ERR_INVALID_URN'
+  | 'DIG_ERR_DIGNODE_REQUIRED';
+
+/** The canonical machine envelope a loader failure returns. */
+export interface CodedError {
+  success: false;
+  code: DigErrorCode;
+  message: string;
+}
+
 export const DIG_ERR = Object.freeze({
   // ── Canonical dig-loader surface (mirrors docs static/error-codes.json) ──
   /** Served ciphertext did not verify against the on-chain generation root (tamper / wrong root). */
@@ -78,7 +92,7 @@ export const ERROR_CATALOGUE = Object.freeze([
 // Ordered classifier rules. ORDER MATTERS: a dig-node-required socket failure (ECONNREFUSED
 // on loopback) must win over the generic network match, and an invalid-URN message must not
 // be swallowed by anything else. Each rule is [regexp, code]; the first match wins.
-const CLASSIFY_RULES = [
+const CLASSIFY_RULES: Array<[RegExp, DigErrorCode]> = [
   // Malformed address / URN.
   [/invalid urn|invalid chia:\/\/|malformed (urn|url)|not a valid (urn|address)/i, DIG_ERR.DIG_ERR_INVALID_URN],
   // Local dig-node configured but unreachable (loopback refused / branded local host).
@@ -103,12 +117,17 @@ const CLASSIFY_RULES = [
  * @param {string|Error|null|undefined} input
  * @returns {DigErrorCode}
  */
-export function classifyError(input) {
+export function classifyError(
+  input: string | Error | { code?: string; message?: string } | null | undefined,
+): DigErrorCode {
+  let m: string;
   if (input && typeof input === 'object') {
-    if (typeof input.code === 'string' && input.code in DIG_ERR) return input.code;
-    input = input.message;
+    const rec = input as { code?: string; message?: string };
+    if (typeof rec.code === 'string' && rec.code in DIG_ERR) return rec.code as DigErrorCode;
+    m = String(rec.message || '');
+  } else {
+    m = String(input || '');
   }
-  const m = String(input || '');
   for (const [re, code] of CLASSIFY_RULES) {
     if (re.test(m)) return code;
   }
@@ -125,9 +144,14 @@ export function classifyError(input) {
  * @param {DigErrorCode} [codeOverride]         force a specific code instead of classifying
  * @returns {{success: false, code: DigErrorCode, message: string}}
  */
-export function makeError(input, codeOverride) {
+export function makeError(
+  input: string | Error | { code?: string; message?: string } | null | undefined,
+  codeOverride?: DigErrorCode,
+): CodedError {
   const message =
-    input && typeof input === 'object' ? String(input.message || '') : String(input || '');
+    input && typeof input === 'object'
+      ? String((input as { message?: string }).message || '')
+      : String(input || '');
   const code = codeOverride && codeOverride in DIG_ERR ? codeOverride : classifyError(input);
   return { success: false, code, message };
 }

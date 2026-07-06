@@ -11,32 +11,31 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   brokerRequest,
   isOriginApproved,
   setOriginApproval,
-  ORIGINS_KEY,
   CONNECTION_KEY,
-} from '../wallet-broker.mjs';
+} from '@/lib/wallet-broker';
 
 // In-memory chrome.storage.local stand-in.
-function memStorage(initial = {}) {
-  const data = { ...initial };
+function memStorage(initial: Record<string, unknown> = {}) {
+  const data: Record<string, unknown> = { ...initial };
   return {
     data,
-    async get(key) {
+    async get(key: string) {
       if (typeof key === 'string') return { [key]: data[key] };
       return { ...data };
     },
-    async set(obj) { Object.assign(data, obj); },
+    async set(obj: Record<string, unknown>) { Object.assign(data, obj); },
   };
 }
 
 const ORIGIN = 'https://dapp.example';
 
-function transport({ connected = true, result = { foo: 1 }, throws = null } = {}) {
+function transport({ connected = true, result = { foo: 1 } as unknown, throws = null as string | null }: { connected?: boolean; result?: unknown; throws?: string | null } = {}) {
   return {
     async isConnected() { return connected; },
     async request() {
@@ -53,7 +52,7 @@ test('unknown origin cannot call a sign method (must connect first)', async () =
     'chip0002_signCoinSpends', {}, ORIGIN
   );
   assert.equal(env.status, 401);
-  assert.match(env.body.error, /connect/i);
+  assert.match(env.body.error!, /connect/i);
 });
 
 test('connect with no consent + no requestConsent yields pending (202)', async () => {
@@ -80,7 +79,7 @@ test('connect approves origin via requestConsent and returns address when sessio
     'chip0002_connect', {}, ORIGIN
   );
   assert.equal(env.status, 200);
-  assert.equal(env.body.data.address, 'xch1abc');
+  assert.equal((env.body.data as { address?: string }).address, 'xch1abc');
   assert.equal(await isOriginApproved(storage, ORIGIN), true);
 });
 
@@ -123,7 +122,7 @@ test('approved origin: transport error surfaces as 502', async () => {
     'chip0002_signCoinSpends', {}, ORIGIN
   );
   assert.equal(env.status, 502);
-  assert.match(env.body.error, /rejected/i);
+  assert.match(env.body.error!, /rejected/i);
 });
 
 test('approved origin: no wallet session yields 503 for non-connect methods', async () => {

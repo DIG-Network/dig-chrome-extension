@@ -1,5 +1,5 @@
 import { api } from '@/api/api';
-import { ACTIONS } from '#shared/messages.mjs';
+import { ACTIONS } from '@/lib/messages';
 
 /** `getDigNodeStatus` probe result — whether a local node answered and which base won. */
 export interface NodeStatus {

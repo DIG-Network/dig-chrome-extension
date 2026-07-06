@@ -3,7 +3,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ResolverTab } from '@/features/resolver/ResolverTab';
 import { renderWithProviders } from '@/test/harness';
-import { ACTIONS } from '#shared/messages.mjs';
+import { ACTIONS } from '@/lib/messages';
 
 describe('ResolverTab', () => {
   it('opens a chia:// address in the active tab', async () => {
