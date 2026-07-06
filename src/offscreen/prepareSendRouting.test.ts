@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { Vault } from '@/offscreen/vault';
 import { prepareSendVaultRequest } from '@/lib/custody-session';
-import { buildKeyring, signAndBundle, type SendFlowWasm } from '@/offscreen/sendFlow';
+import { buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { signCoinSpends, TESTNET11_AGG_SIG_ME, type SigningWasm } from '@/offscreen/signing';
 import type { ChainClient, ChainCoin, ChainCoinSpend, ChainSpendBundle } from '@/offscreen/chain';
 import { mnemonicToSeed } from '@/lib/keystore/bip39';
