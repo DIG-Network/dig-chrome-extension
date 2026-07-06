@@ -9,6 +9,9 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  // Only the screenshot spec — the SW-registration harness (e2e/sw/) has its own config
+  // (playwright.sw.config.ts): it loads the built unpacked extension, not the dist-web static server.
+  testMatch: '**/screenshots.spec.ts',
   fullyParallel: true,
   reporter: 'list',
   use: {

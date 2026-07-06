@@ -1,6 +1,6 @@
 {
   "name": "dig-browser-extension",
-  "version": "1.28.1",
+  "version": "1.28.2",
   "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
   "types": "messages.d.ts",
@@ -20,7 +20,8 @@
     "server:stub": "node stub-server.js",
     "generate-icons": "node generate-icons.js",
     "prepare": "npm run build",
-    "screenshots": "playwright test"
+    "screenshots": "playwright test",
+    "test:sw": "playwright test --config=playwright.sw.config.ts"
   },
   "keywords": [
     "dig-network",
