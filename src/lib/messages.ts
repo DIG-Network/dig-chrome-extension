@@ -64,8 +64,14 @@ import { DIG_ERR } from './error-codes';
  * `wallet_getPermissions` / `wallet_revokePermissions` against the shared per-origin consent store.
  * Added `listConnectedSites` (the Connected-sites settings screen reads every origin's capability),
  * `revokeConnectedSite` (per-site revoke), and `revokeAllConnectedSites` (revoke all).
+ *
+ * v12 (#118 remove WalletConnect): `walletRpc` no longer falls back to a WalletConnect → Sage broker.
+ * The extension is a self-custody wallet, so EVERY window.chia request routes to the offscreen vault
+ * via the self-custody dApp router (connect + reads served directly; sign/message summon the approval
+ * window). A request with no/locked wallet resolves to 202 (pending) or a locked-class error rather
+ * than pairing an external wallet. No action names changed; the routing/fallback behaviour did.
  */
-export const MESSAGE_PROTOCOL_VERSION = 11;
+export const MESSAGE_PROTOCOL_VERSION = 12;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -96,7 +102,7 @@ export const ACTIONS = Object.freeze({
   toggleExtension: 'toggleExtension',
   updateServerConfig: 'updateServerConfig',
   updateRpcHost: 'updateRpcHost', // background → content broadcast (not handled by background)
-  // ── wallet (window.chia broker) ──
+  // ── wallet (window.chia self-custody) ──
   walletRpc: 'walletRpc',
   walletConsent: 'walletConsent',
   // ── self-custody dApp approval window (#56 §5.5): the window ↔ SW channel ──
@@ -223,7 +229,7 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.walletRpc]: {
     summary:
-      'Route one window.chia CHIP-0002 RPC. The EIP-2255-shaped permission methods (wallet_getPermissions / wallet_revokePermissions, #67 P0-4) are answered from the shared per-origin consent store. When a self-custody wallet exists (§5.5): connect + reads go to the offscreen vault, and sign/message requests summon the approval window (per-origin gated). Otherwise falls back to the WalletConnect → Sage broker.',
+      'Route one window.chia CHIP-0002 RPC. The EIP-2255-shaped permission methods (wallet_getPermissions / wallet_revokePermissions, #67 P0-4) are answered from the shared per-origin consent store. Every other request routes to the self-custody wallet (§5.5): connect + reads go to the offscreen vault, and sign/message requests summon the approval window (per-origin gated). There is no WalletConnect/Sage fallback.',
     request: '{ action, method:string, params?:object, origin?:string }',
     response: '{ status:number /* 200|202|4xx|5xx */, body:{ data } | { error } }',
   },

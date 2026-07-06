@@ -399,7 +399,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `11`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `12`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
