@@ -29,6 +29,17 @@ import type { OriginRisk } from './phishing';
 /** Neutral verdict used when no origin-risk assessor is injected. */
 const OK_RISK: OriginRisk = { verdict: 'ok', reason: null };
 
+/**
+ * The HTTP-like envelope status the router returns when the USER explicitly rejected a request in the
+ * approval window. It maps to CHIP-0002 **4002 USER_REJECTED** in the provider's `mapEnvelopeToError`
+ * (the "any other non-2xx → 4002 wallet-side rejection" branch) — DISTINCT from the 401 a locked /
+ * not-connected wallet returns (which maps to 4001 UNAUTHORIZED). Overloading 401 for a user reject
+ * (as the pre-#119 code did) made a dApp unable to tell "the user said no" from "you're not
+ * authorized"; this dedicated status keeps the two error classes separate. Chosen as a 4xx value the
+ * provider does not special-case (not 400/401/403/404/429), so it deterministically lands on 4002.
+ */
+export const USER_REJECTED_STATUS = 499;
+
 /** A response from the offscreen vault (only the fields this router reads; extra keys tolerated). */
 export interface VaultResponse {
   success?: boolean;
@@ -62,9 +73,16 @@ export interface QueueEntry {
   id: string;
   origin: string;
   method: string;
-  kind: 'signCoinSpends' | 'signMessage';
-  params: { coinSpends?: unknown; message?: string; publicKey?: unknown };
+  kind: ApprovalKind;
+  /** Kind-specific extracted params (coinSpends/message for sign; recipient/amount/offerStr/… for writes). */
+  params: Record<string, unknown>;
   summary?: unknown;
+  /** Vault-held prepared spend/trade id (send/takeOffer/cancelOffer) — set during {@link DappApprovalManager.enrich}. */
+  pendingId?: string;
+  /** createOffer: the offer built during enrich, held in SW memory and released to the dApp ONLY on approve. */
+  built?: { offer?: string };
+  /** A build (vault call) is in flight for this entry — guards enrich from re-spawning it each poll. */
+  building?: boolean;
   needsUnlock?: boolean;
   decodeError?: boolean;
   /** Phishing/lookalike verdict for the requesting origin (#67 P0-2), shown as an interstitial. */
@@ -75,29 +93,70 @@ export interface QueueEntry {
 /** A raw `window.chia` request param object (tolerant of shapes). */
 type RpcParams = Record<string, unknown> | null | undefined;
 
-/** Read methods routed straight to the vault (no approval — nothing is authorized). */
-export const CUSTODY_READ_METHODS = new Set(['chip0002_chainId', 'chip0002_getPublicKeys', 'chia_getAddress']);
+/**
+ * Read methods routed straight to the vault (no approval — nothing is authorized): identity + address
+ * + asset-generic balance/coins (any CAT by assetId, both HD schemes) + the NFT list + the
+ * `filterUnlockedCoins` predicate (answered in the router).
+ */
+export const CUSTODY_READ_METHODS = new Set([
+  'chip0002_chainId',
+  'chip0002_getPublicKeys',
+  'chip0002_getAssetBalance',
+  'chip0002_getAssetCoins',
+  'chip0002_filterUnlockedCoins',
+  'chia_getAddress',
+  'chia_getNfts',
+]);
 /** Coin-spend signing (approval-gated) — a spend the dApp built, signed by the custody key. */
 export const CUSTODY_SIGN_METHODS = new Set(['chip0002_signCoinSpends']);
 /** Message signing (approval-gated). */
 export const CUSTODY_MESSAGE_METHODS = new Set(['chip0002_signMessage', 'chia_signMessageByAddress']);
 
+/** The approval-window request kinds (the sign/message pair + the value-moving writes). */
+export type ApprovalKind = 'signCoinSpends' | 'signMessage' | 'send' | 'sendTransaction' | 'createOffer' | 'takeOffer' | 'cancelOffer';
+
+/**
+ * State-changing WRITE methods the wallet BUILDS + BROADCASTS (approval-gated). Each maps a
+ * `window.chia` method (normalized) to its approval kind: the wallet builds the spend/offer in the
+ * offscreen vault (deriving a tamper-resistant summary FROM THE BUILT artifact), shows it for
+ * approval, and only broadcasts / releases it on explicit user confirm.
+ */
+export const CUSTODY_WRITE_KIND: Readonly<Record<string, ApprovalKind>> = Object.freeze({
+  chia_send: 'send',
+  chia_sendTransaction: 'sendTransaction',
+  chia_createOffer: 'createOffer',
+  chia_takeOffer: 'takeOffer',
+  chia_cancelOffer: 'cancelOffer',
+});
+
 /**
  * Bucket a `window.chia` method for the custody router: `connect` | `read` | `sign` | `message` |
- * `unsupported` (a known wallet method not yet wired to custody) | `unknown` (not a wallet method).
+ * `write` (a value-moving build+broadcast) | `unsupported` (a known wallet method not yet wired to
+ * custody) | `unknown` (not a wallet method).
  * @param {string} method
- * @returns {'connect'|'read'|'sign'|'message'|'unsupported'|'unknown'}
+ * @returns {'connect'|'read'|'sign'|'message'|'write'|'unsupported'|'unknown'}
  */
 export function classifyCustodyMethod(
   method: string,
-): 'connect' | 'read' | 'sign' | 'message' | 'unsupported' | 'unknown' {
+): 'connect' | 'read' | 'sign' | 'message' | 'write' | 'unsupported' | 'unknown' {
   const norm = normalizeMethod(method);
   if (norm === 'chip0002_connect') return 'connect';
   if (CUSTODY_READ_METHODS.has(norm)) return 'read';
   if (CUSTODY_SIGN_METHODS.has(norm)) return 'sign';
   if (CUSTODY_MESSAGE_METHODS.has(norm)) return 'message';
+  if (CUSTODY_WRITE_KIND[norm]) return 'write';
   if (isSupportedMethod(norm)) return 'unsupported';
   return 'unknown';
+}
+
+/**
+ * Extract a CAT asset id (TAIL, hex) from a CHIP-0002 `{type, assetId}` param object. `null`/absent
+ * (native XCH) → `undefined`, so the vault's assetId-based routing treats it as XCH.
+ */
+function extractAssetId(params: RpcParams): string | undefined {
+  if (!params) return undefined;
+  const a = params.assetId ?? params.asset_id;
+  return a == null ? undefined : String(a);
 }
 
 /** Extract dApp-supplied coin spends from a signCoinSpends param object (tolerant of shapes). */
@@ -105,6 +164,67 @@ function extractCoinSpends(params: RpcParams): unknown[] | null {
   if (!params) return null;
   const cs = params.coinSpends ?? params.coin_spends ?? params.spends;
   return Array.isArray(cs) && cs.length > 0 ? cs : null;
+}
+
+/** A trade-offer leg as the vault's makeOffer expects it (single asset + base-unit string amount). */
+function offerLeg(a: Record<string, unknown> | undefined): { asset: { kind: 'xch' } | { kind: 'cat'; assetId: string }; amount: string } | null {
+  if (!a || a.amount == null) return null;
+  const assetId = a.assetId ?? a.asset_id;
+  return {
+    asset: assetId == null ? { kind: 'xch' } : { kind: 'cat', assetId: String(assetId) },
+    amount: String(a.amount),
+  };
+}
+
+/**
+ * Validate + extract the vault params for one WRITE method from the (already Goby-remapped) dApp
+ * params. Returns the extracted params to stash on the queue entry, or an `error` (with an HTTP-like
+ * status → CHIP-0002 code) to reject BEFORE any approval window is summoned. Money-safety: a
+ * malformed / multi-leg request is refused here, never silently coerced.
+ */
+export function prepareWriteParams(
+  kind: ApprovalKind,
+  params: RpcParams,
+): { params: Record<string, unknown> } | { error: string; status: number } {
+  const p = params || {};
+  if (kind === 'send') {
+    const recipient = p.address ?? p.to ?? p.recipient;
+    if (recipient == null || p.amount == null) return { error: 'send requires a recipient address and amount', status: 400 };
+    return {
+      params: {
+        recipient: String(recipient),
+        amount: String(p.amount),
+        ...(p.fee != null ? { fee: String(p.fee) } : {}),
+        ...(extractAssetId(p) ? { assetId: extractAssetId(p) } : {}),
+      },
+    };
+  }
+  if (kind === 'takeOffer' || kind === 'cancelOffer') {
+    const offerStr = p.offer ?? p.offerStr ?? p.offer1;
+    if (offerStr == null || String(offerStr).length === 0) return { error: `${kind} requires an offer string`, status: 400 };
+    return { params: { offerStr: String(offerStr), ...(p.fee != null ? { fee: String(p.fee) } : {}) } };
+  }
+  if (kind === 'createOffer') {
+    const offerAssets = p.offerAssets ?? p.offered;
+    const requestAssets = p.requestAssets ?? p.requested;
+    if (!Array.isArray(offerAssets) || !Array.isArray(requestAssets) || offerAssets.length !== 1 || requestAssets.length !== 1) {
+      return { error: 'createOffer supports exactly one offered and one requested asset', status: 400 };
+    }
+    const offered = offerLeg(offerAssets[0] as Record<string, unknown>);
+    const requested = offerLeg(requestAssets[0] as Record<string, unknown>);
+    if (!offered || !requested) return { error: 'createOffer legs require an amount', status: 400 };
+    return { params: { offered, requested, ...(p.fee != null ? { fee: String(p.fee) } : {}) } };
+  }
+  if (kind === 'sendTransaction') {
+    const bundle = (p.spendBundle ?? p.spend_bundle) as Record<string, unknown> | undefined;
+    const coinSpends = bundle && (bundle.coin_spends ?? bundle.coinSpends);
+    const aggregatedSignature = bundle && (bundle.aggregated_signature ?? bundle.aggregatedSignature);
+    if (!Array.isArray(coinSpends) || coinSpends.length === 0 || !aggregatedSignature) {
+      return { error: 'sendTransaction requires a spendBundle with coin_spends and an aggregated_signature', status: 400 };
+    }
+    return { params: { coinSpends, aggregatedSignature: String(aggregatedSignature) } };
+  }
+  return { error: `unsupported write ${kind}`, status: 404 };
 }
 
 let _seq = 0;
@@ -159,23 +279,79 @@ export class DappApprovalManager {
   }
 
   /**
-   * Fill in the decoded summary for each queued coin-spend request (from the BUILT spend, via the
-   * vault). Called by the window before it lists — so a wallet unlocked after the request appears
-   * gets its summary on the next refresh. A locked wallet is flagged `needsUnlock` (never signed).
+   * Build the decoded summary for each queued request (from the BUILT spend/offer, via the vault) so
+   * the approval window shows the tamper-resistant facts and holds the exact artifact to be broadcast.
+   *
+   * NON-BLOCKING per entry: each entry's build runs at most ONCE at a time (an `building` guard), and
+   * the returned promise resolves when the in-flight builds settle. The SW's `dappApprovalList` fires
+   * this WITHOUT awaiting and returns the current queue immediately, so a slow/unreachable coinset
+   * (a send/offer build scans the chain) can never freeze the approval window — the summary streams in
+   * on a subsequent poll. Tests `await enrich()` to get summaries populated (the injected vault is
+   * instant). A locked wallet is flagged `needsUnlock`; a build failure `decodeError`; both retry on a
+   * later poll. `signMessage` needs no build (its summary is set at enqueue).
    */
   async enrich() {
-    for (const e of this.queue.values()) {
-      if (e.kind !== 'signCoinSpends' || e.summary) continue;
-      const dec = await this.deps.callVault({ op: 'decodeDappSpend', coinSpends: e.params.coinSpends, gapLimit: this.deps.gapLimit });
-      if (dec && dec.success !== false && dec.dappSummary) {
-        e.summary = dec.dappSummary;
-        e.needsUnlock = false;
-        e.decodeError = false;
-      } else if (dec && dec.code === 'LOCKED') {
-        e.needsUnlock = true;
-      } else {
-        e.decodeError = true;
+    await Promise.all([...this.queue.values()].map((e) => this.#buildEntry(e)));
+  }
+
+  /** Build one queued entry's summary (guarded so a still-running build is not re-spawned each poll). */
+  async #buildEntry(e: QueueEntry): Promise<void> {
+    if (e.summary || e.building || e.kind === 'signMessage') return;
+    e.building = true;
+    try {
+      switch (e.kind) {
+        case 'signCoinSpends':
+        case 'sendTransaction': {
+          // A dApp-built spend/bundle: decode a tamper-resistant summary from the coin spends.
+          const dec = await this.deps.callVault({ op: 'decodeDappSpend', coinSpends: e.params.coinSpends, gapLimit: this.deps.gapLimit });
+          this.#applyBuild(e, dec, dec && dec.dappSummary);
+          break;
+        }
+        case 'send': {
+          // Build (not broadcast) the send in the vault; hold it under a pendingId + show its summary.
+          const prep = await this.deps.callVault({ op: 'prepareSend', recipient: e.params.recipient, amount: e.params.amount, fee: e.params.fee, assetId: e.params.assetId, gapLimit: this.deps.gapLimit });
+          this.#applyBuild(e, prep, prep && prep.summary, prep && (prep.pendingId as string | undefined));
+          break;
+        }
+        case 'takeOffer':
+        case 'cancelOffer': {
+          const prep = await this.deps.callVault({ op: 'prepareTrade', offerStr: e.params.offerStr, tradeKind: e.kind === 'takeOffer' ? 'take' : 'cancel', fee: e.params.fee, gapLimit: this.deps.gapLimit });
+          this.#applyBuild(e, prep, prep && prep.offerSummary, prep && (prep.pendingId as string | undefined));
+          break;
+        }
+        case 'createOffer': {
+          // Build the offer; hold the offer STRING (released to the dApp only on approve) + show its summary.
+          const made = await this.deps.callVault({ op: 'makeOffer', offered: e.params.offered, requested: e.params.requested, fee: e.params.fee, gapLimit: this.deps.gapLimit });
+          if (made && made.success !== false && made.offerSummary) {
+            e.summary = made.offerSummary;
+            e.built = { offer: made.offer as string | undefined };
+            e.needsUnlock = false;
+            e.decodeError = false;
+          } else if (made && made.code === 'LOCKED') {
+            e.needsUnlock = true;
+          } else {
+            e.decodeError = true;
+          }
+          break;
+        }
       }
+    } finally {
+      e.building = false;
+    }
+  }
+
+  /** Apply a build/decode vault result to a queue entry: set the summary (+ optional pendingId), or
+   *  flag `needsUnlock` (locked) / `decodeError` (build failed). */
+  #applyBuild(e: QueueEntry, res: VaultResponse | null | undefined, summary: unknown, pendingId?: string): void {
+    if (res && res.success !== false && summary) {
+      e.summary = summary;
+      if (pendingId) e.pendingId = pendingId;
+      e.needsUnlock = false;
+      e.decodeError = false;
+    } else if (res && res.code === 'LOCKED') {
+      e.needsUnlock = true;
+    } else {
+      e.decodeError = true;
     }
   }
 
@@ -216,7 +392,7 @@ export class DappApprovalManager {
       return err(401, 'Not connected — call chia.connect() first');
     }
 
-    if (kind === 'read') return await this.#routeRead(norm);
+    if (kind === 'read') return await this.#routeRead(norm, params);
     if (kind === 'sign') {
       const coinSpends = extractCoinSpends(params);
       if (!coinSpends) return err(400, 'signCoinSpends requires coinSpends');
@@ -231,23 +407,57 @@ export class DappApprovalManager {
       const originRisk = this.deps.assessOrigin ? await this.#risk(origin) : undefined;
       return this.#enqueue({ origin, method: norm, kind: 'signMessage', params: { message: String(message), publicKey }, summary, originRisk });
     }
+    if (kind === 'write') {
+      // Value-moving write: validate + extract the vault params FIRST (a malformed request is refused
+      // 400 before any window is summoned), then enqueue for approval. The spend/offer is BUILT during
+      // enrich (summary decoded from the built artifact) and only broadcast/released on approve.
+      const writeKind = CUSTODY_WRITE_KIND[norm];
+      const prepared = prepareWriteParams(writeKind, params);
+      if ('error' in prepared) return err(prepared.status, prepared.error);
+      const originRisk = this.deps.assessOrigin ? await this.#risk(origin) : undefined;
+      return this.#enqueue({ origin, method: norm, kind: writeKind, params: prepared.params, originRisk });
+    }
     // A known wallet method not yet wired to custody → 404 so the provider surfaces the CHIP-0002
     // 4004 METHOD_NOT_FOUND (reference-parity stubbing), not a 5xx/disconnected class.
     if (kind === 'unsupported') return err(404, `Method ${norm} is not yet supported by the custody wallet`);
     return err(404, `Unsupported method: ${norm}`);
   }
 
-  async #routeRead(norm: string): Promise<BrokerEnvelope> {
+  async #routeRead(norm: string, params?: RpcParams): Promise<BrokerEnvelope> {
     if (norm === 'chip0002_chainId') return ok('mainnet');
     if (norm === 'chia_getAddress') {
       const r = await this.deps.callVault({ op: 'getReceiveAddress' });
       if (!r || r.success === false) return this.#lockedOr(r);
-      return ok(r.address);
+      // Sage-WC2 `getAddress` returns `{ address }` (the provider unwraps either shape).
+      return ok({ address: r.address });
     }
     if (norm === 'chip0002_getPublicKeys') {
       const r = await this.deps.callVault({ op: 'getPublicKeys', gapLimit: this.deps.gapLimit });
       if (!r || r.success === false) return this.#lockedOr(r);
       return ok(r.publicKeys);
+    }
+    if (norm === 'chip0002_getAssetBalance') {
+      // Asset routing by assetId (any CAT, or native XCH) — forwarded to the vault verbatim so a CAT
+      // is never silently treated as XCH (#121 regression guard lives in the vault + this forwarding).
+      const r = await this.deps.callVault({ op: 'getAssetBalance', assetId: extractAssetId(params), gapLimit: this.deps.gapLimit });
+      if (!r || r.success === false) return this.#lockedOr(r);
+      return ok(r.assetBalance);
+    }
+    if (norm === 'chip0002_getAssetCoins') {
+      const r = await this.deps.callVault({ op: 'getAssetCoins', assetId: extractAssetId(params), gapLimit: this.deps.gapLimit });
+      if (!r || r.success === false) return this.#lockedOr(r);
+      return ok(r.assetCoins);
+    }
+    if (norm === 'chip0002_filterUnlockedCoins') {
+      // The self-custody wallet holds no coins reserved ACROSS dApp calls (a prepared send is held
+      // only briefly, in the vault, during approval), so every supplied coin is unlocked — echo them.
+      const coins = (params && (params.coins ?? params.coinNames)) ?? [];
+      return ok(coins);
+    }
+    if (norm === 'chia_getNfts') {
+      const r = await this.deps.callVault({ op: 'listNfts', gapLimit: this.deps.gapLimit });
+      if (!r || r.success === false) return this.#lockedOr(r);
+      return ok(r.nfts);
     }
     return err(404, `Unsupported method: ${norm}`);
   }
@@ -294,7 +504,9 @@ export class DappApprovalManager {
     if (!entry) return { success: false, code: 'NO_PENDING', message: 'no such request' };
     this.queue.delete(id);
     if (!approved) {
-      entry.resolve(err(401, 'User rejected the request'));
+      // User-rejection precision (#119): a distinct status so the provider surfaces 4002 USER_REJECTED,
+      // never the 4001 UNAUTHORIZED that a locked/not-connected wallet returns.
+      entry.resolve(err(USER_REJECTED_STATUS, 'User rejected the request'));
       return { success: true, remaining: this.queue.size };
     }
     entry.resolve(await this.#performApproved(entry));
@@ -302,18 +514,46 @@ export class DappApprovalManager {
   }
 
   async #performApproved(entry: QueueEntry): Promise<BrokerEnvelope> {
-    if (entry.kind === 'signCoinSpends') {
-      const res = await this.deps.callVault({ op: 'signDappSpend', coinSpends: entry.params.coinSpends, gapLimit: this.deps.gapLimit });
-      if (!res || res.success === false) {
-        return err(res && res.code === 'MISSING_KEY' ? 401 : 502, (res && res.message) || 'signing failed');
+    switch (entry.kind) {
+      case 'signCoinSpends': {
+        const res = await this.deps.callVault({ op: 'signDappSpend', coinSpends: entry.params.coinSpends, gapLimit: this.deps.gapLimit });
+        if (!res || res.success === false) {
+          return err(res && res.code === 'MISSING_KEY' ? 401 : 502, (res && res.message) || 'signing failed');
+        }
+        return ok(res.signature);
       }
-      return ok(res.signature);
+      case 'signMessage': {
+        const res = await this.deps.callVault({ op: 'signMessage', message: entry.params.message as string, publicKey: entry.params.publicKey, gapLimit: this.deps.gapLimit });
+        if (!res || res.success === false) return this.#lockedOr(res);
+        return ok({ signature: res.signature, publicKey: res.signerPublicKey });
+      }
+      case 'send': {
+        // Broadcast the EXACT spend built at enrich (whose summary the user approved) — never a rebuild.
+        if (!entry.pendingId) return err(502, 'send was not prepared');
+        const res = await this.deps.callVault({ op: 'confirmSend', pendingId: entry.pendingId });
+        if (!res || res.success === false) return this.#lockedOr(res);
+        return ok({ id: res.spentCoinId });
+      }
+      case 'takeOffer':
+      case 'cancelOffer': {
+        if (!entry.pendingId) return err(502, 'trade was not prepared');
+        const res = await this.deps.callVault({ op: 'confirmTrade', pendingId: entry.pendingId });
+        if (!res || res.success === false) return this.#lockedOr(res);
+        return ok({ id: res.spentCoinId });
+      }
+      case 'createOffer': {
+        // The offer was built during enrich and held; approval RELEASES the string to the dApp.
+        if (!entry.built || !entry.built.offer) return err(502, 'offer was not built');
+        return ok({ offer: entry.built.offer });
+      }
+      case 'sendTransaction': {
+        const res = await this.deps.callVault({ op: 'broadcastDappBundle', coinSpends: entry.params.coinSpends, aggregatedSignature: entry.params.aggregatedSignature });
+        if (!res || res.success === false) return err(502, (res && res.message) || 'broadcast failed');
+        // MempoolInclusionStatus SUCCESS = 1 (the coinset push was accepted).
+        return ok([{ status: 1 }]);
+      }
+      default:
+        return err(500, 'unknown request kind');
     }
-    if (entry.kind === 'signMessage') {
-      const res = await this.deps.callVault({ op: 'signMessage', message: entry.params.message, publicKey: entry.params.publicKey, gapLimit: this.deps.gapLimit });
-      if (!res || res.success === false) return this.#lockedOr(res);
-      return ok({ signature: res.signature, publicKey: res.signerPublicKey });
-    }
-    return err(500, 'unknown request kind');
   }
 }

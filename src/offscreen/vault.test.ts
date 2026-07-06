@@ -5,7 +5,7 @@ import { isValidMnemonic, mnemonicToEntropy } from '@/lib/keystore/bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
 import type { ScanWasm } from '@/offscreen/scan';
 import type { ChainClient } from '@/offscreen/chain';
-import type { WireCoinSpend } from '@/offscreen/dappSign';
+import { signDappCoinSpends, type WireCoinSpend } from '@/offscreen/dappSign';
 import golden from '@/lib/keystore/derive.golden.json';
 
 // Fast, deterministic Argon2 stand-in so the vault's create/unlock cycle doesn't pay the 64 MiB KDF
@@ -444,5 +444,171 @@ describe('Vault trade ops', () => {
     expect((await v.handle({ op: 'confirmTrade', pendingId: 'nope' }, { ...deps, chia, chain })).code).toBe('NO_PENDING');
     // LOCKED: a fresh (no key) vault can't make an offer.
     expect((await new Vault().handle({ op: 'makeOffer', ...offerXchForCat }, { ...deps, chia, chain })).code).toBe('LOCKED');
+  });
+});
+
+describe('Vault dApp asset ops (getAssetBalance / getAssetCoins)', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  async function unlockedZerosWallet(): Promise<Vault> {
+    const v = new Vault();
+    await v.handle({ op: 'importWallet', password: PW, mnemonic: golden.mnemonic }, deps);
+    return v;
+  }
+
+  const strip0x = (h: string): string => h.replace(/^0x/i, '').toLowerCase();
+  const CAT = 'bb'.repeat(32);
+
+  // A chain that funds the golden index-0 unhardened p2 hash with XCH coins, and its CAT puzzle hash
+  // (for the same inner hash) with a CAT coin — so asset routing (XCH vs CAT by assetId) is exercised
+  // through the REAL derivation, guarding the #121-class asset-drop bug at the vault layer.
+  function assetChain() {
+    const wasm = chia as unknown as { Simulator: new () => { newCoin(ph: Uint8Array, a: bigint): { coinId(): Uint8Array } }; fromHex(h: string): Uint8Array };
+    const sim = new wasm.Simulator();
+    const ph0 = golden.unhardened[0].puzzleHashHex;
+    const catPh0 = strip0x(chia.toHex(chia.catPuzzleHash(chia.fromHex(CAT), chia.fromHex(ph0))));
+    const xchCoinA = sim.newCoin(wasm.fromHex(ph0), 2_000_000_000_000n);
+    const xchCoinB = sim.newCoin(wasm.fromHex(ph0), 500_000_000_000n);
+    const catCoin = sim.newCoin(wasm.fromHex(catPh0), 250n);
+    const chain: ChainClient = {
+      totalUnspent: async () => 0,
+      unspentCoins: async (phs) => {
+        if (phs.map((p) => p.toLowerCase()).includes(ph0)) return [xchCoinA, xchCoinB] as never;
+        if (phs.map((p) => p.toLowerCase()).includes(catPh0)) return [catCoin] as never;
+        return [];
+      },
+      pushSpendBundle: async () => ({ success: true }),
+      coinConfirmed: async () => false,
+      getCoinSpend: async () => null,
+      coinRecords: async () => [],
+    };
+    return chain;
+  }
+
+  it('getAssetBalance sums the wallet\'s unspent XCH coins (confirmed = spendable, with a count)', async () => {
+    const v = await unlockedZerosWallet();
+    const res = await v.handle({ op: 'getAssetBalance', gapLimit: 5 }, { ...deps, chia, chain: assetChain() });
+    expect(res.success).toBe(true);
+    expect(res.assetBalance).toEqual({ confirmed: '2500000000000', spendable: '2500000000000', spendableCoinCount: 2 });
+  });
+
+  it('getAssetBalance routes a CAT assetId to its CAT puzzle hash (asset-generic, guards #121)', async () => {
+    const v = await unlockedZerosWallet();
+    const res = await v.handle({ op: 'getAssetBalance', assetId: CAT, gapLimit: 5 }, { ...deps, chia, chain: assetChain() });
+    expect(res.success).toBe(true);
+    expect(res.assetBalance).toEqual({ confirmed: '250', spendable: '250', spendableCoinCount: 1 });
+  });
+
+  it('getAssetCoins returns the wallet\'s spendable coins (coin identity + name, unlocked)', async () => {
+    const v = await unlockedZerosWallet();
+    const res = await v.handle({ op: 'getAssetCoins', gapLimit: 5 }, { ...deps, chia, chain: assetChain() });
+    expect(res.success).toBe(true);
+    expect(res.assetCoins?.length).toBe(2);
+    const c0 = res.assetCoins![0];
+    expect(c0.coin.puzzleHash).toBe(golden.unhardened[0].puzzleHashHex);
+    expect(c0.coin.amount).toBe('2000000000000');
+    expect(typeof c0.coinName).toBe('string');
+    expect(c0.coinName.length).toBe(64);
+    expect(c0.locked).toBe(false);
+  });
+
+  it('getAssetCoins routes a CAT assetId to its CAT coins', async () => {
+    const v = await unlockedZerosWallet();
+    const res = await v.handle({ op: 'getAssetCoins', assetId: CAT, gapLimit: 5 }, { ...deps, chia, chain: assetChain() });
+    expect(res.success).toBe(true);
+    expect(res.assetCoins?.length).toBe(1);
+    expect(res.assetCoins![0].coin.amount).toBe('250');
+  });
+
+  it('is LOCKED without a held key, CHAIN_UNAVAILABLE without a chain', async () => {
+    expect((await new Vault().handle({ op: 'getAssetBalance' }, { ...deps, chia, chain: assetChain() })).code).toBe('LOCKED');
+    const v = await unlockedZerosWallet();
+    expect((await v.handle({ op: 'getAssetBalance' }, { ...deps, chia })).code).toBe('CHAIN_UNAVAILABLE');
+  });
+});
+
+describe('Vault dApp broadcast op (sendTransaction)', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  interface SimWasm {
+    fromHex(hex: string): Uint8Array;
+    toHex(bytes: Uint8Array): string;
+    Simulator: new () => { bls(amount: bigint): { sk: { sign(m: Uint8Array): unknown }; pk: { toBytes(): Uint8Array }; puzzleHash: Uint8Array; coin: unknown } };
+    Clvm: new () => { delegatedSpend(c: unknown[]): unknown; createCoin(ph: Uint8Array, a: bigint, m: undefined): unknown; spendStandardCoin(coin: unknown, key: unknown, spend: unknown): void; coinSpends(): Array<{ coin: { parentCoinInfo: Uint8Array; puzzleHash: Uint8Array; amount: bigint }; puzzleReveal: Uint8Array; solution: Uint8Array }> };
+  }
+
+  // A REAL self-signed bundle from the Simulator → its wire coin spends + aggregated signature, exactly
+  // as a dApp would hand `sendTransaction({ spendBundle })`. Proves the broadcast op reassembles a
+  // valid SpendBundle (not a mocked handler) — the money-critical bar.
+  function signedBundleWire() {
+    const w = chia as unknown as SimWasm;
+    const sim = new w.Simulator();
+    const pair = sim.bls(1000n);
+    const clvm = new w.Clvm();
+    clvm.spendStandardCoin(pair.coin, pair.pk, clvm.delegatedSpend([clvm.createCoin(pair.puzzleHash, 1000n, undefined)]));
+    const cs = clvm.coinSpends();
+    const wire: WireCoinSpend[] = cs.map((c) => ({
+      coin: { parent_coin_info: w.toHex(c.coin.parentCoinInfo), puzzle_hash: w.toHex(c.coin.puzzleHash), amount: c.coin.amount.toString() },
+      puzzle_reveal: w.toHex(c.puzzleReveal),
+      solution: w.toHex(c.solution),
+    }));
+    const { signatureHex } = signDappCoinSpendsForTest(cs, pair.sk);
+    return { wire, signatureHex };
+  }
+
+  // Sign the coin spends with the (own) key via the proven signer, returning the aggregated sig hex.
+  function signDappCoinSpendsForTest(cs: Array<{ coin: { parentCoinInfo: Uint8Array; puzzleHash: Uint8Array; amount: bigint }; puzzleReveal: Uint8Array; solution: Uint8Array }>, sk: { sign(m: Uint8Array): unknown }): { signatureHex: string } {
+    const w = chia as unknown as SimWasm;
+    const wire: WireCoinSpend[] = cs.map((c) => ({
+      coin: { parent_coin_info: w.toHex(c.coin.parentCoinInfo), puzzle_hash: w.toHex(c.coin.puzzleHash), amount: c.coin.amount.toString() },
+      puzzle_reveal: w.toHex(c.puzzleReveal),
+      solution: w.toHex(c.solution),
+    }));
+    // TESTNET11 additional data is the Simulator's genesis (matches signing.ts).
+    return signDappCoinSpends(chia as never, wire, [sk as never], '37a90eb5185a9c4439a91ddc98bbadce7b4feba060d50116a067de66bf236615');
+  }
+
+  it('reassembles + broadcasts a dApp-signed bundle (no held key needed — the wallet relays)', async () => {
+    const { wire, signatureHex } = signedBundleWire();
+    let pushed: { toBytes(): Uint8Array } | null = null;
+    const chain: ChainClient = {
+      totalUnspent: async () => 0,
+      unspentCoins: async () => [],
+      pushSpendBundle: async (b) => { pushed = b as { toBytes(): Uint8Array }; return { success: true }; },
+      coinConfirmed: async () => true,
+      getCoinSpend: async () => null,
+      coinRecords: async () => [],
+    };
+    // A fresh (locked) vault — broadcast needs no key; approval is the gate.
+    const res = await new Vault().handle({ op: 'broadcastDappBundle', coinSpends: wire, aggregatedSignature: signatureHex }, { ...deps, chia, chain });
+    expect(res.success).toBe(true);
+    expect(pushed).not.toBeNull();
+    expect((pushed as unknown as { toBytes(): Uint8Array }).toBytes().length).toBeGreaterThan(0);
+  });
+
+  it('surfaces a coinset push failure as PUSH_FAILED (never a silent success)', async () => {
+    const { wire, signatureHex } = signedBundleWire();
+    const chain: ChainClient = {
+      totalUnspent: async () => 0,
+      unspentCoins: async () => [],
+      pushSpendBundle: async () => ({ success: false, error: 'DOUBLE_SPEND' }),
+      coinConfirmed: async () => false,
+      getCoinSpend: async () => null,
+      coinRecords: async () => [],
+    };
+    const res = await new Vault().handle({ op: 'broadcastDappBundle', coinSpends: wire, aggregatedSignature: signatureHex }, { ...deps, chia, chain });
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('PUSH_FAILED');
+  });
+
+  it('requires coinSpends + an aggregated signature', async () => {
+    const chain: ChainClient = { totalUnspent: async () => 0, unspentCoins: async () => [], pushSpendBundle: async () => ({ success: true }), coinConfirmed: async () => false, getCoinSpend: async () => null, coinRecords: async () => [] };
+    expect((await new Vault().handle({ op: 'broadcastDappBundle', coinSpends: [] }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
   });
 });
