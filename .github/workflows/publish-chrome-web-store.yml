@@ -23,9 +23,14 @@ name: publish-chrome-web-store
 # Mint the refresh token with: https://github.com/fregante/chrome-webstore-upload-keys
 
 on:
-  # Chrome Web Store is NOT hooked up yet — publishing is MANUAL (workflow_dispatch) until store creds
-  # exist. The user-installable release ARCHIVE (.zip to download, unpack, and load unpacked) is built
-  # and attached to the GitHub Release by deploy.yml on the version tag (CLAUDE.md §3.6).
+  # Publish on each version tag (the release cut) AND on manual dispatch. When the CHROME_* store
+  # secrets are NOT provisioned the job SKIPS gracefully (green, with a notice) instead of failing —
+  # the tag build must never go red just because the store isn't hooked up yet. Until the secrets
+  # exist, the user-installable release ARCHIVE (.zip to download, unpack, load unpacked) built +
+  # attached to the GitHub Release by deploy.yml on the version tag (CLAUDE.md §3.6) is the install path.
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       trusted_testers:
@@ -47,32 +52,57 @@ jobs:
     name: package + publish to Chrome Web Store
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # Graceful skip: if the store creds are not provisioned, do nothing (job stays green). Every
+      # later step is gated on `steps.creds.outputs.present`, so a tag build never fails here. Secrets
+      # cannot be read in a step-level `if:`, so we surface presence as a step output.
+      - name: check Chrome Web Store credentials
+        id: creds
+        env:
+          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          if [ -n "$EXTENSION_ID" ] && [ -n "$CLIENT_ID" ] && [ -n "$CLIENT_SECRET" ] && [ -n "$REFRESH_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Chrome Web Store publish skipped::CHROME_* store secrets are not provisioned; skipping upload+publish. The downloadable .zip is attached to the GitHub Release (deploy.yml). Provision CHROME_EXTENSION_ID / CHROME_CLIENT_ID / CHROME_CLIENT_SECRET / CHROME_REFRESH_TOKEN to enable auto-publish."
+          fi
 
-      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+      - if: steps.creds.outputs.present == 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - if: steps.creds.outputs.present == 'true'
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: 20
 
-      - run: npm ci || npm install
+      - if: steps.creds.outputs.present == 'true'
+        run: npm ci || npm install
 
       # .npmrc sets ignore-scripts=true (supply-chain lockdown, #67 P0-1a); re-run only the reviewed
       # allowlist (esbuild/@swc) before the build/test that relies on it.
-      - run: npm run allow-scripts
+      - if: steps.creds.outputs.present == 'true'
+        run: npm run allow-scripts
 
       # Gate publish on the unit tests + the >=80% coverage floor (c8 / .c8rc.json).
-      - run: npm run test:coverage # c8 node --test tests/ — tests + >=80% coverage gate
+      - if: steps.creds.outputs.present == 'true'
+        run: npm run test:coverage # c8 node --test tests/ — tests + >=80% coverage gate
 
       # Reuse the SAME packaging path as deploy.yml: build dist/ + the packaged zip. The
       # WalletConnect project id is a client-public identifier (the hub already ships it
       # client-side); absent → the build still succeeds and the options-page field is the
       # only override.
-      - run: npm run build:zip # node build.js --zip -> ./dist + ./dig-network-extension-v<version>.zip
+      - if: steps.creds.outputs.present == 'true'
+        run: npm run build:zip # node build.js --zip -> ./dist + ./dig-network-extension-v<version>.zip
         env:
           WALLETCONNECT_PROJECT_ID: ${{ secrets.WALLETCONNECT_PROJECT_ID }}
 
       # Resolve the packaged zip path (the version is read from package.json by build.js).
       - name: locate packaged zip
         id: zip
+        if: steps.creds.outputs.present == 'true'
         run: |
           ZIP="$(ls dig-network-extension-v*.zip | head -n1)"
           if [ -z "$ZIP" ]; then echo "No packaged zip found" >&2; exit 1; fi
@@ -81,9 +111,10 @@ jobs:
 
       # Publish to the Chrome Web Store via the official CLI (binary: chrome-webstore-upload).
       # No subcommand ⇒ upload + publish. `--trusted-testers` (publish to testers only) is
-      # added on a manual dispatch when requested. This step is EXPECTED to fail until the
-      # four CHROME_* secrets above are provisioned.
+      # added on a manual dispatch when requested. Runs only when the CHROME_* secrets are present
+      # (the creds preflight above skips the whole job cleanly otherwise).
       - name: upload + publish to Chrome Web Store
+        if: steps.creds.outputs.present == 'true'
         env:
           # The CLI reads these from the environment. Map repo/org CHROME_* secrets onto them.
           EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
