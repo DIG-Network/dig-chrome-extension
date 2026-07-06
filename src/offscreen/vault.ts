@@ -35,7 +35,7 @@ import { deriveAccounts } from '@/lib/keystore/derive';
 import type { ChainClient, ChainCoin } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { listCoins as buildCoinList, prepareSplit as buildSplit, prepareCombine as buildCombine, type CoinsWasm, type CoinInfo, type CoinOpSummary } from '@/offscreen/coins';
-import { listNfts, prepareNftTransfer, type NftWasm, type WalletNft, type NftTransferSummary } from '@/offscreen/nfts';
+import { listNfts, prepareNftTransfer, prepareNftMint, type NftWasm, type WalletNft, type NftTransferSummary, type NftMintSummary } from '@/offscreen/nfts';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
 import { decodeDappSpend, reconstructCoinSpends, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
 import { indexActivity, type ActivityWasm, type ActivityEvent } from '@/offscreen/activity';
@@ -106,6 +106,8 @@ export type VaultOp =
   | 'confirmTrade'
   | 'listNfts'
   | 'prepareNftTransfer'
+  // NFT minting (#92): build a new NFT (CHIP-0007 metadata + royalty); broadcast via confirmSend.
+  | 'prepareNftMint'
   // Coin control (#91): per-asset coin listing + split / combine self-sends.
   | 'listCoins'
   | 'prepareSplit'
@@ -118,6 +120,24 @@ export type VaultOp =
   | 'signDappSpend'
   | 'signMessage'
   | 'broadcastDappBundle';
+
+/**
+ * Wire-safe (JSON, no bigint) NFT mint inputs (#92) crossing the SW→vault boundary. URIs are plain
+ * strings, hashes are hex, and edition/fee amounts are decimal strings; the vault converts to bigint.
+ */
+export interface WireNftMintParams {
+  dataUris: string[];
+  dataHash?: string;
+  metadataUris?: string[];
+  metadataHash?: string;
+  licenseUris?: string[];
+  licenseHash?: string;
+  editionNumber?: string;
+  editionTotal?: string;
+  royaltyBasisPoints?: number;
+  royaltyAddress?: string;
+  fee?: string;
+}
 
 /** A request forwarded from the SW to the vault. `record` is the persisted DIGWX1 blob for ops that need it. */
 export interface VaultRequest {
@@ -164,6 +184,8 @@ export interface VaultRequest {
   tradeKind?: 'take' | 'cancel';
   /** prepareNftTransfer: the NFT's singleton launcher id (hex). */
   launcherId?: string;
+  /** prepareNftMint (#92): the CHIP-0007 metadata + royalty + fee inputs for a new NFT. */
+  nftMint?: WireNftMintParams;
   /** decodeDappSpend / signDappSpend: the dApp-supplied coin spends (CHIP-0002 wire, hex fields). */
   coinSpends?: WireCoinSpend[];
   /** signMessage: the UTF-8 message a dApp asked the wallet to sign. */
@@ -210,6 +232,10 @@ export interface VaultResponse {
   nfts?: WalletNft[];
   /** prepareNftTransfer: the decoded transfer summary to approve. */
   nftSummary?: NftTransferSummary;
+  /** prepareNftMint (#92): the decoded (tamper-resistant) mint summary to approve. */
+  nftMintSummary?: NftMintSummary;
+  /** prepareNftMint (#92): the new NFT's launcher id (hex). */
+  launcherId?: string;
   /** listCoins: the wallet's unspent coins for the requested asset. */
   coins?: CoinInfo[];
   /** prepareSplit / prepareCombine: the decoded (tamper-resistant) coin-op summary to approve. */
@@ -333,6 +359,8 @@ export class Vault {
           return await this.listNfts(req, deps);
         case 'prepareNftTransfer':
           return await this.prepareNftTransfer(req, deps);
+        case 'prepareNftMint':
+          return await this.prepareNftMint(req, deps);
         case 'listCoins':
           return await this.listCoins(req, deps);
         case 'prepareSplit':
@@ -640,6 +668,41 @@ export class Vault {
     const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
     this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
     return { success: true, pendingId, nftSummary: prepared.summary };
+  }
+
+  /**
+   * MINT a new NFT owned by this wallet (#92) — CHIP-0007 metadata (data/metadata/license URIs +
+   * optional hashes) + royalty percentage (to the minter or a chosen address). Builds + holds the
+   * spend under a pending id (broadcast via the shared `confirmSend`); returns the decoded, tamper-
+   * resistant summary + the new launcher id. Does NOT sign or broadcast.
+   */
+  private async prepareNftMint(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const m = req.nftMint;
+    if (!m || !Array.isArray(m.dataUris) || m.dataUris.length === 0) return { success: false, code: 'BAD_REQUEST', message: 'a data URI is required to mint' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as NftWasm;
+    const prepared = await prepareNftMint(chia, deps.chain, {
+      seed,
+      dataUris: m.dataUris,
+      ...(m.dataHash ? { dataHash: m.dataHash } : {}),
+      ...(m.metadataUris ? { metadataUris: m.metadataUris } : {}),
+      ...(m.metadataHash ? { metadataHash: m.metadataHash } : {}),
+      ...(m.licenseUris ? { licenseUris: m.licenseUris } : {}),
+      ...(m.licenseHash ? { licenseHash: m.licenseHash } : {}),
+      ...(m.editionNumber ? { editionNumber: BigInt(m.editionNumber) } : {}),
+      ...(m.editionTotal ? { editionTotal: BigInt(m.editionTotal) } : {}),
+      ...(m.royaltyBasisPoints != null ? { royaltyBasisPoints: m.royaltyBasisPoints } : {}),
+      ...(m.royaltyAddress ? { royaltyAddress: m.royaltyAddress } : {}),
+      fee: BigInt(m.fee ?? '0'),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    return { success: true, pendingId, nftMintSummary: prepared.summary, launcherId: prepared.launcherId };
   }
 
   /**

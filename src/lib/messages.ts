@@ -90,8 +90,14 @@ import { DIG_ERR } from './error-codes';
  * re-homes the active wallet). The SW keeps a per-wallet DIGWX1 record registry over the existing
  * keystore (no new crypto/wasm); the offscreen vault caches several unlocked keys and switches which
  * is active. `getLockState`/create/import already carry `activeWalletId`.
+ *
+ * v16 (#92 NFT minting): added `prepareNftMint` (build + hold a new-NFT mint — CHIP-0007 metadata +
+ * royalty — for approval) and `confirmNftMint` (sign + broadcast the approved mint — reuses the vault
+ * `confirmSend` broadcast path) — routed to the offscreen vault; poll confirmation via the shared
+ * `sendStatus`. New-NFT construction uses the shipped chia-wallet-sdk-wasm NFT launcher; no new wire
+ * contract. Bulk/edition minting is a follow-up (#99). DID-owner assignment is a follow-up (#93).
  */
-export const MESSAGE_PROTOCOL_VERSION = 15;
+export const MESSAGE_PROTOCOL_VERSION = 16;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -158,6 +164,9 @@ export const ACTIONS = Object.freeze({
   listNfts: 'listNfts',
   prepareNftTransfer: 'prepareNftTransfer',
   confirmNftTransfer: 'confirmNftTransfer',
+  // ── NFT minting (#92): build a new NFT + broadcast (confirm reuses the confirmSend path) ──
+  prepareNftMint: 'prepareNftMint',
+  confirmNftMint: 'confirmNftMint',
   // ── coin control (#91): per-asset coin listing + split / combine (confirmed via confirmSend) ──
   listCoins: 'listCoins',
   prepareSplit: 'prepareSplit',
@@ -417,6 +426,16 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.confirmNftTransfer]: {
     summary: 'Sign + BROADCAST a previously-prepared NFT transfer (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareNftMint]: {
+    summary: "Build (not sign/broadcast) a MINT of one new NFT owned by the wallet (#92) — CHIP-0007 metadata (data/metadata/license URIs + optional hashes), an edition, and a royalty percentage paid to the minter (or a chosen royalty address). The singleton + change are funded from the wallet's XCH coins. Held under a pending id; returns the decoded (tamper-resistant) summary + the new launcher id to approve. Broadcast via confirmNftMint. Bulk/edition minting is a follow-up (#99); DID-owner assignment is a follow-up (#93).",
+    request: '{ action, nftMint:{ dataUris:string[] /* ≥1 */, dataHash?:string /* hex */, metadataUris?:string[], metadataHash?:string, licenseUris?:string[], licenseHash?:string, editionNumber?:string, editionTotal?:string, royaltyBasisPoints?:number, royaltyAddress?:string /* xch1… */, fee?:string /* mojos */ } }',
+    response: '{ pendingId:string, launcherId:string, nftMintSummary:{ launcherId, dataUris, metadataUris, licenseUris, editionNumber, editionTotal, royaltyBasisPoints, royaltyPuzzleHashHex, fee, coinCount } } | { success:false, code:\'BAD_REQUEST\'|\'NO_XCH_COINS\'|..., message }',
+  },
+  [ACTIONS.confirmNftMint]: {
+    summary: 'Sign + BROADCAST a previously-prepared NFT mint (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },

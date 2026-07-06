@@ -50,6 +50,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade',
     // NFTs / Collectibles (#56): list + transfer routed to the offscreen vault:
     'listNfts', 'prepareNftTransfer', 'confirmNftTransfer',
+    // NFT minting (#92): build + broadcast a new NFT:
+    'prepareNftMint', 'confirmNftMint',
     // In-window app-view (#66): install/remove the on.dig.net framing-bypass DNR rule:
     'appViewFraming',
     // Shield action (per-resource proof ledger) + Control Panel (node management view):

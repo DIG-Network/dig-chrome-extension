@@ -84,6 +84,9 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'listNfts',
   'prepareNftTransfer',
   'confirmNftTransfer',
+  // NFT minting (#92): build + broadcast a new NFT.
+  'prepareNftMint',
+  'confirmNftMint',
   'listCoins',
   'prepareSplit',
   'prepareCombine',
