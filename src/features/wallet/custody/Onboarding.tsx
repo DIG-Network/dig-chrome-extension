@@ -9,9 +9,9 @@ type Step = 'welcome' | 'create' | 'reveal' | 'confirm' | 'import';
  * Self-custody onboarding (§6, Fable: lives in fullscreen). Welcome → Create (set password →
  * back up the recovery phrase behind the accessible reveal → confirm one word) OR Import (paste the
  * phrase + set a password). On success the wallet is created/unlocked in the offscreen vault and
- * `onDone` lets the gate proceed. A secondary path keeps the Sage-broker connect available.
+ * `onDone` lets the gate proceed.
  */
-export function Onboarding({ onDone, onUseSage }: { onDone: () => void; onUseSage?: () => void }) {
+export function Onboarding({ onDone }: { onDone: () => void }) {
   const intl = useIntl();
   const [step, setStep] = useState<Step>('welcome');
   const [password, setPassword] = useState('');
@@ -83,11 +83,6 @@ export function Onboarding({ onDone, onUseSage }: { onDone: () => void; onUseSag
           <button type="button" className="dig-btn dig-btn--block" data-testid="onboarding-import" onClick={() => setStep('import')}>
             <FormattedMessage id="custody.onboarding.import" />
           </button>
-          {onUseSage && (
-            <button type="button" className="dig-link" data-testid="onboarding-sage" onClick={onUseSage}>
-              <FormattedMessage id="custody.onboarding.useSage" />
-            </button>
-          )}
         </div>
       )}
 

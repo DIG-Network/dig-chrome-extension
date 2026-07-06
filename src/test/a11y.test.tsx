@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { axe } from 'jest-axe';
 import { ResolverTab } from '@/features/resolver/ResolverTab';
-import { ConnectPanel } from '@/features/wallet/ConnectPanel';
+import { NoWalletCard } from '@/features/wallet/custody/NoWalletCard';
 import { AppsTab } from '@/features/apps/AppsTab';
 import { UnlockScreen } from '@/features/wallet/custody/UnlockScreen';
 import { RecoveryReveal } from '@/features/wallet/custody/RecoveryReveal';
@@ -17,8 +17,8 @@ describe('accessibility (axe)', () => {
     expect(results.violations).toEqual([]);
   });
 
-  it('ConnectPanel has no WCAG violations', async () => {
-    const { container } = renderWithProviders(<ConnectPanel />);
+  it('NoWalletCard has no WCAG violations', async () => {
+    const { container } = renderWithProviders(<NoWalletCard />);
     const results = await axe(container, AXE_OPTS);
     expect(results.violations).toEqual([]);
   });

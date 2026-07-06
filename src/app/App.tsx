@@ -4,8 +4,6 @@ import { IntlProvider } from 'react-intl';
 import { AppView } from '@/features/apps/AppView';
 import { store as defaultStore, type AppStore } from '@/app/store';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/app/hooks';
-import { TransportProvider } from '@/app/TransportContext';
-import { wcTransport, type WalletTransport } from '@/features/wallet/transport';
 import { CompactLayout } from '@/layouts/CompactLayout';
 import { ExpandedLayout } from '@/layouts/ExpandedLayout';
 import { useLayoutMode, type Surface } from '@/app/layout';
@@ -75,25 +73,21 @@ function Shell({ surface }: { surface: Surface }) {
 
 /**
  * The one React app, rendered by both entry points (`popup.html`, `app.html`). `surface` selects
- * the default chrome; a wide `app.html` upgrades to the expanded layout. The store + transport are
- * injectable so unit tests drive the same app with a mock backend.
+ * the default chrome; a wide `app.html` upgrades to the expanded layout. The store is injectable so
+ * unit tests drive the same app with a mock backend (the SW seam, via `chrome.runtime.sendMessage`).
  */
 export function App({
   surface,
   store = defaultStore,
-  transport = wcTransport,
 }: {
   surface: Surface;
   store?: AppStore;
-  transport?: WalletTransport;
 }) {
   return (
     <Provider store={store}>
-      <TransportProvider transport={transport}>
-        <LocaleGate>
-          <Shell surface={surface} />
-        </LocaleGate>
-      </TransportProvider>
+      <LocaleGate>
+        <Shell surface={surface} />
+      </LocaleGate>
     </Provider>
   );
 }
