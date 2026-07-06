@@ -387,4 +387,23 @@ export const ja: Record<string, string> = {
   "send.saveContact.label": "この連絡先の名前を付ける",
   "send.saveContact.save": "保存",
   "send.saveContact.saved": "アドレス帳に保存しました",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': 'トークンの管理',
+  'tokens.manage.intro': '保有しているトークンはここに自動で表示されます。表示したくないものは非表示にするか、アセット ID で手動追加できます。',
+  'tokens.manage.yourTokens': '所有トークン',
+  'tokens.manage.empty': 'トークンはまだありません。受け取ったトークンはここに自動で表示されます。',
+  'tokens.manage.hidden': '非表示',
+  'tokens.manage.hide': '非表示にする',
+  'tokens.manage.show': '表示する',
+  'tokens.manage.add.title': 'トークンを追加',
+  'tokens.manage.add.assetId': 'アセット ID（TAIL）',
+  'tokens.manage.add.name': '名前（任意）',
+  'tokens.manage.add.placeholder': '0x… 32 バイトのアセット ID',
+  'tokens.manage.add.button': 'トークンを追加',
+  'tokens.manage.close': '閉じる',
+  'tokens.manage.open': 'トークンの管理',
+  'tokens.error.invalid': '有効な 32 バイトのアセット ID（0x… TAIL）を入力してください。',
+  'tokens.error.builtin': '$DIG はすでに表示されています。',
+  'tokens.error.duplicate': 'そのトークンはすでに追跡されています。',
 };

@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { scanBalances, receiveAddress, DEFAULT_GAP_LIMIT, type ScanWasm } from './scan';
+import { buildKeyring, type SendFlowWasm } from './sendFlow';
+import { type SigningWasm } from './signing';
 import { DEFAULT_COINSET_URL, COINSET_BATCH, type ChainClient } from './chain';
 import { mnemonicToSeed } from '@/lib/keystore/bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
+import { simChain, issueCatTo, transferCatHinted, type CatSimWasm } from '@/test/catSim';
 import golden from '@/lib/keystore/derive.golden.json';
 
 // A CAT asset id (TAIL) — any valid 32-byte hex; catPuzzleHash is deterministic over it.
@@ -59,6 +62,33 @@ describe('scanBalances', () => {
     const catPh0 = toHex(chia.catPuzzleHash(chia.fromHex(TAIL), chia.fromHex(innerPh0)));
     const res = await scanBalances(chia, fakeChain({ [catPh0]: 7 }), { seed, watchedCats: [`0x${TAIL}`], gapLimit: 3 });
     expect(res.cats[TAIL]).toBe(7);
+  });
+
+  it('auto-discovers a held CAT into balances.cats without a watch list (#87)', async () => {
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 3 });
+    const csim = chia as unknown as CatSimWasm;
+    const sigw = chia as unknown as SigningWasm;
+    const sim = new csim.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 5_000_000_000_000n);
+    const assetIdHex = issueCatTo(csim, sigw, sim, ring, 1000n);
+    await transferCatHinted(csim, sigw, sim, ring, assetIdHex, ring[1].puzzleHashHex, 1000n);
+
+    const res = await scanBalances(chia, simChain(csim, sim), { seed, gapLimit: 3 });
+    expect(res.cats[assetIdHex]).toBe(1000); // discovered, not watched
+  });
+
+  it('does not re-query a watched CAT that was already auto-discovered', async () => {
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 3 });
+    const csim = chia as unknown as CatSimWasm;
+    const sigw = chia as unknown as SigningWasm;
+    const sim = new csim.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 5_000_000_000_000n);
+    const assetIdHex = issueCatTo(csim, sigw, sim, ring, 1000n);
+    await transferCatHinted(csim, sigw, sim, ring, assetIdHex, ring[1].puzzleHashHex, 1000n);
+
+    // Even though it is ALSO in the watch list, the discovered amount wins (no double count / re-query).
+    const res = await scanBalances(chia, simChain(csim, sim), { seed, watchedCats: [assetIdHex], gapLimit: 3 });
+    expect(res.cats[assetIdHex]).toBe(1000);
   });
 
   it('derives the pooled index-0 unhardened receive address', () => {

@@ -6,6 +6,7 @@ import { FourState } from '@/components/FourState';
 import { AppLauncherGrid, AppLauncherSkeleton } from '@/features/apps/AppLauncherGrid';
 import { useGetStoreCatalogQuery } from '@/features/apps/appsApi';
 import { useGetCustodyBalancesQuery, useGetLockStateQuery, useGetCustodyActivityQuery } from '@/features/wallet/custodyApi';
+import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { useGetNodeStatusQuery } from '@/features/resolver/resolverApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance } from '@/features/wallet/portfolio';
@@ -44,9 +45,11 @@ function BalanceWidget() {
   const dispatch = useAppDispatch();
   const lock = useGetLockStateQuery();
   const [watchedCats] = useStorageValue<unknown>('wallet.watchedCats', []);
+  const [hiddenCats] = useStorageValue<unknown>('wallet.hiddenCats', []);
   const unlocked = lock.data?.lockState === 'unlocked';
   const balances = useGetCustodyBalancesQuery(undefined, { skip: !unlocked });
-  const assets = custodyAssetBalances(balances.data?.balances, watchedCats);
+  const registry = useGetCatRegistryQuery(undefined, { skip: !unlocked });
+  const assets = custodyAssetBalances(balances.data?.balances, watchedCats, { registry: registry.data, hidden: hiddenCats });
   const hero = pickHeroBalance(assets);
 
   return (

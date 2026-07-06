@@ -390,4 +390,23 @@ export const en: Record<string, string> = {
   'send.saveContact.label': 'Name this contact',
   'send.saveContact.save': 'Save',
   'send.saveContact.saved': 'Saved to your address book',
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': 'Manage tokens',
+  'tokens.manage.intro': 'Tokens you hold appear here automatically. Hide ones you don\'t want to see, or add one by its asset ID.',
+  'tokens.manage.yourTokens': 'Your tokens',
+  'tokens.manage.empty': 'No tokens yet. Tokens you receive will appear here automatically.',
+  'tokens.manage.hidden': 'Hidden',
+  'tokens.manage.hide': 'Hide',
+  'tokens.manage.show': 'Show',
+  'tokens.manage.add.title': 'Add a token',
+  'tokens.manage.add.assetId': 'Asset ID (TAIL)',
+  'tokens.manage.add.name': 'Name (optional)',
+  'tokens.manage.add.placeholder': '0x… 32-byte asset ID',
+  'tokens.manage.add.button': 'Add token',
+  'tokens.manage.close': 'Close',
+  'tokens.manage.open': 'Manage tokens',
+  'tokens.error.invalid': 'Enter a valid 32-byte asset ID (0x… TAIL).',
+  'tokens.error.builtin': '$DIG is already shown.',
+  'tokens.error.duplicate': 'That token is already tracked.',
 };

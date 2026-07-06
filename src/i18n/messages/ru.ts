@@ -387,4 +387,23 @@ export const ru: Record<string, string> = {
   "send.saveContact.label": "Назовите этот контакт",
   "send.saveContact.save": "Сохранить",
   "send.saveContact.saved": "Сохранено в адресную книгу",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': 'Управление токенами',
+  'tokens.manage.intro': 'Токены, которыми вы владеете, отображаются здесь автоматически. Скройте ненужные или добавьте токен по его ID актива.',
+  'tokens.manage.yourTokens': 'Ваши токены',
+  'tokens.manage.empty': 'Пока нет токенов. Полученные токены появятся здесь автоматически.',
+  'tokens.manage.hidden': 'Скрытые',
+  'tokens.manage.hide': 'Скрыть',
+  'tokens.manage.show': 'Показать',
+  'tokens.manage.add.title': 'Добавить токен',
+  'tokens.manage.add.assetId': 'ID актива (TAIL)',
+  'tokens.manage.add.name': 'Название (необязательно)',
+  'tokens.manage.add.placeholder': '0x… 32-байтовый ID актива',
+  'tokens.manage.add.button': 'Добавить токен',
+  'tokens.manage.close': 'Закрыть',
+  'tokens.manage.open': 'Управление токенами',
+  'tokens.error.invalid': 'Введите корректный 32-байтовый ID актива (0x… TAIL).',
+  'tokens.error.builtin': '$DIG уже отображается.',
+  'tokens.error.duplicate': 'Этот токен уже отслеживается.',
 };

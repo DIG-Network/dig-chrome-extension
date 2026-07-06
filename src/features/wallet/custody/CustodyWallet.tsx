@@ -8,7 +8,9 @@ import { setWalletView } from '@/features/ui/uiSlice';
 import { useStorageValue } from '@/lib/useStorageValue';
 import { useGetCustodyBalancesQuery, useGetReceiveAddressQuery } from '@/features/wallet/custodyApi';
 import { useGetPricesQuery } from '@/features/wallet/priceApi';
+import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
+import { ManageTokens } from '@/features/wallet/custody/ManageTokens';
 import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
 import { PortfolioHero } from '@/features/wallet/PortfolioHero';
 import { assetUsdValue, portfolioValue } from '@/features/wallet/portfolioValue';
@@ -42,16 +44,18 @@ export function CustodyWallet() {
   const walletView = useAppSelector((s) => s.ui.walletView);
   const advanced = useAppSelector((s) => s.ui.advanced);
   const [watchedCats] = useStorageValue<unknown>('wallet.watchedCats', []);
+  const [hiddenCats] = useStorageValue<unknown>('wallet.hiddenCats', []);
   const balances = useGetCustodyBalancesQuery();
   const receive = useGetReceiveAddressQuery();
   const prices = useGetPricesQuery();
+  const registry = useGetCatRegistryQuery();
 
-  const assets = custodyAssetBalances(balances.data?.balances, watchedCats);
+  const assets = custodyAssetBalances(balances.data?.balances, watchedCats, { registry: registry.data, hidden: hiddenCats });
   const hero = pickHeroBalance(assets);
   const priceMap = prices.data ?? {};
   const total = portfolioValue(assets, priceMap);
   const cached = balances.data?.cached === true;
-  const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'contacts'>('assets');
+  const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'contacts' | 'tokens'>('assets');
 
   /** Format a row's fiat value as `≈ $x.xx`, or null when it can't be priced. */
   const fiatLabelFor = (row: (typeof assets)[number]): string | null => {
@@ -99,6 +103,10 @@ export function CustodyWallet() {
         <ContactsManager onClose={() => setHomePanel('assets')} />
       )}
 
+      {walletView === 'home' && homePanel === 'tokens' && (
+        <ManageTokens assets={assets} onClose={() => setHomePanel('assets')} />
+      )}
+
       {walletView === 'home' && homePanel === 'assets' && (
         <>
           <div className="dig-action-bar" style={{ display: 'flex', gap: 8, margin: '4px 0 14px' }}>
@@ -109,9 +117,14 @@ export function CustodyWallet() {
               <FormattedMessage id="wallet.action.contacts" />
             </button>
           </div>
-          <h2 className="dig-heading">
-            <FormattedMessage id="wallet.assets.title" />
-          </h2>
+          <div className="dig-toggle-row">
+            <h2 className="dig-heading" style={{ margin: 0 }}>
+              <FormattedMessage id="wallet.assets.title" />
+            </h2>
+            <button type="button" className="dig-link" data-testid="action-manage-tokens" onClick={() => setHomePanel('tokens')}>
+              <FormattedMessage id="tokens.manage.open" />
+            </button>
+          </div>
           <FourState
             isLoading={balances.isLoading}
             isError={balances.isError}
@@ -129,8 +142,9 @@ export function CustodyWallet() {
                   name={a.descriptor.name}
                   amountLabel={a.label}
                   fiatLabel={fiatLabelFor(a)}
+                  iconUrl={a.descriptor.iconUrl}
                   priceLoading={prices.isLoading}
-                  testid={`asset-${a.descriptor.key}`}
+                  testid={a.descriptor.key === 'cat' ? `asset-cat-${a.descriptor.assetId}` : `asset-${a.descriptor.key}`}
                 />
               ))}
             </div>

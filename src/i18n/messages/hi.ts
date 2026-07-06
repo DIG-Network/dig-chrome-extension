@@ -387,4 +387,23 @@ export const hi: Record<string, string> = {
   "send.saveContact.label": "इस संपर्क का नाम रखें",
   "send.saveContact.save": "सहेजें",
   "send.saveContact.saved": "आपकी पता पुस्तिका में सहेजा गया",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': 'टोकन प्रबंधित करें',
+  'tokens.manage.intro': 'आपके पास मौजूद टोकन यहाँ अपने आप दिखते हैं। जिन्हें नहीं देखना चाहते उन्हें छिपाएँ, या एसेट आईडी से कोई टोकन जोड़ें।',
+  'tokens.manage.yourTokens': 'आपके टोकन',
+  'tokens.manage.empty': 'अभी कोई टोकन नहीं। आपको मिलने वाले टोकन यहाँ अपने आप दिखेंगे।',
+  'tokens.manage.hidden': 'छिपाए गए',
+  'tokens.manage.hide': 'छिपाएँ',
+  'tokens.manage.show': 'दिखाएँ',
+  'tokens.manage.add.title': 'टोकन जोड़ें',
+  'tokens.manage.add.assetId': 'एसेट आईडी (TAIL)',
+  'tokens.manage.add.name': 'नाम (वैकल्पिक)',
+  'tokens.manage.add.placeholder': '0x… 32-बाइट एसेट आईडी',
+  'tokens.manage.add.button': 'टोकन जोड़ें',
+  'tokens.manage.close': 'बंद करें',
+  'tokens.manage.open': 'टोकन प्रबंधित करें',
+  'tokens.error.invalid': 'एक मान्य 32-बाइट एसेट आईडी दर्ज करें (0x… TAIL)।',
+  'tokens.error.builtin': '$DIG पहले से दिख रहा है।',
+  'tokens.error.duplicate': 'वह टोकन पहले से ट्रैक किया जा रहा है।',
 };
