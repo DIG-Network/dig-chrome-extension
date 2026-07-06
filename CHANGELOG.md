@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.38.0] - 2026-07-06
+
+### Features
+- **wallet:** Coin control — list / select / split / combine (#91) (#55)
+
 ## [1.37.2] - 2026-07-06
 
 ### Bug Fixes
