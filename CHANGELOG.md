@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.28.6] - 2026-07-06
+
+### Bug Fixes
+- **appview:** Render on.dig.net dApps in-window via a framing-bypass DNR rule (#66) (#40)
+
 ## [1.28.5] - 2026-07-06
 
 ### Features
