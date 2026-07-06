@@ -399,7 +399,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `9`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `10`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -416,10 +416,32 @@ trade-offer actions — `makeOffer`, `inspectOffer`, `prepareTrade`, `confirmTra
 added the NFT / Collectibles actions — `listNfts`, `prepareNftTransfer`, `confirmNftTransfer` (§18.11).
 `9` (#56 §5.5) made `walletRpc` route to the self-custody wallet when one exists (connect + reads → the
 offscreen vault; sign/message → the approval window) and added the approval-window channel
-`dappApprovalList` + `dappApprovalResolve` (§18.12).
+`dappApprovalList` + `dappApprovalResolve` (§18.12). `10` (#66) added `appViewFraming` — install/remove
+the in-window app-view framing bypass (§9.1).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
+
+### 9.1 In-window app-view framing bypass (`*.on.dig.net`)
+
+The extension's in-window app-view embeds a launched DIG dApp in an iframe. DIG's own subdomain
+resolver `*.on.dig.net` serves `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'` (clickjacking
+protection for the arbitrary user content it hosts), which would refuse that embed and force the dApp
+into a browser tab. To render it in-window WITHOUT weakening on.dig.net's protection against other
+embedders, the app-view uses a **declarativeNetRequest `modifyHeaders` session rule** that removes the
+`X-Frame-Options` and `Content-Security-Policy` response headers, scoped as tightly as DNR allows and
+installed EPHEMERALLY:
+
+- `requestDomains: ['on.dig.net']` — DIG's own resolver content only (subdomains included);
+- `resourceTypes: ['sub_frame']` — iframe embeds only, never a top-level navigation;
+- `tabIds: [<app-view tab>]` when the app-view runs in a tab (the expanded layout), pinning the strip
+  to that one tab; the popup app-view (no tab id) is domain + sub-frame scoped.
+
+The rule (session rule id `2`; id `1` is the legacy dig.local cleanup rule) is added via the
+`appViewFraming` action when the app-view opens an on.dig.net dApp and REMOVED the moment it closes,
+so at all other times on.dig.net keeps full framing protection against every embedder. Non-DIG dApps
+are embedded unchanged (iframe, with a graceful open-in-tab fallback when they refuse framing). The
+fix is entirely extension-side — on.dig.net's headers are not modified.
 
 ### 7.1 Actions (summary)
 

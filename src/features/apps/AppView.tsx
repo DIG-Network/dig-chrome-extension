@@ -3,6 +3,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { closeApp } from '@/features/ui/uiSlice';
 import { hasRuntime } from '@/lib/messaging';
+import { isFramedDigHost, enableFramingBypass, disableFramingBypass } from '@/features/apps/framingBypass';
 
 /** How long to wait for the dApp frame to load before treating the embed as refused (ms). */
 const LOAD_TIMEOUT = 6000;
@@ -23,25 +24,53 @@ function openInTab(url: string): void {
  * (X-Frame-Options / CSP `frame-ancestors` / load error / timeout) is detected and the dApp is
  * gracefully opened in a NEW TAB with a one-line note, so the user NEVER sees a blank frame. Rendered
  * as a full-surface overlay on both layouts; `Escape` closes it.
+ *
+ * DIG's own `*.on.dig.net` dApps serve `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'`, so
+ * before loading such a link we ask the SW to install an ephemeral framing-bypass DNR rule (#66) and
+ * only then set the iframe `src`; the rule is removed when the view closes. Non-DIG dApps keep the
+ * iframe-or-tab-fallback behaviour unchanged.
  */
 export function AppView() {
   const app = useAppSelector((s) => s.ui.openApp);
   const dispatch = useAppDispatch();
   const intl = useIntl();
   const [phase, setPhase] = useState<Phase>('loading');
+  // Whether the iframe may load yet. For a DIG on.dig.net link we hold it until the framing bypass
+  // is installed; for every other link it is ready immediately (no behaviour change).
+  const [frameReady, setFrameReady] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const fellBack = useRef(false);
   const link = app?.link;
+  const needsBypass = isFramedDigHost(link);
 
-  // Start (and reset on app change) the load-timeout that flips an unloaded frame to BLOCKED.
+  // Reset, install the framing bypass for on.dig.net, then arm the load-timeout. Cleanup removes the
+  // bypass so on.dig.net keeps its framing protection against every other embedder.
   useEffect(() => {
     if (!link) return;
     fellBack.current = false;
     setPhase('loading');
+    setFrameReady(!needsBypass);
+    let cancelled = false;
+    let bypassed = false;
+    if (needsBypass) {
+      void (async () => {
+        bypassed = await enableFramingBypass();
+        if (cancelled) {
+          if (bypassed) void disableFramingBypass();
+          return;
+        }
+        // Load either way: if the bypass failed, the embed is simply refused → the tab fallback.
+        setFrameReady(true);
+      })();
+    }
     timer.current = window.setTimeout(() => setPhase((p) => (p === 'loading' ? 'blocked' : p)), LOAD_TIMEOUT);
-    return () => window.clearTimeout(timer.current);
-  }, [link]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer.current);
+      if (bypassed) void disableFramingBypass();
+    };
+  }, [link, needsBypass]);
 
   // On BLOCKED, gracefully open the dApp in a new tab exactly once (never leave a blank frame).
   useEffect(() => {
@@ -120,7 +149,7 @@ export function AppView() {
           </div>
         )}
 
-        {phase !== 'blocked' && (
+        {phase !== 'blocked' && frameReady && (
           <iframe
             ref={frameRef}
             className="dig-appview-frame"

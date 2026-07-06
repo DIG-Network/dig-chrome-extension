@@ -40,6 +40,7 @@ import { buildErrorPageHtml } from '@/lib/error-page';
 import { DIG_ERR, makeError } from '@/lib/error-codes';
 // The versioned message catalogue: the frozen ACTIONS enum + getCapabilities self-description.
 import { ACTIONS, buildCapabilities, OFFSCREEN_TARGET } from '@/lib/messages';
+import { buildFramingBypassRule, APPVIEW_FRAMING_RULE_ID } from '@/lib/framing-rule';
 // Self-custody session logic (#56): the offscreen-vault coordination decisions (pure; no chrome.*).
 import {
   KEYSTORE_KEY,
@@ -1063,6 +1064,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // State is updated in the React popup; no redirect rules to update (all content via RPC)
     console.log('Extension toggled:', message.enabled);
     return false; // Not async
+  }
+
+  if (message.action === ACTIONS.appViewFraming) {
+    // In-window app-view (#66): install/remove the EPHEMERAL declarativeNetRequest session rule that
+    // strips *.on.dig.net's framing headers so the app-view iframe can embed a DIG dApp. Scope to the
+    // sender's tab when it has one (the expanded/app.html layout) so the strip is pinned to that tab.
+    (async () => {
+      try {
+        if (message.enable) {
+          const rule = buildFramingBypassRule(sender?.tab?.id);
+          await chrome.declarativeNetRequest.updateSessionRules({
+            removeRuleIds: [APPVIEW_FRAMING_RULE_ID],
+            addRules: [rule],
+          });
+        } else {
+          await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [APPVIEW_FRAMING_RULE_ID] });
+        }
+        sendResponse({ success: true });
+      } catch (e) {
+        console.error('DIG Extension: appViewFraming rule update failed:', e);
+        try { sendResponse({ success: false }); } catch { /* port closed */ }
+      }
+    })();
+    return true; // async
   }
 
   if (message.action === 'convertDigUrl') {
