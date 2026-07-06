@@ -95,8 +95,8 @@ from the popup's **"DIG settings"** link. The popup itself stays a product surfa
 config controls).
 
 - **dig-node host** (`server.host`) — point the extension at a local **dig-node** to resolve
-  `chia://` content locally instead of the hosted RPC. Default **`localhost:8080`** (the
-  dig-node port), with a reachability check. An explicitly-configured custom host wins
+  `chia://` content locally instead of the hosted RPC. Default **`localhost:9778`** (the
+  canonical dig-node control port), with a reachability check. An explicitly-configured custom host wins
   ENTIRELY over the `dig.local`/`localhost` ladder. (One name, one default, one parser,
   shared via `server-config.mjs`.) The extension does not cache resolved content — every read
   re-verifies and re-decrypts; caching is a dig-node job.

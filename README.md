@@ -39,7 +39,7 @@ Home, injects a `window.chia` wallet, and shows a verified badge.
     dig-node control contract exactly. The mutating control surface is gated by an on-disk control
     token an MV3 extension can't read, so full node management deep-links to the native DIG Browser;
     when no local node is present, reads transparently fall back to `rpc.dig.net` (stated honestly).
-- **DIG settings** (options page): the dig-node host (`localhost:8080`, or an explicitly
+- **DIG settings** (options page): the dig-node host (`localhost:9778`, or an explicitly
   configured custom host that wins entirely over the auto ladder) with a "dig-node not
   running" affordance and the upstream RPC endpoint. The extension does not cache resolved
   content — caching is a dig-node job.

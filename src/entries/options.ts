@@ -34,7 +34,7 @@ async function saveCompanion(): Promise<void> {
   const host = (input.value || '').trim() || DEFAULT_DIG_NODE_HOST;
   await chrome.storage.local.set({ 'server.host': host });
   // Keep the legacy split keys in sync via the SHARED parser (so the background read path and these
-  // keys can never disagree on the default port — 8080, the dig-node port).
+  // keys can never disagree on the default port — 9778, the canonical dig-node control port).
   const { url, port } = parseServerHost(host);
   await chrome.storage.local.set({ 'server.url': url, 'server.port': port });
   void checkCompanion();

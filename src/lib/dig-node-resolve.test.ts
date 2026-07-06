@@ -3,7 +3,8 @@
  *
  * The local dig-node is reachable at TWO addresses:
  *   1. bare `http://dig.local` (port 80, branded — written by the installer's hosts entry)
- *   2. `http://localhost:<port>` (default 8080, the always-on fallback)
+ *   2. `http://localhost:<port>` (default 9778, the canonical dig-node control port, #132 —
+ *      the always-on fallback)
  *
  * Resolution MUST PREFER `http://dig.local` (no port) and fall back to `http://localhost:<port>`.
  * This is forward-compatible: until the installer writes the hosts entry, dig.local simply
@@ -27,7 +28,7 @@ test('DIG_LOCAL_URL is the bare branded http://dig.local (no port)', () => {
 });
 
 test('digNodeCandidates prefers dig.local, then falls back to localhost:port', () => {
-  // Nothing configured → default port 8080.
+  // Nothing configured → default port 9778 (the canonical dig-node control port, #132).
   assert.deepEqual(digNodeCandidates(), [
     'http://dig.local',
     `http://localhost:${DEFAULT_DIG_NODE_PORT}`,

@@ -10,14 +10,20 @@
  * called it "RPC Host" defaulting to port 80, the options page called it "Companion host"
  * defaulting to 8080, and the background fallback defaulted to 80. That meant a value set
  * on one surface was parsed differently on another. This module fixes that: ONE name (the
- * dig-node host), ONE default (`localhost:8080` — the dig-node's port), and ONE parser.
+ * dig-node host), ONE default (`localhost:9778` — the canonical dig-node control port), and
+ * ONE parser.
  *
  * It is a plain ES module (no chrome.* access) so it can be imported by the module SW
  * (background.js), the options page, and unit-tested under `node --test`.
  */
 
-/** The dig-node's default listen port (matches dig-node / the old dig-companion default). */
-export const DEFAULT_DIG_NODE_PORT = 8080;
+/**
+ * The dig-node's default listen port. Canonically **9778** (#132) — an uncommon high port
+ * clear of the collision-prone common-dev set (80/443/3000/5000/8000/8080/8888/9000) and the
+ * sibling of the dig-wallet HTTP API's 9777. Was 8080 (the old dig-companion default) until
+ * #132 moved the whole ecosystem (dig-node, digstore, this extension) to the new canonical port.
+ */
+export const DEFAULT_DIG_NODE_PORT = 9778;
 
 /** The default dig-node host:port shown when nothing is configured. */
 export const DEFAULT_DIG_NODE_HOST = `localhost:${DEFAULT_DIG_NODE_PORT}`;
@@ -26,7 +32,7 @@ export const DEFAULT_DIG_NODE_HOST = `localhost:${DEFAULT_DIG_NODE_PORT}`;
  * Parse a user-entered dig-node host string into `{ url, port }`.
  *
  * Accepts `host`, `host:port`, or `http(s)://host[:port]`. A missing or out-of-range port
- * falls back to {@link DEFAULT_DIG_NODE_PORT} (8080); blank input falls back to the full
+ * falls back to {@link DEFAULT_DIG_NODE_PORT} (9778); blank input falls back to the full
  * default host. The scheme is stripped — the caller decides http/https.
  */
 export function parseServerHost(host?: string | null): { url: string; port: number } {
@@ -63,7 +69,7 @@ export function formatServerHost(url: string, port: number): string {
 //
 // The dig-installer makes the local dig-node reachable at TWO addresses:
 //   1. bare `http://dig.local` (port 80, branded) — once the installer writes the hosts entry,
-//   2. `http://localhost:<port>` (default 8080) — the always-on fallback that needs no hosts edit.
+//   2. `http://localhost:<port>` (default 9778) — the always-on fallback that needs no hosts edit.
 //
 // Resolution PREFERS dig.local (cleaner, branded, no port) and falls back to localhost:port.
 // This is forward-compatible: until the installer writes the hosts entry, dig.local simply

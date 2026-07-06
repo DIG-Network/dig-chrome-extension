@@ -627,7 +627,7 @@ async function fetchContentViaRPC(urn, endpoint) {
 
 // Parse the dig-node host (server.host) into { url, port }. Delegates to the shared
 // server-config.mjs parser so the popup, options page, and background all agree on the
-// SAME name, default (localhost:8080 — the dig-node port), and parse rules.
+// SAME name, default (localhost:9778 — the canonical dig-node control port, #132), and parse rules.
 const parseServerHost = parseDigNodeHost;
 
 // Get the dig-node config from storage.
