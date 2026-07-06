@@ -143,81 +143,8 @@ declare module '#shared/wallet-offers.mjs' {
   ): { offered: OfferLeg[]; requested: OfferLeg[]; fee: number; feeLabel: string };
 }
 
-declare module '#shared/dig-control.mjs' {
-  export const HOSTED_RPC_FALLBACK: string;
-  export const CONTROL_METHODS: readonly string[];
-  export function controlPanelViewModel(view: unknown): {
-    mode: 'manage' | 'install';
-    nodeOnline: boolean;
-    base: string | null;
-    authRequired: boolean;
-    hasStats: boolean;
-    stats: {
-      hostedStores: number | string;
-      cachedCapsules: number | string;
-      cacheUsedBytes: number | null;
-      syncOn: boolean;
-    } | null;
-    upstream: string;
-    deepLinkBrowser: boolean;
-    note: string;
-    install: { title: string; body: string; installLabel: string; installUrl: string };
-    readFallbackLine: string;
-  };
-  export function controlInstallPrompt(): { title: string; body: string; installLabel: string; installUrl: string };
-}
-
-declare module '#shared/dig-ledger.mjs' {
-  export interface LedgerEntry {
-    resourcePath: string;
-    storeId: string;
-    rootHash: string;
-    inclusionProofPassed: boolean;
-    errorCode: string;
-    executionProofStatus: string;
-  }
-  export function capsuleKey(storeId: string, rootHash: string): string;
-  export function groupLedger(entries: LedgerEntry[]): {
-    passed: LedgerEntry[];
-    failed: LedgerEntry[];
-    passedCount: number;
-    failedCount: number;
-    total: number;
-    allPassed: boolean;
-    empty: boolean;
-  };
-  export function inclusionProofDisplay(e: LedgerEntry): {
-    verified: boolean;
-    proofRoot: string;
-    hasRoot: boolean;
-    storeId: string;
-    errorCode: string;
-    label: string;
-  };
-  export function executionProofDisplay(e: LedgerEntry): {
-    verified: boolean;
-    state: 'verified' | 'mock' | 'pending' | 'absent' | 'unknown';
-    status: string;
-    label: string;
-  };
-}
-
 declare module '#shared/qr.mjs' {
   export function qrSvg(text: string, size?: number): string;
-}
-
-declare module '#shared/dig-node-status.mjs' {
-  /** The DIG node installer/download URL surfaced when no local node is reachable. */
-  export const DIG_INSTALLER_URL: string;
-  /** Stable, plain-language prompt shown when a local dig-node isn't reachable. */
-  export function digNodeInstallPrompt(): {
-    title: string;
-    body: string;
-    installLabel: string;
-    installUrl: string;
-  };
-  /** True when a raw failure message indicates a local dig-node is required but unreachable. */
-  export function isDigNodeRequiredError(rawMessage: string | null | undefined): boolean;
 }
 
 declare module '#shared/apps.mjs' {

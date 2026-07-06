@@ -59,7 +59,7 @@ import {
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from '#shared/wallet-assets.mjs';
 // dig-node install prompt + "dig-node required" error mapping (universal installer link).
-import { digNodeInstallPrompt, isDigNodeRequiredError } from '#shared/dig-node-status.mjs';
+import { digNodeInstallPrompt, isDigNodeRequiredError } from '@/lib/dig-node-status';
 
 // Shared dig-node host config (one parser/default for the server.host key) + the local-node
 // resolution order (dig.local preferred, localhost:port fallback) and reachability probe.
@@ -75,11 +75,11 @@ import {
   decideControlView,
   CONTROL_METHODS,
   isUnauthorizedControlResult,
-} from '#shared/dig-control.mjs';
+} from '@/lib/dig-control';
 
 // DIG Shields per-resource proof LEDGER (#134, mirrored from the browser): the per-tab/
 // per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
-import { LedgerStore, groupLedger } from '#shared/dig-ledger.mjs';
+import { LedgerStore, groupLedger } from '@/lib/dig-ledger';
 
 // Wallet broker: per-origin consent + CHIP-0002 routing for the injected window.chia
 // provider, backed by WalletConnect→Sage. The broker core (consent gate, method

@@ -34,19 +34,13 @@ const EXTENSION_FILES = [
   // QR renderer for the Receive view (bundled below to inline qrcode-generator for the browser).
   'qr.mjs',
   'dig-urn.mjs',
-  // The dig-node install prompt/copy. (server-config + error-page migrated to src/lib as TS — #68;
-  // they inline into the SW bundle + the vite page bundles, no longer plain-copied.)
-  'dig-node-status.mjs',
   // Agent-friendly contracts: catalogued chia:// loader error codes (DIG_ERR_*, aligned with
   // docs error-codes.json) + the versioned background MESSAGE catalogue (ACTIONS enum +
   // getCapabilities self-description). Both imported at runtime by background.js.
   'error-codes.mjs',
   'messages.mjs',
-  // DIG Control Panel (dig://control parity) decision logic + the DIG Shields per-resource
-  // proof ledger (#134, byte-mirror of the browser's dig/shields/dig_ledger.mjs). Imported by
-  // the React shell (#shared/* alias), the background SW, and the dig-viewer.
-  'dig-control.mjs',
-  'dig-ledger.mjs',
+  // (dig-node-status + dig-control + dig-ledger migrated to src/lib as TS — #68; they inline into
+  // the SW bundle + the vite page bundles, no longer plain-copied.)
   // Ecosystem funnel: shared link constants. (The first-run welcome page welcome.html + its TS
   // entry src/entries/welcome.ts is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.)
   'links.mjs',

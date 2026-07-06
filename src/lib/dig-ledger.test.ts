@@ -10,7 +10,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   capsuleKey,
@@ -18,7 +18,7 @@ import {
   groupLedger,
   inclusionProofDisplay,
   executionProofDisplay,
-} from '../dig-ledger.mjs';
+} from '@/lib/dig-ledger';
 
 const STORE = '1426d9064bb59353e2ad3845c1d250af1f75476a6d4d85f2c4d6b90696359907';
 const ROOT = 'cc77916250e587e9d39d9fca59afdaf1bce89aa26c4d56249b2c14406dda8e4e';

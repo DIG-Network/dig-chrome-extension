@@ -57,10 +57,30 @@ export const DEFAULT_MAX_ENTRIES = 256;
  * @param {string} rootHash 64-hex root, or "" / "latest" when unresolved.
  * @returns {string} `storeId:rootHash` (lowercased).
  */
-export function capsuleKey(storeId, rootHash) {
+export function capsuleKey(storeId?: string | null, rootHash?: string | null): string {
   const s = String(storeId || "").toLowerCase();
   const r = String(rootHash || "").toLowerCase();
   return s + ":" + (r && r !== "latest" ? r : "latest");
+}
+
+/** One recorded per-resource inclusion-proof verdict (the byte-mirrored #134 ledger entry). */
+export interface LedgerEntry {
+  resourcePath: string;
+  storeId: string;
+  rootHash: string;
+  inclusionProofPassed: boolean;
+  errorCode: string;
+  executionProofStatus: string;
+}
+
+/** The loose input {@link LedgerStore.record} accepts (any field may be missing at the call site). */
+export interface LedgerRecordInput {
+  storeId?: string;
+  rootHash?: string;
+  resourcePath?: string;
+  inclusionProofPassed?: boolean;
+  errorCode?: string;
+  executionProofStatus?: string;
 }
 
 /**
@@ -70,7 +90,7 @@ export function capsuleKey(storeId, rootHash) {
  * @param {string} resourcePath
  * @returns {string}
  */
-function normalizeResourcePath(resourcePath) {
+function normalizeResourcePath(resourcePath?: string | null): string {
   let p = String(resourcePath || "");
   while (p.startsWith("/")) p = p.slice(1);
   return p === "" ? DEFAULT_RESOURCE_KEY : p;
@@ -85,13 +105,15 @@ function normalizeResourcePath(resourcePath) {
  * appending a duplicate (so a retry that succeeds replaces the earlier failure).
  */
 export class LedgerStore {
-  /** @param {object} [opts] @param {number} [opts.maxEntries=DEFAULT_MAX_ENTRIES] */
-  constructor(opts = {}) {
+  private _max: number;
+  /** capsuleKey -> Map<resourcePath, entry> (insertion order preserved by Map). */
+  private _byCapsule: Map<string, Map<string, LedgerEntry>>;
+
+  constructor(opts: { maxEntries?: number } = {}) {
     this._max =
-      Number.isInteger(opts.maxEntries) && opts.maxEntries > 0
-        ? opts.maxEntries
+      Number.isInteger(opts.maxEntries) && (opts.maxEntries as number) > 0
+        ? (opts.maxEntries as number)
         : DEFAULT_MAX_ENTRIES;
-    // capsuleKey -> Map<resourcePath, entry> (insertion order preserved by Map).
     this._byCapsule = new Map();
   }
 
@@ -106,7 +128,7 @@ export class LedgerStore {
    * @param {boolean} e.inclusionProofPassed the loader's per-resource verdict.
    * @param {string} [e.errorCode] a catalogued DIG_ERR_* code on failure ("" on pass).
    */
-  record(e) {
+  record(e: LedgerRecordInput): void {
     const key = capsuleKey(e && e.storeId, e && e.rootHash);
     const resourcePath = normalizeResourcePath(e && e.resourcePath);
     const passed = (e && e.inclusionProofPassed) === true;
@@ -133,7 +155,7 @@ export class LedgerStore {
     // Evict the oldest while over the cap.
     while (perResource.size > this._max) {
       const oldest = perResource.keys().next().value;
-      perResource.delete(oldest);
+      if (oldest !== undefined) perResource.delete(oldest);
     }
   }
 
@@ -142,7 +164,7 @@ export class LedgerStore {
    * @param {string} storeId @param {string} rootHash
    * @returns {Array<object>} a fresh array (callers may sort/group freely).
    */
-  entriesFor(storeId, rootHash) {
+  entriesFor(storeId?: string | null, rootHash?: string | null): LedgerEntry[] {
     const perResource = this._byCapsule.get(capsuleKey(storeId, rootHash));
     return perResource ? Array.from(perResource.values()) : [];
   }
@@ -165,10 +187,10 @@ export class LedgerStore {
  *     all-passed; nothing was verified).
  *   - `allPassed` — there is at least one entry and NONE failed.
  */
-export function groupLedger(entries) {
+export function groupLedger(entries: readonly Partial<LedgerEntry>[] | null | undefined) {
   const list = Array.isArray(entries) ? entries : [];
-  const passed = [];
-  const failed = [];
+  const passed: Partial<LedgerEntry>[] = [];
+  const failed: Partial<LedgerEntry>[] = [];
   for (const e of list) {
     if (e && e.inclusionProofPassed === true) {
       passed.push(e);
@@ -196,7 +218,7 @@ export function groupLedger(entries) {
  * @param {string} s candidate root.
  * @returns {boolean} true iff `s` is exactly 64 hex chars.
  */
-export function isHex64Root(s) {
+export function isHex64Root(s?: string | null): boolean {
   return /^[0-9a-f]{64}$/i.test(String(s || ""));
 }
 
@@ -217,7 +239,7 @@ export function isHex64Root(s) {
  * @returns {{verified:boolean, proofRoot:string, hasRoot:boolean,
  *   storeId:string, errorCode:string, label:string}}
  */
-export function inclusionProofDisplay(e) {
+export function inclusionProofDisplay(e: Partial<LedgerEntry> | null | undefined) {
   const entry = e || {};
   const verified = entry.inclusionProofPassed === true;
   const root = String(entry.rootHash || "").toLowerCase();
@@ -253,7 +275,7 @@ export function inclusionProofDisplay(e) {
  * @returns {{verified:boolean, state:("verified"|"mock"|"pending"|"absent"|"unknown"),
  *   status:string, label:string}}
  */
-export function executionProofDisplay(e) {
+export function executionProofDisplay(e: Partial<LedgerEntry> | null | undefined) {
   const entry = e || {};
   const status = String((entry && entry.executionProofStatus) || "").toLowerCase();
   // The honest mapping. The CRITICAL rule (rpc.dig.net returns MOCK execution

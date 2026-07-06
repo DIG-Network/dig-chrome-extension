@@ -25,7 +25,7 @@ export const DIG_INSTALLER_URL = 'https://github.com/DIG-Network/dig-installer/r
  *
  * @returns {{title: string, body: string, installLabel: string, installUrl: string}}
  */
-export function digNodeInstallPrompt() {
+export function digNodeInstallPrompt(): { title: string; body: string; installLabel: string; installUrl: string } {
   return {
     title: 'Run DIG content locally',
     body:
@@ -58,7 +58,7 @@ const DIG_NODE_REQUIRED_PATTERNS = [
  * @param {string|null|undefined} rawMessage
  * @returns {boolean}
  */
-export function isDigNodeRequiredError(rawMessage) {
+export function isDigNodeRequiredError(rawMessage: string | null | undefined): boolean {
   const m = String(rawMessage || '');
   if (!m) return false;
   return DIG_NODE_REQUIRED_PATTERNS.some((p) => p.test(m));

@@ -23,7 +23,7 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   CONTROL_METHODS,
@@ -35,7 +35,7 @@ import {
   controlPanelViewModel,
   isControlMethod,
   isUnauthorizedControlResult,
-} from '../dig-control.mjs';
+} from '@/lib/dig-control';
 
 // ---- Catalogued control.* method surface (must match dig-node control.rs / meta.rs) ----
 
@@ -179,9 +179,9 @@ test('controlPanelViewModel: an open node that returned control.status → manag
   assert.equal(vm.nodeOnline, true);
   assert.equal(vm.base, 'http://dig.local');
   assert.equal(vm.hasStats, true);
-  assert.equal(vm.stats.hostedStores, 3);
-  assert.equal(vm.stats.cachedCapsules, 7);
-  assert.equal(vm.stats.syncOn, true);
+  assert.equal(vm.stats!.hostedStores, 3);
+  assert.equal(vm.stats!.cachedCapsules, 7);
+  assert.equal(vm.stats!.syncOn, true);
   assert.equal(vm.upstream, 'https://rpc.dig.net');
   // Even an open node deep-links full (mutating) management to the native browser.
   assert.equal(vm.deepLinkBrowser, true);

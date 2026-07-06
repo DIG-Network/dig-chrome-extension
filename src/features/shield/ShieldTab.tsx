@@ -1,5 +1,5 @@
 import { FormattedMessage } from 'react-intl';
-import { inclusionProofDisplay } from '#shared/dig-ledger.mjs';
+import { inclusionProofDisplay } from '@/lib/dig-ledger';
 import { FourState } from '@/components/FourState';
 import { StatusPill } from '@/components/StatusPill';
 import { useGetShieldLedgerQuery } from '@/features/shield/shieldApi';

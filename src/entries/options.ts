@@ -8,7 +8,7 @@
  */
 import { DIG_BROWSER_URL } from '#shared/links.mjs';
 import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from '@/lib/server-config';
-import { digNodeInstallPrompt } from '#shared/dig-node-status.mjs';
+import { digNodeInstallPrompt } from '@/lib/dig-node-status';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.getElementById(id) as T | null;

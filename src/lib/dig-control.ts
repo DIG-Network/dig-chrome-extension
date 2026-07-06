@@ -38,7 +38,7 @@
  * modules/dig-companion/src/meta.rs.
  */
 
-import { DIG_INSTALLER_URL } from './dig-node-status.mjs';
+import { DIG_INSTALLER_URL } from './dig-node-status';
 
 /** The hosted DIG RPC the read path transparently falls back to when no local node is present. */
 export const HOSTED_RPC_FALLBACK = 'https://rpc.dig.net/';
@@ -93,7 +93,7 @@ export const CONTROL_ERR = Object.freeze({
  * @param {string|null|undefined} method
  * @returns {boolean}
  */
-export function isControlMethod(method) {
+export function isControlMethod(method: unknown): boolean {
   return typeof method === 'string' && method.startsWith('control.');
 }
 
@@ -106,7 +106,9 @@ export function isControlMethod(method) {
  * @param {{error?:{code?:number}}|null|undefined} resp a parsed JSON-RPC response object
  * @returns {boolean}
  */
-export function isUnauthorizedControlResult(resp) {
+export function isUnauthorizedControlResult(
+  resp: { error?: { code?: number; [k: string]: unknown } | null; [k: string]: unknown } | null | undefined,
+): boolean {
   return !!(resp && resp.error && resp.error.code === CONTROL_ERR.UNAUTHORIZED);
 }
 
@@ -135,8 +137,20 @@ export function isUnauthorizedControlResult(resp) {
  *   - `readFallback` — the hosted endpoint the READ path uses when no local node is present
  *     (always reported so the UI can state honestly that reads keep working).
  */
-export async function decideControlView({ resolveNode, hostedFallback = HOSTED_RPC_FALLBACK } = {}) {
-  let base = null;
+export async function decideControlView({
+  resolveNode,
+  hostedFallback = HOSTED_RPC_FALLBACK,
+}: {
+  resolveNode?: () => Promise<string | null>;
+  hostedFallback?: string;
+} = {}): Promise<{
+  mode: 'manage' | 'install';
+  localNode: boolean;
+  base: string | null;
+  controlEndpoint: string | null;
+  readFallback: string;
+}> {
+  let base: string | null = null;
   try {
     base = (await resolveNode?.()) || null;
   } catch {
@@ -182,8 +196,31 @@ export async function decideControlView({ resolveNode, hostedFallback = HOSTED_R
  *   install:{title,body,installLabel,installUrl}, readFallbackLine:string,
  * }}
  */
-export function controlPanelViewModel(view) {
-  const v = view || {};
+/** The read-only `control.status` payload the node returns (only the fields this view model reads). */
+export interface ControlStatusPayload {
+  hosted_store_count?: number;
+  pinned_store_count?: number;
+  cached_capsule_count?: number;
+  cache?: { used_bytes?: number } | null;
+  sync?: { available?: boolean } | null;
+  upstream?: string;
+  /** The node may return additional diagnostic fields we don't model. */
+  [key: string]: unknown;
+}
+
+/** A `getControlStatus` response as consumed by {@link controlPanelViewModel}. */
+export interface ControlView {
+  mode?: string;
+  localNode?: boolean;
+  base?: string | null;
+  controlEndpoint?: string | null;
+  readFallback?: string;
+  status?: ControlStatusPayload | null;
+  authRequired?: boolean;
+}
+
+export function controlPanelViewModel(view: ControlView | null | undefined) {
+  const v: ControlView = view || {};
   const readFallback = v.readFallback || HOSTED_RPC_FALLBACK;
   const readFallbackLine = `Reads currently use the hosted network (${readFallback}).`;
 
@@ -244,7 +281,7 @@ export function controlPanelViewModel(view) {
  *
  * @returns {{title:string, body:string, installLabel:string, installUrl:string}}
  */
-export function controlInstallPrompt() {
+export function controlInstallPrompt(): { title: string; body: string; installLabel: string; installUrl: string } {
   return {
     title: 'Run your own DIG node',
     body:

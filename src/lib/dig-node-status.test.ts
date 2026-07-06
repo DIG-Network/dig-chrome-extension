@@ -8,13 +8,13 @@
  *
  * Run: node --test tests/
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   DIG_INSTALLER_URL,
   digNodeInstallPrompt,
   isDigNodeRequiredError,
-} from '../dig-node-status.mjs';
+} from '@/lib/dig-node-status';
 
 test('DIG_INSTALLER_URL points at the universal installer releases page', () => {
   assert.equal(DIG_INSTALLER_URL, 'https://github.com/DIG-Network/dig-installer/releases');
