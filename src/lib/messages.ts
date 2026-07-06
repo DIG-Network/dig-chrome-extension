@@ -53,8 +53,14 @@ import { DIG_ERR } from './error-codes';
  * sign/message requests summon a dedicated approval window. Added `dappApprovalList` (the window
  * reads the pending-request queue + decoded, tamper-resistant summaries) and `dappApprovalResolve`
  * (the window returns the user's approve/reject decision; approve signs in the vault).
+ *
+ * v10 (#66 in-window app-view): added `appViewFraming` — the React shell asks the SW to install/
+ * remove an EPHEMERAL declarativeNetRequest session rule that strips `*.on.dig.net`'s framing
+ * headers (X-Frame-Options / CSP frame-ancestors) for the app-view iframe, so a DIG dApp renders
+ * in-window instead of being forced into a tab. Scoped to on.dig.net sub-frames (and the app-view's
+ * tab when in the expanded layout) and removed the moment the app-view closes.
  */
-export const MESSAGE_PROTOCOL_VERSION = 9;
+export const MESSAGE_PROTOCOL_VERSION = 10;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -112,6 +118,8 @@ export const ACTIONS = Object.freeze({
   listNfts: 'listNfts',
   prepareNftTransfer: 'prepareNftTransfer',
   confirmNftTransfer: 'confirmNftTransfer',
+  // ── in-window app-view (#66): install/remove the on.dig.net framing bypass DNR rule ──
+  appViewFraming: 'appViewFraming',
   // ── verification + node status ──
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
@@ -327,6 +335,11 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Sign + BROADCAST a previously-prepared NFT transfer (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.appViewFraming]: {
+    summary: "In-window app-view (#66): install (enable:true) or remove (enable:false) an ephemeral declarativeNetRequest session rule that strips *.on.dig.net's X-Frame-Options + CSP framing headers for the app-view iframe, so a DIG dApp renders in-window instead of a forced tab. Scoped to on.dig.net sub-frames (and the sender's tab in the expanded layout); removed when the app-view closes.",
+    request: '{ action, enable:boolean }',
+    response: '{ success:boolean }',
   },
   [ACTIONS.reportVerification]: {
     summary: 'Viewer reports the Merkle-verification result for rendered chia:// content.',
