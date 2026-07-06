@@ -109,6 +109,9 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
     : { level: 'none', findings: [], requiresExtraConfirm: false };
   const needsAck = risk.requiresExtraConfirm || originWarn;
   const blockedOnAck = needsAck && !ack;
+  // The summary is built asynchronously (a send/offer build scans the chain); while it streams in the
+  // request shows a "preparing" state and Approve is held — a null summary is NOT yet an error.
+  const preparing = !originBlocked && !request.needsUnlock && !request.decodeError && request.summary == null;
   const canApprove = !request.decodeError && !originBlocked;
 
   return (
@@ -136,6 +139,10 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
       ) : request.decodeError ? (
         <p className="dig-error-text" role="alert" data-testid="approval-decode-error">
           <FormattedMessage id="dapp.approval.decodeError" />
+        </p>
+      ) : preparing ? (
+        <p className="dig-muted" role="status" aria-live="polite" data-testid="approval-preparing">
+          <FormattedMessage id="dapp.approval.loading" />
         </p>
       ) : isDappSpend ? (
         <SpendSummaryView summary={request.summary as DappSpendSummary | null} />
@@ -185,7 +192,7 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
             className={`dig-btn dig-btn--block ${risk.level === 'high' || originWarn ? 'dig-btn--danger' : 'dig-btn--primary'}`}
             data-testid="approval-approve"
             onClick={() => decide(true)}
-            disabled={busy || request.needsUnlock || blockedOnAck}
+            disabled={busy || request.needsUnlock || blockedOnAck || preparing}
           >
             <FormattedMessage id={busy ? 'dapp.approval.working' : 'dapp.approval.approve'} />
           </button>

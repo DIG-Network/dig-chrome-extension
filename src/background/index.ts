@@ -1454,7 +1454,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === ACTIONS.dappApprovalList) {
     (async () => {
       try {
-        await dappApproval.enrich();
+        // Fire the summary builds WITHOUT awaiting: a send/offer build scans the chain, so awaiting it
+        // would freeze the window on a slow/unreachable coinset. Summaries stream in on later polls.
+        void dappApproval.enrich();
         const lock = await getLockStateSnapshot();
         sendResponse({ requests: dappApproval.list(), lockState: lock.lockState, summoned: approvalWindowId != null });
       } catch { try { sendResponse({ requests: [], lockState: 'none', summoned: false }); } catch { /* port closed */ } }

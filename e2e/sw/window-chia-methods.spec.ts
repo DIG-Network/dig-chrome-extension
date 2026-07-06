@@ -133,9 +133,11 @@ test.beforeAll(async () => {
   dapp = await context.newPage();
   await dapp.goto(`${dappOrigin}/`);
   await dapp.waitForFunction(() => !!(window as unknown as { chia?: unknown }).chia, undefined, { timeout: 15_000 });
-  const conn = await dappRequest(dapp, 'chip0002_connect');
-  expect(conn.ok, `connect failed: ${conn.ok ? '' : conn.error}`).toBe(true);
-  expect(conn.data).toBe(true);
+  // Connect, retrying to absorb the first-call offscreen wasm-load race (the vault lazily loads the
+  // derivation wasm on the first getReceiveAddress; a cold start can briefly not be ready).
+  await expect
+    .poll(async () => (await dappRequest(dapp, 'chip0002_connect')).ok === true, { timeout: 20_000 })
+    .toBe(true);
 });
 
 test.afterAll(async () => {

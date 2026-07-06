@@ -81,6 +81,8 @@ export interface QueueEntry {
   pendingId?: string;
   /** createOffer: the offer built during enrich, held in SW memory and released to the dApp ONLY on approve. */
   built?: { offer?: string };
+  /** A build (vault call) is in flight for this entry — guards enrich from re-spawning it each poll. */
+  building?: boolean;
   needsUnlock?: boolean;
   decodeError?: boolean;
   /** Phishing/lookalike verdict for the requesting origin (#67 P0-2), shown as an interstitial. */
@@ -277,16 +279,26 @@ export class DappApprovalManager {
   }
 
   /**
-   * Fill in the decoded summary for each queued request (from the BUILT spend/offer, via the vault).
-   * Called by the window before it lists — so a wallet unlocked after the request appears gets its
-   * summary on the next refresh. A locked wallet is flagged `needsUnlock` (never built/signed). For
-   * the value-moving writes (send/take/cancel) the build ALSO holds a prepared spend under a
-   * `pendingId` in the vault, so the EXACT artifact whose summary was shown is the one broadcast on
-   * approve (tamper-resistance). `signMessage` needs no build — its summary is set at enqueue.
+   * Build the decoded summary for each queued request (from the BUILT spend/offer, via the vault) so
+   * the approval window shows the tamper-resistant facts and holds the exact artifact to be broadcast.
+   *
+   * NON-BLOCKING per entry: each entry's build runs at most ONCE at a time (an `building` guard), and
+   * the returned promise resolves when the in-flight builds settle. The SW's `dappApprovalList` fires
+   * this WITHOUT awaiting and returns the current queue immediately, so a slow/unreachable coinset
+   * (a send/offer build scans the chain) can never freeze the approval window — the summary streams in
+   * on a subsequent poll. Tests `await enrich()` to get summaries populated (the injected vault is
+   * instant). A locked wallet is flagged `needsUnlock`; a build failure `decodeError`; both retry on a
+   * later poll. `signMessage` needs no build (its summary is set at enqueue).
    */
   async enrich() {
-    for (const e of this.queue.values()) {
-      if (e.summary || e.kind === 'signMessage') continue;
+    await Promise.all([...this.queue.values()].map((e) => this.#buildEntry(e)));
+  }
+
+  /** Build one queued entry's summary (guarded so a still-running build is not re-spawned each poll). */
+  async #buildEntry(e: QueueEntry): Promise<void> {
+    if (e.summary || e.building || e.kind === 'signMessage') return;
+    e.building = true;
+    try {
       switch (e.kind) {
         case 'signCoinSpends':
         case 'sendTransaction': {
@@ -323,6 +335,8 @@ export class DappApprovalManager {
           break;
         }
       }
+    } finally {
+      e.building = false;
     }
   }
 

@@ -215,6 +215,19 @@ describe('ApprovalWindow', () => {
     expect(screen.getByTestId('approval-risk')).toHaveAttribute('data-risk-level', 'high');
   });
 
+  it('shows a preparing state and holds Approve while the summary is still building (null, no error)', async () => {
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') {
+        return { requests: [signRequest({ id: 'b1', method: 'chia_send', kind: 'send', summary: null, needsUnlock: false, decodeError: false })], lockState: 'unlocked', summoned: true };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    expect(await screen.findByTestId('approval-preparing')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-approve')).toBeDisabled();
+    expect(screen.getByTestId('approval-reject')).toBeEnabled();
+  });
+
   it('a lookalike origin warns and gates Approve behind an acknowledgement (#67 P0-2)', async () => {
     mockSw((m) => {
       if (m.action === 'dappApprovalList') return { requests: [signRequest({ originRisk: { verdict: 'warn', reason: 'LOOKALIKE' } })], lockState: 'unlocked', summoned: true };
