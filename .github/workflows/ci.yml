@@ -27,6 +27,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci || npm install
+      # .npmrc sets ignore-scripts=true (supply-chain lockdown, #67 P0-1a) so npm ci runs NO
+      # dependency install script. Re-run ONLY the reviewed allowlist (esbuild/@swc native setup)
+      # and fail on any unlisted script-bearing dep. Must precede build/test (vite + vitest use esbuild).
+      - run: npm run allow-scripts
       - run: npm run lint
       - run: npm run typecheck
       # test:coverage = test:node (node --test — the build/wiring assertion suite) + test:web
@@ -46,6 +50,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci || npm install
+      # .npmrc sets ignore-scripts=true (supply-chain lockdown, #67 P0-1a) so npm ci runs NO
+      # dependency install script. Re-run ONLY the reviewed allowlist (esbuild/@swc native setup)
+      # and fail on any unlisted script-bearing dep. Must precede build/test (vite + vitest use esbuild).
+      - run: npm run allow-scripts
       # node build.js — vendors WalletConnect (esbuild) + bundles the injected provider into dist/.
       # No project id needed here (the plain build leaves the default empty); build:zip + secret
       # live in deploy.yml.
@@ -66,6 +74,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci || npm install
+      # .npmrc sets ignore-scripts=true (supply-chain lockdown, #67 P0-1a) so npm ci runs NO
+      # dependency install script. Re-run ONLY the reviewed allowlist (esbuild/@swc native setup)
+      # and fail on any unlisted script-bearing dep. Must precede build/test (vite + vitest use esbuild).
+      - run: npm run allow-scripts
       # The harness loads a full extension → needs the full Chromium build (channel: 'chromium'),
       # not the headless-shell (which cannot load extensions). --with-deps pulls the OS libraries.
       - run: npx playwright install --with-deps chromium
