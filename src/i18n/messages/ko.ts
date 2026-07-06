@@ -312,4 +312,13 @@ export const ko: Record<string, string> = {
   "dapp.approval.approve": "승인",
   "dapp.approval.reject": "거부",
   "dapp.approval.working": "처리 중…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "높은 위험 — 신중히 확인하세요",
+  "dapp.approval.risk.title.caution": "승인하기 전에 확인하세요",
+  "dapp.approval.risk.confirm": "위험을 이해했으며 그래도 승인합니다",
+  "dapp.approval.risk.DRAIN_ALL": "이 요청은 선택한 자금의 거의 전부를 지갑 외부 주소로 보냅니다.",
+  "dapp.approval.risk.HIGH_FEE": "네트워크 수수료가 비정상적으로 큽니다.",
+  "dapp.approval.risk.CANNOT_SIGN": "지갑이 이 요청을 완전히 서명할 수 없습니다.",
+  "dapp.approval.risk.FOREIGN_INPUTS": "이 요청에는 지갑이 소유하지 않은 코인이 포함되어 있어 표시된 금액을 완전히 확인할 수 없습니다.",
 };

@@ -312,4 +312,13 @@ export const ja: Record<string, string> = {
   "dapp.approval.approve": "承認",
   "dapp.approval.reject": "拒否",
   "dapp.approval.working": "処理中…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "高リスク — 慎重に確認してください",
+  "dapp.approval.risk.title.caution": "承認する前に確認してください",
+  "dapp.approval.risk.confirm": "リスクを理解した上で承認します",
+  "dapp.approval.risk.DRAIN_ALL": "このリクエストは選択した資金のほぼ全額をウォレット外のアドレスへ送金します。",
+  "dapp.approval.risk.HIGH_FEE": "ネットワーク手数料が異常に高額です。",
+  "dapp.approval.risk.CANNOT_SIGN": "ウォレットはこのリクエストに完全に署名できません。",
+  "dapp.approval.risk.FOREIGN_INPUTS": "このリクエストにはウォレットが所有していないコインが含まれており、表示された金額を完全には検証できません。",
 };

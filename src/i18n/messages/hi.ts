@@ -312,4 +312,13 @@ export const hi: Record<string, string> = {
   "dapp.approval.approve": "स्वीकृत करें",
   "dapp.approval.reject": "अस्वीकार करें",
   "dapp.approval.working": "प्रोसेस हो रहा है…",
+
+  // ── dApp approval — anti-drainer risk banner (#67 P0-3) ──
+  "dapp.approval.risk.title.high": "उच्च जोखिम — ध्यान से जाँचें",
+  "dapp.approval.risk.title.caution": "स्वीकृत करने से पहले जाँचें",
+  "dapp.approval.risk.confirm": "मैं जोखिम समझता/समझती हूँ और फिर भी स्वीकृत करना चाहता/चाहती हूँ",
+  "dapp.approval.risk.DRAIN_ALL": "यह अनुरोध चुनी गई लगभग सारी धनराशि आपके वॉलेट के बाहर के पते पर भेजता है।",
+  "dapp.approval.risk.HIGH_FEE": "नेटवर्क शुल्क असामान्य रूप से अधिक है।",
+  "dapp.approval.risk.CANNOT_SIGN": "आपका वॉलेट इस अनुरोध पर पूरी तरह हस्ताक्षर नहीं कर सकता।",
+  "dapp.approval.risk.FOREIGN_INPUTS": "इस अनुरोध में ऐसे कॉइन शामिल हैं जो आपके वॉलेट के नहीं हैं; दिखाई गई राशियों की पूरी तरह पुष्टि नहीं की जा सकती।",
 };
