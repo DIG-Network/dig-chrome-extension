@@ -11,8 +11,8 @@
  * documented meaning. This pass adds:
  *   - window.chia.version / .info{isDIG,transport,edition}
  *   - window.chia.methods (the WALLET_METHODS catalogue) + a chip0002_getMethods request
- *   - a documented, standard-aligned thrown-error code contract (4001/4100/4200) — the same
- *     codes the native DIG Browser provider uses, so the two stay byte-aligned.
+ *   - a documented CHIP-0002 thrown-error code contract (4000/4001/4002/4004/4005/4029/4900) —
+ *     the same codes the native DIG Browser provider uses, so the two stay byte-aligned.
  *
  * The provider's pure logic lives in buildProvider() in the shared @dignetwork/chia-provider
  * package (re-exported via dig-provider-core.mjs) so it is unit-testable under `node --test`
@@ -39,15 +39,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 test('PROVIDER_INFO advertises a self-describing capability object', () => {
   assert.equal(PROVIDER_INFO.isDIG, true);
-  assert.equal(PROVIDER_INFO.transport, 'walletconnect');
+  assert.equal(PROVIDER_INFO.transport, 'injected'); // no WalletConnect — served in-extension
   assert.equal(PROVIDER_INFO.edition, 'extension');
 });
 
-test('PROVIDER_ERROR_CODES are the standard wallet codes (4001/4100/4200)', () => {
-  // Aligned with EIP-1193 / CHIP-0002 conventions and the native DIG Browser provider.
-  assert.equal(PROVIDER_ERROR_CODES.USER_REJECTED, 4001);
-  assert.equal(PROVIDER_ERROR_CODES.UNAUTHORIZED, 4100);
-  assert.equal(PROVIDER_ERROR_CODES.UNSUPPORTED_METHOD, 4200);
+test('PROVIDER_ERROR_CODES are the CHIP-0002 wallet codes', () => {
+  assert.equal(PROVIDER_ERROR_CODES.INVALID_PARAMS, 4000);
+  assert.equal(PROVIDER_ERROR_CODES.UNAUTHORIZED, 4001);
+  assert.equal(PROVIDER_ERROR_CODES.USER_REJECTED, 4002);
+  assert.equal(PROVIDER_ERROR_CODES.SPENDABLE_BALANCE_EXCEEDED, 4003);
+  assert.equal(PROVIDER_ERROR_CODES.METHOD_NOT_FOUND, 4004);
+  assert.equal(PROVIDER_ERROR_CODES.NO_SECRET_KEY, 4005);
+  assert.equal(PROVIDER_ERROR_CODES.LIMIT_EXCEEDED, 4029);
   assert.equal(PROVIDER_ERROR_CODES.DISCONNECTED, 4900);
 });
 
@@ -74,20 +77,20 @@ test('request({method:"chip0002_getMethods"}) returns the method catalogue local
   assert.equal(called, false, 'getMethods must be answered locally, not over the bridge');
 });
 
-test('mapEnvelopeToError: a 202 pending maps to USER_REJECTED (4001) + pending flag', () => {
+test('mapEnvelopeToError: a 202 pending maps to USER_REJECTED (4002) + pending flag', () => {
   const e = mapEnvelopeToError({ status: 202, body: {} });
-  assert.equal(e.code, 4001);
+  assert.equal(e.code, 4002);
   assert.equal(e.pending, true);
 });
 
-test('mapEnvelopeToError: a 401 maps to UNAUTHORIZED (4100)', () => {
+test('mapEnvelopeToError: a 401 maps to UNAUTHORIZED (4001)', () => {
   const e = mapEnvelopeToError({ status: 401, body: { error: 'Origin not connected' } });
-  assert.equal(e.code, 4100);
+  assert.equal(e.code, 4001);
 });
 
-test('mapEnvelopeToError: a 404 maps to UNSUPPORTED_METHOD (4200)', () => {
+test('mapEnvelopeToError: a 404 maps to METHOD_NOT_FOUND (4004)', () => {
   const e = mapEnvelopeToError({ status: 404, body: { error: 'Unsupported method: chip0002_foo' } });
-  assert.equal(e.code, 4200);
+  assert.equal(e.code, 4004);
 });
 
 test('mapEnvelopeToError: a 503/502 maps to DISCONNECTED (4900)', () => {
@@ -116,7 +119,7 @@ test('request throws an error carrying a standard code on a 4xx', async () => {
   });
   await assert.rejects(
     () => provider.request({ method: 'chip0002_getPublicKeys' }),
-    (e: unknown) => { assert.equal((e as { code?: number }).code, 4100); return true; }
+    (e: unknown) => { assert.equal((e as { code?: number }).code, 4001); return true; }
   );
 });
 
@@ -257,7 +260,7 @@ test('walletSwitchChain accepts mainnet locally and rejects other chains as unsu
   assert.equal(calls.length, 0, 'mainnet switch is answered locally, no bridge call');
   await assert.rejects(
     () => p.walletSwitchChain({ chainId: 'testnet11' }),
-    (e: unknown) => { assert.equal((e as { code?: number }).code, 4200); return true; },
+    (e: unknown) => { assert.equal((e as { code?: number }).code, 4004); return true; },
   );
 });
 

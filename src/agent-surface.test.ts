@@ -47,7 +47,7 @@ test('agent-surface describes the injected provider (version, info, methods, err
   assert.ok(s.provider, 'should describe window.chia');
   assert.equal(s.provider.info.edition, 'extension');
   assert.deepEqual([...s.provider.methods].sort(), [...WALLET_METHODS].sort());
-  assert.equal(s.provider.errorCodes.USER_REJECTED, 4001);
+  assert.equal(s.provider.errorCodes.USER_REJECTED, 4002); // CHIP-0002
 });
 
 test('agent-surface links the cross-surface error catalog + dig RPC spec', () => {

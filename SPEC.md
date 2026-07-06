@@ -656,8 +656,9 @@ Browser. `build.js` esbuild-bundles `dig-provider.entry.mjs` (which wraps the pa
   `on`/`off`, `requestAccounts`/`accounts`, `walletSwitchChain` mainnet-only, callable
   `isConnected()`), and is self-describing (`version`, `info`, `methods`, and
   `request({ method: 'chip0002_getMethods' })` answered locally).
-- Thrown errors MUST carry the standard wallet codes: `4001` user-rejected, `4100`
-  unauthorized, `4200` unsupported, `4900` disconnected.
+- Thrown errors MUST carry the CHIP-0002 wallet codes: `4000` invalid-params, `4001`
+  unauthorized, `4002` user-rejected, `4003` spendable-balance-exceeded, `4004` method-not-found,
+  `4005` no-secret-key, `4029` rate-limited, `4900` disconnected/not-connected.
 - Wallet access is **per-origin gated**: a site's `connect()` receives `202` (pending) until
   the user approves the origin in the popup's connection-requests list; a pending request MAY
   raise a toolbar badge + notification.
