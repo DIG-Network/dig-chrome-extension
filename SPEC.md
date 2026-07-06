@@ -59,11 +59,11 @@ re-decrypts (§15).
 - `content_security_policy.extension_pages` MUST permit `'wasm-unsafe-eval'` (WASM
   instantiation) and MUST restrict `script-src`/`object-src` to `'self'`. It MUST additionally
   declare an explicit `connect-src` enumerating every network egress (the chain host(s)
-  `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT-price host `api.dexie.space`, and
+  `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT price + token-metadata host `api.dexie.space`, and
   `api.bugreport.dig.net`), `frame-src 'self' https:` (the in-window
   dApp app-view frames curated store `link`s over https, §2.4a), `font-src 'self'` (the vendored Space
-  Grotesk / Space Mono woff2), and `img-src 'self' data: https://explore.dig.net` (the native
-  dApp-launcher icons, §2.4).
+  Grotesk / Space Mono woff2), and `img-src 'self' data: https://explore.dig.net https://icons.dexie.space`
+  (the native dApp-launcher icons §2.4, and the auto-discovered CAT token icons §18.6).
 - Content scripts (`middleware.js`, then `content.js`) run at `document_start`,
   `all_frames: true`, matching `<all_urls>`.
 - The injected provider (`dist/dig-provider.js`) and the page fetch bridge (`page-script.js`)
@@ -74,7 +74,8 @@ re-decrypts (§15).
   `chrome.alarms` unlock-TTL sweep — §18.3). Host permissions
   MUST include the local node hosts (`localhost`, `127.0.0.1`, `dig.local`, `*.dig.local`), the
   hosted read tier (`rpc.dig.net`, `*.dig.net`), the wallet chain source (`coinset.org`), the
-  CAT-price host (`api.dexie.space`), the bug-report service (`api.bugreport.dig.net`), and the
+  CAT price + token-metadata host (`api.dexie.space`), the CAT icon host (`icons.dexie.space`, §18.6),
+  the bug-report service (`api.bugreport.dig.net`), and the
   dApp-store catalog host (`explore.dig.net`, §2.4).
 
 An implementation targeting a browser without MV3 module service workers MUST provide an
@@ -900,13 +901,32 @@ script, or any other part of the wallet UI cannot scrape it via `document.queryS
 still traverse the subtree). The same DOM-isolation primitive applies to any future private-key
 export.
 
-### 18.6 Balance scan & chain source
+### 18.6 Balance scan, CAT auto-discovery & token metadata
 
 Read-only balances come from an HD scan run in the offscreen vault (it has the key + the wasm):
 
 - **Derivation + scan.** Derive standard p2 puzzle hashes for BOTH schemes (§18.1) to a gap limit,
-  then sum UNSPENT coins from coinset: native XCH at those hashes, and each watched CAT at its CAT
-  puzzle hash (`catPuzzleHash(tail, innerPh)`). Balances are POOLED across all derivations.
+  then sum UNSPENT coins from coinset: native XCH at those hashes. Balances are POOLED across all
+  derivations.
+- **CAT auto-discovery (MUST).** The wallet surfaces EVERY CAT it holds WITHOUT a watch list, by
+  hinted-coin lineage reconstruction (the same mechanism as NFT discovery §18.11): find the coins
+  HINTED to the derived inner p2 hashes (`get_coin_records_by_hints`, both schemes), fetch each
+  candidate's PARENT spend, `Puzzle.parseChildCats(parentCoin, parentSolution)`, and keep a coin iff a
+  reconstructed child IS that coin and its `info.p2PuzzleHash` is one of the wallet's derived hashes;
+  its `info.assetId` is the TAIL. Held amount is aggregated per TAIL. The coinset fan-out is
+  bounded-concurrency (~4) with per-read retry+backoff (coinset degrades under parallelism).
+- **Watched / built-in override.** A manual watch list (`wallet.watchedCats`) and the built-in $DIG
+  TAIL are additionally queried DIRECTLY at their CAT puzzle hash (`catPuzzleHash(tail, innerPh)`) —
+  an explicit override that also surfaces a zero-balance token or one held only as un-hinted change
+  (which hint discovery can miss). Discovered ∪ watched, minus the user's HIDDEN set
+  (`wallet.hiddenCats`), form the token list; hiding suppresses a row only (never forgets coins).
+- **Token metadata.** Each discovered TAIL resolves to a human name/ticker/icon/decimals from a public
+  CAT registry — dexie's swap-token list `GET https://api.dexie.space/v1/swap/tokens`
+  (`{ tokens:[{ id, name, code, denom, icon }] }`; `icon` on `icons.dexie.space`). The registry is
+  fetched DIRECTLY over HTTPS (not the SW seam) and cached with a LONG TTL (≈6 h — it changes slowly,
+  unlike the 120 s price feed). A TAIL absent from the registry (or a registry fetch failure) degrades
+  gracefully to a short-form TAIL name + generic ticker + monogram badge; the holding still lists.
+  $DIG keeps its canonical branding regardless of the registry (only its icon is borrowed).
 - **Chain source.** The wasm coinset `RpcClient` fetches the configured chain endpoint from the
   offscreen document (extensions bypass CORS). Default `https://api.coinset.org`; an explicit
   `wallet.settings.chainRpcUrl` override wins (§5.3 — a user-facing custom node, settable +

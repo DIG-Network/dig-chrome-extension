@@ -387,4 +387,23 @@ export const fr: Record<string, string> = {
   "send.saveContact.label": "Nommez ce contact",
   "send.saveContact.save": "Enregistrer",
   "send.saveContact.saved": "Enregistré dans votre carnet d'adresses",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': 'Gérer les jetons',
+  'tokens.manage.intro': 'Les jetons que vous détenez apparaissent ici automatiquement. Masquez ceux que vous ne voulez pas voir ou ajoutez-en un par son ID d’actif.',
+  'tokens.manage.yourTokens': 'Vos jetons',
+  'tokens.manage.empty': 'Aucun jeton pour l’instant. Les jetons que vous recevez apparaîtront ici automatiquement.',
+  'tokens.manage.hidden': 'Masqués',
+  'tokens.manage.hide': 'Masquer',
+  'tokens.manage.show': 'Afficher',
+  'tokens.manage.add.title': 'Ajouter un jeton',
+  'tokens.manage.add.assetId': 'ID d’actif (TAIL)',
+  'tokens.manage.add.name': 'Nom (facultatif)',
+  'tokens.manage.add.placeholder': '0x… ID d’actif de 32 octets',
+  'tokens.manage.add.button': 'Ajouter le jeton',
+  'tokens.manage.close': 'Fermer',
+  'tokens.manage.open': 'Gérer les jetons',
+  'tokens.error.invalid': 'Saisissez un ID d’actif de 32 octets valide (0x… TAIL).',
+  'tokens.error.builtin': '$DIG est déjà affiché.',
+  'tokens.error.duplicate': 'Ce jeton est déjà suivi.',
 };

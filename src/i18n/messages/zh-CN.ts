@@ -387,4 +387,23 @@ export const zhCN: Record<string, string> = {
   "send.saveContact.label": "为此联系人命名",
   "send.saveContact.save": "保存",
   "send.saveContact.saved": "已保存到你的地址簿",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': '管理代币',
+  'tokens.manage.intro': '您持有的代币会自动显示在此处。隐藏不想看到的代币，或通过资产 ID 手动添加。',
+  'tokens.manage.yourTokens': '您的代币',
+  'tokens.manage.empty': '暂无代币。您收到的代币会自动显示在此处。',
+  'tokens.manage.hidden': '已隐藏',
+  'tokens.manage.hide': '隐藏',
+  'tokens.manage.show': '显示',
+  'tokens.manage.add.title': '添加代币',
+  'tokens.manage.add.assetId': '资产 ID（TAIL）',
+  'tokens.manage.add.name': '名称（可选）',
+  'tokens.manage.add.placeholder': '0x… 32 字节资产 ID',
+  'tokens.manage.add.button': '添加代币',
+  'tokens.manage.close': '关闭',
+  'tokens.manage.open': '管理代币',
+  'tokens.error.invalid': '请输入有效的 32 字节资产 ID（0x… TAIL）。',
+  'tokens.error.builtin': '$DIG 已显示。',
+  'tokens.error.duplicate': '该代币已在跟踪中。',
 };

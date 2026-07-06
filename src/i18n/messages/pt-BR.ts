@@ -387,4 +387,23 @@ export const ptBR: Record<string, string> = {
   "send.saveContact.label": "Dê um nome a este contato",
   "send.saveContact.save": "Salvar",
   "send.saveContact.saved": "Salvo no seu catálogo de endereços",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': 'Gerenciar tokens',
+  'tokens.manage.intro': 'Os tokens que você possui aparecem aqui automaticamente. Oculte os que não quiser ver ou adicione um pelo ID do ativo.',
+  'tokens.manage.yourTokens': 'Seus tokens',
+  'tokens.manage.empty': 'Ainda não há tokens. Os tokens que você receber aparecerão aqui automaticamente.',
+  'tokens.manage.hidden': 'Ocultos',
+  'tokens.manage.hide': 'Ocultar',
+  'tokens.manage.show': 'Mostrar',
+  'tokens.manage.add.title': 'Adicionar um token',
+  'tokens.manage.add.assetId': 'ID do ativo (TAIL)',
+  'tokens.manage.add.name': 'Nome (opcional)',
+  'tokens.manage.add.placeholder': '0x… ID de ativo de 32 bytes',
+  'tokens.manage.add.button': 'Adicionar token',
+  'tokens.manage.close': 'Fechar',
+  'tokens.manage.open': 'Gerenciar tokens',
+  'tokens.error.invalid': 'Insira um ID de ativo válido de 32 bytes (0x… TAIL).',
+  'tokens.error.builtin': '$DIG já é exibido.',
+  'tokens.error.duplicate': 'Esse token já está sendo acompanhado.',
 };

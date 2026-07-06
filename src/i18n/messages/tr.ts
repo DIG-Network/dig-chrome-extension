@@ -387,4 +387,23 @@ export const tr: Record<string, string> = {
   "send.saveContact.label": "Bu kişiye bir ad verin",
   "send.saveContact.save": "Kaydet",
   "send.saveContact.saved": "Adres defterinize kaydedildi",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': 'Tokenları yönet',
+  'tokens.manage.intro': 'Sahip olduğunuz tokenlar burada otomatik olarak görünür. Görmek istemediklerinizi gizleyin veya varlık kimliğiyle bir tane ekleyin.',
+  'tokens.manage.yourTokens': 'Tokenlarınız',
+  'tokens.manage.empty': 'Henüz token yok. Aldığınız tokenlar burada otomatik olarak görünecek.',
+  'tokens.manage.hidden': 'Gizli',
+  'tokens.manage.hide': 'Gizle',
+  'tokens.manage.show': 'Göster',
+  'tokens.manage.add.title': 'Token ekle',
+  'tokens.manage.add.assetId': 'Varlık kimliği (TAIL)',
+  'tokens.manage.add.name': 'Ad (isteğe bağlı)',
+  'tokens.manage.add.placeholder': '0x… 32 baytlık varlık kimliği',
+  'tokens.manage.add.button': 'Token ekle',
+  'tokens.manage.close': 'Kapat',
+  'tokens.manage.open': 'Tokenları yönet',
+  'tokens.error.invalid': 'Geçerli bir 32 baytlık varlık kimliği girin (0x… TAIL).',
+  'tokens.error.builtin': '$DIG zaten gösteriliyor.',
+  'tokens.error.duplicate': 'Bu token zaten takip ediliyor.',
 };

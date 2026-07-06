@@ -6,6 +6,7 @@
  */
 
 import type { ChiaWasm } from '@/lib/keystore/derive';
+import { withTimeout } from '@/offscreen/concurrency';
 
 /** A wasm `Coin` (id + fields the CAT lineage reconstruction needs). */
 export interface ChainCoin {
@@ -60,6 +61,12 @@ export interface ChainClient {
 export const DEFAULT_COINSET_URL = 'https://api.coinset.org';
 /** Coinset caps a puzzle-hash batch; scan in chunks to stay under it. */
 export const COINSET_BATCH = 300;
+/**
+ * Per-request timeout for coinset reads (ms). The wasm `RpcClient` has NO built-in timeout, so a
+ * dead/blocked/slow endpoint would otherwise hang a scan FOREVER (the wallet spins on "loading"
+ * instead of falling back to its cached snapshot). Generous enough for a healthy coinset batch.
+ */
+export const COINSET_TIMEOUT_MS = 12_000;
 
 /* c8 ignore start — production wasm RpcClient adapter: instantiated only in the offscreen document
    at runtime (it fetches coinset.org). The pure scan logic that consumes this is unit-tested with a
@@ -101,14 +108,17 @@ export interface RpcCapableWasm extends ChiaWasm {
  * UNSPENT coins only, and sums their amounts. (Summing `Number(amount)` is exact for realistic
  * personal balances < ~9000 XCH; larger balances would exceed `Number` precision — a known v1 limit.)
  */
-export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = DEFAULT_COINSET_URL): ChainClient {
+export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = DEFAULT_COINSET_URL, timeoutMs: number = COINSET_TIMEOUT_MS): ChainClient {
   const rpc = new chia.RpcClient(coinsetUrl);
+  // Every coinset read is bounded by a per-request timeout so a dead/blocked/slow endpoint fails
+  // fast (→ the SW serves the cached snapshot) instead of hanging the wallet forever.
+  const t = <T>(p: Promise<T>, label: string): Promise<T> => withTimeout(p, timeoutMs, label);
   return {
     async totalUnspent(puzzleHashesHex) {
       let total = 0;
       for (let i = 0; i < puzzleHashesHex.length; i += COINSET_BATCH) {
         const phBytes = puzzleHashesHex.slice(i, i + COINSET_BATCH).map((h) => chia.fromHex(h));
-        const res = await rpc.getCoinRecordsByPuzzleHashes(phBytes, undefined, undefined, false);
+        const res = await t(rpc.getCoinRecordsByPuzzleHashes(phBytes, undefined, undefined, false), 'getCoinRecordsByPuzzleHashes');
         if (!res.success) throw new Error(res.error || 'coinset query failed');
         total += (res.coinRecords ?? []).reduce((s, r) => s + Number(r.coin.amount), 0);
       }
@@ -118,7 +128,7 @@ export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = D
       const coins: ChainCoin[] = [];
       for (let i = 0; i < puzzleHashesHex.length; i += COINSET_BATCH) {
         const phBytes = puzzleHashesHex.slice(i, i + COINSET_BATCH).map((h) => chia.fromHex(h));
-        const res = await rpc.getCoinRecordsByPuzzleHashes(phBytes, undefined, undefined, false);
+        const res = await t(rpc.getCoinRecordsByPuzzleHashes(phBytes, undefined, undefined, false), 'getCoinRecordsByPuzzleHashes');
         if (!res.success) throw new Error(res.error || 'coinset query failed');
         for (const r of res.coinRecords ?? []) coins.push(r.coin);
       }
@@ -128,22 +138,22 @@ export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = D
       const coins: ChainCoin[] = [];
       for (let i = 0; i < hintsHex.length; i += COINSET_BATCH) {
         const hintBytes = hintsHex.slice(i, i + COINSET_BATCH).map((h) => chia.fromHex(h));
-        const res = await rpc.getCoinRecordsByHints(hintBytes, undefined, undefined, false);
+        const res = await t(rpc.getCoinRecordsByHints(hintBytes, undefined, undefined, false), 'getCoinRecordsByHints');
         if (!res.success) throw new Error(res.error || 'coinset hint query failed');
         for (const r of res.coinRecords ?? []) coins.push(r.coin);
       }
       return coins;
     },
     async pushSpendBundle(bundle) {
-      const res = await rpc.pushTx(bundle);
+      const res = await t(rpc.pushTx(bundle), 'pushTx');
       return { success: res.success, ...(res.error ? { error: res.error } : {}) };
     },
     async coinConfirmed(coinIdHex) {
-      const res = await rpc.getCoinRecordByName(chia.fromHex(coinIdHex));
+      const res = await t(rpc.getCoinRecordByName(chia.fromHex(coinIdHex)), 'getCoinRecordByName');
       return !!(res.success && res.coinRecord && res.coinRecord.spent);
     },
     async getCoinSpend(coinIdHex) {
-      const res = await rpc.getPuzzleAndSolution(chia.fromHex(coinIdHex));
+      const res = await t(rpc.getPuzzleAndSolution(chia.fromHex(coinIdHex)), 'getPuzzleAndSolution');
       return res.success && res.coinSolution ? res.coinSolution : null;
     },
     async coinRecords(puzzleHashesHex, opts) {
@@ -151,7 +161,7 @@ export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = D
       const includeSpent = opts?.includeSpent ?? true;
       for (let i = 0; i < puzzleHashesHex.length; i += COINSET_BATCH) {
         const phBytes = puzzleHashesHex.slice(i, i + COINSET_BATCH).map((h) => chia.fromHex(h));
-        const res = await rpc.getCoinRecordsByPuzzleHashes(phBytes, opts?.startHeight, undefined, includeSpent);
+        const res = await t(rpc.getCoinRecordsByPuzzleHashes(phBytes, opts?.startHeight, undefined, includeSpent), 'getCoinRecordsByPuzzleHashes');
         if (!res.success) throw new Error(res.error || 'coinset query failed');
         for (const r of res.coinRecords ?? []) {
           out.push({

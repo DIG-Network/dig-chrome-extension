@@ -387,4 +387,23 @@ export const zhTW: Record<string, string> = {
   "send.saveContact.label": "為此聯絡人命名",
   "send.saveContact.save": "儲存",
   "send.saveContact.saved": "已儲存到你的地址簿",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': '管理代幣',
+  'tokens.manage.intro': '您持有的代幣會自動顯示於此。隱藏不想看到的代幣，或透過資產 ID 手動新增。',
+  'tokens.manage.yourTokens': '您的代幣',
+  'tokens.manage.empty': '尚無代幣。您收到的代幣會自動顯示於此。',
+  'tokens.manage.hidden': '已隱藏',
+  'tokens.manage.hide': '隱藏',
+  'tokens.manage.show': '顯示',
+  'tokens.manage.add.title': '新增代幣',
+  'tokens.manage.add.assetId': '資產 ID（TAIL）',
+  'tokens.manage.add.name': '名稱（選填）',
+  'tokens.manage.add.placeholder': '0x… 32 位元組資產 ID',
+  'tokens.manage.add.button': '新增代幣',
+  'tokens.manage.close': '關閉',
+  'tokens.manage.open': '管理代幣',
+  'tokens.error.invalid': '請輸入有效的 32 位元組資產 ID（0x… TAIL）。',
+  'tokens.error.builtin': '$DIG 已顯示。',
+  'tokens.error.duplicate': '該代幣已在追蹤中。',
 };

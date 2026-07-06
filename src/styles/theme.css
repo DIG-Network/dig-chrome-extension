@@ -429,6 +429,22 @@ h2.dig-heading {
   font-weight: 700;
   font-size: 12px;
 }
+.dig-asset-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--dig-accent-soft);
+  flex-shrink: 0;
+}
+.dig-btn--sm {
+  padding: 5px 10px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.dig-token-manage-row {
+  padding: 2px 0;
+}
 .dig-asset-main {
   flex: 1;
   min-width: 0;

@@ -387,4 +387,23 @@ export const ko: Record<string, string> = {
   "send.saveContact.label": "이 연락처의 이름 지정",
   "send.saveContact.save": "저장",
   "send.saveContact.saved": "주소록에 저장되었습니다",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': '토큰 관리',
+  'tokens.manage.intro': '보유한 토큰은 여기에 자동으로 표시됩니다. 보고 싶지 않은 토큰은 숨기거나 자산 ID로 직접 추가하세요.',
+  'tokens.manage.yourTokens': '내 토큰',
+  'tokens.manage.empty': '아직 토큰이 없습니다. 받은 토큰은 여기에 자동으로 표시됩니다.',
+  'tokens.manage.hidden': '숨김',
+  'tokens.manage.hide': '숨기기',
+  'tokens.manage.show': '표시',
+  'tokens.manage.add.title': '토큰 추가',
+  'tokens.manage.add.assetId': '자산 ID(TAIL)',
+  'tokens.manage.add.name': '이름(선택)',
+  'tokens.manage.add.placeholder': '0x… 32바이트 자산 ID',
+  'tokens.manage.add.button': '토큰 추가',
+  'tokens.manage.close': '닫기',
+  'tokens.manage.open': '토큰 관리',
+  'tokens.error.invalid': '유효한 32바이트 자산 ID(0x… TAIL)를 입력하세요.',
+  'tokens.error.builtin': '$DIG은(는) 이미 표시되어 있습니다.',
+  'tokens.error.duplicate': '이미 추적 중인 토큰입니다.',
 };

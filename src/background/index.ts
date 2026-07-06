@@ -60,6 +60,7 @@ import {
 } from '@/lib/custody-session';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from '@/lib/wallet-assets';
+import { DIG_ASSET_ID } from '@/lib/links';
 // dig-node install prompt + "dig-node required" error mapping (universal installer link).
 import { digNodeInstallPrompt, isDigNodeRequiredError } from '@/lib/dig-node-status';
 
@@ -874,7 +875,9 @@ async function handleCustodyAction(message) {
       const settings = await readWalletSettings();
       const coinsetUrl = resolveCoinsetUrl(settings);
       const { [WATCHED_CATS_KEY]: watchedRaw } = await chrome.storage.local.get(WATCHED_CATS_KEY);
-      const watchedCats = parseWatchedCats(watchedRaw).map((c) => c.assetId);
+      // Auto-discovery surfaces every held CAT; the watch list is the explicit override, and the
+      // built-in $DIG is always queried directly so its balance resolves even if held as un-hinted change.
+      const watchedCats = [...new Set([DIG_ASSET_ID.toLowerCase(), ...parseWatchedCats(watchedRaw).map((c) => c.assetId)])];
       const res = await callVault({ op: 'scanBalances', watchedCats, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
       if (res && res.success !== false && res.balances) {
         await chrome.storage.local.set({ [BALANCES_CACHE_KEY]: { balances: res.balances, at: Date.now() } });
@@ -907,7 +910,7 @@ async function handleCustodyAction(message) {
       // before a cursor can be spent after it); cached to walletCache.activity for cached-first paint.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       const { [WATCHED_CATS_KEY]: watchedRaw } = await chrome.storage.local.get(WATCHED_CATS_KEY);
-      const watchedCats = parseWatchedCats(watchedRaw).map((c) => c.assetId);
+      const watchedCats = [...new Set([DIG_ASSET_ID.toLowerCase(), ...parseWatchedCats(watchedRaw).map((c) => c.assetId)])];
       const res = await callVault({ op: 'getActivity', watchedCats, coinsetUrl });
       if (res && res.success !== false && Array.isArray(res.events)) {
         await chrome.storage.local.set({ [ACTIVITY_CACHE_KEY]: { events: res.events, cursorHeight: res.cursorHeight || 0, at: Date.now() } });
