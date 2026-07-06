@@ -55,6 +55,10 @@ jobs:
 
       - run: npm ci || npm install
 
+      # .npmrc sets ignore-scripts=true (supply-chain lockdown, #67 P0-1a); re-run only the reviewed
+      # allowlist (esbuild/@swc) before the build/test that relies on it.
+      - run: npm run allow-scripts
+
       # Gate publish on the unit tests + the >=80% coverage floor (c8 / .c8rc.json).
       - run: npm run test:coverage # c8 node --test tests/ — tests + >=80% coverage gate
 
