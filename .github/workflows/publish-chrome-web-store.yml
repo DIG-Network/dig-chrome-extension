@@ -90,14 +90,10 @@ jobs:
       - if: steps.creds.outputs.present == 'true'
         run: npm run test:coverage # c8 node --test tests/ — tests + >=80% coverage gate
 
-      # Reuse the SAME packaging path as deploy.yml: build dist/ + the packaged zip. The
-      # WalletConnect project id is a client-public identifier (the hub already ships it
-      # client-side); absent → the build still succeeds and the options-page field is the
-      # only override.
+      # Reuse the SAME packaging path as deploy.yml: build dist/ + the packaged zip. The extension
+      # is a self-custody wallet — no WalletConnect vendoring or project id.
       - if: steps.creds.outputs.present == 'true'
         run: npm run build:zip # node build.js --zip -> ./dist + ./dig-network-extension-v<version>.zip
-        env:
-          WALLETCONNECT_PROJECT_ID: ${{ secrets.WALLETCONNECT_PROJECT_ID }}
 
       # Resolve the packaged zip path (the version is read from package.json by build.js).
       - name: locate packaged zip

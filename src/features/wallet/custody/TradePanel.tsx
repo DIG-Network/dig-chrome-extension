@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import qrcode from 'qrcode-generator';
 import { toBaseUnits, formatBaseUnits } from '@/lib/wallet-view';
-import type { AssetBalance } from '@/features/wallet/walletApi';
+import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { WireOfferAsset, WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 import {
   useMakeCustodyOfferMutation,

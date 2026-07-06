@@ -5,11 +5,11 @@ import type { ActivityEvent } from '@/offscreen/activity';
 import type { WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 
 /**
- * Self-custody endpoints (#56) — these route over the SW seam (`chromeBaseQuery` →
+ * Self-custody endpoints (#56) — the ONLY wallet backend (the extension holds its own key; there is
+ * no WalletConnect/Sage broker). These route over the SW seam (`chromeBaseQuery` →
  * `chrome.runtime.sendMessage` → the background SW → the offscreen keystore vault). The decrypted
  * key never crosses this boundary; requests carry the password IN and public lock-state / the
- * once-shown mnemonic OUT. Split from `walletApi` (which brokers Sage over WalletConnect) because
- * custody is a distinct backend; both inject into the single `api` slice.
+ * once-shown mnemonic OUT. Injects into the single `api` slice.
  */
 
 export interface LockStateResult {
@@ -102,8 +102,7 @@ export const custodyApi = api.injectEndpoints({
       query: (arg) => ({ action: ACTIONS.sendStatus, ...arg }),
     }),
 
-    // Reconstruct the transaction ledger (read-only). Named distinctly from walletApi's Sage
-    // `getActivity` to avoid an endpoint-name collision on the shared api slice. Cached-first via SW.
+    // Reconstruct the transaction ledger (read-only) from the offscreen vault. Cached-first via SW.
     getCustodyActivity: build.query<{ events: ActivityEvent[]; cursorHeight: number; cached?: boolean }, void>({
       query: () => ({ action: ACTIONS.getActivity }),
       providesTags: ['Activity'],

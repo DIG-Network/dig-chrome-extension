@@ -29,13 +29,9 @@ jobs:
       # Unit tests for the shared modules, gated at >=80% coverage (c8 / .c8rc.json):
       # a run below the floor FAILS the build.
       - run: npm run test:coverage # c8 node --test tests/ — tests + >=80% coverage gate
-      # build:zip vendors the WalletConnect SignClient (esbuild) and bakes the shared Reown
-      # project id into dist/wallet-wc.js. The project id is a client-public identifier (the
-      # hub already ships it client-side); it's provided here as a secret so it never lives in
-      # source. Absent → the build still succeeds and the options-page field is the only override.
+      # Package dist/ + the release zip. The extension is a self-custody wallet — no WalletConnect
+      # vendoring or project id (the injected window.chia provider is served directly).
       - run: npm run build:zip # node build.js --zip -> ./dist + dist/*.zip
-        env:
-          WALLETCONNECT_PROJECT_ID: ${{ secrets.WALLETCONNECT_PROJECT_ID }}
       - name: upload build artifact
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:

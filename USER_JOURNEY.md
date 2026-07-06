@@ -40,21 +40,22 @@ the read pipeline) by tracing the *user's* path, not the data path.
   to the DIG read path; anything else searches the web (DuckDuckGo).
 - **Hand-off:** the **Publish** button → `hub.dig.net/new` (DIGHUb); web search → DuckDuckGo.
 
-## 4. Pair a wallet (optional, for dapps)
+## 4. Set up the wallet & connect dapps
 
-- A user pairs a Chia wallet over **WalletConnect → Sage** so dapps can use `window.chia`.
-- **Surface:** the **popup** wallet panel (the React shell, `popup.html` → `src/entries/popup.tsx`),
-  driven by the WalletConnect transport in `wallet-wc.js` (the live relay session runs in the popup
-  page; an MV3 service worker can't hold a relay socket).
-- **Flow:** *Connect wallet* → a pairing link the user scans/pastes in Sage → on approval
-  the panel shows the connected address and **XCH** + **$DIG** balances (the $DIG row is
-  the DIG CAT, `a406d3a9…832f81`).
-- **Per-origin consent:** when a site calls `window.chia.connect()` and the popup is closed,
-  the background SW records the origin as *pending*, sets a **toolbar attention badge**, and
-  fires a **notification** naming the site. The user opens the popup, reviews the request
-  under **Connection requests**, and Allows/Denies it. Approved origins are remembered.
-- **Hand-off:** Sage Wallet (over the WalletConnect/Reown relay). The project id used to
-  pair is configured in **DIG settings** (the options page) or baked at build time.
+- The extension IS the wallet — a **self-custody** Chia wallet (its own key), not a WalletConnect
+  client. There is no external pairing.
+- **Surface:** the **Wallet** tab of the React shell (`popup.html` / `app.html`). The `CustodyGate`
+  lands on the SW's lock state: **no wallet** → onboarding (create a new 24-word phrase, or import
+  one), **locked** → password unlock, **unlocked** → balances (XCH + $DIG + tracked CATs), send,
+  receive, trade, and collectibles.
+- **Custody:** the decrypted key lives ONLY in the long-lived offscreen document; spends are built,
+  signed, and broadcast there on explicit approval. The key never enters the service worker or
+  `chrome.storage` (beyond the encrypted DIGWX1 blob).
+- **dapp connect (`window.chia`):** a site calls `window.chia.connect()`; the background SW records
+  the origin as *pending*, sets a **toolbar attention badge**, and fires a **notification** naming
+  the site. The user opens the popup, reviews it under **Connection requests**, and Allows/Denies.
+  Approved origins are remembered. A dapp sign request summons a dedicated **approval window** where
+  the offscreen vault signs after the user approves — the dapp broadcasts.
 
 ## 5. Open `chia://` content
 
@@ -101,7 +102,9 @@ config controls).
   re-verifies and re-decrypts; caching is a dig-node job.
 - **DIG RPC endpoint** — the upstream used when no dig-node is configured (`rpc.dig.net`).
   Verification + decryption always happen on this device regardless.
-- **Wallet** — the WalletConnect / Reown project id used to pair Sage.
+
+(There is no wallet setting here: the extension is a self-custody wallet with no external pairing —
+wallet setup happens in the Wallet tab.)
 
 ---
 
@@ -111,7 +114,7 @@ config controls).
 |---|---|---|
 | Welcome page, popup Resources, DIG Home Publish | **hub.dig.net (DIGHUb)** | Explore + publish capsules |
 | `chia://` reads | **rpc.dig.net** (or a local **dig-node**) | Ciphertext + Merkle proofs (verified/decrypted locally) |
-| Wallet panel (`window.chia`) | **Sage** (WalletConnect → Reown relay) | Signing / balances |
+| Wallet panel (`window.chia`) | **the offscreen self-custody vault** (in-extension) | Local signing / balances — no external wallet |
 | Welcome + options soft upsell | **native DIG Browser** | The built-in experience that supersedes the extension |
 | Welcome / footers | **dig.net**, **docs.dig.net** | Learn + marketing |
 
@@ -123,7 +126,7 @@ config controls).
 | DIG Home (new tab) | `newtab.html`, `newtab.css`, `newtab.js`, `apps.mjs` | App directory + omnibox |
 | Popup / full page | `popup.html` + `app.html` (React shell: `src/entries/popup.tsx` / `app.tsx`) | Product surface: verified line, wallet, open chia://, settings link |
 | Viewer | `dig-viewer.html`, `dig-viewer.js` | Renders verified content; branded loading/error states |
-| Settings | `options.html`, `options.js`, `options.css` | The one settings home: dig-node host, RPC, wallet |
+| Settings | `options.html`, `options.js`, `options.css` | The one settings home: dig-node host, RPC endpoint |
 | Background SW | `background.js` | Intercept + verify + decrypt; badges; error pages |
 | Shared modules | `links.mjs`, `dig-urn.mjs`, `server-config.mjs`, `error-page.mjs`, `wallet-broker.mjs`, `wallet-methods.mjs` | Single sources of truth (links, URN parsing, dig-node host, error page, wallet consent/methods) |
 

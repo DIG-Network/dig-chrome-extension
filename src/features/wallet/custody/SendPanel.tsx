@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { toBaseUnits, formatBaseUnits, validateSendForm } from '@/lib/wallet-view';
-import type { AssetBalance } from '@/features/wallet/walletApi';
+import type { AssetBalance } from '@/features/wallet/assetTypes';
 import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery, type PreparedSend } from '@/features/wallet/custodyApi';
 
 const XCH_DECIMALS = 12;

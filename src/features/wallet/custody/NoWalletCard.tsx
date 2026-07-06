@@ -4,9 +4,9 @@ import { popOutToFullpage } from '@/lib/popout';
 /**
  * The compact (popup) no-wallet CTA (Fable #7: onboarding lives in fullscreen). Instead of cramming
  * the create/import flow into ~360px, the popup shows one card that opens `app.html#wallet` where the
- * full onboarding runs. A secondary path keeps the Sage-broker connect available.
+ * full onboarding runs.
  */
-export function NoWalletCard({ onUseSage }: { onUseSage?: () => void }) {
+export function NoWalletCard() {
   return (
     <section className="dig-card" data-testid="custody-nowallet" aria-labelledby="nowallet-title">
       <h2 className="dig-heading" id="nowallet-title">
@@ -23,11 +23,6 @@ export function NoWalletCard({ onUseSage }: { onUseSage?: () => void }) {
       >
         <FormattedMessage id="custody.nowallet.setup" />
       </button>
-      {onUseSage && (
-        <button type="button" className="dig-link" data-testid="nowallet-sage" onClick={onUseSage}>
-          <FormattedMessage id="custody.onboarding.useSage" />
-        </button>
-      )}
     </section>
   );
 }

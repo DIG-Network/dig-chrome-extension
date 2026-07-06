@@ -1,18 +1,10 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
 import { chromeBaseQuery } from '@/api/baseQuery';
-import type { WalletTransport } from '@/features/wallet/transport';
-
-/** The thunk `extra` argument every endpoint (and thunk) can reach — the injectable wallet backend. */
-export interface ThunkExtra {
-  transport: WalletTransport;
-}
 
 /** RTK Query cache tags — mutations invalidate, queries provide (§6.4 tag-driven cache). */
 export const TAGS = [
-  'Connection',
   'Balances',
   'Activity',
-  'Offers',
   'NodeStatus',
   'Shield',
   'Control',
