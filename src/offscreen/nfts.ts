@@ -42,7 +42,7 @@ interface NftMetadataObj {
 interface NftMetadataProgram {
   parseNftMetadata(): NftMetadataObj | undefined;
 }
-interface NftInfoObj {
+export interface NftInfoObj {
   launcherId: Uint8Array;
   metadata: NftMetadataProgram;
   currentOwner?: Uint8Array;
@@ -50,8 +50,8 @@ interface NftInfoObj {
   royaltyBasisPoints: number;
   p2PuzzleHash: Uint8Array;
 }
-interface NftObj {
-  coin: { coinId(): Uint8Array; amount: bigint };
+export interface NftObj {
+  coin: { coinId(): Uint8Array; puzzleHash: Uint8Array; amount: bigint };
   info: NftInfoObj;
 }
 interface NftPuzzle {
@@ -76,7 +76,7 @@ interface NftSpends {
   apply(actions: unknown[]): unknown;
   prepare(deltas: unknown): NftFinished;
 }
-interface NftClvm {
+export interface NftClvm {
   deserialize(bytes: Uint8Array): NftProgram;
   alloc(value: unknown): unknown;
   standardSpend(syntheticKey: unknown, spend: unknown): unknown;
@@ -251,9 +251,10 @@ export interface NftTransferSummary {
 
 /**
  * Locate the wallet's NFT of `launcherId` as a live wasm `Nft` handle reconstructed in `clvm` (the
- * same allocator the `Spends` driver uses). Throws `NFT_NOT_FOUND` if the wallet no longer holds it.
+ * same allocator the `Spends` driver uses, or the caller's shared allocator for a cross-asset op like
+ * DID assignment). Throws `NFT_NOT_FOUND` if the wallet no longer holds it.
  */
-async function findNftForTransfer(
+export async function findOwnedNft(
   chia: NftWasm,
   chain: NftChain,
   clvm: NftClvm,
@@ -285,7 +286,7 @@ export async function prepareNftTransfer(
   const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
   const clvm = new chia.Clvm();
-  const nft = await findNftForTransfer(chia, chain, clvm, keyring, opts.launcherId);
+  const nft = await findOwnedNft(chia, chain, clvm, keyring, opts.launcherId);
 
   const destPuzzleHash = chia.Address.decode(opts.recipient).puzzleHash;
   const changePuzzleHash = chia.fromHex(keyring[0].puzzleHashHex);
@@ -379,8 +380,9 @@ export interface NftMintSummary {
  * does that on explicit user approval (reusing the Send sign+broadcast+poll machinery).
  *
  * The metadata CLVM `Program` is built in the SAME `Clvm` the `Spends` driver consumes (a cross-arena
- * metadata handle traps the wasm). Assigning the NFT to a DID owner at mint requires owning + co-
- * spending that DID and is a follow-up with DID management (#93).
+ * metadata handle traps the wasm). Assigning a DID as the owner of an ALREADY-MINTED NFT ships with
+ * DID management (#93, see `didAssign.ts`'s `prepareNftDidAssign`); wiring that same DID-owner choice
+ * directly into THIS mint form (skipping the separate post-mint assign step) remains a follow-up seam.
  */
 export async function prepareNftMint(
   chia: NftWasm,

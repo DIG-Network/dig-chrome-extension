@@ -15,6 +15,8 @@ export const TAGS = [
   'Wallets',
   // Self-custody NFTs / Collectibles (#56).
   'Collectibles',
+  // Self-custody DID management (#93).
+  'Identity',
   // Coin control (#91): the per-asset unspent-coin list.
   'Coins',
   // Self-custody dApp approval queue (#56 §5.5): the pending window.chia signing requests.

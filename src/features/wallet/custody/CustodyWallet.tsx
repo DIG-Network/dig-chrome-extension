@@ -24,6 +24,7 @@ import { TradePanel } from '@/features/wallet/custody/TradePanel';
 import { ContactsManager } from '@/features/contacts/ContactsManager';
 import { CustodyActivity } from '@/features/wallet/custody/CustodyActivity';
 import { CollectiblesPanel } from '@/features/collectibles/CollectiblesPanel';
+import { DidPanel } from '@/features/identity/DidPanel';
 import { useState } from 'react';
 import type { WalletView } from '@/app/tabs';
 
@@ -32,6 +33,7 @@ const SEG_OPTIONS: { value: WalletView; labelId: string }[] = [
   { value: 'activity', labelId: 'wallet.view.activity' },
   { value: 'trade', labelId: 'wallet.view.trade' },
   { value: 'collectibles', labelId: 'wallet.view.collectibles' },
+  { value: 'did', labelId: 'wallet.view.did' },
 ];
 
 /**
@@ -181,6 +183,7 @@ export function CustodyWallet() {
       {walletView === 'activity' && <CustodyActivity />}
       {walletView === 'trade' && <TradePanel assets={assets} />}
       {walletView === 'collectibles' && <CollectiblesPanel />}
+      {walletView === 'did' && <DidPanel />}
     </div>
   );
 }

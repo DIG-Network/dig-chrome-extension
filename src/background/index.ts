@@ -1090,6 +1090,55 @@ async function handleCustodyAction(message) {
       if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft mint failed' };
     }
+    case ACTIONS.listDids: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'listDids', gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.prepareDidCreate: {
+      // Build (not broadcast) a new "simple" DID (#93); held for approval.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareDidCreate', fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.confirmDidCreate: {
+      // The ONLY place a prepared DID create is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'did create failed' };
+    }
+    case ACTIONS.prepareDidTransfer: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareDidTransfer', launcherId: message.launcherId, recipient: message.recipient, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.confirmDidTransfer: {
+      // The ONLY place a prepared DID transfer is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'did transfer failed' };
+    }
+    case ACTIONS.prepareDidProfileUpdate: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareDidProfileUpdate', launcherId: message.launcherId, profileName: message.profileName, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.confirmDidProfileUpdate: {
+      // The ONLY place a prepared DID profile update is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'did profile update failed' };
+    }
+    case ACTIONS.prepareNftDidAssign: {
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareNftDidAssign', launcherId: message.launcherId, didLauncherId: message.didLauncherId, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+    }
+    case ACTIONS.confirmNftDidAssign: {
+      // The ONLY place a prepared NFT↔DID assignment is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft did assign failed' };
+    }
     case ACTIONS.listCoins: {
       // Read-only per-asset coin listing (coin control #91). Routed on assetId (#121).
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());

@@ -40,7 +40,7 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
     return <MintNft onDone={() => setMinting(false)} />;
   }
   if (selected) {
-    return <NftDetail nft={selected} onBack={() => setSelected(null)} />;
+    return <NftDetail nft={selected} isFull={isFull} onBack={() => setSelected(null)} />;
   }
 
   return (

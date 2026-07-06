@@ -133,4 +133,78 @@ describe('NftDetail', () => {
     fireEvent.click(screen.getByTestId('nft-transfer-review'));
     expect(await screen.findByTestId('nft-transfer-error')).toBeInTheDocument();
   });
+
+  const DID = { launcherId: 'aa'.repeat(32), coinId: 'bb'.repeat(32), p2PuzzleHash: 'cc'.repeat(32), recoveryListHash: null, numVerificationsRequired: '1', profileName: 'Alice' };
+
+  it('offers "Assign DID owner" on the fullscreen surface only (#93/#145)', () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<NftDetail nft={nft()} isFull onBack={() => {}} />);
+    expect(screen.getByTestId('nft-assign-open')).toBeInTheDocument();
+    expect(screen.queryByTestId('nft-assign-fullscreen')).not.toBeInTheDocument();
+  });
+
+  it('offers only an "open full screen" affordance for assignment on the popup surface', () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<NftDetail nft={nft()} isFull={false} onBack={() => {}} />);
+    expect(screen.getByTestId('nft-assign-fullscreen')).toBeInTheDocument();
+    expect(screen.queryByTestId('nft-assign-open')).not.toBeInTheDocument();
+  });
+
+  it('requires a DID to be picked before building', async () => {
+    const sw = mockSw((m) => (m.action === 'listDids' ? { dids: [DID] } : { success: true }));
+    renderWithProviders(<NftDetail nft={nft()} isFull onBack={() => {}} />);
+    fireEvent.click(screen.getByTestId('nft-assign-open'));
+    expect(await screen.findByTestId(`nft-assign-did-${DID.launcherId}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('nft-assign-review'));
+    expect(await screen.findByTestId('nft-assign-error')).toBeInTheDocument();
+    expect(sw).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareNftDidAssign' }), expect.any(Function));
+  });
+
+  it('shows an empty state when the wallet holds no DIDs', async () => {
+    mockSw((m) => (m.action === 'listDids' ? { dids: [] } : { success: true }));
+    renderWithProviders(<NftDetail nft={nft()} isFull onBack={() => {}} />);
+    fireEvent.click(screen.getByTestId('nft-assign-open'));
+    expect(await screen.findByTestId('nft-assign-dids-empty')).toBeInTheDocument();
+  });
+
+  it('assign: pick → review → confirm → sending → confirmed (happy path with polling)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const sw = mockSw((m) => {
+      if (m.action === 'listDids') return { dids: [DID] };
+      if (m.action === 'prepareNftDidAssign') return { pendingId: 'p1', nftDidAssignSummary: { nftLauncherId: nft().launcherId, didLauncherId: DID.launcherId, fee: '0', coinCount: 2 } };
+      if (m.action === 'confirmNftDidAssign') return { spentCoinId: 'coin1' };
+      if (m.action === 'sendStatus') return { confirmed: true };
+      return { success: true };
+    });
+    renderWithProviders(<NftDetail nft={nft()} isFull onBack={() => {}} pollMs={50} />);
+
+    fireEvent.click(screen.getByTestId('nft-assign-open'));
+    fireEvent.click(await screen.findByTestId(`nft-assign-did-${DID.launcherId}`));
+    fireEvent.click(screen.getByTestId('nft-assign-review'));
+
+    expect(await screen.findByTestId('nft-assign-review-panel')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('nft-assign-confirm'));
+    expect(await screen.findByTestId('nft-assign-sending')).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(60);
+    expect(await screen.findByTestId('nft-assign-confirmed')).toBeInTheDocument();
+    expect(sw).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'prepareNftDidAssign', launcherId: nft().launcherId, didLauncherId: DID.launcherId }),
+      expect.any(Function),
+    );
+  });
+
+  it('shows the terminal failure state when the assignment broadcast is rejected', async () => {
+    mockSw((m) => {
+      if (m.action === 'listDids') return { dids: [DID] };
+      if (m.action === 'prepareNftDidAssign') return { pendingId: 'p1', nftDidAssignSummary: { nftLauncherId: nft().launcherId, didLauncherId: DID.launcherId, fee: '0', coinCount: 2 } };
+      if (m.action === 'confirmNftDidAssign') return { success: false, code: 'PUSH_FAILED' };
+      return { success: true };
+    });
+    renderWithProviders(<NftDetail nft={nft()} isFull onBack={() => {}} />);
+    fireEvent.click(screen.getByTestId('nft-assign-open'));
+    fireEvent.click(await screen.findByTestId(`nft-assign-did-${DID.launcherId}`));
+    fireEvent.click(screen.getByTestId('nft-assign-review'));
+    fireEvent.click(await screen.findByTestId('nft-assign-confirm'));
+    expect(await screen.findByTestId('nft-assign-failed')).toBeInTheDocument();
+  });
 });
