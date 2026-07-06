@@ -7,17 +7,17 @@
  * Pure DOM + chrome.* glue (no meaningful branch logic of its own — the decision cores live in the
  * unit-tested `#shared/*` modules), which is why it lives under `src/entries/` (coverage-excluded).
  */
-import { friendlyCause } from '#shared/error-page.mjs';
+import { friendlyCause } from '@/lib/error-page';
 // Stable action names (no raw string literals) + the catalogued loader error codes so the viewer
 // exposes a machine-readable failure discriminant alongside the friendly human copy.
-import { ACTIONS } from '#shared/messages.mjs';
-import { classifyError, DIG_ERR, type DigErrorCode } from '#shared/error-codes.mjs';
+import { ACTIONS } from '@/lib/messages';
+import { classifyError, DIG_ERR, type DigErrorCode } from '@/lib/error-codes';
 // Shared URN parser — derive the capsule (storeId:rootHash) + resource path so the per-resource
 // proof verdict can be recorded into the DIG Shields ledger (#134).
-import { parseURN, decodeUrnParam } from '#shared/dig-urn.mjs';
+import { parseURN, decodeUrnParam } from '@/lib/dig-urn';
 // Build the chia:// URL for a resolved store reference — used to serve the in-page interceptor's
 // relative-asset reads (#55) back through the background proxyRequest (the §5.3 node ladder).
-import { buildDigUrl, type StoreRef } from '#shared/store-refs.mjs';
+import { buildDigUrl, type StoreRef } from '@/lib/store-refs';
 
 // One canonical verified label across popup / viewer / toolbar.
 const VERIFIED_LABEL = 'Verified on Chia';

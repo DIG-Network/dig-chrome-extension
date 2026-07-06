@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { resolveViaStatus } from '@/lib/resolve-status';
-import { ACTIONS } from '#shared/messages.mjs';
+import { ACTIONS } from '@/lib/messages';
 import { FourState } from '@/components/FourState';
 import { StatusPill } from '@/components/StatusPill';
 import { useStorageValue } from '@/lib/useStorageValue';

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { custodyAssetBalances } from './balances';
-import { DIG_ASSET_ID } from '#shared/links.mjs';
+import { DIG_ASSET_ID } from '@/lib/links';
 
 describe('custodyAssetBalances', () => {
   it('maps XCH + $DIG from a scan onto the shared asset rows', () => {

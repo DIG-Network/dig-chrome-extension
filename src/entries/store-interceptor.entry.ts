@@ -26,7 +26,7 @@ import {
   type StoreRef,
   type ClassifiedRef,
   type ClassifyContext,
-} from '#shared/store-refs.mjs';
+} from '@/lib/store-refs';
 
 /** The capsule config the parent injects on `window` before this script. */
 interface FrameConfig {

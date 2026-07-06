@@ -1,5 +1,5 @@
-import { assetDescriptors } from '#shared/wallet-assets.mjs';
-import { formatBaseUnits } from '#shared/wallet-view.mjs';
+import { assetDescriptors } from '@/lib/wallet-assets';
+import { formatBaseUnits } from '@/lib/wallet-view';
 import type { AssetBalance } from '@/features/wallet/walletApi';
 import type { CustodyBalances } from '@/features/wallet/custodyApi';
 

@@ -7,7 +7,7 @@
  * Thin glue only — the crypto/scan logic + tests live in `src/offscreen/*`; this file is
  * coverage-excluded (src/entries/**).
  */
-import { OFFSCREEN_TARGET } from '#shared/messages.mjs';
+import { OFFSCREEN_TARGET } from '@/lib/messages';
 import { Vault, type VaultRequest, type VaultResponse, type VaultDeps } from '@/offscreen/vault';
 import { loadChiaWasm } from '@/lib/keystore/derive';
 import { makeWasmChainClient, DEFAULT_COINSET_URL, type ChainClient, type RpcCapableWasm } from '@/offscreen/chain';

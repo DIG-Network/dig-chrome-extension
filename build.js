@@ -22,54 +22,22 @@ const EXTENSION_FILES = [
   'manifest.json',
   // NB: the popup + full-page wallet UI (popup.html / app.html) are the React shell BUILT BY VITE
   // into dist-web/ and copied into dist/ by buildWebApp() below. The old hand-written vanilla popup
-  // (popup.js / popup-wallet.js / popup.css) was superseded by the React shell (#56) and has been
-  // removed. The pure view-models below are still copied because the vanilla service worker imports
-  // them at runtime; the React bundle inlines its own copies via the #shared/* alias.
-  // Pure popup view-models (tab routing, wallet number/validation logic, §5.3 resolve verdict).
-  'tabs.mjs',
-  'wallet-view.mjs',
-  // Wallet asset registry + tracked-CAT list, and the offers (make/inspect/take/cancel) model.
-  'wallet-assets.mjs',
-  'wallet-offers.mjs',
-  // QR renderer for the Receive view (bundled below to inline qrcode-generator for the browser).
-  'qr.mjs',
-  'dig-urn.mjs',
-  // Shared dig-node host config (one parser/default for the server.host key + the
-  // dig.local→localhost resolution order) + the branded, plain-language chia:// error
-  // page (white theme, never leaks crypto strings) + the dig-node install prompt/copy.
-  'server-config.mjs',
-  'error-page.mjs',
-  'dig-node-status.mjs',
-  // Agent-friendly contracts: catalogued chia:// loader error codes (DIG_ERR_*, aligned with
-  // docs error-codes.json) + the versioned background MESSAGE catalogue (ACTIONS enum +
-  // getCapabilities self-description). Both imported at runtime by background.js.
-  'error-codes.mjs',
-  'messages.mjs',
-  // Self-custody session logic (#56) — the offscreen-vault coordination decisions imported by the
-  // (not-yet-bundled) module service worker at runtime. MUST be copied or the SW fails to load its
-  // module graph (a released regression: background.js imported it but it was absent from this list).
-  'custody-session.mjs',
-  // DIG Control Panel (dig://control parity) decision logic + the DIG Shields per-resource
-  // proof ledger (#134, byte-mirror of the browser's dig/shields/dig_ledger.mjs). Imported by
-  // the React shell (#shared/* alias), the background SW, and the dig-viewer.
-  'dig-control.mjs',
-  'dig-ledger.mjs',
-  // Ecosystem funnel: shared link constants. (The first-run welcome page welcome.html + its TS
-  // entry src/entries/welcome.ts is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.)
-  'links.mjs',
-  // DIG Home (new-tab override) — newtab.html + src/entries/newtab.ts (+ its co-located
-  // newtab.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
-  // DIG settings (options_ui) — options.html + src/entries/options.ts (+ its co-located
-  // options.css) is BUILT BY VITE into dist-web/ and copied by buildWebApp() below.
-  // Shared app directory + omnibox classifier (NTP) and wallet method/broker modules.
-  'apps.mjs',
-  'wallet-methods.mjs',
-  'wallet-broker.mjs',
-  // Self-custody dApp walletRpc router + approval queue (#56 §5.5) — imported by background.js.
-  'dapp-approval.mjs',
-  // WalletConnect → Sage transport (runs in the popup page).
-  'wallet-wc.js',
-  'background.js',
+  // (popup.js / popup-wallet.js / popup.css) was superseded by the React shell (#56) and removed.
+  //
+  // The pure view-models + contract leaves the SW/pages used to import at the repo root have ALL
+  // migrated to src/ as TypeScript (#68) — dig-urn, wallet-view/-assets/-offers, links,
+  // dig-node-status, dig-control, dig-ledger, apps, qr, error-codes/-page, messages, wallet-methods,
+  // dig-provider-core, agent-surface, wallet-broker, dapp-approval, server-config, custody-session,
+  // store-refs. They now inline into the esbuild SW bundle + the vite React/page bundles (no longer
+  // plain-copied); agent-surface is esbuild-transpiled at build time by generateAgentSurface().
+  // (The legacy vanilla-popup wallet-wc.js was superseded by src/features/wallet/transport.ts and
+  // removed; the dig_client wasm-bindgen glue below is a vendored/generated artifact, not app logic.)
+  // NB: background.js (the MV3 module service worker) is NOT plain-copied — it is a strict entry at
+  // src/background/index.ts that esbuild BUNDLES into dist/background.js by bundleBackground()
+  // below (#68): the pure #shared/* leaves are inlined; ./dig_client.js is kept EXTERNAL (the
+  // wasm-bindgen ESM that loads dig_client_bg.wasm via import.meta.url + the runtime SRI pin), so it
+  // is still plain-copied to dist root (below) + web_accessible.
+  //
   // NB: the three content-script-layer files are NOT plain-copied — they are strict-TS entries
   // under src/content/ that esbuild bundles into dist/middleware.js, dist/content.js, and
   // dist/page-script.js (SAME shipped filenames) by bundleContentScript()/bundlePageScript()/
@@ -83,10 +51,8 @@ const EXTENSION_FILES = [
   // The DIG Viewer page dig-viewer.html + its TS entry src/entries/dig-viewer.ts is BUILT BY VITE
   // into dist-web/ and copied into dist/ by buildWebApp() below (Vite emits dig-viewer.html now).
   // The SW still opens it via getURL('dig-viewer.html') (filename unchanged).
-  // Pure store-reference classifier/resolver (#55) — imported by the dig-viewer entry (the parent
-  // side of the in-page store interceptor bridge). The DOM-glue interceptor itself is BUNDLED below
-  // from store-interceptor.entry.mjs into dist/store-interceptor.js (not plain-copied).
-  'store-refs.mjs',
+  // (store-refs migrated to src/lib/store-refs.ts as TS — #68; it inlines into the store-interceptor
+  // esbuild bundle + the vite dig-viewer bundle, no longer plain-copied.)
   // dig-client WASM (ES module + binary) — required for client-side decryption in the module SW
   'dig_client.js',
   'dig_client_bg.wasm',
@@ -105,13 +71,6 @@ const FAVICON_PATH = path.join(SRC_DIR, 'favicon.png');
 // The vendored WalletConnect SignClient ESM (built by scripts/bundle-walletconnect.js).
 // Copied into dist/vendor/ so the popup's wallet-wc.js import resolves under MV3 CSP.
 const WC_VENDOR_REL = path.join('vendor', 'walletconnect-sign-client.js');
-
-// Where the hub bakes the shared Reown/WalletConnect project id (the SAME relay project id
-// every DIG surface uses). Read at BUILD time and injected into dist/wallet-wc.js as the
-// DEFAULT project id — NEVER written into a tracked source file or printed. (Client-public
-// identifier, so it may land in the dist/ artifact the same way the hub ships NEXT_PUBLIC_*.)
-const HUB_ENV_LOCAL = path.resolve(__dirname, '..', 'hub.dig.net', 'apps', 'web', '.env.local');
-const PROJECT_ID_ENV_KEY = 'NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID';
 
 // Colors for console output
 const colors = {
@@ -364,67 +323,9 @@ function injectAppVersion() {
   }
 }
 
-/**
- * Resolve the shared WalletConnect project id at build time.
- * Precedence: WALLETCONNECT_PROJECT_ID env var → hub apps/web/.env.local (NEXT_PUBLIC_…).
- * Returns '' if neither is available (build still succeeds; the options-page field then
- * remains the only way to set one). NEVER prints the value.
- */
-function readProjectId() {
-  const fromEnv = (process.env.WALLETCONNECT_PROJECT_ID || '').trim();
-  if (fromEnv) return fromEnv;
-
-  try {
-    if (fs.existsSync(HUB_ENV_LOCAL)) {
-      const text = fs.readFileSync(HUB_ENV_LOCAL, 'utf8');
-      for (const raw of text.split(/\r?\n/)) {
-        const line = raw.trim();
-        if (!line || line.startsWith('#')) continue;
-        const eq = line.indexOf('=');
-        if (eq === -1) continue;
-        const key = line.slice(0, eq).trim();
-        if (key !== PROJECT_ID_ENV_KEY) continue;
-        let val = line.slice(eq + 1).trim();
-        // Strip surrounding quotes if present.
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.slice(1, -1);
-        }
-        return val.trim();
-      }
-    }
-  } catch {
-    /* fall through to '' — never surface the file contents */
-  }
-  return '';
-}
-
-/**
- * Inject the build-time default project id into dist/wallet-wc.js by replacing the source
- * sentinel `const DEFAULT_PROJECT_ID = '';`. The SOURCE file keeps '' (no committed literal);
- * only the dist/ artifact carries the baked value. The value is never logged.
- */
-function injectProjectId(projectId) {
-  const distWalletWc = path.join(DIST_DIR, 'wallet-wc.js');
-  if (!fs.existsSync(distWalletWc)) {
-    log('⚠️  dist/wallet-wc.js missing — cannot inject project id.', 'yellow');
-    return false;
-  }
-  const src = fs.readFileSync(distWalletWc, 'utf8');
-  const SENTINEL = /const DEFAULT_PROJECT_ID = '';/;
-  if (!SENTINEL.test(src)) {
-    log('⚠️  Project-id injection point not found in wallet-wc.js (sentinel changed?).', 'yellow');
-    return false;
-  }
-  // JSON.stringify keeps the value an opaque JS string literal; no value echoed to logs.
-  const replaced = src.replace(SENTINEL, `const DEFAULT_PROJECT_ID = ${JSON.stringify(projectId)};`);
-  fs.writeFileSync(distWalletWc, replaced);
-  if (projectId) {
-    log('✓ Injected default WalletConnect project id into dist/wallet-wc.js', 'green');
-  } else {
-    log('⚠️  No WalletConnect project id available — dist default left empty (set one in DIG settings).', 'yellow');
-  }
-  return true;
-}
+// (The build-time WalletConnect projectId injection was removed with the legacy wallet-wc.js — #68.
+// The live React shell sources the projectId from chrome.storage `wallet.projectId`, set on the DIG
+// options page — see src/features/wallet/transport.ts + src/entries/options.ts.)
 
 /**
  * Generate dist/agent-surface.json — the machine-readable self-description of the extension
@@ -433,14 +334,33 @@ function injectProjectId(projectId) {
  */
 async function generateAgentSurface() {
   log('\n🤖 Generating agent-surface.json...', 'blue');
-  // agent-surface.mjs is ESM; build.js is CommonJS → load it via dynamic import().
-  const { buildAgentSurface } = await import('./agent-surface.mjs');
-  const version = require('./package.json').version;
-  const surface = buildAgentSurface(version);
-  const dest = path.join(DIST_DIR, 'agent-surface.json');
-  fs.writeFileSync(dest, JSON.stringify(surface, null, 2));
-  log('✓ Wrote: agent-surface.json', 'green');
-  return surface;
+  // src/agent-surface.ts is TypeScript importing @/lib/* leaves (which themselves inline bare
+  // @dignetwork/* deps). Node (CommonJS build.js) can't `import()` a .ts, so esbuild-BUNDLE it to a
+  // temp ESM (with the @ alias resolved + deps inlined), then dynamic-import that to run
+  // buildAgentSurface. The temp file is removed afterward.
+  const { pathToFileURL } = require('url');
+  const tmp = path.join(DIST_DIR, '.agent-surface.bundle.mjs');
+  await esbuild.build({
+    entryPoints: [path.join(SRC_DIR, 'agent-surface.ts')],
+    outfile: tmp,
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    target: ['node20'],
+    legalComments: 'none',
+    alias: { '@': SRC_DIR },
+  });
+  try {
+    const { buildAgentSurface } = await import(pathToFileURL(tmp).href);
+    const version = require('./package.json').version;
+    const surface = buildAgentSurface(version);
+    const dest = path.join(DIST_DIR, 'agent-surface.json');
+    fs.writeFileSync(dest, JSON.stringify(surface, null, 2));
+    log('✓ Wrote: agent-surface.json', 'green');
+    return surface;
+  } finally {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort cleanup */ }
+  }
 }
 
 // The MAIN-world injected provider entry (imports @dignetwork/chia-provider's buildProvider and
@@ -492,70 +412,12 @@ async function bundleProvider() {
   log(`✓ Bundled: dig-provider.js (${kb} KB, shared @dignetwork/chia-provider surface)`, 'green');
 }
 
-// wallet-methods.mjs re-exports the CHIP-0002 method surface from the @dignetwork/chia-provider
-// package (a BARE specifier). Browsers + MV3 module service workers cannot resolve bare specifiers,
-// so the raw copy breaks the whole module graph that imports it (the popup controller AND the
-// background SW, via messages.mjs). Bundle it to a self-contained ESM at build time — esbuild
-// inlines the package while preserving the same named exports, so every consumer's `import
-// './wallet-methods.mjs'` resolves in the browser with no source change.
-const WALLET_METHODS_SRC = path.join(__dirname, 'wallet-methods.mjs');
-const WALLET_METHODS_OUT = path.join(DIST_DIR, 'wallet-methods.mjs');
-// After bundling there must be NO surviving bare @dignetwork import (that would re-break the graph).
-const BARE_DIGNETWORK_IMPORT = /from\s+['"]@dignetwork\//;
+// (wallet-methods migrated to src/lib/wallet-methods.ts as TS — #68. Its @dignetwork/chia-provider
+// re-export now inlines into the SW bundle + the vite React bundles that import @/lib/wallet-methods,
+// so the standalone dist/wallet-methods.mjs esbuild step is gone.)
 
-async function bundleWalletMethods() {
-  log('\n🧩 Bundling wallet-methods.mjs (inline @dignetwork/chia-provider for the browser)...', 'blue');
-  await esbuild.build({
-    entryPoints: [WALLET_METHODS_SRC],
-    outfile: WALLET_METHODS_OUT,
-    bundle: true,
-    format: 'esm',
-    platform: 'browser',
-    target: ['chrome111'],
-    legalComments: 'none',
-    minify: false,
-    allowOverwrite: true,
-  });
-  const out = fs.readFileSync(WALLET_METHODS_OUT, 'utf8');
-  if (BARE_DIGNETWORK_IMPORT.test(out)) {
-    throw new Error('dist/wallet-methods.mjs still has a bare @dignetwork import — the package did not inline.');
-  }
-  for (const needle of ['WALLET_METHODS', 'STATE_CHANGING_METHODS', 'normalizeMethod']) {
-    if (!out.includes(needle)) {
-      throw new Error(`Bundled wallet-methods.mjs is missing export "${needle}".`);
-    }
-  }
-  log('✓ Bundled: wallet-methods.mjs (self-contained ESM, browser-safe)', 'green');
-}
-
-// qr.mjs imports the `qrcode-generator` package (a BARE specifier browsers + MV3 can't resolve).
-// Bundle it to a self-contained ESM at build time (esbuild inlines the package while preserving the
-// `qrSvg` export), so the popup's `import './qr.mjs'` resolves in the browser with no source change.
-const QR_SRC = path.join(__dirname, 'qr.mjs');
-const QR_OUT = path.join(DIST_DIR, 'qr.mjs');
-
-async function bundleQr() {
-  log('\n🔳 Bundling qr.mjs (inline qrcode-generator for the browser)...', 'blue');
-  await esbuild.build({
-    entryPoints: [QR_SRC],
-    outfile: QR_OUT,
-    bundle: true,
-    format: 'esm',
-    platform: 'browser',
-    target: ['chrome111'],
-    legalComments: 'none',
-    minify: false,
-    allowOverwrite: true,
-  });
-  const out = fs.readFileSync(QR_OUT, 'utf8');
-  if (/from\s+['"]qrcode-generator['"]/.test(out)) {
-    throw new Error('dist/qr.mjs still has a bare qrcode-generator import — the package did not inline.');
-  }
-  if (!out.includes('qrSvg')) {
-    throw new Error('Bundled qr.mjs is missing the qrSvg export.');
-  }
-  log('✓ Bundled: qr.mjs (self-contained ESM, browser-safe)', 'green');
-}
+// (qr.mjs migrated to src/lib/qr.ts as TS — #68; qrcode-generator now inlines into the vite React
+// bundles that import @/lib/qr, so no separate esbuild bundle step / dist/qr.mjs is needed.)
 
 // The in-page STORE INTERCEPTOR (#55) runs inside the sandboxed, opaque-origin `data:` frame that
 // dig-viewer renders store HTML into. An opaque frame can neither import an ES module nor fetch a
@@ -576,8 +438,9 @@ async function bundleStoreInterceptor() {
     target: ['chrome111'],
     legalComments: 'none',
     minify: false,
-    // Resolve `#shared/*` to the repo-root shared .mjs (store-refs) so it inlines into the IIFE.
-    alias: { '#shared': __dirname },
+    // Resolve `@/*` to src/* (store-refs now lives at src/lib) + keep `#shared/*` → repo root, so
+    // the pure logic inlines into the IIFE.
+    alias: { '@': SRC_DIR, '#shared': __dirname },
   });
   const out = fs.readFileSync(STORE_INTERCEPTOR_OUT, 'utf8');
   // Must be self-contained (store-refs inlined; no surviving ES import) and must NOT contain a
@@ -671,6 +534,56 @@ async function bundleContentScripts() {
   }
 }
 
+// The MV3 module service worker (#68 — §6.4 reorg). src/background/index.ts is esbuild-BUNDLED into
+// dist/background.js as an ES module (manifest `"type": "module"`): the pure #shared/* leaves are
+// inlined, but ./dig_client.js is kept EXTERNAL — it is the wasm-bindgen ESM that loads
+// dig_client_bg.wasm via import.meta.url + the runtime SRI pin, so it MUST remain a runtime sibling
+// import (plain-copied to dist root + web_accessible_resource), never inlined.
+const BACKGROUND_SRC = path.join(SRC_DIR, 'background', 'index.ts');
+const BACKGROUND_OUT = path.join(DIST_DIR, 'background.js');
+
+async function bundleBackground() {
+  log('\n⚙️  Bundling module service worker (src/background/index.ts → dist/background.js, #68)...', 'blue');
+  await esbuild.build({
+    entryPoints: [BACKGROUND_SRC],
+    outfile: BACKGROUND_OUT,
+    bundle: true,
+    format: 'esm', // MV3 module service worker (manifest background.type === 'module')
+    platform: 'browser',
+    target: ['chrome111'],
+    legalComments: 'none',
+    minify: false,
+    // @/* → src/* (migrated leaves) and #shared/* → repo root (leaves not yet moved under src/) —
+    // both inline into the SW bundle. Mirrors the tsconfig/vite/vitest path aliases.
+    alias: { '@': SRC_DIR, '#shared': __dirname },
+    // Keep ./dig_client.js an external runtime import (see note above) — never inline it.
+    plugins: [
+      {
+        name: 'external-dig-client',
+        setup(b) {
+          b.onResolve({ filter: /(^|\/)dig_client\.js$/ }, () => ({ path: './dig_client.js', external: true }));
+        },
+      },
+    ],
+    allowOverwrite: true,
+  });
+  const out = fs.readFileSync(BACKGROUND_OUT, 'utf8');
+  // dig_client.js MUST stay an external runtime import (not inlined) — the wasm URL + SRI depend on it.
+  if (!/from\s*["']\.\/dig_client\.js["']/.test(out)) {
+    throw new Error('Bundled background.js did not keep ./dig_client.js as an external import (wasm URL/SRI would break).');
+  }
+  // No surviving #shared/@dignetwork import (a leaf failed to inline → the SW would fail to load).
+  if (/from\s*["']#shared\//.test(out) || /from\s*["']@dignetwork\//.test(out)) {
+    throw new Error('Bundled background.js still has an unresolved #shared/ or @dignetwork/ import — a leaf did not inline.');
+  }
+  // A stable string unique to the real SW proves it bundled (not an empty/stub output).
+  if (!out.includes('DIG_CLIENT_WASM_SHA256')) {
+    throw new Error('Bundled background.js is missing the DIG_CLIENT_WASM_SHA256 SRI pin — wrong/empty bundle.');
+  }
+  const kb = (Buffer.byteLength(out) / 1024).toFixed(0);
+  log(`✓ Bundled: background.js (${kb} KB, ESM module SW; dig_client.js external, leaves inlined)`, 'green');
+}
+
 /** Build (if needed) and copy the vendored WalletConnect SignClient ESM into dist/vendor/. */
 async function vendorWalletConnect() {
   log('\n🔌 Vendoring WalletConnect SignClient (esbuild)...', 'blue');
@@ -719,14 +632,6 @@ async function main() {
   // into dist/dig-provider.js (single IIFE for the page MAIN world).
   await bundleProvider();
 
-  // Bundle wallet-methods.mjs so its @dignetwork/chia-provider re-export resolves in the browser +
-  // MV3 SW (bare specifiers don't). Must run AFTER copyFiles (which places the raw copy).
-  await bundleWalletMethods();
-
-  // Bundle qr.mjs so its qrcode-generator import resolves in the browser (bare specifier). Runs
-  // AFTER copyFiles (which places the raw copy) so the inlined bundle overwrites it.
-  await bundleQr();
-
   // Bundle the in-page store interceptor (#55) into dist/store-interceptor.js as a self-contained
   // IIFE (store-refs.mjs inlined) so dig-viewer can inline it into the sandboxed store frame.
   await bundleStoreInterceptor();
@@ -735,9 +640,9 @@ async function main() {
   // dist/content.js, dist/page-script.js) as self-contained IIFE classic scripts (#68).
   await bundleContentScripts();
 
-  // Inject the shared WalletConnect project id into dist/wallet-wc.js (build-time only;
-  // never a committed source literal, never logged).
-  injectProjectId(readProjectId());
+  // Bundle the MV3 module service worker (src/background/index.ts → dist/background.js) as an ESM
+  // SW with the #shared/* leaves inlined + ./dig_client.js kept external (#68).
+  await bundleBackground();
 
   // Emit the machine-readable agent-surface index (single source of truth: messages.mjs etc).
   const surface = await generateAgentSurface();

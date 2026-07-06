@@ -66,15 +66,9 @@
         "dig-provider.js",
         "logo.png",
         "dig-viewer.html",
-        "error-page.mjs",
-        "error-codes.mjs",
-        "messages.mjs",
         "agent-surface.json",
         "dig_client.js",
         "dig_client_bg.wasm",
-        "apps.mjs",
-        "wallet-methods.mjs",
-        "wallet-broker.mjs",
         "vendor/walletconnect-sign-client.js"
       ],
       "matches": [

@@ -1,7 +1,7 @@
 import { api, type ThunkExtra } from '@/api/api';
-import { assetDescriptors, type AssetDescriptor } from '#shared/wallet-assets.mjs';
-import { pickBalance, formatBaseUnits, activityViewModel, type ActivityItem } from '#shared/wallet-view.mjs';
-import { DIG_ASSET_ID } from '#shared/links.mjs';
+import { assetDescriptors, type AssetDescriptor } from '@/lib/wallet-assets';
+import { pickBalance, formatBaseUnits, activityViewModel, type ActivityItem } from '@/lib/wallet-view';
+import { DIG_ASSET_ID } from '@/lib/links';
 import { storageGet } from '@/lib/messaging';
 import type { Connection } from '@/features/wallet/transport';
 
