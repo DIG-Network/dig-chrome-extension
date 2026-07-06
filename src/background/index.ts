@@ -1044,7 +1044,10 @@ refreshPhishingBlocklist();
 const dappApproval = new DappApprovalManager({
   isOriginApproved: (o) => isOriginApproved(chrome.storage.local, o),
   recordPendingOrigin: (o) => recordPendingOrigin(o),
-  callVault: (req) => callVault(req),
+  // Attach the resolved coinset endpoint to EVERY dApp vault call — the asset-generic reads
+  // (getAssetBalance/getAssetCoins) + the write build/broadcast ops need chain access; ops that
+  // ignore coinsetUrl are unaffected. (§5.3 node ladder — the coinset URL is the read endpoint.)
+  callVault: async (req) => callVault({ ...req, coinsetUrl: resolveCoinsetUrl(await readWalletSettings()) }),
   summonWindow: () => summonApprovalWindow(),
   assessOrigin: (o) => assessOriginNow(o),
   gapLimit: SCAN_GAP_LIMIT,
@@ -1451,7 +1454,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === ACTIONS.dappApprovalList) {
     (async () => {
       try {
-        await dappApproval.enrich();
+        // Fire the summary builds WITHOUT awaiting: a send/offer build scans the chain, so awaiting it
+        // would freeze the window on a slow/unreachable coinset. Summaries stream in on later polls.
+        void dappApproval.enrich();
         const lock = await getLockStateSnapshot();
         sendResponse({ requests: dappApproval.list(), lockState: lock.lockState, summoned: approvalWindowId != null });
       } catch { try { sendResponse({ requests: [], lockState: 'none', summoned: false }); } catch { /* port closed */ } }

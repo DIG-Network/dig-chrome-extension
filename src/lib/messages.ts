@@ -70,8 +70,15 @@ import { DIG_ERR } from './error-codes';
  * via the self-custody dApp router (connect + reads served directly; sign/message summon the approval
  * window). A request with no/locked wallet resolves to 202 (pending) or a locked-class error rather
  * than pairing an external wallet. No action names changed; the routing/fallback behaviour did.
+ *
+ * v13 (#119 full window.chia method surface): `walletRpc` now routes the asset-generic READS
+ * (getAssetBalance / getAssetCoins / filterUnlockedCoins / getNFTs) and the value-moving WRITES
+ * (chia_send/transfer, sendTransaction, createOffer, takeOffer, cancelOffer) to the vault instead of
+ * the 4004 stub. Writes join sign/message on the approval-window queue (built in the vault, summary
+ * decoded from the built artifact, broadcast/released only on approve); a user reject now surfaces as
+ * CHIP-0002 4002 USER_REJECTED (was 4001). No action names changed; the served method set grew.
  */
-export const MESSAGE_PROTOCOL_VERSION = 12;
+export const MESSAGE_PROTOCOL_VERSION = 13;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -229,7 +236,7 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.walletRpc]: {
     summary:
-      'Route one window.chia CHIP-0002 RPC. The EIP-2255-shaped permission methods (wallet_getPermissions / wallet_revokePermissions, #67 P0-4) are answered from the shared per-origin consent store. Every other request routes to the self-custody wallet (§5.5): connect + reads go to the offscreen vault, and sign/message requests summon the approval window (per-origin gated). There is no WalletConnect/Sage fallback.',
+      'Route one window.chia CHIP-0002 RPC. The EIP-2255-shaped permission methods (wallet_getPermissions / wallet_revokePermissions, #67 P0-4) are answered from the shared per-origin consent store. Every other request routes to the self-custody wallet (§5.5): connect + reads (getAddress/getPublicKeys/getAssetBalance/getAssetCoins/filterUnlockedCoins/getNFTs) go to the offscreen vault, and the sign/message + value-moving writes (transfer/sendTransaction/createOffer/takeOffer/cancelOffer) summon the approval window (per-origin gated; built in the vault, broadcast/released only on approve). A user reject → 4002; an unimplemented method → 4004. There is no WalletConnect/Sage fallback.',
     request: '{ action, method:string, params?:object, origin?:string }',
     response: '{ status:number /* 200|202|4xx|5xx */, body:{ data } | { error } }',
   },
@@ -240,14 +247,14 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.dappApprovalList]: {
     summary:
-      'Approval window (§5.5): read the pending dApp signing-request queue, each enriched with the tamper-resistant summary decoded FROM THE BUILT SPEND (or flagged needsUnlock when the wallet is locked).',
+      'Approval window (§5.5): read the pending dApp approval-request queue, each enriched with the tamper-resistant summary decoded FROM THE BUILT SPEND/OFFER (or flagged needsUnlock when the wallet is locked). Kinds: the sign/message pair plus the value-moving writes (send/sendTransaction/createOffer/takeOffer/cancelOffer).',
     request: '{ action }',
     response:
-      "{ requests:[{ id, origin, method, kind:'signCoinSpends'|'signMessage', summary:object|null, needsUnlock:boolean, decodeError:boolean, createdAt:number }], lockState:'none'|'locked'|'unlocked', summoned:boolean }",
+      "{ requests:[{ id, origin, method, kind:'signCoinSpends'|'signMessage'|'send'|'sendTransaction'|'createOffer'|'takeOffer'|'cancelOffer', summary:object|null, needsUnlock:boolean, decodeError:boolean, createdAt:number }], lockState:'none'|'locked'|'unlocked', summoned:boolean }",
   },
   [ACTIONS.dappApprovalResolve]: {
     summary:
-      "Approval window (§5.5): return the user's decision for one queued request. Approve → the offscreen vault signs and the dApp promise resolves with the signature; reject → the dApp gets a user-rejection error.",
+      "Approval window (§5.5): return the user's decision for one queued request. Approve → the offscreen vault performs the built action (sign / broadcast the prepared send or trade / release the built offer) and the dApp promise resolves; reject → the dApp gets a 4002 user-rejection error and nothing is broadcast.",
     request: '{ action, id:string, approved:boolean }',
     response: '{ success:boolean, remaining:number, code?:string }',
   },
