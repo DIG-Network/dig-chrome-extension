@@ -1128,3 +1128,36 @@ gates every request.
   drains. Genuinely unimplemented wallet methods (DID/mint/…) return an honest `404` (→ CHIP-0002
   `4004 METHOD_NOT_FOUND`), never a silent sign. The provider's bridge timeout (120 s) bounds how long
   a request may await a decision.
+
+### 18.13 Fiat prices & portfolio value (#86)
+
+The wallet shows real fiat value beside each balance — a per-asset USD value, a total-portfolio value,
+and a 24h delta — sourced from public price feeds. Prices are non-custodial, read-only market data and
+therefore ride a SEPARATE data path from the balance/custody SW seam: they are fetched DIRECTLY over
+HTTPS from the React surface (a dedicated RTK Query slice with its own `baseQuery`), never through the
+offscreen vault. Prices NEVER block the wallet — an outage degrades to an honest "value unavailable"
+while balances render unchanged.
+
+- **Sources.** Two public endpoints, combined into a `PriceMap` (`{ [assetKey]: { usd, change24h } }`,
+  keyed `'xch'` or a CAT's lowercased 64-hex TAIL):
+  - **XCH→USD + 24h change** — CoinGecko `simple/price?ids=chia&vs_currencies=usd&include_24hr_change=true`
+    (`{ chia: { usd, usd_24h_change } }`). The only clean USD anchor.
+  - **CAT→XCH** — dexie v2 tickers (`GET https://api.dexie.space/v2/prices/tickers`); each XCH-quoted
+    ticker's `last_price` is the CAT price IN XCH. A CAT's USD value is `rate × XCH-USD`; dexie does not
+    report a clean per-CAT 24h change, so CAT `change24h` is null.
+  Both hosts are in `host_permissions` + the CSP `connect-src`.
+- **Graceful degradation.** Parsing is pure + tolerant (a malformed row drops that entry). A partial
+  outage still prices what it can (dexie down → XCH still priced). Only when the XCH anchor itself is
+  unavailable is the whole map unavailable (CATs have no USD without it) → the query surfaces an error.
+- **Cache.** Short-TTL (`PRICE_TTL_SECONDS`, 120 s): the slice keeps the map that long after the last
+  subscriber and treats it stale after the TTL, so repeated popup opens don't hammer the rate-limited
+  upstreams.
+- **Portfolio value.** `totalUsd` = Σ per-asset USD over PRICED assets (null when none can be priced).
+  The 24h delta is computed over the subset of priced assets carrying a known change (24h-ago value =
+  `now / (1 + change/100)`); `change24hPct` is expressed relative to that subset's prior value. A value
+  is only ever computed from a KNOWN balance AND a KNOWN price — never a fabricated 0.
+- **UI (four states, §6.4).** Success: the fiat total (hero) + a green-up/red-down 24h chip + the native
+  crypto amount as a muted subline, and `≈ $x.xx` per asset row. Loading: the native amount + "loading
+  value" (per-row muted placeholder). Error/empty: the native amount + "value unavailable" + retry, and
+  `≈ $—` per row. All copy is react-intl across the 14 locales. USD is the default currency (a currency
+  preference is a follow-up, #112).
