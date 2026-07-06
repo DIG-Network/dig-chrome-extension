@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.28.7] - 2026-07-06
+
+### CI
+- Publish to Chrome Web Store on version tags, skipping gracefully when creds unset (#41)
+
 ## [1.28.6] - 2026-07-06
 
 ### Bug Fixes
