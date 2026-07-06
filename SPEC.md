@@ -862,6 +862,12 @@ The wallet surface lands on a state-driven custody gate BEFORE the balances view
 The recovery-phrase reveal MUST be accessible (§5.6): tap-to-reveal, a screen-reader-navigable
 numbered word list, an explicit Copy that AUTO-CLEARS the clipboard after a short delay, and an
 auto-hide of the on-screen phrase. The phrase is shown once for backup and never persisted.
+The revealed word list MUST render inside a **closed shadow root** (`attachShadow({mode:'closed'})`)
+so the secret is not reachable from the light DOM — a co-installed extension, an injected page
+script, or any other part of the wallet UI cannot scrape it via `document.querySelector` or
+`textContent` harvesting (the host's `shadowRoot` is `null`; screen readers and keyboard navigation
+still traverse the subtree). The same DOM-isolation primitive applies to any future private-key
+export.
 
 ### 18.6 Balance scan & chain source
 
