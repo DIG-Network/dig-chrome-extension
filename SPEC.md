@@ -23,8 +23,9 @@ The extension delivers the DIG Network experience on any Chromium browser:
 
 1. **`chia://` resolution** — intercept `chia://` URIs and page-embedded `chia://` resource
    references, resolve them to verified + decrypted bytes, and hand them to the page.
-2. **`window.chia` wallet provider** — inject a CHIP-0002 / Goby-compatible provider that
-   brokers wallet RPCs over WalletConnect to a Sage wallet.
+2. **`window.chia` wallet provider** — inject a CHIP-0002 / Goby-compatible provider backed by the
+   extension's own **self-custody wallet** (§18): connect + reads are served from the offscreen key
+   vault; sign/message requests are approved in a dedicated window. There is no WalletConnect.
 3. **DIG Shields** — a per-resource inclusion-proof ledger surfaced in the popup.
 4. **DIG Control Panel** — detect a local dig-node and expose manage-vs-install actions.
 5. **DIG Home / omnibox / search** — a new-tab surface and a `dig`-keyword omnibox.
@@ -58,8 +59,8 @@ re-decrypts (§15).
 - `content_security_policy.extension_pages` MUST permit `'wasm-unsafe-eval'` (WASM
   instantiation) and MUST restrict `script-src`/`object-src` to `'self'`. It MUST additionally
   declare an explicit `connect-src` enumerating every network egress (the chain host(s)
-  `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT-price host `api.dexie.space`,
-  `api.bugreport.dig.net`, and the WalletConnect relay), `frame-src 'self' https:` (the in-window
+  `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT-price host `api.dexie.space`, and
+  `api.bugreport.dig.net`), `frame-src 'self' https:` (the in-window
   dApp app-view frames curated store `link`s over https, §2.4a), `font-src 'self'` (the vendored Space
   Grotesk / Space Mono woff2), and `img-src 'self' data: https://explore.dig.net` (the native
   dApp-launcher icons, §2.4).
@@ -102,22 +103,22 @@ grouping; the **default landing is Home**. Every surface stays reachable:
    the native dApp launcher grid (§2.4, first N + "see all" → Apps), and status widgets (lock state,
    local-node/gateway status → Network, a recent-activity peek → the ledger). Four states drive the
    launcher; the wallet widgets degrade gracefully when the wallet is locked/absent.
-1. **Wallet** — the self-custody wallet (§18); a **Balances & Intents** UX with a Home/Activity/Trade
-   segmented control:
-   - **Home** — portfolio hero (Phase 0 shows the XCH balance + an honest "fiat unavailable"
-     `≈ $—`; no fabricated fiat/delta), a Send · Receive · Trade action bar, the assets list
-     (XCH + `$DIG` + each tracked CAT via CHIP-0002 `getAssetBalance`), and recent activity.
-     Send/Receive open a shared bottom-sheet/modal (`Sheet`); tracked CATs persist in
-     `chrome.storage.local` `wallet.watchedCats` (`wallet-assets.mjs`).
-   - **Activity** — history via `chia_getTransactions` → `activityViewModel` (direction, amount,
-     fee, confirmed/pending status, SpaceScan coin link). Phase 2 replaces the source with a real
-     coin-diff indexer.
-   - **Trade** — make (`chia_createOffer`) + take (`chia_takeOffer`) a `offer1…` string
-     (`wallet-offers.mjs`).
-   Connect/pairing (WalletConnect QR), the connected-address chip, and Disconnect live in the tab;
-   the WalletConnect project id + custom node config live in the options page. Key custody, local
-   signing, NFTs/DIDs, address book, and coin control are Phase 1+ (added behind the same shell as
-   feature modules) and out of Phase-0 scope.
+1. **Wallet** — the **self-custody wallet** (§18) and the ONLY wallet path: the extension holds its
+   own key, so there is no WalletConnect/Sage pairing. The `CustodyGate` lands first on the SW's
+   authoritative lock state — no wallet → onboarding (create / import a 24-word phrase), locked →
+   unlock, unlocked → the custody wallet body, a segmented control over:
+   - **Assets** — portfolio hero (the XCH balance + an honest "fiat unavailable" `≈ $—`; no
+     fabricated fiat/delta), a Send · Receive · Trade action bar, and the assets list (XCH + `$DIG` +
+     each tracked CAT) from the offscreen HD balance scan (`getCustodyBalances`, both HD schemes).
+     Send/Receive open shared modals; tracked CATs persist in `chrome.storage.local`
+     `wallet.watchedCats` (`wallet-assets.mjs`).
+   - **Activity** — the transaction ledger reconstructed from chain by the offscreen indexer
+     (`getActivity`; §18.9).
+   - **Trade** — make / take / cancel a `offer1…` string, built + signed in the offscreen vault
+     (`makeOffer` / `inspectOffer` / `prepareTrade` / `confirmTrade`; §18.10).
+   - **Collectibles** — the wallet's NFTs, discovered + transferred via the vault (§18.11).
+   Key custody, signing, and coin selection all happen in the offscreen vault — the decrypted key
+   never leaves it (§18); a custom node/RPC endpoint is configured on the options page (§8.3).
 2. **Apps** (§2.4) — the curated DIG dApp store as a native in-extension launcher.
 3. **Network** — the Fable grouping that hosts the three ambient/pull-on-failure surfaces behind one
    nav item via a `Resolver | Shield | Node` segmented sub-control (`ui.networkView`):
@@ -145,13 +146,13 @@ grouping; the **default landing is Home**. Every surface stays reachable:
 
 ### 2.2 State & data architecture
 
-- **Redux Toolkit + RTK Query**, one store per document (`src/app/store.ts`). The `walletApi`
-  slice (`src/api/api.ts`) owns all broker/chain reads/writes with tag-based cache invalidation.
+- **Redux Toolkit + RTK Query**, one store per document (`src/app/store.ts`). The single `api`
+  slice (`src/api/api.ts`) owns all chain/custody reads/writes with tag-based cache invalidation.
 - **`chromeBaseQuery`** (`src/api/baseQuery.ts`) is the service-worker seam: it speaks
   `chrome.runtime.sendMessage` (a `messages.mjs` ACTIONS envelope) instead of `fetch`, so the
-  background SW stays the authority for the resolver/shield/control endpoints. Wallet endpoints use
-  an injectable **transport** (`src/features/wallet/transport.ts`, the WalletConnect→Sage backend
-  in Phase 0) via `queryFn`.
+  background SW stays the authority for every endpoint — resolver/shield/control AND the self-custody
+  wallet (`custodyApi`, which routes to the offscreen key vault). There is no page-resident wallet
+  transport (no WalletConnect); the store injects no transport.
 - **Cross-document convergence** (§3.4 of the design): durable client state lives in
   `chrome.storage.local`; a `chrome.storage.onChanged` → store bridge (`src/app/storageSync.ts`)
   re-hydrates settings and turns a connection change or a `walletCache.epoch.<tag>` bump into an
@@ -457,7 +458,7 @@ fix is entirely extension-side — on.dig.net's headers are not modified.
 | `toggleExtension` | Toggle `chia://` resolution on/off. |
 | `updateServerConfig` | Persist the dig-node/RPC host config. |
 | `updateRpcHost` | Background→content broadcast that the RPC host changed. |
-| `walletRpc` | Route one `window.chia` CHIP-0002 RPC: to the self-custody wallet when one exists (connect + reads → the offscreen vault; sign/message → the approval window), else the WalletConnect → Sage broker (per-origin gated). |
+| `walletRpc` | Route one `window.chia` CHIP-0002 RPC to the self-custody wallet (per-origin gated): connect + reads → the offscreen vault; sign/message → the SW-summoned approval window. No WalletConnect fallback. |
 | `walletConsent` | Popup approves/revokes a dapp origin for wallet access. |
 | `dappApprovalList` / `dappApprovalResolve` | Approval-window channel (§18.12): read the pending dApp signing-request queue (decoded summaries) / return the user's approve-reject decision. |
 | `reportVerification` / `getVerification` | Record/read the active tab's verification state. |
@@ -489,10 +490,11 @@ The injected MAIN-world provider talks to the content script over `window.postMe
 - `DIG_WALLET_REQUEST` (page → content): `{ type, id, method, params }`.
 - `DIG_WALLET_RESPONSE` (content → page): `{ type, id, status, body, error }`.
 
-The content script forwards requests to the service worker (`walletRpc`), which brokers them to
-the WalletConnect session running in the popup page. `status` is HTTP-like: `200` ok, `202`
-pending consent, `4xx`/`5xx` error. A timeout or missing bridge MUST resolve as a
-disconnected-class envelope (mapped by the provider to error `4900`).
+The content script forwards requests to the service worker (`walletRpc`), which routes them to the
+self-custody wallet — connect + reads to the offscreen vault, sign/message to the SW-summoned
+approval window (§18.12). `status` is HTTP-like: `200` ok, `202` pending consent, `4xx`/`5xx` error.
+A timeout or missing bridge MUST resolve as a disconnected-class envelope (mapped by the provider to
+error `4900`).
 
 ### 7.4 `getCapabilities`
 
@@ -570,7 +572,7 @@ State persists in `chrome.storage.local`. Canonical keys:
 | `server.host` | dig-node host (canonical). `server.url` / `server.port` are legacy inputs folded into it. |
 | `digRpcEndpoint` | hosted fallback RPC endpoint (default `https://rpc.dig.net/`). |
 | `wallet.pendingOrigins` | origins awaiting per-origin wallet consent. |
-| wallet connection / consent state | the persisted WalletConnect session + per-origin approvals. |
+| `wallet.origins` | per-origin wallet consent / connected-sites permissions (§18.12). |
 
 ---
 
@@ -646,7 +648,7 @@ Browser. `build.js` esbuild-bundles `dig-provider.entry.mjs` (which wraps the pa
 
 - The provider MUST NOT clobber an existing `window.chia`.
 - Method namespacing (from the package's `normalizeMethod`): `chip0002_*` and `chia_*` pass
-  through; Goby/Sage aliases route to their broker names; any other bare name is namespaced to
+  through; Goby/Sage method aliases map to their canonical names; any other bare name is namespaced to
   `chip0002_<name>`. `wallet-methods.mjs` re-exports the package's catalogue
   (`WALLET_METHODS`, `STATE_CHANGING_METHODS`, `GOBY_ALIASES`, `normalizeMethod`,
   `remapGobyParams`, `isSupportedMethod`, `isStateChanging`) unchanged.
@@ -670,25 +672,24 @@ extension MUST NOT diverge from it.
 - `node build.js` validates required source files and copies them into `dist/`, **builds the React
   UI shell with Vite** (`vite build` → `dist-web/{popup.html,app.html,assets/*}` incl. the vendored
   Space Grotesk / Space Mono woff2, then copies `dist-web/*` into `dist/` — plain Vite is used ONLY
-  for the React pages so `build.js` keeps owning the SW/content/provider/vendoring/zip path
+  for the React pages so `build.js` keeps owning the SW/content/provider/zip path
   unchanged), esbuild-bundles `dig-provider.entry.mjs` → `dist/dig-provider.js`, esbuild-bundles
   `wallet-methods.mjs` into a
   self-contained ESM (inlining `@dignetwork/chia-provider` — browsers + MV3 SWs cannot resolve the
   bare specifier, so the raw re-export would break every consumer's module graph), esbuild-bundles
   `store-interceptor.entry.mjs` → `dist/store-interceptor.js` (a self-contained IIFE with the
   unit-tested `store-refs.mjs` inlined, since the opaque store frame can neither import a module nor
-  fetch a cross-origin script — §5.3), vendors the WalletConnect SignClient into `dist/vendor/`,
-  injects the build-time WalletConnect project id into `dist/wallet-wc.js`, injects the
-  `package.json` version into the `__APP_VERSION__` placeholder of `popup.html` + `app.html` +
-  `control.html` (§2.3), and emits `dist/agent-surface.json`.
+  fetch a cross-origin script — §5.3), esbuild-bundles the MV3 service worker + content-script layer,
+  injects the `package.json` version into the `__APP_VERSION__` placeholder of `popup.html` +
+  `app.html` + `approval.html` (§2.3), and emits `dist/agent-surface.json`. There is NO WalletConnect
+  vendoring — the extension is a self-custody wallet.
 - The bundled `dist/wallet-methods.mjs` MUST retain the same named exports and contain NO surviving
   bare `@dignetwork/*` import; the build fails loudly otherwise.
 - `node build.js --zip` additionally produces a versioned `.zip` for distribution.
 - `node build.js --json` emits one JSON result on stdout (machine mode), prose on stderr.
 - Exit codes: `0` success · `2` a required source file is missing (validation) · `3` a build
-  step failed (vendoring / artifact write).
-- The build MUST fail if any required source file is missing. Absence of a WalletConnect
-  project id MUST NOT fail the build (the options-page field remains the override).
+  step failed (bundling / artifact write).
+- The build MUST fail if any required source file is missing.
 
 ---
 
@@ -699,7 +700,6 @@ extension MUST NOT diverge from it.
 | Local dig-node host | `server.host` | `localhost:8080` | a local-alias host (`localhost`/`dig.local`) keeps the `dig.local`-first ladder; a genuinely custom host wins ENTIRELY over that ladder (§8.1) |
 | Hosted RPC endpoint | `digRpcEndpoint` | `https://rpc.dig.net/` | fallback when no local node is reachable |
 | Resolution on/off | popup (`toggleExtension`) | on | disables `chia://` resolution |
-| WalletConnect project id | build-time env `WALLETCONNECT_PROJECT_ID` → `dist/wallet-wc.js`; options-page override | none | WalletConnect relay project id |
 | Search engine | `updateSearchConfig` | DIG omnibox (`dig`) | omnibox/search config |
 
 ---
@@ -711,9 +711,9 @@ extension MUST NOT diverge from it.
   a GCM-SIV tag failure is never rendered as content (§5, §6).
 - **No leaked internals** — user-facing error copy never exposes crypto strings; the machine
   code is separate (§9).
-- **Per-origin wallet consent** — no site gets wallet access without explicit popup approval;
-  the WalletConnect session lives in the popup page (needs IndexedDB + a long-lived relay
-  socket an MV3 SW cannot hold) and the SW brokers each request to it (§7.3, §12).
+- **Per-origin wallet consent** — no site gets wallet access without explicit popup approval; the
+  self-custody key never leaves the offscreen vault, and every sign/message request is approved in the
+  SW-summoned approval window (§7.3, §18.12). There is no WalletConnect session.
 - **Privacy-preferring endpoint** — the user's local dig-node is preferred over the hosted
   gateway; the gateway is the fallback, not the default (§8).
 - **Read-only** — the extension performs no on-chain spends and serves no content to peers.
@@ -760,12 +760,11 @@ of work is incomplete.
 
 ## 18. Self-custody wallet (#56)
 
-The extension MAY hold its OWN keys and sign locally, as a self-custodial wallet ALONGSIDE the
-Sage-broker path (§12). This is the PRIMARY wallet for any balance — a full Sage replacement — with
-the WalletConnect→Sage transport kept as a secondary connect/import path. The decrypted key and the
-signer live ONLY in a long-lived offscreen document (never the service worker, never `chrome.storage`
-beyond the encrypted blob); §18.3+ specify that lifecycle. This section is the normative contract for
-the custody CRYPTO CORE — key derivation (§18.1) and the at-rest keystore (§18.2).
+The extension holds its OWN keys and signs locally: this self-custody wallet is the ONLY wallet path
+(there is no WalletConnect/Sage broker). The decrypted key and the signer live ONLY in a long-lived
+offscreen document (never the service worker, never `chrome.storage` beyond the encrypted blob);
+§18.3+ specify that lifecycle. This section is the normative contract for the custody CRYPTO CORE —
+key derivation (§18.1) and the at-rest keystore (§18.2).
 
 ### 18.1 Key derivation (normative)
 
@@ -879,8 +878,8 @@ The wallet surface lands on a state-driven custody gate BEFORE the balances view
 
 - **no wallet** (`lockState=none`): the fullscreen surface (`app.html`) runs the full onboarding flow
   (create → back up the recovery phrase behind the accessible reveal → confirm one word, OR import a
-  phrase); the compact popup shows a single CTA card that opens fullscreen onboarding. A secondary
-  "use a Sage wallet instead" path keeps the WalletConnect broker reachable (self-custody is PRIMARY).
+  phrase); the compact popup shows a single CTA card that opens fullscreen onboarding. There is no
+  "use a Sage wallet instead" escape — self-custody is the only path.
 - **locked**: a password unlock screen.
 - **unlocked**: the wallet (Balances & Intents).
 
@@ -1035,10 +1034,12 @@ the recipient can rediscover it). The decrypted key never leaves the offscreen v
 
 ### 18.12 dApp `window.chia` requests & the SW-summoned approval window (§5.5)
 
-A webpage's injected `window.chia` provider reaches the wallet as a `walletRpc` message (§7.3). When a
-self-custody wallet EXISTS, `walletRpc` routes to the custody wallet (`dapp-approval.mjs`); otherwise it
-falls back to the WalletConnect → Sage broker (§12) unchanged. The committed page origin (the SW prefers
-the unspoofable `sender.origin`) gates every request.
+A webpage's injected `window.chia` provider reaches the wallet as a `walletRpc` message (§7.3).
+`walletRpc` ALWAYS routes to the self-custody wallet (`dapp-approval.mjs`) — connect + reads to the
+offscreen vault, sign/message to the approval window; there is no WalletConnect/Sage fallback. A
+request with no/locked wallet resolves to `202` (pending) or a `401`-class error, prompting the user
+to create/unlock a wallet. The committed page origin (the SW prefers the unspoofable `sender.origin`)
+gates every request.
 
 - **Consent (`chip0002_connect`).** Reuses the per-origin consent store (`wallet.origins`): an
   unapproved origin is recorded pending + returns `202` (the provider polls while the user approves
@@ -1052,7 +1053,7 @@ the unspoofable `sender.origin`) gates every request.
   always unioned in) plus DIG-lookalike heuristics (a homoglyph whose IDN-decoded confusable skeleton
   resolves to a legit DIG surface, or a subdomain-spoof placing a real DIG domain left of the true
   attacker registrable domain). A `block` verdict REFUSES the origin `403` before it can connect — it
-  is never recorded pending, never approved — and (defense-in-depth) is re-checked on the broker path.
+  is never recorded pending, never approved (enforced in the custody router's `connect` gate).
   A `warn` (lookalike) verdict lets the flow proceed but rides the approval queue so the window shows
   an interstitial the user must acknowledge. All original code, evaluated on-device — no imported
   Ethereum phishing list.
@@ -1061,7 +1062,7 @@ the unspoofable `sender.origin`) gates every request.
   methods[], lastUsed }` — backwards compatible (a legacy `{ approved, ts }` record still reads as
   connected). On a served request the SW records `lastUsed` + the invoked method (+ the connect
   address). Two EIP-2255-shaped (Chia-mapped) `window.chia` methods are answered from this shared store
-  (independent of custody vs broker): `wallet_getPermissions` → an array of `{ invoker, parentCapability:
+  (independent of the request path): `wallet_getPermissions` → an array of `{ invoker, parentCapability:
   'chia_connect', caveats:[{ type:'restrictReturnedAddresses', value: addresses }], date }` (empty when
   none); `wallet_revokePermissions` → clears the origin's consent (a revoked site must re-request). A
   **Connected-sites** screen (Settings/Advanced) lists every origin (addresses, granted/last-used,

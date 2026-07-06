@@ -54,9 +54,7 @@ jobs:
       # dependency install script. Re-run ONLY the reviewed allowlist (esbuild/@swc native setup)
       # and fail on any unlisted script-bearing dep. Must precede build/test (vite + vitest use esbuild).
       - run: npm run allow-scripts
-      # node build.js — vendors WalletConnect (esbuild) + bundles the injected provider into dist/.
-      # No project id needed here (the plain build leaves the default empty); build:zip + secret
-      # live in deploy.yml.
+      # node build.js — bundles the injected window.chia provider + the MV3 service worker into dist/.
       - run: npm run build
 
   sw-harness:
