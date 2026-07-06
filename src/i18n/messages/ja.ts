@@ -321,4 +321,12 @@ export const ja: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "ネットワーク手数料が異常に高額です。",
   "dapp.approval.risk.CANNOT_SIGN": "ウォレットはこのリクエストに完全に署名できません。",
   "dapp.approval.risk.FOREIGN_INPUTS": "このリクエストにはウォレットが所有していないコインが含まれており、表示された金額を完全には検証できません。",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "危険なサイトをブロックしました",
+  "dapp.approval.phishing.title.warn": "このサイトは DIG を装っている可能性があります",
+  "dapp.approval.phishing.blocked.note": "保護のためこのサイトをブロックしました。このリクエストは拒否のみ可能です。",
+  "dapp.approval.phishing.reason.blocklisted": "このサイトは既知のフィッシング・資産流出サイトの DIG ブロックリストに含まれています。",
+  "dapp.approval.phishing.reason.lookalike": "このアドレスは DIG サイトのように見えますが異なります。アドレスバーをよく確認してください。",
+  "dapp.approval.phishing.confirm": "偽サイトの可能性を理解した上で続行します",
 };

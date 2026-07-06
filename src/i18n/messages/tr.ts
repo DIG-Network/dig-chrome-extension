@@ -321,4 +321,12 @@ export const tr: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "Ağ ücreti alışılmadık derecede yüksek.",
   "dapp.approval.risk.CANNOT_SIGN": "Cüzdanınız bu isteği tam olarak imzalayamıyor.",
   "dapp.approval.risk.FOREIGN_INPUTS": "Bu istek, cüzdanınızın sahip olmadığı coinleri içeriyor; gösterilen tutarlar tam olarak doğrulanamıyor.",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "Tehlikeli site engellendi",
+  "dapp.approval.phishing.title.warn": "Bu site DIG’i taklit ediyor olabilir",
+  "dapp.approval.phishing.blocked.note": "Bu site sizi korumak için engellendi. Bu isteği yalnızca reddedebilirsiniz.",
+  "dapp.approval.phishing.reason.blocklisted": "Bu site, bilinen kimlik avı ve cüzdan boşaltma siteleri için DIG engelleme listesinde yer alıyor.",
+  "dapp.approval.phishing.reason.lookalike": "Bu adres bir DIG sitesine benziyor ama değil — adres çubuğunu dikkatlice kontrol edin.",
+  "dapp.approval.phishing.confirm": "Bunun sahte bir site olabileceğini anlıyorum ve yine de devam etmek istiyorum",
 };

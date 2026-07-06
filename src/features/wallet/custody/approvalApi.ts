@@ -2,6 +2,7 @@ import { api } from '@/api/api';
 import { ACTIONS } from '@/lib/messages';
 import type { LockState } from '@/features/wallet/walletSlice';
 import type { DappSpendSummary } from '@/offscreen/dappSign';
+import type { OriginRisk } from '@/lib/phishing';
 
 /**
  * dApp approval-window endpoints (#56 §5.5) — the window ↔ SW channel over the `chromeBaseQuery`
@@ -28,6 +29,8 @@ export interface DappApprovalRequest {
   needsUnlock: boolean;
   /** The request could not be safely decoded (malformed); only Reject is offered. */
   decodeError: boolean;
+  /** Phishing/lookalike verdict for the requesting origin (#67 P0-2); drives the interstitial. */
+  originRisk?: OriginRisk;
   createdAt: number;
 }
 

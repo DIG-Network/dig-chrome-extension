@@ -321,4 +321,12 @@ export const id: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "Biaya jaringan sangat besar secara tidak wajar.",
   "dapp.approval.risk.CANNOT_SIGN": "Dompet Anda tidak dapat menandatangani permintaan ini sepenuhnya.",
   "dapp.approval.risk.FOREIGN_INPUTS": "Permintaan ini menyertakan koin yang bukan milik dompet Anda; jumlah yang ditampilkan tidak dapat diverifikasi sepenuhnya.",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "Situs berbahaya diblokir",
+  "dapp.approval.phishing.title.warn": "Situs ini mungkin menyamar sebagai DIG",
+  "dapp.approval.phishing.blocked.note": "Situs ini diblokir untuk melindungi Anda. Anda hanya dapat menolak permintaan ini.",
+  "dapp.approval.phishing.reason.blocklisted": "Situs ini ada di daftar blokir DIG untuk situs phishing dan penguras dompet yang diketahui.",
+  "dapp.approval.phishing.reason.lookalike": "Alamat ini terlihat seperti situs DIG tetapi bukan — periksa bilah alamat dengan saksama.",
+  "dapp.approval.phishing.confirm": "Saya memahami ini mungkin situs palsu dan tetap ingin melanjutkan",
 };

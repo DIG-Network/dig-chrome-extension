@@ -324,4 +324,12 @@ export const en: Record<string, string> = {
   'dapp.approval.risk.HIGH_FEE': 'The network fee is unusually large.',
   'dapp.approval.risk.CANNOT_SIGN': 'Your wallet cannot fully sign this request.',
   'dapp.approval.risk.FOREIGN_INPUTS': 'This request includes coins your wallet does not own; the amounts shown cannot be fully verified.',
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  'dapp.approval.phishing.title.blocked': 'Dangerous site blocked',
+  'dapp.approval.phishing.title.warn': 'This site may be impersonating DIG',
+  'dapp.approval.phishing.blocked.note': 'This site was blocked to protect you. You can only reject this request.',
+  'dapp.approval.phishing.reason.blocklisted': 'This site is on the DIG blocklist of known phishing and wallet-drainer sites.',
+  'dapp.approval.phishing.reason.lookalike': 'This web address looks like a DIG site but is not one — check the address bar carefully.',
+  'dapp.approval.phishing.confirm': 'I understand this may be a fake site and want to continue anyway',
 };

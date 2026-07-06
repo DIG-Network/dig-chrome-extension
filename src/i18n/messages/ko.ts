@@ -321,4 +321,12 @@ export const ko: Record<string, string> = {
   "dapp.approval.risk.HIGH_FEE": "네트워크 수수료가 비정상적으로 큽니다.",
   "dapp.approval.risk.CANNOT_SIGN": "지갑이 이 요청을 완전히 서명할 수 없습니다.",
   "dapp.approval.risk.FOREIGN_INPUTS": "이 요청에는 지갑이 소유하지 않은 코인이 포함되어 있어 표시된 금액을 완전히 확인할 수 없습니다.",
+
+  // ── dApp approval — phishing / malicious-origin protection (#67 P0-2) ──
+  "dapp.approval.phishing.title.blocked": "위험한 사이트 차단됨",
+  "dapp.approval.phishing.title.warn": "이 사이트는 DIG를 사칭할 수 있습니다",
+  "dapp.approval.phishing.blocked.note": "보호를 위해 이 사이트를 차단했습니다. 이 요청은 거부만 할 수 있습니다.",
+  "dapp.approval.phishing.reason.blocklisted": "이 사이트는 알려진 피싱·지갑 탈취 사이트에 대한 DIG 차단 목록에 있습니다.",
+  "dapp.approval.phishing.reason.lookalike": "이 주소는 DIG 사이트처럼 보이지만 아닙니다 — 주소창을 주의 깊게 확인하세요.",
+  "dapp.approval.phishing.confirm": "가짜 사이트일 수 있음을 이해했으며 계속 진행합니다",
 };
