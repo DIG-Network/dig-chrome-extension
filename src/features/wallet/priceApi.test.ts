@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { priceApi, PRICE_TTL_SECONDS } from '@/features/wallet/priceApi';
-import { COINGECKO_XCH_URL, DEXIE_TICKERS_URL } from '@/features/wallet/priceSources';
+import { COINGECKO_XCH_URL } from '@/features/wallet/priceSources';
 import { DIG_ASSET_ID } from '@/lib/links';
 
 /** Spin up an isolated store with just the price slice, so the queryFn runs end-to-end. */
