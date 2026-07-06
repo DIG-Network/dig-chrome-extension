@@ -34,6 +34,7 @@ import { scanBalances, receiveAddress, DEFAULT_GAP_LIMIT, type ScanWasm, type Ba
 import { deriveAccounts } from '@/lib/keystore/derive';
 import type { ChainClient, ChainCoin } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
+import { listCoins as buildCoinList, prepareSplit as buildSplit, prepareCombine as buildCombine, type CoinsWasm, type CoinInfo, type CoinOpSummary } from '@/offscreen/coins';
 import { listNfts, prepareNftTransfer, type NftWasm, type WalletNft, type NftTransferSummary } from '@/offscreen/nfts';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
 import { decodeDappSpend, reconstructCoinSpends, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
@@ -102,6 +103,10 @@ export type VaultOp =
   | 'confirmTrade'
   | 'listNfts'
   | 'prepareNftTransfer'
+  // Coin control (#91): per-asset coin listing + split / combine self-sends.
+  | 'listCoins'
+  | 'prepareSplit'
+  | 'prepareCombine'
   // dApp `window.chia` RPC (§5.5): identity read + approval-gated foreign-spend / message signing.
   | 'getPublicKeys'
   | 'getAssetBalance'
@@ -135,6 +140,10 @@ export interface VaultRequest {
   /** confirmSend/sendStatus: the pending-send id / an input coin id (hex). */
   pendingId?: string;
   coinId?: string;
+  /** Coin control (#91): the coins to split/combine, or the coins to fund a send (hex ids). */
+  coinIds?: string[];
+  /** prepareSplit: how many self coins to split into (≥2). */
+  outputs?: number;
   /** getActivity: resume the incremental scan from this block height. */
   sinceHeight?: number;
   /** makeOffer: the leg the wallet gives / the leg it wants (wire-safe, string amounts). */
@@ -192,6 +201,10 @@ export interface VaultResponse {
   nfts?: WalletNft[];
   /** prepareNftTransfer: the decoded transfer summary to approve. */
   nftSummary?: NftTransferSummary;
+  /** listCoins: the wallet's unspent coins for the requested asset. */
+  coins?: CoinInfo[];
+  /** prepareSplit / prepareCombine: the decoded (tamper-resistant) coin-op summary to approve. */
+  coinOpSummary?: CoinOpSummary;
   /** getPublicKeys: the wallet's synthetic public keys (hex, both HD schemes, deduped). */
   publicKeys?: string[];
   /** getAssetBalance: the wallet-wide aggregate for the requested asset (XCH or a CAT). */
@@ -290,6 +303,12 @@ export class Vault {
           return await this.listNfts(req, deps);
         case 'prepareNftTransfer':
           return await this.prepareNftTransfer(req, deps);
+        case 'listCoins':
+          return await this.listCoins(req, deps);
+        case 'prepareSplit':
+          return await this.prepareSplit(req, deps);
+        case 'prepareCombine':
+          return await this.prepareCombine(req, deps);
         case 'getPublicKeys':
           return await this.getPublicKeys(req, deps);
         case 'getAssetBalance':
@@ -401,6 +420,8 @@ export class Vault {
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const chia = deps.chia as unknown as SendFlowWasm;
     const isCat = !!req.assetId && req.assetId.toLowerCase() !== 'xch';
+    // Coin control (#91): a hand-picked coin selection overrides the driver's auto-selection.
+    const selection = req.coinIds && req.coinIds.length ? { selectedCoinIds: req.coinIds } : {};
     const prepared = isCat
       ? await prepareCatSend(chia, deps.chain, {
           seed,
@@ -409,6 +430,7 @@ export class Vault {
           amount: BigInt(req.amount),
           fee: BigInt(req.fee ?? '0'),
           ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+          ...selection,
         })
       : await prepareXchSend(chia, deps.chain, {
           seed,
@@ -416,6 +438,7 @@ export class Vault {
           amount: BigInt(req.amount),
           fee: BigInt(req.fee ?? '0'),
           ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+          ...selection,
         });
     const pendingId = crypto.randomUUID();
     const inputCoinIds = prepared.coinSpends.map((cs) => chia.toHex(cs.coin.coinId()).replace(/^0x/i, '').toLowerCase());
@@ -551,6 +574,74 @@ export class Vault {
     const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
     this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
     return { success: true, pendingId, nftSummary: prepared.summary };
+  }
+
+  /**
+   * LIST the wallet's unspent coins for one asset (coin control #91) — native XCH at the derived inner
+   * puzzle hashes, or a CAT at its CAT puzzle hash, both HD schemes. Each coin carries id + amount +
+   * confirmed height. Read-only; routed purely by `assetId` (#121).
+   */
+  private async listCoins(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const coins = await buildCoinList(deps.chia as unknown as CoinsWasm, deps.chain, {
+      seed,
+      ...(req.assetId ? { assetId: req.assetId } : {}),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    return { success: true, coins };
+  }
+
+  /**
+   * SPLIT one/more of the wallet's coins into N distinct self coins (coin control #91). Builds + holds
+   * the spend under a pending id (broadcast via the shared `confirmSend`); returns the decoded,
+   * tamper-resistant summary (self-send invariant enforced). Does NOT sign or broadcast.
+   */
+  private async prepareSplit(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.coinIds || req.coinIds.length === 0 || !req.outputs) return { success: false, code: 'BAD_REQUEST', message: 'coinIds + outputs required' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as CoinsWasm;
+    const prepared = await buildSplit(chia, deps.chain, {
+      seed,
+      ...(req.assetId ? { assetId: req.assetId } : {}),
+      coinIds: req.coinIds,
+      outputs: req.outputs,
+      fee: BigInt(req.fee ?? '0'),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    return this.holdCoinOp(chia, prepared);
+  }
+
+  /**
+   * COMBINE two or more of the wallet's coins into a SINGLE self coin (coin control #91). Builds +
+   * holds the spend under a pending id (broadcast via the shared `confirmSend`); returns the decoded
+   * summary. Does NOT sign or broadcast.
+   */
+  private async prepareCombine(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.coinIds || req.coinIds.length < 2) return { success: false, code: 'BAD_REQUEST', message: 'at least two coinIds required' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as CoinsWasm;
+    const prepared = await buildCombine(chia, deps.chain, {
+      seed,
+      ...(req.assetId ? { assetId: req.assetId } : {}),
+      coinIds: req.coinIds,
+      fee: BigInt(req.fee ?? '0'),
+      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+    });
+    return this.holdCoinOp(chia, prepared);
+  }
+
+  /** Hold a built split/combine under a pending id (confirmed via the shared `confirmSend`). */
+  private holdCoinOp(chia: CoinsWasm, prepared: { coinSpends: SigCoinSpend[]; coinOpSummary: CoinOpSummary; secretKeys: SigSecretKey[] }): VaultResponse {
+    const pendingId = crypto.randomUUID();
+    const inputCoinIds = prepared.coinSpends.map((cs) => strip0x(chia.toHex(cs.coin.coinId())));
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    return { success: true, pendingId, coinOpSummary: prepared.coinOpSummary };
   }
 
   /**

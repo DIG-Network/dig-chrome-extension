@@ -42,6 +42,17 @@ export interface PreparedSend {
   pendingId: string;
   summary: { asset: string; sent: string; change: string; fee: string; recipientPuzzleHashHex: string; coinCount: number };
 }
+/** One listed unspent coin (coin control #91): id (hex) + amount (base units) + confirmed height. */
+export interface WalletCoin {
+  coinId: string;
+  amount: string;
+  confirmedHeight: number;
+}
+/** A prepared (unsigned) split/combine: the pending id + the decoded, self-send-verified summary. */
+export interface PreparedCoinOp {
+  pendingId: string;
+  coinOpSummary: { asset: string; kind: 'split' | 'combine'; inputCoinCount: number; outputCoinCount: number; total: string; fee: string };
+}
 
 export const custodyApi = api.injectEndpoints({
   endpoints: (build) => ({
@@ -88,14 +99,30 @@ export const custodyApi = api.injectEndpoints({
       providesTags: ['Balances'],
     }),
 
-    // Build (not broadcast) a send → returns the decoded summary to approve.
-    prepareSend: build.mutation<PreparedSend, { recipient: string; amount: string; fee?: string }>({
+    // Build (not broadcast) a send → returns the decoded summary to approve. An optional `assetId`
+    // routes a CAT send (#121); an optional `coinIds` hand-picks the funding coins (#91).
+    prepareSend: build.mutation<PreparedSend, { recipient: string; amount: string; fee?: string; assetId?: string; coinIds?: string[] }>({
       query: (arg) => ({ action: ACTIONS.prepareSend, ...arg }),
     }),
-    // Sign + BROADCAST a prepared send (the approved step). Invalidates balances/activity.
+    // Sign + BROADCAST a prepared send / split / combine (the approved step). Invalidates the caches.
     confirmSend: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
       query: (arg) => ({ action: ACTIONS.confirmSend, ...arg }),
-      invalidatesTags: ['Balances', 'Activity'],
+      invalidatesTags: ['Balances', 'Activity', 'Coins'],
+    }),
+
+    // ── Coin control (#91) ──
+    // List the wallet's unspent coins for one asset (id + amount + confirmed height). Routed on assetId.
+    getCoins: build.query<{ coins: WalletCoin[] }, { assetId?: string }>({
+      query: (arg) => ({ action: ACTIONS.listCoins, ...(arg.assetId ? { assetId: arg.assetId } : {}) }),
+      providesTags: ['Coins'],
+    }),
+    // Build (not broadcast) a split → held under a pending id; confirmed via confirmSend.
+    prepareSplit: build.mutation<PreparedCoinOp, { coinIds: string[]; outputs: number; fee?: string; assetId?: string }>({
+      query: (arg) => ({ action: ACTIONS.prepareSplit, ...arg }),
+    }),
+    // Build (not broadcast) a combine → held under a pending id; confirmed via confirmSend.
+    prepareCombine: build.mutation<PreparedCoinOp, { coinIds: string[]; fee?: string; assetId?: string }>({
+      query: (arg) => ({ action: ACTIONS.prepareCombine, ...arg }),
     }),
     // Poll whether a broadcast send has confirmed.
     sendStatus: build.query<{ confirmed: boolean }, { coinId: string }>({
@@ -142,6 +169,9 @@ export const {
   usePrepareSendMutation,
   useConfirmSendMutation,
   useLazySendStatusQuery,
+  useGetCoinsQuery,
+  usePrepareSplitMutation,
+  usePrepareCombineMutation,
   useGetCustodyActivityQuery,
   useMakeCustodyOfferMutation,
   useInspectCustodyOfferMutation,

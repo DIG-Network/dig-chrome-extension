@@ -96,6 +96,44 @@ describe('prepareXchSend → signAndBundle (Simulator-validated)', () => {
   });
 });
 
+describe('prepareXchSend coin selection (#91)', () => {
+  it('uses ONLY the hand-picked coins when selectedCoinIds is given', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { count: 2 });
+    const ph0 = ring[0].puzzleHashHex;
+    const sim = new chia.Simulator();
+    const coinA = sim.newCoin(chia.fromHex(ph0), 1_000_000_000_000n);
+    const coinB = sim.newCoin(chia.fromHex(ph0), 2_000_000_000_000n);
+    const idA = chia.toHex(coinA.coinId()).replace(/^0x/i, '').toLowerCase();
+    const idB = chia.toHex(coinB.coinId()).replace(/^0x/i, '').toLowerCase();
+    const chain = simChain(sim);
+    const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
+
+    const prepared = await prepareXchSend(flow(), chain, {
+      seed,
+      recipient,
+      amount: 100_000_000_000n,
+      fee: 0n,
+      gapLimit: 2,
+      selectedCoinIds: [idA],
+    });
+    const inputIds = prepared.coinSpends.map((cs) => chia.toHex(cs.coin.coinId()).replace(/^0x/i, '').toLowerCase());
+    expect(inputIds).toContain(idA);
+    expect(inputIds).not.toContain(idB); // coin B was NOT selected → never spent
+  });
+
+  it('throws when the selection matches no owned coin', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { count: 2 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
+    const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
+    await expect(
+      prepareXchSend(flow(), simChain(sim), { seed, recipient, amount: 1000n, fee: 0n, gapLimit: 2, selectedCoinIds: ['ab'.repeat(32)] }),
+    ).rejects.toThrow(/NO_SELECTED_COINS/);
+  });
+});
+
 /** A sim-backed ChainClient: reads coins/spends from the simulator; push validates via newTransaction. */
 function simChain(sim: SimHandle): ChainClient {
   return {

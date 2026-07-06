@@ -52,6 +52,25 @@ export interface KeyringEntry {
 
 const strip0x = (h: string): string => h.replace(/^0x/i, '').toLowerCase();
 
+/**
+ * Restrict coins to a hand-picked selection (coin control, #91). When `selectedCoinIds` is given, only
+ * coins whose id is in it are kept and an empty result throws `NO_SELECTED_COINS` (so a stale selection
+ * fails loudly instead of silently auto-selecting). When it is absent, the full set passes through and
+ * the driver auto-selects. `coinId()` is used so it works for both XCH coins and reconstructed CATs.
+ */
+function filterSelected<T extends { coin?: { coinId(): Uint8Array }; coinId?(): Uint8Array }>(
+  chia: { toHex(b: Uint8Array): string },
+  coins: T[],
+  selectedCoinIds: string[] | undefined,
+  idOf: (c: T) => Uint8Array,
+): T[] {
+  if (!selectedCoinIds || selectedCoinIds.length === 0) return coins;
+  const want = new Set(selectedCoinIds.map((id) => strip0x(id)));
+  const kept = coins.filter((c) => want.has(strip0x(chia.toHex(idOf(c)))));
+  if (kept.length === 0) throw new Error('NO_SELECTED_COINS: none of the chosen coins are in this wallet');
+  return kept;
+}
+
 /** Derive the HD keyring (both schemes to `count`): standard puzzle hash → synthetic keys. */
 export function buildKeyring(
   chia: SendFlowWasm,
@@ -92,11 +111,12 @@ export interface PreparedSend {
 export async function prepareXchSend(
   chia: SendFlowWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; recipient: string; amount: bigint; fee: bigint; gapLimit?: number },
+  opts: { seed: Uint8Array; recipient: string; amount: bigint; fee: bigint; gapLimit?: number; selectedCoinIds?: string[] },
 ): Promise<PreparedSend> {
   const keyring = buildKeyring(chia, opts.seed, { count: opts.gapLimit ?? 20 });
   const keyByPuzzleHash = new Map<string, KeyPair>(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
-  const coins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
+  const allCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
+  const coins = filterSelected(chia, allCoins, opts.selectedCoinIds, (c) => c.coinId());
   const destPuzzleHash = chia.Address.decode(opts.recipient).puzzleHash;
   const changePuzzleHash = chia.fromHex(keyring[0].puzzleHashHex);
   const built = buildXchSend(chia, {
@@ -167,12 +187,13 @@ interface CatSpends {
 export async function prepareCatSend(
   chia: SendFlowWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; assetId: string; recipient: string; amount: bigint; fee: bigint; gapLimit?: number },
+  opts: { seed: Uint8Array; assetId: string; recipient: string; amount: bigint; fee: bigint; gapLimit?: number; selectedCoinIds?: string[] },
 ): Promise<PreparedSend> {
   const keyring = buildKeyring(chia, opts.seed, { count: opts.gapLimit ?? 20 });
   const keyByPuzzleHash = new Map<string, KeyPair>(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
-  const cats = await reconstructCats(chia, chain, keyring, opts.assetId);
-  if (cats.length === 0) throw new Error('NO_CAT_COINS: the wallet holds none of this token');
+  const allCats = await reconstructCats(chia, chain, keyring, opts.assetId);
+  if (allCats.length === 0) throw new Error('NO_CAT_COINS: the wallet holds none of this token');
+  const cats = filterSelected(chia, allCats as Array<{ coin: { coinId(): Uint8Array } }>, opts.selectedCoinIds, (c) => c.coin.coinId());
   const xchCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex)); // for the fee
   const destPuzzleHash = chia.Address.decode(opts.recipient).puzzleHash;
   const changePuzzleHash = chia.fromHex(keyring[0].puzzleHashHex);
