@@ -2,7 +2,7 @@
  * Chain read client for the self-custody balance scan (§4.3). A tiny interface over the coinset
  * JSON-RPC `get_coin_records_by_puzzle_hashes` so the pure scan logic (`scan.ts`) is testable with a
  * fake, while production wraps the wasm `RpcClient` (which fetches coinset.org from the offscreen
- * document — extensions bypass CORS; `coinset.org` is in host_permissions + connect-src).
+ * document — extensions bypass CORS; `api.coinset.org` is in host_permissions + connect-src, #122).
  */
 
 import type { ChiaWasm } from '@/lib/keystore/derive';
