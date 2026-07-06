@@ -54,8 +54,10 @@ export const LOCK_STATE = Object.freeze({ NONE: 'none', LOCKED: 'locked', UNLOCK
 export type LockStateValue = (typeof LOCK_STATE)[keyof typeof LOCK_STATE];
 
 /**
- * The actions the SW forwards to the offscreen vault (as opposed to handling itself). `getLockState`
- * is included because computing it needs the vault's in-memory "do I hold a key?" fact.
+ * The self-custody actions `handleCustodyAction` owns (routed there by {@link isCustodyAction}). Most
+ * forward to the offscreen vault; a few are pure SW registry ops (#90 multi-wallet: `listWallets` /
+ * `renameWallet` read+write the registry metadata, while `switchWallet` / `removeWallet` also touch
+ * the vault to (de)activate cached keys). `getLockState` is included because it is answered here.
  */
 export const CUSTODY_ACTIONS = Object.freeze([
   'createWallet',
@@ -64,6 +66,11 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'lockWallet',
   'revealPhrase',
   'getLockState',
+  // Multi-wallet switcher (#90): the registry list + switch/rename/remove.
+  'listWallets',
+  'switchWallet',
+  'renameWallet',
+  'removeWallet',
   'getReceiveAddress',
   'getCustodyBalances',
   'prepareSend',

@@ -123,4 +123,72 @@ describe('custodyApi endpoints', () => {
     const bad = await store.dispatch(custodyApi.endpoints.revealPhrase.initiate({ password: 'nope' }));
     expect(bad.error).toMatchObject({ code: 'UNLOCK_FAILED' });
   });
+
+  // ── Multi-wallet switcher (#90) ──
+  it('listWallets returns the record-free registry metadata + active id', async () => {
+    mockSw((m) =>
+      m.action === 'listWallets'
+        ? {
+            wallets: [
+              { id: 'a', label: 'Wallet 1', createdAt: 1, active: false },
+              { id: 'b', label: 'Trading', createdAt: 2, active: true },
+            ],
+            activeWalletId: 'b',
+          }
+        : { success: false },
+    );
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.listWallets.initiate());
+    expect(res.data?.activeWalletId).toBe('b');
+    expect(res.data?.wallets).toHaveLength(2);
+    // Metadata never carries the encrypted record.
+    expect(res.data?.wallets[0]).not.toHaveProperty('record');
+  });
+
+  it('switchWallet to an unlocked wallet is instant (no password) and returns the active id', async () => {
+    const sw = mockSw((m) => (m.action === 'switchWallet' ? { lockState: 'unlocked', activeWalletId: m.walletId } : {}));
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.switchWallet.initiate({ walletId: 'a' }));
+    expect(res.data).toMatchObject({ lockState: 'unlocked', activeWalletId: 'a' });
+    expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'switchWallet', walletId: 'a' }), expect.any(Function));
+  });
+
+  it('switchWallet to a locked wallet without a password surfaces NEEDS_UNLOCK', async () => {
+    mockSw((m) =>
+      m.action === 'switchWallet' && !m.password
+        ? { success: false, code: 'NEEDS_UNLOCK', message: 'wallet locked' }
+        : { lockState: 'unlocked', activeWalletId: m.walletId },
+    );
+    const store = createStore();
+    const needs = await store.dispatch(custodyApi.endpoints.switchWallet.initiate({ walletId: 'c' }));
+    expect(needs.error).toMatchObject({ code: 'NEEDS_UNLOCK' });
+    // With the password it unlocks-then-activates.
+    const ok = await store.dispatch(custodyApi.endpoints.switchWallet.initiate({ walletId: 'c', password: 'pw' }));
+    expect(ok.data).toMatchObject({ activeWalletId: 'c' });
+  });
+
+  it('renameWallet forwards the label and returns the updated list', async () => {
+    const sw = mockSw((m) =>
+      m.action === 'renameWallet'
+        ? { success: true, wallets: [{ id: 'a', label: m.label, createdAt: 1, active: true }], activeWalletId: 'a' }
+        : {},
+    );
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.renameWallet.initiate({ walletId: 'a', label: 'Savings' }));
+    expect(res.data?.wallets[0].label).toBe('Savings');
+    expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'renameWallet', walletId: 'a', label: 'Savings' }), expect.any(Function));
+  });
+
+  it('removeWallet returns the trimmed list, and refuses the last wallet with LAST_WALLET', async () => {
+    mockSw((m) =>
+      m.action === 'removeWallet' && m.walletId === 'b'
+        ? { success: true, wallets: [{ id: 'a', label: 'Wallet 1', createdAt: 1, active: true }], activeWalletId: 'a', lockState: 'unlocked' }
+        : { success: false, code: 'LAST_WALLET', message: 'cannot remove the last wallet' },
+    );
+    const store = createStore();
+    const ok = await store.dispatch(custodyApi.endpoints.removeWallet.initiate({ walletId: 'b' }));
+    expect(ok.data).toMatchObject({ activeWalletId: 'a', lockState: 'unlocked' });
+    const last = await store.dispatch(custodyApi.endpoints.removeWallet.initiate({ walletId: 'only' }));
+    expect(last.error).toMatchObject({ code: 'LAST_WALLET' });
+  });
 });

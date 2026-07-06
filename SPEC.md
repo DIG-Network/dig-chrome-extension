@@ -401,7 +401,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `14`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `15`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -428,7 +428,8 @@ value-moving writes (`chia_send`/`transfer`, `sendTransaction`, `createOffer`, `
 `cancelOffer`) to the vault instead of the `4004` stub — writes join the approval-window queue
 (§18.12) — and made a user reject surface as CHIP-0002 `4002`. `14` (#91) added the coin-control
 actions — `listCoins`, `prepareSplit`, `prepareCombine` (§18.15) — and an optional `coinIds` on
-`prepareSend` to hand-pick the funding coins.
+`prepareSend` to hand-pick the funding coins. `15` (#90) added the multi-wallet actions —
+`listWallets`, `switchWallet`, `renameWallet`, `removeWallet` (§18.16).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -871,8 +872,9 @@ custody requests, owns storage, and enforces auto-lock.
 
 | Key | Area | Secret? | Contents |
 |---|---|---|---|
-| `wallet.keystore` | `storage.local` | encrypted only | the DIGWX1 record (§18.2) — the only at-rest secret |
-| `wallet.activeId` | `storage.local` | no | active wallet id (multi-wallet switcher) |
+| `wallet.registry` | `storage.local` | encrypted only | the multi-wallet registry (§18.16) — an array of `{ id, label, record (DIGWX1, §18.2), createdAt }`, one encrypted record per wallet |
+| `wallet.keystore` | `storage.local` | encrypted only | the ACTIVE wallet's DIGWX1 record (§18.2) — a mirror of the active registry entry, so every single-wallet read path keeps working; the only at-rest secret alongside the registry |
+| `wallet.activeId` | `storage.local` | no | active wallet id (multi-wallet switcher, §18.16) |
 | `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, `chainRpcUrl`, `chainPrivacyAck`, fee default…) |
 | `walletCache.balances` | `storage.local` | no | last balance scan (`{ balances, at }`) for cached-first paint |
 | `walletCache.activity` | `storage.local` | no | last activity ledger (`{ events, cursorHeight, at }`) for cached-first paint |
@@ -1258,3 +1260,43 @@ consensus-valid against the wasm Simulator through the real driver path (never a
   multi-select, and offers plain-language Split ("make a coin of an exact size" / change
   denominations) and Combine ("combine small coins"), plus a "Choose coins" disclosure in Send to
   hand-pick the funding coins. Four states + react-intl across the 14 locales.
+
+### 18.16 Multi-wallet registry & switcher (#90)
+
+The extension holds SEVERAL self-custody wallets and switches which is active. Each wallet has its
+OWN encrypted `DIGWX1` record (§18.2) — the registry reuses the existing keystore format, so NO new
+crypto and NO new wasm are introduced. The registry is a pure decision layer (`lib/wallet-registry`)
+over the storage keys, driven by the actions in §7 (`listWallets`, `switchWallet`, `renameWallet`,
+`removeWallet`); the SW owns the `chrome.storage.*` I/O and the offscreen vault owns every decrypted
+key.
+
+- **Storage model.** `wallet.registry` holds `{ id, label, record, createdAt }` per wallet (`id` a
+  uuid); `wallet.activeId` names the active wallet; `wallet.keystore` MIRRORS the active wallet's
+  record so every pre-#90 single-wallet read path (unlock / reveal) works unchanged. The encrypted
+  records live only in the SW — the UI receives record-FREE metadata (`{ id, label, createdAt,
+  active }`) via `listWallets`.
+- **Migration (once).** A pre-#90 single `wallet.keystore` is migrated ONCE into a one-entry registry
+  with a fresh uuid (the legacy `wallet.activeId` held a label, not an id, and is discarded). An
+  existing registry is never re-migrated.
+- **Add.** `createWallet` (fresh 24-word phrase) and `importWallet` (paste a phrase) each mint a new
+  registry entry with its own record, make it active, and start the unlock window. Onboarding stays
+  the single-wallet default; adding more wallets is reached from the switcher.
+- **Switch.** `switchWallet` activates another wallet. It is INSTANT when that wallet's key is already
+  cached in the offscreen vault this session (several of the user's own wallets may be unlocked at
+  once within the shared unlock window); with a password it unlocks-then-activates; without one for a
+  not-yet-unlocked wallet it returns `NEEDS_UNLOCK` so the UI prompts. The active wallet drives every
+  derived view — balances, receive address, send, activity, signing — and switching re-derives from
+  the newly-active key; the RTK Query `Wallets`/`LockState`/`Balances`/`Activity`/`Address`/
+  `Collectibles`/`Coins` tags are invalidated so the whole surface re-reads the new wallet.
+- **Rename.** `renameWallet` changes a wallet's display label only (metadata; no key, no password).
+- **Remove.** `removeWallet` zeroizes that wallet's cached key (vault `forgetWallet`) and drops its
+  record. It REFUSES the last wallet (`LAST_WALLET`) — there are never zero wallets. Removing the
+  active wallet re-homes active to another entry; the session stays unlocked only if the new active
+  wallet's key is still cached, else it locks so the gate prompts to unlock it.
+- **Custody invariants.** The decrypted key never leaves the offscreen vault; every wallet's record
+  is encrypted at rest; `storage.sync` is never used. Lock (explicit, TTL, idle, all-windows-close)
+  zeroizes EVERY held wallet key together.
+- **UI.** A compact switcher pill in the wallet shell shows the active wallet's label and opens an
+  accessible manager sheet: switch (active-aware, inline unlock when a wallet needs its password),
+  rename (inline), remove (two-step confirm, never the last), add (create / import), and lock. Four
+  states + react-intl across the 14 locales.
