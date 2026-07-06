@@ -387,4 +387,23 @@ export const vi: Record<string, string> = {
   "send.saveContact.label": "Đặt tên cho liên hệ này",
   "send.saveContact.save": "Lưu",
   "send.saveContact.saved": "Đã lưu vào sổ địa chỉ của bạn",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': 'Quản lý token',
+  'tokens.manage.intro': 'Các token bạn nắm giữ sẽ tự động hiển thị ở đây. Ẩn những token không muốn xem, hoặc thêm token bằng ID tài sản.',
+  'tokens.manage.yourTokens': 'Token của bạn',
+  'tokens.manage.empty': 'Chưa có token nào. Token bạn nhận được sẽ tự động hiển thị ở đây.',
+  'tokens.manage.hidden': 'Đã ẩn',
+  'tokens.manage.hide': 'Ẩn',
+  'tokens.manage.show': 'Hiện',
+  'tokens.manage.add.title': 'Thêm token',
+  'tokens.manage.add.assetId': 'ID tài sản (TAIL)',
+  'tokens.manage.add.name': 'Tên (tùy chọn)',
+  'tokens.manage.add.placeholder': '0x… ID tài sản 32 byte',
+  'tokens.manage.add.button': 'Thêm token',
+  'tokens.manage.close': 'Đóng',
+  'tokens.manage.open': 'Quản lý token',
+  'tokens.error.invalid': 'Nhập ID tài sản 32 byte hợp lệ (0x… TAIL).',
+  'tokens.error.builtin': '$DIG đã được hiển thị.',
+  'tokens.error.duplicate': 'Token này đã được theo dõi.',
 };

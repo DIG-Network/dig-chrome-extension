@@ -83,12 +83,13 @@ export function parseWatchedCats(stored: unknown): WatchedCat[] {
 export function addWatchedCat(list: unknown, rawId: string, name = ''): { ok: boolean; list: WatchedCat[]; error: string | null } {
   const current = parseWatchedCats(list);
   const id = normalizeCatId(rawId);
-  if (!id) return { ok: false, list: current, error: 'Enter a valid 32-byte asset id (0x… TAIL).' };
+  // `error` is a react-intl message id (not raw copy) so the UI localizes it (§6.4).
+  if (!id) return { ok: false, list: current, error: 'tokens.error.invalid' };
   if (id === normalizeCatId(DIG_ASSET_ID)) {
-    return { ok: false, list: current, error: '$DIG is already shown.' };
+    return { ok: false, list: current, error: 'tokens.error.builtin' };
   }
   if (current.some((c) => c.assetId === id)) {
-    return { ok: false, list: current, error: 'That token is already tracked.' };
+    return { ok: false, list: current, error: 'tokens.error.duplicate' };
   }
   return { ok: true, list: [...current, { assetId: id, name: String(name || '').trim() }], error: null };
 }

@@ -387,4 +387,23 @@ export const id: Record<string, string> = {
   "send.saveContact.label": "Beri nama kontak ini",
   "send.saveContact.save": "Simpan",
   "send.saveContact.saved": "Disimpan ke buku alamat Anda",
+
+  // ── manage tokens / CAT auto-discovery (#87) ──
+  'tokens.manage.title': 'Kelola token',
+  'tokens.manage.intro': 'Token yang Anda miliki muncul di sini secara otomatis. Sembunyikan yang tidak ingin dilihat, atau tambahkan lewat ID aset.',
+  'tokens.manage.yourTokens': 'Token Anda',
+  'tokens.manage.empty': 'Belum ada token. Token yang Anda terima akan muncul di sini secara otomatis.',
+  'tokens.manage.hidden': 'Disembunyikan',
+  'tokens.manage.hide': 'Sembunyikan',
+  'tokens.manage.show': 'Tampilkan',
+  'tokens.manage.add.title': 'Tambahkan token',
+  'tokens.manage.add.assetId': 'ID aset (TAIL)',
+  'tokens.manage.add.name': 'Nama (opsional)',
+  'tokens.manage.add.placeholder': '0x… ID aset 32 byte',
+  'tokens.manage.add.button': 'Tambahkan token',
+  'tokens.manage.close': 'Tutup',
+  'tokens.manage.open': 'Kelola token',
+  'tokens.error.invalid': 'Masukkan ID aset 32 byte yang valid (0x… TAIL).',
+  'tokens.error.builtin': '$DIG sudah ditampilkan.',
+  'tokens.error.duplicate': 'Token itu sudah dilacak.',
 };
