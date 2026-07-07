@@ -213,6 +213,8 @@ export const hi: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'बनाएं',
   'trade.mode.take': 'लें',
+  'trade.make.continue': 'जारी रखें',
+  'trade.make.review.intro': 'ऑफ़र बनाने से पहले अपने ट्रेड की समीक्षा करें।',
   'trade.make.submit': 'ऑफ़र बनाएं',
   'trade.error.sameAsset': 'ट्रेड करने के लिए दो अलग-अलग एसेट चुनें',
   'trade.error.build': 'यह ट्रेड नहीं बन सका — अपना बैलेंस जांचें और फिर से कोशिश करें',

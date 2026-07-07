@@ -128,7 +128,9 @@ grouping; the **default landing is Home**. Every surface stays reachable:
    - **Activity** — the LOCAL transaction log (MetaMask-style, NOT an on-chain scan) the extension
      writes to as it acts (`getActivity`; §18.9).
    - **Trade** — make / take / cancel a `offer1…` string, built + signed in the offscreen vault
-     (`makeOffer` / `inspectOffer` / `prepareTrade` / `confirmTrade`; §18.10).
+     (`makeOffer` / `inspectOffer` / `prepareTrade` / `confirmTrade`; §18.10). A BASIC
+     currency-for-currency maker/taker renders on BOTH surfaces (#169); only offering one of the
+     wallet's own NFTs (the give-kind toggle, §94) is fullscreen-only.
    - **Collectibles** — the wallet's NFTs, discovered + transferred via the vault (§18.11).
    - **Identity** — the wallet's DIDs (§18.17). **This segmented-tab ENTRY is fullscreen-only**
      (`walletViewsForSurface`, `src/app/tabs.ts`, #163): Identity/DID management is ADVANCED (§145),
@@ -1423,6 +1425,20 @@ SINGLE requested asset, each XCH or a CAT (covering every XCH↔token trade); v2
 supports offering an NFT (selling a self-custody NFT for XCH/CAT), with CHIP-0011 royalty. The offered
 and requested assets MUST differ.
 
+- **Surface tiering (#169, refining #145).** A BASIC maker/taker renders on BOTH the compact popup
+  AND fullscreen. Taking an offer has no advanced variant (accepting fixed, already-built terms is
+  basic by nature) and is IDENTICAL on both surfaces. Making an offer is basic
+  (currency-for-currency) on both surfaces too; only the ADVANCED capability — offering one of the
+  wallet's own NFTs (the give-kind toggle) — is fullscreen (ExpandedLayout) ONLY. The popup keeps a
+  persistent "open full screen" link (`trade-open-fullscreen`) for that and any future advanced
+  option (multi-asset legs, fee tuning). This SUPERSEDES the earlier #145 rule that gated the
+  entire Trade surface to fullscreen.
+- **Guided review step (#169 clarity redesign).** Making an offer is a 3-step guided flow: **form**
+  (pick give/get assets + amounts) → **review** (a "You give / You get" summary of the exact terms,
+  computed locally — no network call yet) → **made** (the built `offer1…` deal card). The ONLY
+  network call (`makeOffer`) happens on the review step's Confirm; Back returns to the form without
+  losing the picks. Taking an offer already has an equivalent paste/drag → review (`TwoSided`,
+  "You get" / "You pay") → confirm → broadcast flow from #94, unchanged by this redesign.
 - **Nonce.** `nonce = tree_hash(coin_ids sorted ascending)` over the maker's offered coin ids.
   Make and take derive the same notarized-payment tree hash, so the announcements match.
 - **MAKE** (`makeOffer` → `prepareTrade`-free, no broadcast): spend the OFFERED coins into the
@@ -1477,12 +1493,14 @@ know that NFT's full on-chain state up front (metadata/owner/royalty) to build i
 doesn't have yet (only owned-NFT hint-scan); `makeOffer`/`takeOffer` reject a requested/fulfilled NFT
 leg with `UNSUPPORTED_REQUEST` rather than mis-handling it silently. Both are tracked follow-ups.
 
-**Accepting an offer — two input methods (§18.10, fullscreen only).** The Take flow accepts an
-`offer1…` string via EITHER (a) pasting it into the text field, or (b) dragging-and-dropping an
+**Accepting an offer — two input methods, on BOTH surfaces (§18.10, #169).** The Take flow accepts
+an `offer1…` string via EITHER (a) pasting it into the text field, or (b) dragging-and-dropping an
 `.offer`/text file containing it onto the dropzone (read via `FileReader.readAsText`, trimmed, then
-fed into the SAME `inspectOffer` → review → `prepareTrade` → `confirmTrade` path as paste). Both are
+fed into the SAME `inspectOffer` → review → `prepareTrade` → `confirmTrade` path as paste). Both
+render identically on the compact popup and fullscreen (Take has no advanced variant, #169) and are
 proven end-to-end in Playwright against the built extension pages (a real `DragEvent` carrying a
-`DataTransfer` + `File`, and a filled textarea).
+`DataTransfer` + `File`, and a filled textarea) — see `e2e/sw/trade-basic-surfaces.spec.ts` for the
+popup path and `e2e/sw/offers.spec.ts` for the vault-wiring guard clauses.
 
 ### 18.11 NFTs / Collectibles
 

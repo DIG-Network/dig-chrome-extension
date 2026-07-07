@@ -213,6 +213,8 @@ export const ptBR: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Criar',
   'trade.mode.take': 'Aceitar',
+  'trade.make.continue': 'Continuar',
+  'trade.make.review.intro': 'Revise sua negociação antes de criar a oferta.',
   'trade.make.submit': 'Criar oferta',
   'trade.error.sameAsset': 'Escolha dois ativos diferentes para negociar',
   'trade.error.build': 'Não foi possível criar esta negociação. Verifique seus saldos e tente novamente',

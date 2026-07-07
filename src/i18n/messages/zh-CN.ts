@@ -213,6 +213,8 @@ export const zhCN: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': '发起',
   'trade.mode.take': '接受',
+  'trade.make.continue': '继续',
+  'trade.make.review.intro': '创建报价前请确认交易内容。',
   'trade.make.submit': '创建报价',
   'trade.error.sameAsset': '请选择两种不同的资产进行交易',
   'trade.error.build': '交易创建失败——请检查您的余额后重试',

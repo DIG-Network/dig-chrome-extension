@@ -37,54 +37,31 @@ function offerQrDataUrl(offer: string): string | null {
 }
 
 type Mode = 'make' | 'take';
-type MakePhase = 'form' | 'made';
+type MakePhase = 'form' | 'review' | 'made';
 type TakePhase = 'paste' | 'review' | 'confirm' | 'sending' | 'confirmed' | 'failed';
 /** What the maker is GIVING: a fungible balance (XCH/CAT) or one of the wallet's own NFTs (§94). */
 type GiveKind = 'currency' | 'nft';
 
 /**
- * Self-custody Trade (§18.10): MAKE a shareable offer (you give / you get → an `offer1…` deal card
- * with copy + QR + cancel) and TAKE one (paste → inspect two-sided summary → prepare → confirm →
- * broadcast → poll). Every money step is build-then-approve; `confirmTrade` is the only broadcast.
- * Amounts use each asset's decimals; the network fee is XCH. `pollMs` is injectable for tests.
+ * Self-custody Trade (§18.10): MAKE a shareable offer (you give / you get → review → an `offer1…`
+ * deal card with copy + QR + cancel) and TAKE one (paste/drag → inspect two-sided summary →
+ * prepare → confirm → broadcast → poll). Every money step is build-then-approve; `confirmTrade`
+ * is the only broadcast. Amounts use each asset's decimals; the network fee is XCH. `pollMs` is
+ * injectable for tests.
  *
- * **Surface tiering (#145): making/taking an offer is ADVANCED functionality → fullscreen
- * (ExpandedLayout) ONLY.** The compact popup never renders the make/take forms — it shows a
- * view-only card with an "open full screen" affordance, mirroring `CollectiblesPanel`'s mint /
- * `DidPanel`'s create tiering exactly. `full` is auto-detected from the surface (overridable in
- * tests).
+ * **Surface tiering (#169, refining #145): a BASIC maker/taker renders on BOTH surfaces.** Taking
+ * an offer has no "advanced" version (you accept what's offered, so it is basic by nature) and
+ * always renders in full. Making an offer renders a currency-for-currency basic form on BOTH
+ * surfaces too; only the ADVANCED capability — offering one of the wallet's own NFTs (§94's
+ * give-kind toggle) — is fullscreen (ExpandedLayout) ONLY, hidden from {@link MakeTrade} via its
+ * `full` prop. The compact popup keeps a persistent "open full screen" link for that + any future
+ * advanced option (multi-asset, fee tuning). `full` is auto-detected from the surface (overridable
+ * in tests).
  */
 export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: AssetBalance[]; onClose?: () => void; pollMs?: number; full?: boolean }) {
   const intl = useIntl();
   const [mode, setMode] = useState<Mode>('make');
   const isFull = full ?? isFullpageSurface();
-
-  if (!isFull) {
-    return (
-      <div data-testid="custody-trade">
-        <ViewHeader
-          onBack={onClose}
-          backLabel={<FormattedMessage id="send.cancel" />}
-          backTestId="trade-close"
-          title={<FormattedMessage id="trade.title" />}
-          titleId="trade-title"
-        />
-        <section className="dig-card" aria-labelledby="trade-title">
-          <p className="dig-muted" style={{ marginTop: 0 }}>
-            <FormattedMessage id="trade.intro" />
-          </p>
-          <button
-            type="button"
-            className="dig-link"
-            data-testid="trade-open-fullscreen"
-            onClick={() => void popOutToFullpage('#wallet/trade', true)}
-          >
-            <FormattedMessage id="trade.openFullscreen" />
-          </button>
-        </section>
-      </div>
-    );
-  }
 
   return (
     <div data-testid="custody-trade">
@@ -96,23 +73,48 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
         titleId="trade-title"
       />
       <section className="dig-card" aria-labelledby="trade-title">
-        <div className="dig-toggle-row" role="tablist" aria-label={intl.formatMessage({ id: 'trade.title' })} style={{ display: 'flex', gap: 8, margin: '4px 0 12px' }}>
-          <button type="button" role="tab" aria-selected={mode === 'make'} className={`dig-btn ${mode === 'make' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-make" onClick={() => setMode('make')}>
-            <FormattedMessage id="trade.mode.make" />
-          </button>
-          <button type="button" role="tab" aria-selected={mode === 'take'} className={`dig-btn ${mode === 'take' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-take" onClick={() => setMode('take')}>
-            <FormattedMessage id="trade.mode.take" />
-          </button>
+        <p className="dig-muted" style={{ marginTop: 0 }}>
+          <FormattedMessage id="trade.intro" />
+        </p>
+        <div
+          className="dig-toggle-row"
+          role="tablist"
+          aria-label={intl.formatMessage({ id: 'trade.title' })}
+          style={{ display: 'flex', gap: 8, margin: '4px 0 12px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}
+        >
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" role="tab" aria-selected={mode === 'make'} className={`dig-btn ${mode === 'make' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-make" onClick={() => setMode('make')}>
+              <FormattedMessage id="trade.mode.make" />
+            </button>
+            <button type="button" role="tab" aria-selected={mode === 'take'} className={`dig-btn ${mode === 'take' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-take" onClick={() => setMode('take')}>
+              <FormattedMessage id="trade.mode.take" />
+            </button>
+          </div>
+          {!isFull && (
+            <button
+              type="button"
+              className="dig-link"
+              data-testid="trade-open-fullscreen"
+              onClick={() => void popOutToFullpage('#wallet/trade', true)}
+            >
+              <FormattedMessage id="trade.openFullscreen" />
+            </button>
+          )}
         </div>
 
-        {mode === 'make' ? <MakeTrade assets={assets} /> : <TakeTrade pollMs={pollMs} />}
+        {mode === 'make' ? <MakeTrade assets={assets} full={isFull} /> : <TakeTrade pollMs={pollMs} />}
       </section>
     </div>
   );
 }
 
-/** MAKE: pick give/get assets + amounts → build the offer → show the shareable deal card. */
-function MakeTrade({ assets }: { assets: AssetBalance[] }) {
+/**
+ * MAKE: pick give/get assets + amounts → a "You give / You get" review → build the offer → show
+ * the shareable deal card. Guided steps (#169): form → review → made, so nothing is built until
+ * the maker has confirmed the exact terms. `full` gates the ADVANCED give-kind toggle (offering an
+ * NFT, §94) — the compact popup only offers currency-for-currency (basic maker).
+ */
+function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) {
   const intl = useIntl();
   const [phase, setPhase] = useState<MakePhase>('form');
   const [giveKind, setGiveKind] = useState<GiveKind>('currency');
@@ -136,38 +138,55 @@ function MakeTrade({ assets }: { assets: AssetBalance[] }) {
   const giveNft = nfts.data?.nfts?.[giveNftIdx];
   const qr = useMemo(() => (offer ? offerQrDataUrl(offer) : null), [offer]);
 
-  async function doMake() {
+  /** Validate the current picks and build the two offer legs — the ONE validation path shared by
+   * "Continue" (validate only) and the review step's "Create offer" (validate + build). Sets
+   * `error` and returns null on any invalid pick; never throws. */
+  function computeLegs(): { offered: WireOfferLeg; requested: WireOfferLeg } | null {
     const getBase = safeBase(getAmount, decimalsOf(get));
     if (!get || getBase <= 0) {
       setError(intl.formatMessage({ id: 'send.error.amount' }));
-      return;
+      return null;
     }
 
     let offered: WireOfferLeg;
     if (giveKind === 'nft') {
-      if (!giveNft) return;
+      if (!giveNft) return null;
       offered = { asset: { kind: 'nft', launcherId: giveNft.launcherId }, amount: '1' };
     } else {
-      if (!give) return;
+      if (!give) return null;
       if (giveIdx === getIdx) {
         setError(intl.formatMessage({ id: 'trade.error.sameAsset' }));
-        return;
+        return null;
       }
       const giveBase = safeBase(giveAmount, decimalsOf(give));
       if (giveBase <= 0) {
         setError(intl.formatMessage({ id: 'send.error.amount' }));
-        return;
+        return null;
       }
       if ((give.balance ?? 0) < giveBase) {
         setError(intl.formatMessage({ id: 'send.error.insufficient' }));
-        return;
+        return null;
       }
       offered = { asset: toWireAsset(give), amount: String(giveBase) };
     }
 
     setError(null);
-    const requested: WireOfferLeg = { asset: toWireAsset(get), amount: String(getBase) };
-    const res = await makeOffer({ offered, requested });
+    return { offered, requested: { asset: toWireAsset(get), amount: String(getBase) } };
+  }
+
+  /** Step 1 → 2: validate the picks and move to the "You give / You get" review (no network call). */
+  function doContinue() {
+    if (computeLegs()) setPhase('review');
+  }
+
+  /** Step 2's Confirm: the ONLY network call — builds the offer via the engine. */
+  async function doMake() {
+    const legs = computeLegs();
+    if (!legs) {
+      setPhase('form'); // a pick changed underneath the review (e.g. balance dropped) — re-validate on the form
+      return;
+    }
+    const res = await makeOffer(legs);
     if ('data' in res && res.data?.offer) {
       setOffer(res.data.offer);
       setPhase('made');
@@ -228,38 +247,69 @@ function MakeTrade({ assets }: { assets: AssetBalance[] }) {
     );
   }
 
+  // Step 2 (#169): the "You give / You get" review — the terms are fixed at this point; Confirm is
+  // the ONLY place `makeOffer` is actually called. Mirrors `TwoSided`'s take-side review framing.
+  if (phase === 'review') {
+    const giveLabel = giveKind === 'nft'
+      ? (giveNft ? `NFT ${giveNft.launcherId.slice(0, 6)}…` : '')
+      : `${giveAmount || '0'} ${give?.descriptor.ticker ?? ''}`;
+    const getLabel = `${getAmount || '0'} ${get?.descriptor.ticker ?? ''}`;
+    return (
+      <div data-testid="trade-make-review">
+        <p className="dig-muted" style={{ marginTop: 0 }}>
+          <FormattedMessage id="trade.make.review.intro" />
+        </p>
+        <dl className="dig-summary">
+          <dt><FormattedMessage id="trade.give" /></dt>
+          <dd data-testid="trade-make-review-give">{giveLabel}</dd>
+          <dt><FormattedMessage id="trade.get" /></dt>
+          <dd data-testid="trade-make-review-get">{getLabel}</dd>
+        </dl>
+        {error && <p className="dig-error-text" role="alert" data-testid="trade-make-error">{error}</p>}
+        <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="trade-make-review-confirm" onClick={() => void doMake()} disabled={mk.isLoading}>
+          <FormattedMessage id={mk.isLoading ? 'custody.working' : 'trade.make.submit'} />
+        </button>
+        <button type="button" className="dig-link" data-testid="trade-make-review-back" onClick={() => setPhase('form')} style={{ marginTop: 6 }}>
+          <FormattedMessage id="send.back" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <form
       data-testid="trade-make-form"
       onSubmit={(e) => {
         e.preventDefault();
-        void doMake();
+        doContinue();
       }}
     >
       <div className="dig-field">
         <span><FormattedMessage id="trade.give" /></span>
-        <div className="dig-toggle-row" role="tablist" aria-label={intl.formatMessage({ id: 'trade.give' })} style={{ display: 'flex', gap: 8, margin: '4px 0 8px' }}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={giveKind === 'currency'}
-            className={`dig-btn ${giveKind === 'currency' ? 'dig-btn--primary' : ''}`}
-            data-testid="trade-give-kind-currency"
-            onClick={() => setGiveKind('currency')}
-          >
-            <FormattedMessage id="trade.give.kind.currency" />
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={giveKind === 'nft'}
-            className={`dig-btn ${giveKind === 'nft' ? 'dig-btn--primary' : ''}`}
-            data-testid="trade-give-kind-nft"
-            onClick={() => setGiveKind('nft')}
-          >
-            <FormattedMessage id="trade.give.kind.nft" />
-          </button>
-        </div>
+        {full && (
+          <div className="dig-toggle-row" role="tablist" aria-label={intl.formatMessage({ id: 'trade.give' })} style={{ display: 'flex', gap: 8, margin: '4px 0 8px' }}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={giveKind === 'currency'}
+              className={`dig-btn ${giveKind === 'currency' ? 'dig-btn--primary' : ''}`}
+              data-testid="trade-give-kind-currency"
+              onClick={() => setGiveKind('currency')}
+            >
+              <FormattedMessage id="trade.give.kind.currency" />
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={giveKind === 'nft'}
+              className={`dig-btn ${giveKind === 'nft' ? 'dig-btn--primary' : ''}`}
+              data-testid="trade-give-kind-nft"
+              onClick={() => setGiveKind('nft')}
+            >
+              <FormattedMessage id="trade.give.kind.nft" />
+            </button>
+          </div>
+        )}
         {giveKind === 'currency' ? (
           <label className="dig-field">
             <div style={{ display: 'flex', gap: 8 }}>
@@ -295,8 +345,8 @@ function MakeTrade({ assets }: { assets: AssetBalance[] }) {
         </div>
       </label>
       {error && <p className="dig-error-text" role="alert" data-testid="trade-make-error">{error}</p>}
-      <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="trade-make-submit" disabled={mk.isLoading}>
-        <FormattedMessage id={mk.isLoading ? 'custody.working' : 'trade.make.submit'} />
+      <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="trade-make-continue">
+        <FormattedMessage id="trade.make.continue" />
       </button>
     </form>
   );
