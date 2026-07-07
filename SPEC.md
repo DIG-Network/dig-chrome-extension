@@ -1145,14 +1145,42 @@ decrypted key never leaves the offscreen vault.
   directly. An unrecognized scheme (e.g. `ar://`) resolves to no image. `nftExternalImageUrl` offers
   the same (gateway-rewritten) URL as a "view image" link that opens the original in a normal browser
   tab. Both the Collectibles grid and the NFT detail view (`NftMedia`, `NftDetail.tsx`) render the
-  resolved image and fall back to a deterministic monogram tile on `onerror` (a dead gateway, a
-  broken/missing URL, or an offline host never shows a broken-image icon) — the monogram is ALSO the
-  only tile shown when no image is resolvable at all.
+  resolved image through the local NFT image cache (#159, below) and fall back to a deterministic
+  monogram tile if it never resolves (a dead gateway, a broken/missing URL, an offline host, or "no
+  image at all") — the grid/detail never shows a broken-image icon.
+- **Local NFT image cache (#159, `src/features/collectibles/nftImageCache.ts`).** A `data:` image
+  passes through unchanged (already inline, no network cost). A remote (`http(s)`) image is served
+  through `NftImageCache`, keyed by the resolved URL: a cache hit resolves to an object URL with NO
+  network request; a miss loads the bytes, caches them, and resolves to a fresh object URL. NFT art is
+  immutable per URI (an `ipfs://` CID's content never changes; a marketplace CDN URL for a minted NFT
+  is likewise treated as content-addressed here), so URL-keyed caching needs no invalidation.
+  - **Loaded via `<img crossOrigin="anonymous">` + canvas, NOT `fetch()`.** The manifest's
+    `connect-src` CSP (§2) is a small explicit allowlist (rpc.dig.net, coinset, dexie, coingecko,
+    bugreport) that deliberately excludes arbitrary NFT-art hosts, so a raw `fetch(url)` would be
+    CSP-blocked for virtually every real NFT image host. `img-src` is already `https:` (any host,
+    #150), so the cache loads through an `<img>` element + canvas (`canvas.toBlob()`) to stay inside
+    the EXISTING CSP surface rather than widening `connect-src` to arbitrary hosts.
+  - **Graceful CORS fallback.** `crossOrigin="anonymous"` requires the host to send
+    `Access-Control-Allow-Origin`, or the browser refuses the load entirely. A load failure (CORS
+    refusal, network error) does NOT fail closed to the monogram — it falls back to embedding the RAW
+    remote URL directly (uncached, exactly the pre-#159 behavior), because a plain `<img src>` is not
+    CORS-gated for display. A genuinely dead host still fails that raw `<img>` load and is caught by
+    the existing `onerror` → monogram fallback.
+  - **Bounded.** LRU eviction over an entry-count cap (200) AND a total-byte cap (50 MB) — the oldest
+    (`lastAccessed`) entries evict first, tracked in a `chrome.storage.local` index kept alongside the
+    Cache-API-stored bytes. A single file over 10 MB is never cached (skips straight to the
+    graceful-fallback raw-URL path) so one huge asset can't dominate or blow past the caps.
+  - **NOT the prohibited content cache** (`src/test/no-content-cache.test.ts`): that pins the absence
+    of any cache for RESOLVED/DECRYPTED `chia://`/DIG-store content (caching that is the dig-node's
+    job, #43/#41). This cache holds ordinary third-party image bytes referenced by on-chain NFT
+    metadata — the same request category as the (still uncached) `icons.dexie.space` CAT icon fetches.
   **Privacy note:** loading a remote (non-`data:`) NFT image reveals the requester's IP address to the
   image host (an inherent property of fetching a URL — there is no way to preview remote art without
   contacting its host). This is the same tradeoff every NFT wallet that renders art by default accepts
   (Sage included); the extension does not currently gate it behind a settings toggle — a
-  privacy-conscious opt-out ("render on-chain `data:` art only") is a tracked follow-up.
+  privacy-conscious opt-out ("render on-chain `data:` art only") is a tracked follow-up. The local
+  image cache (#159) reduces this exposure in practice: once an image is cached, every later render
+  (grid, detail, a reopened popup) is served from disk with NO further request to the art's host.
 - **Same-allocator invariant (MUST).** The reconstructed `Nft` carries a `metadata` CLVM `Program`
   bound to the `Clvm` allocator that produced it. It MUST be reconstructed in the SAME `Clvm` that the
   `Spends` driver later consumes (`addNft`), else the wasm traps (`unreachable`) on a cross-arena handle.
