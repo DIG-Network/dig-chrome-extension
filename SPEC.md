@@ -843,7 +843,10 @@ wallet view; the extension MUST NOT perform a multi-index gap-limit sweep anywhe
   jump target). It is a PURE SW registry op — no vault round-trip, no key material involved — that
   drops the balance/activity caches (scoped to the previous index) and returns the persisted value.
   Every index-scoped RTK Query view (balances, activity, receive address, collectibles, coins)
-  re-reads for the newly-active index, mirroring exactly how a wallet switch (§18.16) invalidates.
+  re-reads for the newly-active index, mirroring exactly how a wallet switch (§18.16) invalidates. On
+  a CONFIRMED index change the whole RTK Query cache is also reset (`api.util.resetApiState()`, #162)
+  — the same cache-reset behavior a wallet switch gets (§18.16), so no view can keep showing a stale
+  value for the previous index while the new one loads.
 - **Persistence.** The active index is persisted PER WALLET (`WalletEntry.activeIndex` in the
   registry, §18.16) — switching wallets restores each wallet's own place; a fresh wallet starts at 0.
 - **Send / receive.** A send spends from the active index's coins; change returns to the active
@@ -1553,6 +1556,17 @@ key.
   the newly-active key AT THAT WALLET'S OWN active index (§18.1a — each wallet remembers its own
   place); the RTK Query `Wallets`/`LockState`/`Balances`/`Activity`/`Address`/`Collectibles`/`Coins`
   tags are invalidated so the whole surface re-reads the new wallet.
+- **Cache reset on identity change (#162).** `invalidatesTags` alone only schedules a background
+  refetch — a subscribed query keeps SERVING its last-known (stale, wrong-identity) cached value until
+  the refetch resolves. So a CONFIRMED `switchWallet` / `removeWallet` (when it re-homes the active
+  wallet) / `createWallet` / `importWallet` also dispatches `api.util.resetApiState()` (`onQueryStarted`
+  in `custodyApi.ts`), wiping the WHOLE RTK Query cache the instant the SW confirms the change. Every
+  wallet-scoped view then renders its LOADING state (never the previous wallet's data, never
+  "unavailable" — #158) until the newly-active wallet's data arrives. A FAILED attempt (e.g.
+  `NEEDS_UNLOCK`) leaves the cache untouched, since the active wallet never changed. `CustodyGate`
+  reads `lockState` from the live query result, falling back to the durable wallet-slice mirror only
+  once already hydrated, so the reset's transient uninitialized window never unmounts the wallet body
+  (or, mid-onboarding, the `Onboarding` flow itself).
 - **Rename.** `renameWallet` changes a wallet's display label only (metadata; no key, no password).
 - **Remove.** `removeWallet` zeroizes that wallet's cached key (vault `forgetWallet`) and drops its
   record. It REFUSES the last wallet (`LAST_WALLET`) — there are never zero wallets. Removing the
