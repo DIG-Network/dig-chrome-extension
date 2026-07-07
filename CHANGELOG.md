@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.60.0] - 2026-07-07
+
+### Features
+- **wallet:** Background prefetch — warm balances/assets/collectibles/activity on unlock (#83)
+
 ## [1.59.0] - 2026-07-07
 
 ### Features
