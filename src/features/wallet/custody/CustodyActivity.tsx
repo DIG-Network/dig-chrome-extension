@@ -6,8 +6,8 @@ import { useGetCustodyActivityQuery } from '@/features/wallet/custodyApi';
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { activityRows, type ActivityRow } from '@/features/wallet/custody/activityRows';
 
-/** Decorative glyph per activity kind — covers all eight schema kinds (#154) even though only
- * sent/received/mint/did/trade are currently EMITTED (see `lib/activity-log.ts`'s `ActivityKind`
+/** Decorative glyph per activity kind — covers all nine schema kinds (#154/#171) even though only
+ * sent/received/mint/did/trade/burn are currently EMITTED (see `lib/activity-log.ts`'s `ActivityKind`
  * doc); offer/clawback/melt render correctly the moment a future change starts logging them. */
 const ICON: Record<ActivityRow['kind'], string> = {
   sent: '↑',
@@ -18,9 +18,11 @@ const ICON: Record<ActivityRow['kind'], string> = {
   offer: '⇗',
   clawback: '↩',
   melt: '⟲',
+  burn: '🔥',
 };
-/** Message id per kind — sent/received/trade/mint/clawback/melt interpolate `{amount}`/`{ticker}`;
- * did/offer are amount-agnostic (a DID/offer spend's "amount" is a non-meaningful mojo dust value). */
+/** Message id per kind — sent/received/trade/mint/clawback/melt/burn interpolate `{amount}`/
+ * `{ticker}`; did/offer are amount-agnostic (a DID/offer spend's "amount" is a non-meaningful mojo
+ * dust value). */
 const SENTENCE_ID: Record<ActivityRow['kind'], string> = {
   sent: 'activity.line.sent',
   received: 'activity.line.received',
@@ -30,6 +32,7 @@ const SENTENCE_ID: Record<ActivityRow['kind'], string> = {
   offer: 'activity.line.offer',
   clawback: 'activity.line.clawback',
   melt: 'activity.line.melt',
+  burn: 'activity.line.burn',
 };
 
 /**

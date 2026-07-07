@@ -123,4 +123,93 @@ describe('CollectiblesPanel', () => {
     fireEvent.click(screen.getByTestId('nft-detail-back'));
     expect(await screen.findByTestId('nft-grid')).toBeInTheDocument();
   });
+
+  describe('multi-select bulk transfer/burn (#171, fullscreen only)', () => {
+    const NFT_A = nft({ launcherId: 'aa'.repeat(32) });
+    const NFT_B = nft({ launcherId: 'bb'.repeat(32) });
+
+    it('offers "Select" on the fullscreen surface; tapping a tile toggles selection instead of opening detail', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A, NFT_B] } : { success: true }));
+      renderWithProviders(<CollectiblesPanel full />);
+      await screen.findByTestId('nft-grid');
+      fireEvent.click(screen.getByTestId('collectibles-select-enter'));
+
+      expect(screen.getByTestId('collectibles-selection-bar')).toHaveTextContent('0 selected');
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      expect(screen.queryByTestId('nft-detail')).not.toBeInTheDocument(); // toggled selection, did NOT open detail
+      expect(screen.getByTestId('collectibles-selection-bar')).toHaveTextContent('1 selected');
+      expect(screen.getByTestId(`nft-select-${NFT_A.launcherId}`)).toHaveTextContent('✓');
+
+      // toggling again deselects
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      expect(screen.getByTestId('collectibles-selection-bar')).toHaveTextContent('0 selected');
+    });
+
+    it('select-all / clear act on every NFT', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A, NFT_B] } : { success: true }));
+      renderWithProviders(<CollectiblesPanel full />);
+      await screen.findByTestId('nft-grid');
+      fireEvent.click(screen.getByTestId('collectibles-select-enter'));
+
+      fireEvent.click(screen.getByTestId('collectibles-select-all'));
+      expect(screen.getByTestId('collectibles-selection-bar')).toHaveTextContent('2 selected');
+
+      fireEvent.click(screen.getByTestId('collectibles-select-clear'));
+      expect(screen.getByTestId('collectibles-selection-bar')).toHaveTextContent('0 selected');
+    });
+
+    it('the Transfer/Burn action-bar buttons appear only once something is selected, and open the bulk flow', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A, NFT_B] } : { success: true }));
+      renderWithProviders(<CollectiblesPanel full />);
+      await screen.findByTestId('nft-grid');
+      fireEvent.click(screen.getByTestId('collectibles-select-enter'));
+
+      expect(screen.queryByTestId('collectibles-selection-transfer')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('collectibles-selection-burn')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_B.launcherId}`));
+      fireEvent.click(screen.getByTestId('collectibles-selection-transfer'));
+      expect(await screen.findByTestId('bulk-nft-transfer')).toBeInTheDocument();
+      expect(screen.getByTestId('bulk-transfer-form')).toHaveTextContent('Transfer 2 NFTs');
+    });
+
+    it('the Burn action-bar button opens the destructive burn flow', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A] } : { success: true }));
+      renderWithProviders(<CollectiblesPanel full />);
+      await screen.findByTestId('nft-grid');
+      fireEvent.click(screen.getByTestId('collectibles-select-enter'));
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      fireEvent.click(screen.getByTestId('collectibles-selection-burn'));
+      expect(await screen.findByTestId('bulk-nft-burn')).toBeInTheDocument();
+      expect(screen.getByTestId('bulk-burn-warning')).toHaveTextContent('permanent and cannot be undone');
+    });
+
+    it('Cancel exits selection mode and clears the selection', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A, NFT_B] } : { success: true }));
+      renderWithProviders(<CollectiblesPanel full />);
+      await screen.findByTestId('nft-grid');
+      fireEvent.click(screen.getByTestId('collectibles-select-enter'));
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      fireEvent.click(screen.getByTestId('collectibles-select-cancel'));
+
+      expect(screen.queryByTestId('collectibles-selection-bar')).not.toBeInTheDocument();
+      expect(screen.getByTestId('collectibles-select-enter')).toBeInTheDocument();
+      // a plain tap now opens the detail view again (selection mode truly exited)
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      expect(await screen.findByTestId('nft-detail')).toBeInTheDocument();
+    });
+
+    it('the popup surface stays view-only — no "Select" affordance, offers "open full screen" instead', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A] } : { success: true }));
+      renderWithProviders(<CollectiblesPanel full={false} />);
+      await screen.findByTestId('nft-grid');
+      expect(screen.queryByTestId('collectibles-select-enter')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('collectibles-selection-bar')).not.toBeInTheDocument();
+      expect(screen.getByTestId('collectibles-bulk-fullscreen')).toBeInTheDocument();
+      // a popup tap always opens the detail view — never a selection toggle.
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      expect(await screen.findByTestId('nft-detail')).toBeInTheDocument();
+    });
+  });
 });

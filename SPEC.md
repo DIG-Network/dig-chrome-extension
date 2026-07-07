@@ -492,7 +492,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `22`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `23`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -552,6 +552,11 @@ proxy is currently engaged. Purely additive — no existing action/shape changed
 `prepareClawbackAction`, `confirmClawbackAction` (§18.8a) — plus an optional `clawbackSeconds` on
 `prepareSend` and an optional `clawbackInfo` on its response. Purely additive — no existing
 action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `23` (#171) added the Collectibles multi-select bulk actions —
+`prepareNftBulkTransfer` + `confirmNftBulkTransfer` and `prepareNftBulkBurn` +
+`confirmNftBulkBurn` (§18.11a) — each confirm reusing the `confirmSend` broadcast path. Purely
+additive — no existing action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1607,6 +1612,55 @@ decrypted key never leaves the offscreen vault.
   `sendStatus`. Mainnet-only. Bulk/edition minting (many NFTs in one spend) is a follow-up (#99);
   assigning the new NFT to a DID owner at mint requires owning + co-spending that DID and is a follow-up
   with DID management (#93).
+
+### 18.11a Collectibles multi-select — bulk transfer & destructive burn (#171)
+
+The Collectibles grid supports selecting MULTIPLE NFTs at once and moving or destroying all of them in
+ONE spend bundle (one broadcast, one aggregated signature) — the same discovery/reconstruction/
+same-allocator rules as §18.11 apply to every selected NFT.
+
+- **Fullscreen-only, mirroring mint/assign (§6.1/#145).** Selection mode (`CollectiblesPanel.tsx`)
+  exists ONLY on the fullscreen surface — a "Select" control toggles it, tapping a tile in selection
+  mode toggles membership instead of opening the detail view, and a selection bar shows the live count
+  + select-all/clear + Transfer/Burn actions once ≥1 NFT is selected. The popup surface stays
+  view-only: it NEVER enters selection mode, offering an "open full screen" link instead, exactly like
+  the existing mint/assign popup affordances.
+- **Bulk PREPARE** (`prepareNftBulkTransfer` / `prepareNftBulkBurn`, no broadcast): reconstruct EVERY
+  selected NFT (by launcher id, deduped) in the SAME driver `Clvm`/`Spends`, add XCH coins for the fee
+  once (not per NFT), then emit ONE `Action.send(Id.existing(launcherId), destPuzzleHash, 1, memo)` per
+  NFT — all sharing the SAME destination and hint memo in this bulk op — before inserting a standard
+  inner spend per pending coin. The unsigned coin spends are held under a pending id with the decoded
+  summary `{ launcherIds, recipientPuzzleHashHex, fee, coinCount, isBurn }`. `launcherIds` MUST be
+  non-empty (`NO_NFTS_SELECTED`); any selected NFT the wallet does not hold fails the WHOLE prepare
+  (`NFT_NOT_FOUND`) — a bulk op either builds completely or not at all, never partially.
+  - **Transfer**: `destPuzzleHash` is the caller-supplied recipient's address, decoded like a
+    single-NFT transfer (`recipient` required, `BAD_REQUEST` otherwise).
+  - **Burn**: `destPuzzleHash` is the FIXED well-known Chia burn puzzle hash (below) — never
+    caller-supplied. `recipient` is not accepted/needed for a burn.
+- **The well-known burn destination.** 30 zero bytes followed by `0xDE 0xAD` (`…dead`) — the same
+  provably-unspendable puzzle hash every Chia wallet/explorer recognizes as "burned" (mainnet address
+  `xch1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqm6ks6e8mvy`; see docs.chia.net's Chia-burn-address
+  FAQ entry), NOT a DIG-specific invention. No known preimage produces this puzzle hash under any CLVM
+  puzzle reveal, so a coin sent here can never be spent again by anyone, including the sender. Pinned
+  as `NFT_BURN_PUZZLE_HASH` (`src/offscreen/nfts.ts`) and proven byte-identical to that exact address's
+  decode in `nfts.test.ts`.
+- **CONFIRM** (`confirmNftBulkTransfer` / `confirmNftBulkBurn`): signs + broadcasts the held bulk spend
+  — reusing the vault's `confirmSend` broadcast path (the ONLY place either bundle is pushed);
+  confirmation is polled via the shared `sendStatus`. Mainnet-only. `confirmNftBulkBurn` is
+  IRREVERSIBLE once it broadcasts — the caller (the burn UI) MUST have already obtained the user's
+  EXPLICIT, DISTINCT destructive confirmation before ever sending it (see below); the SW/vault never
+  re-confirms and never invokes it automatically.
+- **Destructive confirmation gate (UI, `BulkNftActions.tsx`).** The burn flow shows a permanent/
+  cannot-be-undone warning naming the NFT count, then requires the user to TYPE the literal `BURN`
+  into a confirmation field before "Review burn" becomes clickable — a stronger, harder-to-miss
+  safeguard than a plain Yes/No step for an action with no undo. Only after that gate AND a second
+  explicit "Confirm & burn" click on the review screen (which restates the destination as
+  provably-unspendable + the fee) does `confirmNftBulkBurn` ever fire.
+- **Activity log (§18.9 — `burn` kind, #171/#154).** A confirmed bulk transfer logs the existing `sent`
+  kind (asset `'NFT'`, amount = NFT count, counterparty = the recipient). A confirmed bulk burn logs a
+  DISTINCT `burn` kind (asset `'NFT'`, amount = NFT count, counterparty `null` — the burn destination
+  has no spending key, so it is not a real "sent to" counterparty) so the ledger never conflates an
+  irreversible burn with an ordinary transfer.
 
 ### 18.12 dApp `window.chia` requests & the SW-summoned approval window (§5.5)
 

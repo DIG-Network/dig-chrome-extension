@@ -445,6 +445,162 @@ describe('Vault send ops', () => {
   });
 });
 
+describe('Vault NFT bulk transfer + burn ops (#171)', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  async function unlockedZerosWallet(): Promise<Vault> {
+    const v = new Vault();
+    await v.handle({ op: 'importWallet', password: PW, mnemonic: golden.mnemonic }, deps);
+    return v;
+  }
+
+  interface SimHandle {
+    newCoin(ph: Uint8Array, amount: bigint): { coinId(): Uint8Array };
+    newTransaction(bundle: unknown): void;
+    createBlock(): void;
+    unspentCoins(ph: Uint8Array, includeHints: boolean): never[];
+    coinSpend(coinId: Uint8Array): unknown;
+  }
+  interface BulkWasm {
+    Simulator: new () => SimHandle;
+    fromHex(h: string): Uint8Array;
+    toHex(b: Uint8Array): string;
+    Address: new (ph: Uint8Array, p: string) => { encode(): string };
+    Clvm: new () => {
+      nftMetadata(v: unknown): unknown;
+      standardSpend(pk: unknown, s: unknown): unknown;
+      delegatedSpend(c: unknown[]): unknown;
+      coinSpends(): unknown[];
+    };
+    Spends: new (
+      c: unknown,
+      ph: Uint8Array,
+    ) => {
+      addXch(c: unknown): void;
+      apply(a: unknown[]): unknown;
+      prepare(d: unknown): {
+        pendingSpends(): Array<{ coin(): { coinId(): Uint8Array }; conditions(): unknown[] }>;
+        insert(id: Uint8Array, s: unknown): void;
+        spend(): { nfts(): unknown[]; nft(id: unknown): { info: { launcherId: Uint8Array } } };
+      };
+    };
+    NftMetadata: new (
+      editionNumber: bigint,
+      editionTotal: bigint,
+      dataUris: string[],
+      dataHash: Uint8Array | undefined,
+      metadataUris: string[],
+      metadataHash: Uint8Array | undefined,
+      licenseUris: string[],
+    ) => unknown;
+    Constants: { nftMetadataUpdaterDefaultHash(): Uint8Array };
+    Action: { mintNft(c: unknown, m: unknown, u: Uint8Array, r: Uint8Array, bps: number, amt: bigint, parent?: unknown): unknown };
+  }
+
+  // A chain fully backed by the wasm Simulator (unlike `sendChain`'s fixed single coin, NFT ops need
+  // hint-based discovery + parent-spend lookups too) — same shape as nfts.test.ts's `simChain`.
+  // `pushSpendBundle` is STUBBED (like the existing `sendChain()` above), NOT a real Simulator push:
+  // vault.ts's `confirmSend` hardcodes `MAINNET_AGG_SIG_ME`, which the Simulator's own genesis does
+  // not accept, so a real push here would fail signature verification. The NFTs this suite bulk-
+  // transfers/burns are minted DIRECTLY against the Simulator below (signed with the Simulator's own
+  // `TESTNET11_AGG_SIG_ME`, exactly like nfts.test.ts) so `coinsByHints`/`getCoinSpend` genuinely see
+  // them; the real broadcast-and-rediscover round trip is proven end-to-end there, not re-proven here
+  // — this suite is scoped to the vault's BULK orchestration (pending map, activityHint, NO_PENDING).
+  function bulkChain() {
+    const wasm = chia as unknown as BulkWasm;
+    const sim = new wasm.Simulator();
+    sim.newCoin(wasm.fromHex(golden.unhardened[0].puzzleHashHex), 5_000_000_000_000n);
+    const chain: ChainClient = {
+      totalUnspent: async () => 0,
+      unspentCoins: async (phs) => phs.flatMap((h) => sim.unspentCoins(wasm.fromHex(h), false)),
+      coinRecords: async () => [],
+      getCoinSpend: async (idHex) => (sim.coinSpend(wasm.fromHex(idHex)) as never) ?? null,
+      pushSpendBundle: async () => ({ success: true }),
+      coinConfirmed: async () => true,
+      coinsByHints: async (hints) => hints.flatMap((h) => sim.unspentCoins(wasm.fromHex(h), true)),
+    };
+    return { chain, sim, wasm };
+  }
+
+  /** Mint one NFT directly against the Simulator (mirrors nfts.test.ts's `mintNftTo`) — bypasses the
+   * vault's `confirmSend` (which would need a mainnet-domain signature the Simulator can't verify). */
+  function mintNftDirect(sim: SimHandle, wasm: BulkWasm, ring0: ReturnType<typeof buildKeyring>[number]): string {
+    const ph0 = wasm.fromHex(ring0.puzzleHashHex);
+    const clvm = new wasm.Clvm();
+    const spends = new wasm.Spends(clvm, ph0);
+    spends.addXch(sim.unspentCoins(ph0, false)[0]);
+    const metadata = clvm.nftMetadata(new wasm.NftMetadata(1n, 1n, ['https://example.test/img.png'], undefined, [], undefined, []));
+    const mintAction = wasm.Action.mintNft(clvm, metadata, wasm.Constants.nftMetadataUpdaterDefaultHash(), ph0, 0, 1n, undefined);
+    const fin = spends.prepare(spends.apply([mintAction]));
+    for (const ps of fin.pendingSpends()) fin.insert(ps.coin().coinId(), clvm.standardSpend(ring0.pk, clvm.delegatedSpend(ps.conditions())));
+    const outputs = fin.spend();
+    const launcherId = wasm.toHex(outputs.nft(outputs.nfts()[0]).info.launcherId).replace(/^0x/i, '').toLowerCase();
+    const bundle = signAndBundle(wasm as unknown as SendFlowWasm, clvm.coinSpends() as never, [ring0.sk], TESTNET11_AGG_SIG_ME);
+    sim.newTransaction(bundle);
+    sim.createBlock();
+    return launcherId;
+  }
+
+  it('prepareNftBulkTransfer → confirmSend moves multiple NFTs in ONE bundle and logs a `sent` hint', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, sim, wasm } = bulkChain();
+    const ring0 = buildKeyring(wasm as unknown as SendFlowWasm, await mnemonicToSeed(golden.mnemonic), { index: 0 })[0];
+    const id1 = mintNftDirect(sim, wasm, ring0);
+    const id2 = mintNftDirect(sim, wasm, ring0);
+    const recipient = new wasm.Address(new Uint8Array(32).fill(9), 'xch').encode();
+
+    const prep = await v.handle({ op: 'prepareNftBulkTransfer', launcherIds: [id1, id2], recipient }, { ...deps, chia, chain });
+    expect(prep.success).toBe(true);
+    expect(prep.pendingId).toBeTruthy();
+    expect(prep.nftBulkSummary?.launcherIds.slice().sort()).toEqual([id1, id2].sort());
+    expect(prep.nftBulkSummary?.isBurn).toBe(false);
+
+    const conf = await v.handle({ op: 'confirmSend', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(conf.success).toBe(true);
+    expect(conf.spentCoinId).toBeTruthy();
+    expect(conf.activityHint).toEqual({ asset: 'NFT', amount: '2', counterparty: recipient });
+
+    // The pending entry is consumed — a second confirm is NO_PENDING.
+    expect((await v.handle({ op: 'confirmSend', pendingId: prep.pendingId }, { ...deps, chia, chain })).code).toBe('NO_PENDING');
+  });
+
+  it('prepareNftBulkBurn → confirmSend burns multiple NFTs and logs a hint with NO counterparty', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, sim, wasm } = bulkChain();
+    const ring0 = buildKeyring(wasm as unknown as SendFlowWasm, await mnemonicToSeed(golden.mnemonic), { index: 0 })[0];
+    const id1 = mintNftDirect(sim, wasm, ring0);
+    const id2 = mintNftDirect(sim, wasm, ring0);
+
+    const prep = await v.handle({ op: 'prepareNftBulkBurn', launcherIds: [id1, id2] }, { ...deps, chia, chain });
+    expect(prep.success).toBe(true);
+    expect(prep.nftBulkSummary?.isBurn).toBe(true);
+
+    const conf = await v.handle({ op: 'confirmSend', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(conf.success).toBe(true);
+    expect(conf.activityHint).toEqual({ asset: 'NFT', amount: '2', counterparty: null });
+  });
+
+  it('rejects prepareNftBulkTransfer/prepareNftBulkBurn with no launcherIds (BAD_REQUEST, no chain hit)', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, wasm } = bulkChain();
+    const recipient = new wasm.Address(new Uint8Array(32).fill(9), 'xch').encode();
+    expect((await v.handle({ op: 'prepareNftBulkTransfer', launcherIds: [], recipient }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
+    expect((await v.handle({ op: 'prepareNftBulkTransfer', recipient }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
+    expect((await v.handle({ op: 'prepareNftBulkBurn', launcherIds: [] }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
+  });
+
+  it('rejects a bulk transfer with no held key (LOCKED)', async () => {
+    const v = new Vault(); // never unlocked
+    const { chain, wasm } = bulkChain();
+    const recipient = new wasm.Address(new Uint8Array(32).fill(9), 'xch').encode();
+    expect((await v.handle({ op: 'prepareNftBulkTransfer', launcherIds: ['ab'.repeat(32)], recipient }, { ...deps, chia, chain })).code).toBe('LOCKED');
+    expect((await v.handle({ op: 'prepareNftBulkBurn', launcherIds: ['ab'.repeat(32)] }, { ...deps, chia, chain })).code).toBe('LOCKED');
+  });
+});
+
 describe('Vault clawback ops (#152)', () => {
   let chia: ScanWasm;
   beforeAll(async () => {

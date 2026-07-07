@@ -21,17 +21,20 @@
  */
 
 /**
- * The kinds of local activity an entry can record. Only `sent` / `received` / `mint` / `did` /
- * `trade` are currently EMITTED (wired in `src/background/index.ts`); `offer` / `clawback` /
- * `melt` are reserved schema members for a tracked follow-up:
+ * The kinds of local activity an entry can record. `sent` / `received` / `mint` / `did` / `trade` /
+ * `burn` are currently EMITTED (wired in `src/background/index.ts`); `offer` / `clawback` / `melt`
+ * are reserved schema members for a tracked follow-up:
  *  - `offer` (making/publishing a shareable offer) has no coin spent yet to poll for confirmation
  *    — the spend happens only if/when a counterparty takes it, possibly from another wallet
  *    entirely, so it doesn't fit the pending→confirmed poll model this module implements.
  *  - `clawback` / `melt` have no corresponding custody action yet.
- * The UI (`activityRows.ts` / `CustodyActivity.tsx`) still renders all eight so a future entry
- * never hits an unhandled-kind gap.
+ * `burn` (#171 — Collectibles bulk destructive burn) is DISTINCT from `sent`: the destination has no
+ * spending key (it is the well-known provably-unspendable puzzle hash), so it is never logged with a
+ * counterparty, and the ledger shows it as an irreversible burn rather than a transfer to someone.
+ * The UI (`activityRows.ts` / `CustodyActivity.tsx`) still renders all nine so a future entry never
+ * hits an unhandled-kind gap.
  */
-export type ActivityKind = 'sent' | 'received' | 'mint' | 'did' | 'offer' | 'trade' | 'clawback' | 'melt';
+export type ActivityKind = 'sent' | 'received' | 'mint' | 'did' | 'offer' | 'trade' | 'clawback' | 'melt' | 'burn';
 
 /** `pending` — logged the moment the extension broadcast the spend; `confirmed` — the confirm-poll
  * (`sendStatus` → `coinConfirmed`) saw the input coin spent on-chain. A `received` entry (detected

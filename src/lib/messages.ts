@@ -158,8 +158,17 @@ import { DIG_ERR } from './error-codes';
  * interval, and engages `chrome.proxy` pointed at dig-dns's `/.dig/proxy.pac` the moment a real
  * `.dig` navigation fails — self-healing `.dig` resolution when OS split-DNS (Path A) is defeated.
  * This is the SAME signal #172's open-by-URN dig-dns-detect branch reads — no per-feature probing.
+ *
+ * v23 (#171 Collectibles bulk transfer/burn): added `prepareNftBulkTransfer` (build a transfer of
+ * MULTIPLE selected NFTs to one recipient in a SINGLE spend bundle) and `prepareNftBulkBurn` (build
+ * a transfer of multiple selected NFTs to the well-known provably-unspendable puzzle hash — the
+ * standard Chia-ecosystem burn mechanism). Both are held under a pending id and broadcast via the
+ * shared `confirmNftBulkTransfer`/`confirmNftBulkBurn` (which reuse the vault's `confirmSend`
+ * broadcast path exactly like the existing single-NFT `confirmNftTransfer`); confirmation polls via
+ * the shared `sendStatus`. A burn is irreversible once confirmed — the caller MUST gate it behind an
+ * explicit, distinct user confirmation and must NEVER auto-invoke the confirm step.
  */
-export const MESSAGE_PROTOCOL_VERSION = 22;
+export const MESSAGE_PROTOCOL_VERSION = 23;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -228,6 +237,11 @@ export const ACTIONS = Object.freeze({
   listNfts: 'listNfts',
   prepareNftTransfer: 'prepareNftTransfer',
   confirmNftTransfer: 'confirmNftTransfer',
+  // ── Collectibles multi-select bulk transfer/burn (#171; confirm reuses the confirmSend path) ──
+  prepareNftBulkTransfer: 'prepareNftBulkTransfer',
+  confirmNftBulkTransfer: 'confirmNftBulkTransfer',
+  prepareNftBulkBurn: 'prepareNftBulkBurn',
+  confirmNftBulkBurn: 'confirmNftBulkBurn',
   // ── NFT minting (#92): build a new NFT + broadcast (confirm reuses the confirmSend path) ──
   prepareNftMint: 'prepareNftMint',
   confirmNftMint: 'confirmNftMint',
@@ -513,6 +527,26 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.confirmNftTransfer]: {
     summary: 'Sign + BROADCAST a previously-prepared NFT transfer (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareNftBulkTransfer]: {
+    summary: "Build (not sign/broadcast) a transfer of MULTIPLE selected NFTs to one recipient in a SINGLE spend bundle (#171 — Collectibles multi-select). Hold under a pending id and return the decoded bulk summary to approve. The recipient's p2 puzzle hash is carried as the create-coin hint for every NFT.",
+    request: '{ action, launcherIds:string[] /* hex, ≥1 */, recipient:string /* xch1… */, fee?:string /* mojos */ }',
+    response: '{ pendingId:string, nftBulkSummary:{ launcherIds, recipientPuzzleHashHex, fee, coinCount, isBurn:false } } | { success:false, code:\'NO_NFTS_SELECTED\'|\'NFT_NOT_FOUND\'|..., message }',
+  },
+  [ACTIONS.confirmNftBulkTransfer]: {
+    summary: 'Sign + BROADCAST a previously-prepared bulk NFT transfer (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareNftBulkBurn]: {
+    summary: "Build (not sign/broadcast) a BURN of MULTIPLE selected NFTs — a transfer to the well-known provably-unspendable puzzle hash (30 zero bytes + 0xDEAD, the standard Chia-ecosystem burn destination) in a SINGLE spend bundle (#171 — Collectibles multi-select destructive burn). Hold under a pending id and return the decoded bulk summary to approve. Irreversible once confirmNftBulkBurn broadcasts it — the CALLER must gate confirmNftBulkBurn behind an explicit, distinct user confirmation and must NEVER invoke it automatically.",
+    request: '{ action, launcherIds:string[] /* hex, ≥1 */, fee?:string /* mojos */ }',
+    response: '{ pendingId:string, nftBulkSummary:{ launcherIds, recipientPuzzleHashHex, fee, coinCount, isBurn:true } } | { success:false, code:\'NO_NFTS_SELECTED\'|\'NFT_NOT_FOUND\'|..., message }',
+  },
+  [ACTIONS.confirmNftBulkBurn]: {
+    summary: 'Sign + BROADCAST a previously-prepared bulk NFT burn (the approved, IRREVERSIBLE step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus. The caller must have already obtained explicit, distinct destructive confirmation from the user before calling this.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },

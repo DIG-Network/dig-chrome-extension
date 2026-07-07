@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { listNfts, prepareNftTransfer, prepareNftMint, type NftWasm, type NftChain } from './nfts';
+import { listNfts, prepareNftTransfer, prepareNftMint, prepareNftBulkTransfer, prepareNftBulkBurn, NFT_BURN_PUZZLE_HASH, type NftWasm, type NftChain } from './nfts';
 import { buildKeyring, signAndBundle, type SendFlowWasm } from './sendFlow';
 import { signCoinSpends, TESTNET11_AGG_SIG_ME, type SigningWasm } from './signing';
 import type { ChainClient, ChainCoin, ChainCoinSpend, ChainSpendBundle } from './chain';
@@ -309,5 +309,137 @@ describe('nfts — mint via prepareNftMint (Simulator-validated, #92)', () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
     const sim = new chia.Simulator(); // no coins funded
     await expect(prepareNftMint(asNft(), simChain(sim), { seed, dataUris: [DATA_URI], activeIndex: 0 })).rejects.toThrow();
+  });
+});
+
+describe('nfts — bulk transfer + burn (Simulator-validated, #171)', () => {
+  /** Mint `n` NFTs to the sender's index-0 wallet, returning their launcher ids (mint order). */
+  function mintMany(sim: SimHandle, ring0: ReturnType<typeof buildKeyring>[number], n: number): string[] {
+    return Array.from({ length: n }, () => mintNftTo(sim, ring0));
+  }
+
+  /** A sim funded with enough XCH for several mints + a fee-paying bulk spend. */
+  async function fundedSenderWithNfts(count: number): Promise<{ seed: Uint8Array; ring: ReturnType<typeof buildKeyring>; sim: SimHandle; chain: NftChain; launcherIds: string[] }> {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 5_000_000_000_000n);
+    const launcherIds = mintMany(sim, ring[0], count);
+    return { seed, ring, sim, chain: simChain(sim), launcherIds };
+  }
+
+  it('the well-known mainnet burn address decodes to the canonical provably-unspendable puzzle hash', () => {
+    // xch1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqm6ks6e8mvy — 30 zero bytes + 0xDE 0xAD
+    // (docs.chia.net/faq#what-is-chia-burn-address). Pinning the decode proves NFT_BURN_PUZZLE_HASH
+    // is byte-identical to the address every wallet/explorer recognizes as "burned", not a look-alike.
+    const decoded = chia.Address.decode('xch1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqm6ks6e8mvy');
+    expect(hx(decoded.puzzleHash)).toBe(hx(NFT_BURN_PUZZLE_HASH));
+    expect(hx(NFT_BURN_PUZZLE_HASH)).toBe('0'.repeat(60) + 'dead');
+  });
+
+  it('bulk-transfers multiple NFTs to another wallet in ONE spend bundle', async () => {
+    const { seed: senderSeed, chain, launcherIds } = await fundedSenderWithNfts(2);
+    const recipientSeed = await mnemonicToSeed(RECIPIENT_MNEMONIC);
+    const recipientRing = buildKeyring(asFlow(), recipientSeed, { index: 0 });
+    const recipientAddr = addressOf(recipientRing[0].puzzleHashHex);
+
+    expect(await listNfts(asNft(), chain, { seed: senderSeed, activeIndex: 0 })).toHaveLength(2);
+
+    const prepared = await prepareNftBulkTransfer(asNft(), chain, {
+      seed: senderSeed,
+      launcherIds,
+      recipient: recipientAddr,
+      activeIndex: 0,
+    });
+    expect(prepared.summary.launcherIds.sort()).toEqual([...launcherIds].sort());
+    expect(prepared.summary.recipientPuzzleHashHex).toBe(recipientRing[0].puzzleHashHex);
+    expect(prepared.summary.isBurn).toBe(false);
+    // One NFT inner spend per selected NFT, all aggregated into ONE bundle/broadcast.
+    expect(prepared.coinSpends).toHaveLength(2);
+
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
+
+    // Both NFTs moved together: gone from the sender, both discoverable by the recipient.
+    expect(await listNfts(asNft(), chain, { seed: senderSeed, activeIndex: 0 })).toHaveLength(0);
+    const recipientNfts = await listNfts(asNft(), chain, { seed: recipientSeed, activeIndex: 0 });
+    expect(recipientNfts.map((n) => n.launcherId).sort()).toEqual([...launcherIds].sort());
+  });
+
+  it('pays ONE fee from the wallet for the whole bulk transfer', async () => {
+    const { seed: senderSeed, chain, launcherIds } = await fundedSenderWithNfts(2);
+    const recipientSeed = await mnemonicToSeed(RECIPIENT_MNEMONIC);
+    const recipientRing = buildKeyring(asFlow(), recipientSeed, { index: 0 });
+
+    const prepared = await prepareNftBulkTransfer(asNft(), chain, {
+      seed: senderSeed,
+      launcherIds,
+      recipient: addressOf(recipientRing[0].puzzleHashHex),
+      fee: 1_000_000n,
+      activeIndex: 0,
+    });
+    expect(prepared.summary.fee).toBe('1000000');
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
+    const recipientNfts = await listNfts(asNft(), chain, { seed: recipientSeed, activeIndex: 0 });
+    expect(recipientNfts).toHaveLength(2);
+  });
+
+  it('rejects a bulk transfer with no NFTs selected', async () => {
+    const { seed, chain } = await fundedSenderWithNfts(0);
+    await expect(
+      prepareNftBulkTransfer(asNft(), chain, { seed, launcherIds: [], recipient: addressOf('00'.repeat(32)), activeIndex: 0 }),
+    ).rejects.toThrow(/NO_NFTS_SELECTED/);
+  });
+
+  it('rejects a bulk transfer when one of the selected NFTs is not owned', async () => {
+    const { seed, chain, launcherIds } = await fundedSenderWithNfts(1);
+    await expect(
+      prepareNftBulkTransfer(asNft(), chain, {
+        seed,
+        launcherIds: [...launcherIds, 'ab'.repeat(32)],
+        recipient: addressOf('00'.repeat(32)),
+        activeIndex: 0,
+      }),
+    ).rejects.toThrow(/NFT_NOT_FOUND/);
+  });
+
+  it('bulk-burns multiple NFTs to the well-known provably-unspendable address in ONE spend bundle', async () => {
+    const { seed, chain, launcherIds } = await fundedSenderWithNfts(2);
+    expect(await listNfts(asNft(), chain, { seed, activeIndex: 0 })).toHaveLength(2);
+
+    const prepared = await prepareNftBulkBurn(asNft(), chain, { seed, launcherIds, activeIndex: 0 });
+    expect(prepared.summary.isBurn).toBe(true);
+    expect(prepared.summary.recipientPuzzleHashHex).toBe(hx(NFT_BURN_PUZZLE_HASH));
+    expect(prepared.summary.launcherIds.sort()).toEqual([...launcherIds].sort());
+    expect(prepared.coinSpends).toHaveLength(2);
+
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
+
+    // Burned: gone from the sender, and unrecoverable (no wallet — including a `p2PuzzleHash` scan
+    // over the burn hash itself — can ever discover a coin sent to the all-zero+dead puzzle hash).
+    expect(await listNfts(asNft(), chain, { seed, activeIndex: 0 })).toHaveLength(0);
+  });
+
+  it('pays a fee from the wallet when burning', async () => {
+    const { seed, chain, launcherIds } = await fundedSenderWithNfts(1);
+    const prepared = await prepareNftBulkBurn(asNft(), chain, { seed, launcherIds, fee: 1_000_000n, activeIndex: 0 });
+    expect(prepared.summary.fee).toBe('1000000');
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
+    expect(await listNfts(asNft(), chain, { seed, activeIndex: 0 })).toHaveLength(0);
+  });
+
+  it('rejects a bulk burn with no NFTs selected', async () => {
+    const { seed, chain } = await fundedSenderWithNfts(0);
+    await expect(prepareNftBulkBurn(asNft(), chain, { seed, launcherIds: [], activeIndex: 0 })).rejects.toThrow(/NO_NFTS_SELECTED/);
+  });
+
+  it('rejects a bulk burn when one of the selected NFTs is not owned', async () => {
+    const { seed, chain, launcherIds } = await fundedSenderWithNfts(1);
+    await expect(
+      prepareNftBulkBurn(asNft(), chain, { seed, launcherIds: [...launcherIds, 'cd'.repeat(32)], activeIndex: 0 }),
+    ).rejects.toThrow(/NFT_NOT_FOUND/);
   });
 });
