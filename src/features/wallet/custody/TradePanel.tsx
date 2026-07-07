@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import qrcode from 'qrcode-generator';
 import { toBaseUnits, formatBaseUnits } from '@/lib/wallet-view';
+import { popOutToFullpage } from '@/lib/popout';
+import { isFullpageSurface } from '@/features/collectibles/surface';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { WireOfferAsset, WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
+import { useListCollectiblesQuery } from '@/features/collectibles/collectiblesApi';
 import {
   useMakeCustodyOfferMutation,
   useInspectCustodyOfferMutation,
@@ -35,16 +38,51 @@ function offerQrDataUrl(offer: string): string | null {
 type Mode = 'make' | 'take';
 type MakePhase = 'form' | 'made';
 type TakePhase = 'paste' | 'review' | 'confirm' | 'sending' | 'confirmed' | 'failed';
+/** What the maker is GIVING: a fungible balance (XCH/CAT) or one of the wallet's own NFTs (§94). */
+type GiveKind = 'currency' | 'nft';
 
 /**
  * Self-custody Trade (§18.10): MAKE a shareable offer (you give / you get → an `offer1…` deal card
  * with copy + QR + cancel) and TAKE one (paste → inspect two-sided summary → prepare → confirm →
  * broadcast → poll). Every money step is build-then-approve; `confirmTrade` is the only broadcast.
  * Amounts use each asset's decimals; the network fee is XCH. `pollMs` is injectable for tests.
+ *
+ * **Surface tiering (#145): making/taking an offer is ADVANCED functionality → fullscreen
+ * (ExpandedLayout) ONLY.** The compact popup never renders the make/take forms — it shows a
+ * view-only card with an "open full screen" affordance, mirroring `CollectiblesPanel`'s mint /
+ * `DidPanel`'s create tiering exactly. `full` is auto-detected from the surface (overridable in
+ * tests).
  */
-export function TradePanel({ assets, onClose, pollMs = 8000 }: { assets: AssetBalance[]; onClose?: () => void; pollMs?: number }) {
+export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: AssetBalance[]; onClose?: () => void; pollMs?: number; full?: boolean }) {
   const intl = useIntl();
   const [mode, setMode] = useState<Mode>('make');
+  const isFull = full ?? isFullpageSurface();
+
+  if (!isFull) {
+    return (
+      <section className="dig-card" data-testid="custody-trade" aria-labelledby="trade-title">
+        <h2 className="dig-heading" id="trade-title">
+          <FormattedMessage id="trade.title" />
+        </h2>
+        <p className="dig-muted">
+          <FormattedMessage id="trade.intro" />
+        </p>
+        <button
+          type="button"
+          className="dig-link"
+          data-testid="trade-open-fullscreen"
+          onClick={() => void popOutToFullpage('#wallet/trade', true)}
+        >
+          <FormattedMessage id="trade.openFullscreen" />
+        </button>
+        {onClose && (
+          <button type="button" className="dig-link" data-testid="trade-close" onClick={onClose} style={{ display: 'block', marginTop: 8 }}>
+            <FormattedMessage id="send.cancel" />
+          </button>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="dig-card" data-testid="custody-trade" aria-labelledby="trade-title">
@@ -75,7 +113,9 @@ export function TradePanel({ assets, onClose, pollMs = 8000 }: { assets: AssetBa
 function MakeTrade({ assets }: { assets: AssetBalance[] }) {
   const intl = useIntl();
   const [phase, setPhase] = useState<MakePhase>('form');
+  const [giveKind, setGiveKind] = useState<GiveKind>('currency');
   const [giveIdx, setGiveIdx] = useState(0);
+  const [giveNftIdx, setGiveNftIdx] = useState(0);
   const [getIdx, setGetIdx] = useState(assets.length > 1 ? 1 : 0);
   const [giveAmount, setGiveAmount] = useState('');
   const [getAmount, setGetAmount] = useState('');
@@ -87,29 +127,43 @@ function MakeTrade({ assets }: { assets: AssetBalance[] }) {
   const [prepareTrade, pt] = usePrepareTradeMutation();
   const [confirmTrade, ct] = useConfirmTradeMutation();
   const [cancelState, setCancelState] = useState<'idle' | 'cancelled' | 'failed'>('idle');
+  const nfts = useListCollectiblesQuery(undefined, { skip: giveKind !== 'nft' });
 
   const give = assets[giveIdx];
   const get = assets[getIdx];
+  const giveNft = nfts.data?.nfts?.[giveNftIdx];
   const qr = useMemo(() => (offer ? offerQrDataUrl(offer) : null), [offer]);
 
   async function doMake() {
-    if (!give || !get) return;
-    if (giveIdx === getIdx) {
-      setError(intl.formatMessage({ id: 'trade.error.sameAsset' }));
-      return;
-    }
-    const giveBase = safeBase(giveAmount, decimalsOf(give));
     const getBase = safeBase(getAmount, decimalsOf(get));
-    if (giveBase <= 0 || getBase <= 0) {
+    if (!get || getBase <= 0) {
       setError(intl.formatMessage({ id: 'send.error.amount' }));
       return;
     }
-    if ((give.balance ?? 0) < giveBase) {
-      setError(intl.formatMessage({ id: 'send.error.insufficient' }));
-      return;
+
+    let offered: WireOfferLeg;
+    if (giveKind === 'nft') {
+      if (!giveNft) return;
+      offered = { asset: { kind: 'nft', launcherId: giveNft.launcherId }, amount: '1' };
+    } else {
+      if (!give) return;
+      if (giveIdx === getIdx) {
+        setError(intl.formatMessage({ id: 'trade.error.sameAsset' }));
+        return;
+      }
+      const giveBase = safeBase(giveAmount, decimalsOf(give));
+      if (giveBase <= 0) {
+        setError(intl.formatMessage({ id: 'send.error.amount' }));
+        return;
+      }
+      if ((give.balance ?? 0) < giveBase) {
+        setError(intl.formatMessage({ id: 'send.error.insufficient' }));
+        return;
+      }
+      offered = { asset: toWireAsset(give), amount: String(giveBase) };
     }
+
     setError(null);
-    const offered: WireOfferLeg = { asset: toWireAsset(give), amount: String(giveBase) };
     const requested: WireOfferLeg = { asset: toWireAsset(get), amount: String(getBase) };
     const res = await makeOffer({ offered, requested });
     if ('data' in res && res.data?.offer) {
@@ -180,17 +234,53 @@ function MakeTrade({ assets }: { assets: AssetBalance[] }) {
         void doMake();
       }}
     >
-      <label className="dig-field">
+      <div className="dig-field">
         <span><FormattedMessage id="trade.give" /></span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select className="dig-input" data-testid="trade-give-asset" value={giveIdx} onChange={(e) => setGiveIdx(Number(e.target.value))}>
-            {assets.map((a, i) => (
-              <option key={`give-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={i}>{a.descriptor.ticker}</option>
+        <div className="dig-toggle-row" role="tablist" aria-label={intl.formatMessage({ id: 'trade.give' })} style={{ display: 'flex', gap: 8, margin: '4px 0 8px' }}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={giveKind === 'currency'}
+            className={`dig-btn ${giveKind === 'currency' ? 'dig-btn--primary' : ''}`}
+            data-testid="trade-give-kind-currency"
+            onClick={() => setGiveKind('currency')}
+          >
+            <FormattedMessage id="trade.give.kind.currency" />
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={giveKind === 'nft'}
+            className={`dig-btn ${giveKind === 'nft' ? 'dig-btn--primary' : ''}`}
+            data-testid="trade-give-kind-nft"
+            onClick={() => setGiveKind('nft')}
+          >
+            <FormattedMessage id="trade.give.kind.nft" />
+          </button>
+        </div>
+        {giveKind === 'currency' ? (
+          <label className="dig-field">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select className="dig-input" data-testid="trade-give-asset" value={giveIdx} onChange={(e) => setGiveIdx(Number(e.target.value))}>
+                {assets.map((a, i) => (
+                  <option key={`give-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={i}>{a.descriptor.ticker}</option>
+                ))}
+              </select>
+              <input className="dig-input" data-testid="trade-give-amount" inputMode="decimal" value={giveAmount} onChange={(e) => setGiveAmount(e.target.value)} aria-label={intl.formatMessage({ id: 'trade.give' })} />
+            </div>
+          </label>
+        ) : nfts.data?.nfts?.length ? (
+          <select className="dig-input" data-testid="trade-give-nft" value={giveNftIdx} onChange={(e) => setGiveNftIdx(Number(e.target.value))} aria-label={intl.formatMessage({ id: 'trade.give.kind.nft' })}>
+            {nfts.data.nfts.map((n, i) => (
+              <option key={n.launcherId} value={i}>{n.launcherId.slice(0, 10)}…</option>
             ))}
           </select>
-          <input className="dig-input" data-testid="trade-give-amount" inputMode="decimal" value={giveAmount} onChange={(e) => setGiveAmount(e.target.value)} aria-label={intl.formatMessage({ id: 'trade.give' })} />
-        </div>
-      </label>
+        ) : (
+          <p className="dig-muted" data-testid="trade-give-nft-empty" style={{ margin: 0 }}>
+            <FormattedMessage id="trade.give.nft.empty" />
+          </p>
+        )}
+      </div>
       <label className="dig-field">
         <span><FormattedMessage id="trade.get" /></span>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -225,8 +315,8 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
   const [confirmTrade, ct] = useConfirmTradeMutation();
   const [pollStatus] = useLazySendStatusQuery();
 
-  async function doInspect() {
-    const trimmed = offerStr.trim();
+  async function doInspect(text?: string) {
+    const trimmed = (text ?? offerStr).trim();
     if (!trimmed.startsWith('offer1')) {
       setError(intl.formatMessage({ id: 'trade.error.invalid' }));
       return;
@@ -239,6 +329,16 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
     } else {
       setError(intl.formatMessage({ id: 'trade.error.invalid' }));
     }
+  }
+
+  /** Read a dropped `.offer`/text file's contents, populate the field, and inspect it immediately. */
+  async function onDropOffer(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const text = (await readFileText(file)).trim();
+    setOfferStr(text);
+    void doInspect(text);
   }
 
   async function doPrepare() {
@@ -341,6 +441,17 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
         void doInspect();
       }}
     >
+      <div
+        className="dig-dropzone"
+        data-testid="trade-take-dropzone"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => void onDropOffer(e)}
+        style={{ border: '1px dashed var(--dig-border, #444)', borderRadius: 8, padding: 14, marginBottom: 10, textAlign: 'center' }}
+      >
+        <p className="dig-muted" style={{ margin: 0 }}>
+          <FormattedMessage id="trade.take.drop" />
+        </p>
+      </div>
       <label className="dig-field">
         <span><FormattedMessage id="trade.take.label" /></span>
         <textarea className="dig-input dig-mono" data-testid="trade-take-input" rows={4} value={offerStr} onChange={(e) => setOfferStr(e.target.value)} placeholder="offer1…" spellCheck={false} style={{ width: '100%', resize: 'vertical' }} />
@@ -366,9 +477,10 @@ function TwoSided({ summary, intl }: { summary: WireOfferSummary | null; intl: R
   );
 }
 
-/** Format one leg as "<amount> <ticker>" (XCH decimals for XCH, else a 3-dp CAT default). */
+/** Format one leg as "<amount> <ticker>" (XCH decimals for XCH; a 3-dp CAT default; NFT by launcher id). */
 function legLabel(leg: { asset: WireOfferAsset; amount: string }, _intl: ReturnType<typeof useIntl>): string {
   if (leg.asset.kind === 'xch') return `${formatBaseUnits(Number(leg.amount), XCH_DECIMALS)} XCH`;
+  if (leg.asset.kind === 'nft') return `NFT ${leg.asset.launcherId.slice(0, 6)}…`;
   return `${formatBaseUnits(Number(leg.amount), 3)} ${leg.asset.assetId.slice(0, 6)}…`;
 }
 
@@ -380,4 +492,14 @@ function safeBase(value: string, decimals: number): number {
   } catch {
     return 0;
   }
+}
+
+/** Read a `File`'s text via `FileReader` (broader support than `File.text()` — e.g. under jsdom). */
+function readFileText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error ?? new Error('FILE_READ_ERROR'));
+    reader.readAsText(file);
+  });
 }

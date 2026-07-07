@@ -41,6 +41,10 @@ const STUB = `
     if (a === 'listDids') return { dids: [
       { launcherId: 'aa'.repeat(32), coinId: 'bb'.repeat(32), p2PuzzleHash: 'cc'.repeat(32), recoveryListHash: null, numVerificationsRequired: '1', profileName: 'Screenshot DID' },
     ] };
+    if (a === 'inspectOffer') return { offerSummary: {
+      offered: [{ asset: { kind: 'xch' }, amount: '100000000000' }],
+      requested: [{ asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: '250', toPuzzleHashHex: 'ab' }],
+    } };
     if (a === 'getDigNodeStatus') return { reachable: true, base: 'https://dig.local' };
     if (a === 'getControlStatus') return { mode: 'manage', localNode: true, base: 'https://dig.local', status: null, controlMethods: [] };
     if (a === 'getConnection') return { connected: false };
@@ -212,6 +216,72 @@ test('fullscreen assign DID owner (NFT ↔ DID picker)', async ({ page }) => {
   await page.getByTestId('nft-assign-pick').waitFor();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-nft-assign.png' });
+});
+
+// Trade offers (#94): advanced → fullscreen only (§145). The popup shows a view-only "open full
+// screen" affordance; the fullscreen Trade view exposes the make/take forms, incl. offering an
+// owned NFT (give-kind picker) and taking via paste OR drag-and-drop of an offer file.
+test('popup trade (view-only, make/take moved to full screen)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet/trade');
+  await page.getByTestId('trade-open-fullscreen').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-trade.png' });
+});
+
+test('fullscreen trade (make form)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-make-form').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-trade-make.png' });
+});
+
+test('fullscreen trade — give an NFT (offering a self-custody singleton)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-give-kind-nft').click();
+  await page.getByTestId('trade-give-nft').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-trade-give-nft.png' });
+});
+
+test('fullscreen trade — take (paste + drag-and-drop an offer file)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-take').click();
+  await page.getByTestId('trade-take-dropzone').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-trade-take.png' });
+});
+
+// Two ways to bring an offer INTO the wallet to accept it (#94): paste the `offer1…` code, or
+// drag-and-drop an `.offer`/text file containing it. Both feed the SAME inspect→take path.
+test('accept an offer by PASTING the offer1… code', async ({ page }) => {
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-take').click();
+  await page.getByTestId('trade-take-input').fill('offer1qqqexampleofferstringqqq');
+  await page.getByTestId('trade-take-review-btn').click();
+  await page.getByTestId('trade-take-review').waitFor();
+  await page.locator('[data-testid="trade-summary-get"]:has-text("XCH")').waitFor();
+});
+
+test('accept an offer by DROPPING an .offer file onto the dropzone', async ({ page }) => {
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-take').click();
+  const dropzone = page.getByTestId('trade-take-dropzone');
+  await dropzone.waitFor();
+  // Playwright has no native drag-drop-a-file API for a non-<input> dropzone — dispatch a real
+  // DragEvent carrying a DataTransfer + File, exactly what a user's OS file drag produces.
+  await dropzone.dispatchEvent('drop', {
+    dataTransfer: await page.evaluateHandle(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(['offer1qqqexampleofferstringqqq'], 'my-trade.offer', { type: 'text/plain' }));
+      return dt;
+    }),
+  });
+  await page.getByTestId('trade-take-review').waitFor();
+  await page.locator('[data-testid="trade-summary-get"]:has-text("XCH")').waitFor();
 });
 
 // Framing-failure fallback: an unreachable/refused embed → the blocked note (never a blank frame).
