@@ -347,15 +347,22 @@ export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft:
   );
 }
 
-/** The NFT preview: an inline `data:` image where CSP allows, else a deterministic monogram tile. */
+/**
+ * The NFT preview: the resolved image (`data:` inline, or a remote `http(s)`/gateway-rewritten
+ * `ipfs://` URL — #150) when one is known AND has not failed to load, else a deterministic monogram
+ * tile. A remote image that 404s / times out / errors falls back to the monogram via `onerror`
+ * (`erroredSrc`) rather than showing a broken-image icon.
+ */
 export function NftMedia({ nft, imageSrc, big = false }: { nft: WalletNft; imageSrc: string | null; big?: boolean }) {
+  const [erroredSrc, setErroredSrc] = useState<string | null>(null);
   const side = big ? 96 : '100%';
-  if (imageSrc) {
+  if (imageSrc && imageSrc !== erroredSrc) {
     return (
       <img
         src={imageSrc}
         alt=""
         data-testid="nft-image"
+        onError={() => setErroredSrc(imageSrc)}
         style={{ width: side, height: big ? 96 : 'auto', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 10, background: 'var(--dig-surface, #f2f2f7)' }}
       />
     );
