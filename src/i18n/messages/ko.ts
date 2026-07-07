@@ -95,6 +95,7 @@ export const ko: Record<string, string> = {
   'wallet.view.activity': '활동',
   'wallet.view.trade': '거래',
   'wallet.portfolio.total': '총 잔액',
+  'wallet.balance.swapUnit': '잔액 단위 전환',
   'wallet.fiat.unavailable': '법정 화폐 가치를 사용할 수 없습니다',
   'wallet.fiat.loading': '가격 불러오는 중',
   'wallet.portfolio.unavailable': '가치를 사용할 수 없습니다',

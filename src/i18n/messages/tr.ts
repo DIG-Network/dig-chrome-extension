@@ -95,6 +95,7 @@ export const tr: Record<string, string> = {
   'wallet.view.activity': 'Etkinlik',
   'wallet.view.trade': 'Takas',
   'wallet.portfolio.total': 'Toplam bakiye',
+  'wallet.balance.swapUnit': 'Bakiye birimini değiştir',
   'wallet.fiat.unavailable': 'Fiat değeri kullanılamıyor',
   'wallet.fiat.loading': 'Fiyat yükleniyor',
   'wallet.portfolio.unavailable': 'Değer kullanılamıyor',

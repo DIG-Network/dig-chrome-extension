@@ -14,17 +14,19 @@ const dig = (bal: number | null): AssetBalance => ({
 });
 
 describe('portfolio helpers', () => {
-  it('picks XCH as the hero when present', () => {
-    expect(pickHeroBalance([xch(2_510_000_000_000), dig(1000)])).toEqual({ amountLabel: '2.51', ticker: 'XCH' });
+  it('picks XCH as the hero when present, carrying its own asset row for USD conversion (#156)', () => {
+    const xchRow = xch(2_510_000_000_000);
+    expect(pickHeroBalance([xchRow, dig(1000)])).toEqual({ amountLabel: '2.51', ticker: 'XCH', asset: xchRow });
   });
 
   it('falls back to the first known balance when XCH is unavailable', () => {
-    expect(pickHeroBalance([xch(null), dig(1000)])).toEqual({ amountLabel: '1', ticker: '$DIG' });
+    const digRow = dig(1000);
+    expect(pickHeroBalance([xch(null), digRow])).toEqual({ amountLabel: '1', ticker: '$DIG', asset: digRow });
   });
 
-  it('renders an em dash when nothing is known', () => {
-    expect(pickHeroBalance([xch(null)])).toEqual({ amountLabel: '—', ticker: 'XCH' });
-    expect(pickHeroBalance(undefined)).toEqual({ amountLabel: '—', ticker: 'XCH' });
+  it('renders an em dash when nothing is known, with no asset row to price', () => {
+    expect(pickHeroBalance([xch(null)])).toEqual({ amountLabel: '—', ticker: 'XCH', asset: null });
+    expect(pickHeroBalance(undefined)).toEqual({ amountLabel: '—', ticker: 'XCH', asset: null });
   });
 
   it('reports empty when no asset carries a non-zero balance', () => {
