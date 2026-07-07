@@ -597,4 +597,10 @@ export const vi: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Xóa',
   'wallet.switcher.active.badge': 'Đang dùng',
   'wallet.switcher.lock': 'Khóa ví',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': 'Chỉ số {index}',
+  'wallet.index.prev': 'Chỉ số trước',
+  'wallet.index.next': 'Chỉ số tiếp theo',
+  'wallet.index.jump': 'Đi đến chỉ số',
+  'wallet.index.error': 'Không thể chuyển chỉ số. Vui lòng thử lại.',
 };

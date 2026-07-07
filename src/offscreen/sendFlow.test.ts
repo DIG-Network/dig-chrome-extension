@@ -45,22 +45,30 @@ beforeAll(async () => {
   chia = (await loadChiaWasmNode()) as unknown as TestWasm;
 });
 
-describe('buildKeyring', () => {
-  it('derives both-scheme synthetic keys matching the golden puzzle hashes', async () => {
+describe('buildKeyring (single active index, #165)', () => {
+  it('derives EXACTLY the both-scheme pair for the requested index — no multi-index sweep', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(flow(), seed, { count: 3 });
-    expect(ring).toHaveLength(6); // 3 unhardened + 3 hardened
-    const unh = ring.slice(0, 3);
-    expect(unh.map((k) => k.puzzleHashHex)).toEqual(golden.unhardened.map((g) => g.puzzleHashHex));
+    const ring = buildKeyring(flow(), seed, { index: 0 });
+    expect(ring).toHaveLength(2); // unhardened + hardened at index 0 only
+    expect(ring[0].puzzleHashHex).toBe(golden.unhardened[0].puzzleHashHex);
+    expect(ring[1].puzzleHashHex).toBe(golden.hardened[0].puzzleHashHex);
     // each entry's synthetic public key matches the golden synthetic pk
-    expect(chia.toHex(unh[0].pk.toBytes()).replace(/^0x/i, '')).toBe(golden.unhardened[0].syntheticPkHex);
+    expect(chia.toHex(ring[0].pk.toBytes()).replace(/^0x/i, '')).toBe(golden.unhardened[0].syntheticPkHex);
+  });
+
+  it('a different index derives that index only, matching its own golden vector', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { index: 2 });
+    expect(ring).toHaveLength(2);
+    expect(ring[0].puzzleHashHex).toBe(golden.unhardened[2].puzzleHashHex);
+    expect(ring[1].puzzleHashHex).toBe(golden.hardened[2].puzzleHashHex);
   });
 });
 
 describe('prepareXchSend → signAndBundle (Simulator-validated)', () => {
   it('builds + signs a send the Simulator accepts, funding a seed-derived address', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(flow(), seed, { count: 2 });
+    const ring = buildKeyring(flow(), seed, { index: 0 });
     const ph0 = ring[0].puzzleHashHex;
 
     const sim = new chia.Simulator();
@@ -85,7 +93,7 @@ describe('prepareXchSend → signAndBundle (Simulator-validated)', () => {
       recipient,
       amount: 250_000_000_000n,
       fee: 1_000_000n,
-      gapLimit: 2,
+      activeIndex: 0,
     });
     expect(prepared.summary.sent).toBe('250000000000');
     expect(prepared.summary.fee).toBe('1000000');
@@ -99,7 +107,7 @@ describe('prepareXchSend → signAndBundle (Simulator-validated)', () => {
 describe('prepareXchSend coin selection (#91)', () => {
   it('uses ONLY the hand-picked coins when selectedCoinIds is given', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(flow(), seed, { count: 2 });
+    const ring = buildKeyring(flow(), seed, { index: 0 });
     const ph0 = ring[0].puzzleHashHex;
     const sim = new chia.Simulator();
     const coinA = sim.newCoin(chia.fromHex(ph0), 1_000_000_000_000n);
@@ -114,7 +122,7 @@ describe('prepareXchSend coin selection (#91)', () => {
       recipient,
       amount: 100_000_000_000n,
       fee: 0n,
-      gapLimit: 2,
+      activeIndex: 0,
       selectedCoinIds: [idA],
     });
     const inputIds = prepared.coinSpends.map((cs) => chia.toHex(cs.coin.coinId()).replace(/^0x/i, '').toLowerCase());
@@ -124,12 +132,12 @@ describe('prepareXchSend coin selection (#91)', () => {
 
   it('throws when the selection matches no owned coin', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(flow(), seed, { count: 2 });
+    const ring = buildKeyring(flow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
     await expect(
-      prepareXchSend(flow(), simChain(sim), { seed, recipient, amount: 1000n, fee: 0n, gapLimit: 2, selectedCoinIds: ['ab'.repeat(32)] }),
+      prepareXchSend(flow(), simChain(sim), { seed, recipient, amount: 1000n, fee: 0n, activeIndex: 0, selectedCoinIds: ['ab'.repeat(32)] }),
     ).rejects.toThrow(/NO_SELECTED_COINS/);
   });
 });
@@ -153,7 +161,7 @@ function simChain(sim: SimHandle): ChainClient {
 describe('prepareCatSend (Simulator-validated)', () => {
   it('issues a CAT to a seed-derived address, reconstructs it, and sends it', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(flow(), seed, { count: 2 });
+    const ring = buildKeyring(flow(), seed, { index: 0 });
     const ph0 = ring[0].puzzleHashHex;
     const key0 = ring[0];
 
@@ -179,7 +187,7 @@ describe('prepareCatSend (Simulator-validated)', () => {
     // Reconstruct + send the CAT via the production flow.
     const chain = simChain(sim);
     const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
-    const prepared = await prepareCatSend(flow(), chain, { seed, assetId: assetIdHex, recipient, amount: 400n, fee: 0n, gapLimit: 2 });
+    const prepared = await prepareCatSend(flow(), chain, { seed, assetId: assetIdHex, recipient, amount: 400n, fee: 0n, activeIndex: 0 });
     expect(prepared.summary.asset).toBe(assetIdHex);
     expect(prepared.summary.sent).toBe('400');
 

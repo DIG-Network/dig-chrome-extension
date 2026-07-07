@@ -129,8 +129,23 @@ import { DIG_ERR } from './error-codes';
  * asset (verified against both the reference `chia-wallet-sdk` driver and Sage: neither models a
  * `dids` offer leg — see `offers.ts`'s module doc). Requesting a SPECIFIC NFT (buying) is a tracked
  * follow-up (needs a "read any NFT by launcher id" chain capability this wallet doesn't have yet).
+ *
+ * v19 (#165 single active derivation index model): the browser wallet operates on ONE HD derivation
+ * index at a time (default 0) instead of a multi-index gap-limit sweep — full multi-index HD scanning
+ * (both schemes across a gap limit) is too intensive for a browser wallet and was the root of the
+ * wallet's load/timeout problems (#148/#154). Added `setActiveIndex` (navigate the active wallet's
+ * active index — prev/next/jump; a pure SW registry op, persisted per wallet, like `renameWallet`).
+ * Every derivation-touching request/response gained an `activeIndex?: number` field (replacing the
+ * retired `gapLimit`): `getReceiveAddress`, `getCustodyBalances` (via `scanBalances`), `getActivity`,
+ * `listNfts`, `listDids`, `listCoins`, `prepareSend`, `prepareSplit`, `prepareCombine`,
+ * `prepareNftTransfer`, `prepareNftMint`, `prepareDidCreate`, `prepareDidTransfer`,
+ * `prepareDidProfileUpdate`, `prepareNftDidAssign`, `makeOffer`, `prepareTrade` — each now derives
+ * ONLY the active index's puzzle hashes (both HD schemes — a tiny fixed set, one cheap coinset query),
+ * never a gap-limit range. `getLockState`'s response also gained `activeIndex` (the active wallet's
+ * current index) so the navigator UI hydrates from the same poll that already drives lock state.
+ * #160 (configurable scan-index count) is SUPERSEDED — there is no multi-index scan left to size.
  */
-export const MESSAGE_PROTOCOL_VERSION = 18;
+export const MESSAGE_PROTOCOL_VERSION = 19;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -183,6 +198,8 @@ export const ACTIONS = Object.freeze({
   switchWallet: 'switchWallet',
   renameWallet: 'renameWallet',
   removeWallet: 'removeWallet',
+  // ── single active derivation index (#165): navigate the active wallet's active index ──
+  setActiveIndex: 'setActiveIndex',
   getReceiveAddress: 'getReceiveAddress',
   getCustodyBalances: 'getCustodyBalances',
   prepareSend: 'prepareSend',
@@ -381,9 +398,9 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: '{ mnemonic:string } | { success:false, code:\'UNLOCK_FAILED\', message }',
   },
   [ACTIONS.getLockState]: {
-    summary: "Report the wallet lock state: 'none' (no wallet), 'locked' (wallet exists, key not in memory / TTL expired), or 'unlocked'.",
+    summary: "Report the wallet lock state: 'none' (no wallet), 'locked' (wallet exists, key not in memory / TTL expired), or 'unlocked'. Also carries the active wallet's active HD derivation index (#165) so the index navigator hydrates from this same poll.",
     request: '{ action }',
-    response: "{ lockState:'none'|'locked'|'unlocked', activeWalletId?:string, unlockExpiry?:number }",
+    response: "{ lockState:'none'|'locked'|'unlocked', activeWalletId?:string, unlockExpiry?:number, activeIndex?:number }",
   },
   [ACTIONS.listWallets]: {
     summary:
@@ -408,13 +425,18 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     request: '{ action, walletId:string }',
     response: "{ success:true, wallets:[{ id, label, createdAt, active }], activeWalletId:string|null, lockState:'locked'|'unlocked' } | { success:false, code:'LAST_WALLET'|'NO_WALLET', message }",
   },
+  [ACTIONS.setActiveIndex]: {
+    summary: 'Single active derivation index (#165): navigate the ACTIVE wallet\'s active HD derivation index (prev/next/jump — the caller computes the target index and sends it absolute). A pure SW registry op (no vault round-trip); persisted per wallet; drops the balance/activity caches (scoped to the previous index).',
+    request: '{ action, index:number }',
+    response: "{ success:true, activeIndex:number } | { success:false, code:'NO_WALLET', message }",
+  },
   [ACTIONS.getReceiveAddress]: {
-    summary: 'Derive the wallet\'s pooled receive address (index 0, unhardened) in the offscreen vault. Requires an unlocked wallet.',
+    summary: 'Derive the wallet\'s receive address for the ACTIVE HD derivation index (unhardened, #165) in the offscreen vault. Requires an unlocked wallet.',
     request: '{ action }',
     response: "{ address:string } | { success:false, code:'LOCKED'|..., message }",
   },
   [ACTIONS.getCustodyBalances]: {
-    summary: 'Scan pooled self-custody balances (both HD schemes) from coinset for XCH + watched CATs. Cached to walletCache.balances; returns the cached snapshot on a transient scan failure.',
+    summary: 'Scan self-custody balances (both HD schemes) AT THE ACTIVE INDEX (#165) from coinset for XCH + watched CATs. Cached to walletCache.balances; returns the cached snapshot on a transient scan failure.',
     request: '{ action }',
     response: "{ balances:{ xch:number, cats:{ [assetId]:number } }, cached?:boolean } | { success:false, code, message }",
   },

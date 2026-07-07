@@ -597,4 +597,10 @@ export const ru: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Удалить',
   'wallet.switcher.active.badge': 'Активен',
   'wallet.switcher.lock': 'Заблокировать кошелёк',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': 'Индекс {index}',
+  'wallet.index.prev': 'Предыдущий индекс',
+  'wallet.index.next': 'Следующий индекс',
+  'wallet.index.jump': 'Перейти к индексу',
+  'wallet.index.error': 'Не удалось переключить индекс. Попробуйте ещё раз.',
 };

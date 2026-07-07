@@ -597,4 +597,10 @@ export const ko: Record<string, string> = {
   'wallet.switcher.remove.confirm': '삭제',
   'wallet.switcher.active.badge': '사용 중',
   'wallet.switcher.lock': '지갑 잠금',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': '인덱스 {index}',
+  'wallet.index.prev': '이전 인덱스',
+  'wallet.index.next': '다음 인덱스',
+  'wallet.index.jump': '인덱스로 이동',
+  'wallet.index.error': '인덱스를 전환할 수 없습니다. 다시 시도해 주세요.',
 };

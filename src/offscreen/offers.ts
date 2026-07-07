@@ -325,7 +325,7 @@ export interface MadeOffer {
 export async function makeOffer(
   chia: OfferWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; offered: OfferLeg; requested: OfferLeg; fee?: bigint; gapLimit?: number; additionalDataHex?: string },
+  opts: { seed: Uint8Array; offered: OfferLeg; requested: OfferLeg; fee?: bigint; activeIndex?: number; additionalDataHex?: string },
 ): Promise<MadeOffer> {
   if (opts.offered.asset.kind === opts.requested.asset.kind && opts.offered.asset.kind === 'xch') {
     throw new Error('SAME_ASSET: cannot trade XCH for XCH');
@@ -341,7 +341,7 @@ export async function makeOffer(
   }
   const fee = opts.fee ?? 0n;
   const additionalData = opts.additionalDataHex ?? MAINNET_AGG_SIG_ME;
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
   const receivePh = bytes(chia, keyring[0].puzzleHashHex); // requested payment + change → index-0
   const settleHash = chia.Constants.settlementPaymentHash();
@@ -552,7 +552,7 @@ export interface PreparedTrade {
 export async function takeOffer(
   chia: OfferWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; offerStr: string; fee?: bigint; gapLimit?: number; additionalDataHex?: string },
+  opts: { seed: Uint8Array; offerStr: string; fee?: bigint; activeIndex?: number; additionalDataHex?: string },
 ): Promise<PreparedTrade> {
   const fee = opts.fee ?? 0n;
   const additionalData = opts.additionalDataHex ?? MAINNET_AGG_SIG_ME;
@@ -562,7 +562,7 @@ export async function takeOffer(
   const requested = parseRequested(chia, clvm, phantom);
   const offered = offeredSettlementLegs(chia, clvm, decoded, real);
 
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
   const receivePh = bytes(chia, keyring[0].puzzleHashHex);
   const settleHex = asHex(chia, chia.Constants.settlementPaymentHash());
@@ -638,7 +638,7 @@ export async function takeOffer(
 export async function cancelOffer(
   chia: OfferWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; offerStr: string; fee?: bigint; gapLimit?: number; additionalDataHex?: string },
+  opts: { seed: Uint8Array; offerStr: string; fee?: bigint; activeIndex?: number; additionalDataHex?: string },
 ): Promise<PreparedTrade> {
   const fee = opts.fee ?? 0n;
   const additionalData = opts.additionalDataHex ?? MAINNET_AGG_SIG_ME;
@@ -646,7 +646,7 @@ export async function cancelOffer(
   const clvm = new chia.Clvm();
   const { real } = splitDecoded(chia, decoded);
 
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
   const receivePh = bytes(chia, keyring[0].puzzleHashHex);
   const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));

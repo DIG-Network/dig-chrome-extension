@@ -30,7 +30,7 @@ import {
   entropyToMnemonic,
   mnemonicToSeed,
 } from '@/lib/keystore/bip39';
-import { scanBalances, receiveAddress, DEFAULT_GAP_LIMIT, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
+import { scanBalances, receiveAddress, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
 import { deriveAccounts } from '@/lib/keystore/derive';
 import type { ChainClient, ChainCoin } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
@@ -169,8 +169,11 @@ export interface VaultRequest {
   record?: Digwx1Record;
   /** Watched CAT asset ids (TAILs) to scan for balances. */
   watchedCats?: string[];
-  /** HD scan gap limit per scheme. */
-  gapLimit?: number;
+  /**
+   * The wallet's single ACTIVE HD derivation index (§165 — the single active-index model). Every
+   * derive/scan/send op derives ONLY this index (both schemes) — never a multi-index sweep. Default 0.
+   */
+  activeIndex?: number;
   /** Send: recipient bech32m address. */
   recipient?: string;
   /** Send: amount + fee in base units (mojos), as decimal strings. */
@@ -363,7 +366,7 @@ export class Vault {
         case 'getVaultState':
           return { success: true, hasKey: this.hasKey() };
         case 'getReceiveAddress':
-          return await this.getReceiveAddress(deps);
+          return await this.getReceiveAddress(req, deps);
         case 'scanBalances':
           return await this.scanBalances(req, deps);
         case 'prepareSend':
@@ -521,11 +524,11 @@ export class Vault {
     return mnemonicToSeed(entropyToMnemonic(entropy));
   }
 
-  private async getReceiveAddress(deps: VaultDeps): Promise<VaultResponse> {
+  private async getReceiveAddress(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'derivation unavailable' };
     const seed = await this.heldSeed();
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
-    return { success: true, address: receiveAddress(deps.chia, seed) };
+    return { success: true, address: receiveAddress(deps.chia, seed, req.activeIndex ?? 0) };
   }
 
   private async scanBalances(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
@@ -535,7 +538,7 @@ export class Vault {
     const balances = await scanBalances(deps.chia, deps.chain, {
       seed,
       ...(req.watchedCats ? { watchedCats: req.watchedCats } : {}),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     return { success: true, balances };
   }
@@ -560,7 +563,7 @@ export class Vault {
           recipient: req.recipient,
           amount: BigInt(req.amount),
           fee: BigInt(req.fee ?? '0'),
-          ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+          activeIndex: req.activeIndex ?? 0,
           ...selection,
         })
       : await prepareXchSend(chia, deps.chain, {
@@ -568,7 +571,7 @@ export class Vault {
           recipient: req.recipient,
           amount: BigInt(req.amount),
           fee: BigInt(req.fee ?? '0'),
-          ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+          activeIndex: req.activeIndex ?? 0,
           ...selection,
         });
     const pendingId = crypto.randomUUID();
@@ -608,7 +611,7 @@ export class Vault {
     const idx = await indexActivity(deps.chia as unknown as ActivityWasm, deps.chain, {
       seed,
       ...(req.watchedCats ? { watchedCats: req.watchedCats } : {}),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
       ...(req.sinceHeight ? { sinceHeight: req.sinceHeight } : {}),
     });
     return { success: true, events: idx.events, cursorHeight: idx.cursorHeight };
@@ -625,7 +628,7 @@ export class Vault {
       offered: toLeg(req.offered),
       requested: toLeg(req.requested),
       ...(req.fee ? { fee: BigInt(req.fee) } : {}),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     return { success: true, offer: made.offer, offerSummary: toWireSummary(made.summary) };
   }
@@ -652,7 +655,7 @@ export class Vault {
       seed,
       offerStr: req.offerStr,
       ...(req.fee ? { fee: BigInt(req.fee) } : {}),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     const pendingId = crypto.randomUUID();
     this.pendingTrades.set(pendingId, { bundle: prepared.bundle, inputCoinId: prepared.inputCoinId });
@@ -677,7 +680,7 @@ export class Vault {
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const nfts = await listNfts(deps.chia as unknown as NftWasm, deps.chain, {
       seed,
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     return { success: true, nfts };
   }
@@ -698,7 +701,7 @@ export class Vault {
       launcherId: req.launcherId,
       recipient: req.recipient,
       fee: BigInt(req.fee ?? '0'),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => (deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b).replace(/^0x/i, '').toLowerCase();
@@ -733,7 +736,7 @@ export class Vault {
       ...(m.royaltyBasisPoints != null ? { royaltyBasisPoints: m.royaltyBasisPoints } : {}),
       ...(m.royaltyAddress ? { royaltyAddress: m.royaltyAddress } : {}),
       fee: BigInt(m.fee ?? '0'),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
@@ -749,7 +752,7 @@ export class Vault {
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const dids = await listDids(deps.chia as unknown as DidWasm, deps.chain, {
       seed,
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     return { success: true, dids };
   }
@@ -767,7 +770,7 @@ export class Vault {
     const prepared = await prepareDidCreate(chia, deps.chain, {
       seed,
       fee: BigInt(req.fee ?? '0'),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
@@ -792,7 +795,7 @@ export class Vault {
       launcherId: req.launcherId,
       recipient: req.recipient,
       fee: BigInt(req.fee ?? '0'),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
@@ -816,7 +819,7 @@ export class Vault {
       launcherId: req.launcherId,
       profileName: req.profileName,
       fee: BigInt(req.fee ?? '0'),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
@@ -840,7 +843,7 @@ export class Vault {
       nftLauncherId: req.launcherId,
       didLauncherId: req.didLauncherId,
       fee: BigInt(req.fee ?? '0'),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
@@ -861,7 +864,7 @@ export class Vault {
     const coins = await buildCoinList(deps.chia as unknown as CoinsWasm, deps.chain, {
       seed,
       ...(req.assetId ? { assetId: req.assetId } : {}),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     return { success: true, coins };
   }
@@ -883,7 +886,7 @@ export class Vault {
       coinIds: req.coinIds,
       outputs: req.outputs,
       fee: BigInt(req.fee ?? '0'),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     return this.holdCoinOp(chia, prepared);
   }
@@ -904,7 +907,7 @@ export class Vault {
       ...(req.assetId ? { assetId: req.assetId } : {}),
       coinIds: req.coinIds,
       fee: BigInt(req.fee ?? '0'),
-      ...(req.gapLimit ? { gapLimit: req.gapLimit } : {}),
+      activeIndex: req.activeIndex ?? 0,
     });
     return this.holdCoinOp(chia, prepared);
   }
@@ -918,22 +921,22 @@ export class Vault {
   }
 
   /**
-   * Derive the wallet's HD keyring (both schemes to `gapLimit`) — the standard puzzle hashes +
-   * synthetic public/secret keys a dApp request is decoded against and signed with. Offscreen-only
-   * (holds the seed). Returns `null` when locked / no wasm.
+   * Derive the wallet's HD keyring at the ACTIVE index (both schemes, §165) — the standard puzzle
+   * hashes + synthetic public/secret keys a dApp request is decoded against and signed with.
+   * Offscreen-only (holds the seed). Returns `null` when locked / no wasm.
    */
-  private async heldKeyring(deps: VaultDeps, gapLimit?: number): Promise<ReturnType<typeof buildKeyring> | null> {
+  private async heldKeyring(deps: VaultDeps, activeIndex?: number): Promise<ReturnType<typeof buildKeyring> | null> {
     if (!deps.chia) return null;
     const seed = await this.heldSeed();
     if (!seed) return null;
-    return buildKeyring(deps.chia as unknown as SendFlowWasm, seed, { count: gapLimit ?? 20 });
+    return buildKeyring(deps.chia as unknown as SendFlowWasm, seed, { index: activeIndex ?? 0 });
   }
 
   /** The wallet's synthetic public keys (hex, deduped) — CHIP-0002 `getPublicKeys` for a dApp. */
   private async getPublicKeys(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'derivation unavailable' };
     if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
-    const keyring = await this.heldKeyring(deps, req.gapLimit);
+    const keyring = await this.heldKeyring(deps, req.activeIndex);
     if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const publicKeys = [...new Set(keyring.map((k) => strip0x(deps.chia!.toHex(k.pk.toBytes()))))];
     return { success: true, publicKeys };
@@ -942,16 +945,17 @@ export class Vault {
   /**
    * The wallet's UNSPENT coins for one asset — XCH at the derived inner (p2) puzzle hashes, or a CAT
    * at its CAT puzzle hash (`catPuzzleHash(tail, innerPh)`) over the same inner hashes — both HD
-   * schemes to `gapLimit`. Asset routing is purely by `assetId` (undefined / `'xch'` = native XCH;
-   * any other value = a CAT TAIL), the same rule the send flow uses (regression-guards the #121
-   * asset-drop). Returns `null` when locked / no wasm. Offscreen-only (derives from the held seed).
+   * schemes AT THE ACTIVE INDEX (§165). Asset routing is purely by `assetId` (undefined / `'xch'` =
+   * native XCH; any other value = a CAT TAIL), the same rule the send flow uses (regression-guards
+   * the #121 asset-drop). Returns `null` when locked / no wasm. Offscreen-only (derives from the
+   * held seed).
    */
-  private async heldAssetCoins(deps: VaultDeps, assetId?: string, gapLimit?: number): Promise<ChainCoin[] | null> {
+  private async heldAssetCoins(deps: VaultDeps, assetId?: string, activeIndex?: number): Promise<ChainCoin[] | null> {
     if (!deps.chia || !deps.chain) return null;
     const seed = await this.heldSeed();
     if (!seed) return null;
     const chia = deps.chia;
-    const accounts = deriveAccounts(chia, seed, { schemes: ['unhardened', 'hardened'], count: gapLimit ?? DEFAULT_GAP_LIMIT });
+    const accounts = deriveAccounts(chia, seed, { schemes: ['unhardened', 'hardened'], start: activeIndex ?? 0, count: 1 });
     const innerPhs = accounts.map((a) => a.puzzleHashHex);
     const isCat = !!assetId && assetId.toLowerCase() !== 'xch';
     if (!isCat) return deps.chain.unspentCoins(innerPhs);
@@ -968,7 +972,7 @@ export class Vault {
   private async getAssetBalance(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
     if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
-    const coins = await this.heldAssetCoins(deps, req.assetId, req.gapLimit);
+    const coins = await this.heldAssetCoins(deps, req.assetId, req.activeIndex);
     if (!coins) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const total = coins.reduce((s, c) => s + c.amount, 0n).toString();
     return { success: true, assetBalance: { confirmed: total, spendable: total, spendableCoinCount: coins.length } };
@@ -982,7 +986,7 @@ export class Vault {
   private async getAssetCoins(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
     if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
-    const coins = await this.heldAssetCoins(deps, req.assetId, req.gapLimit);
+    const coins = await this.heldAssetCoins(deps, req.assetId, req.activeIndex);
     if (!coins) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const chia = deps.chia;
     const assetCoins: WireSpendableCoin[] = coins.map((c) => ({
@@ -1006,7 +1010,7 @@ export class Vault {
     if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'decode unavailable' };
     if (!req.coinSpends || req.coinSpends.length === 0) return { success: false, code: 'BAD_REQUEST', message: 'coinSpends required' };
     if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
-    const keyring = await this.heldKeyring(deps, req.gapLimit);
+    const keyring = await this.heldKeyring(deps, req.activeIndex);
     if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const chia = deps.chia as unknown as DappSignWasm;
     const ownPh = keyring.map((k) => k.puzzleHashHex);
@@ -1024,7 +1028,7 @@ export class Vault {
     if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'signing unavailable' };
     if (!req.coinSpends || req.coinSpends.length === 0) return { success: false, code: 'BAD_REQUEST', message: 'coinSpends required' };
     if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
-    const keyring = await this.heldKeyring(deps, req.gapLimit);
+    const keyring = await this.heldKeyring(deps, req.activeIndex);
     if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     try {
       const { signatureHex } = signDappCoinSpends(deps.chia as unknown as DappSignWasm, req.coinSpends, keyring.map((k) => k.sk), MAINNET_AGG_SIG_ME);
@@ -1041,7 +1045,7 @@ export class Vault {
     if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'signing unavailable' };
     if (req.message == null || req.message === '') return { success: false, code: 'BAD_REQUEST', message: 'message required' };
     if (!this.hasKey()) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
-    const keyring = await this.heldKeyring(deps, req.gapLimit);
+    const keyring = await this.heldKeyring(deps, req.activeIndex);
     if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     try {
       const bytes = new TextEncoder().encode(req.message);

@@ -210,7 +210,7 @@ function toWalletNft(chia: NftWasm, nft: NftObj): WalletNft {
 }
 
 /**
- * List the wallet's NFTs. Derives the HD keyring (both schemes to `gapLimit`), finds the coins
+ * List the wallet's NFTs. Derives the HD keyring (both schemes AT THE ACTIVE INDEX, §165), finds the coins
  * hinted to those inner puzzle hashes (coinset `get_coin_records_by_hints`), reconstructs each as an
  * NFT via its parent spend, and keeps those actually owned by the wallet. Deduped by launcher id
  * (the newest coin wins per launcher). Read-only — never signs or broadcasts.
@@ -218,10 +218,10 @@ function toWalletNft(chia: NftWasm, nft: NftObj): WalletNft {
 export async function listNfts(
   chia: NftWasm,
   chain: NftChain,
-  opts: { seed: Uint8Array; gapLimit?: number },
+  opts: { seed: Uint8Array; activeIndex?: number },
 ): Promise<WalletNft[]> {
   if (!chain.coinsByHints) throw new Error('HINT_LOOKUP_UNAVAILABLE: the chain client cannot resolve hints');
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));
   const coins = await chain.coinsByHints([...ownedPhs]);
   const clvm = new chia.Clvm();
@@ -280,10 +280,10 @@ export async function findOwnedNft(
 export async function prepareNftTransfer(
   chia: NftWasm,
   chain: NftChain,
-  opts: { seed: Uint8Array; launcherId: string; recipient: string; fee?: bigint; gapLimit?: number },
+  opts: { seed: Uint8Array; launcherId: string; recipient: string; fee?: bigint; activeIndex?: number },
 ): Promise<PreparedNftTransfer> {
   const fee = opts.fee ?? 0n;
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
   const clvm = new chia.Clvm();
   const nft = await findOwnedNft(chia, chain, clvm, keyring, opts.launcherId);
@@ -387,11 +387,11 @@ export interface NftMintSummary {
 export async function prepareNftMint(
   chia: NftWasm,
   chain: NftChain,
-  opts: { seed: Uint8Array; gapLimit?: number } & NftMintParams,
+  opts: { seed: Uint8Array; activeIndex?: number } & NftMintParams,
 ): Promise<PreparedNftMint> {
   if (!opts.dataUris || opts.dataUris.length === 0) throw new Error('NO_DATA_URI: a mint requires at least one data URI');
   const fee = opts.fee ?? 0n;
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
 
   const xchCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));

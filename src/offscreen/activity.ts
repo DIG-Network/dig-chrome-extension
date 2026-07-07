@@ -1,8 +1,8 @@
 /**
- * Self-custody activity indexer (§4.3) — reconstructs a human-readable transaction ledger from
+ * Self-custody activity indexer (§4.3, §165) — reconstructs a human-readable transaction ledger from
  * coinset (there is no tx-history endpoint). Runs in the offscreen vault (holds the seed + wasm).
- * Read-only: derives the HD puzzle hashes (both schemes) + watched-CAT puzzle hashes, fetches their
- * coin records INCLUDING spent, and:
+ * Read-only: derives the HD puzzle hashes (both schemes) AT THE ACTIVE INDEX + watched-CAT puzzle
+ * hashes, fetches their coin records INCLUDING spent, and:
  *   - RECEIVED: a coin created to us whose parent is NOT one of our coins (change is skipped).
  *   - SENT / TRADE: a coin of ours that was spent → decode its spend's CREATE_COINs; outputs to
  *     others = sent (recipient resolved), outputs to the settlement puzzle = a trade.
@@ -53,11 +53,11 @@ const strip0x = (h: string): string => h.replace(/^0x/i, '').toLowerCase();
 export async function indexActivity(
   chia: ActivityWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; watchedCats?: string[]; gapLimit?: number; sinceHeight?: number; prefix?: string },
+  opts: { seed: Uint8Array; watchedCats?: string[]; activeIndex?: number; sinceHeight?: number; prefix?: string },
 ): Promise<ActivityIndex> {
   const sinceHeight = opts.sinceHeight ?? 0;
   const prefix = opts.prefix ?? 'xch';
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
 
   const xchPhs = new Set(keyring.map((k) => k.puzzleHashHex));
   const catPhToAsset = new Map<string, string>();

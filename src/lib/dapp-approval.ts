@@ -65,7 +65,6 @@ export interface DappApprovalDeps {
   summonWindow(): Promise<void> | void;
   /** Phishing/lookalike assessment for an origin (#67 P0-2). Absent → every origin is treated `ok`. */
   assessOrigin?(origin: string): Promise<OriginRisk> | OriginRisk;
-  gapLimit?: number;
   randomId?: () => string;
 }
 /** One queued approval-gated request (SW-memory only; never sent raw to the window). */
@@ -235,9 +234,11 @@ const defaultId = () => `dapp-${Date.now()}-${++_seq}`;
  * worker. Construct with the injected chrome-facing deps:
  *   - `isOriginApproved(origin) → Promise<boolean>`
  *   - `recordPendingOrigin(origin) → Promise<void>`
- *   - `callVault(request) → Promise<VaultResponse>`   (forwards to the offscreen vault)
+ *   - `callVault(request) → Promise<VaultResponse>`   (forwards to the offscreen vault; the caller
+ *     attaches the CURRENT active derivation index (#165) fresh on every call, so a dApp op always
+ *     reads/spends whichever index is active at call time — never a value captured once at startup)
  *   - `summonWindow() → Promise<void>`                (chrome.windows.create / focus)
- *   - `gapLimit?: number`, `randomId?: () => string`
+ *   - `randomId?: () => string`
  */
 export class DappApprovalManager {
   private deps: DappApprovalDeps;
@@ -303,25 +304,25 @@ export class DappApprovalManager {
         case 'signCoinSpends':
         case 'sendTransaction': {
           // A dApp-built spend/bundle: decode a tamper-resistant summary from the coin spends.
-          const dec = await this.deps.callVault({ op: 'decodeDappSpend', coinSpends: e.params.coinSpends, gapLimit: this.deps.gapLimit });
+          const dec = await this.deps.callVault({ op: 'decodeDappSpend', coinSpends: e.params.coinSpends });
           this.#applyBuild(e, dec, dec && dec.dappSummary);
           break;
         }
         case 'send': {
           // Build (not broadcast) the send in the vault; hold it under a pendingId + show its summary.
-          const prep = await this.deps.callVault({ op: 'prepareSend', recipient: e.params.recipient, amount: e.params.amount, fee: e.params.fee, assetId: e.params.assetId, gapLimit: this.deps.gapLimit });
+          const prep = await this.deps.callVault({ op: 'prepareSend', recipient: e.params.recipient, amount: e.params.amount, fee: e.params.fee, assetId: e.params.assetId });
           this.#applyBuild(e, prep, prep && prep.summary, prep && (prep.pendingId as string | undefined));
           break;
         }
         case 'takeOffer':
         case 'cancelOffer': {
-          const prep = await this.deps.callVault({ op: 'prepareTrade', offerStr: e.params.offerStr, tradeKind: e.kind === 'takeOffer' ? 'take' : 'cancel', fee: e.params.fee, gapLimit: this.deps.gapLimit });
+          const prep = await this.deps.callVault({ op: 'prepareTrade', offerStr: e.params.offerStr, tradeKind: e.kind === 'takeOffer' ? 'take' : 'cancel', fee: e.params.fee });
           this.#applyBuild(e, prep, prep && prep.offerSummary, prep && (prep.pendingId as string | undefined));
           break;
         }
         case 'createOffer': {
           // Build the offer; hold the offer STRING (released to the dApp only on approve) + show its summary.
-          const made = await this.deps.callVault({ op: 'makeOffer', offered: e.params.offered, requested: e.params.requested, fee: e.params.fee, gapLimit: this.deps.gapLimit });
+          const made = await this.deps.callVault({ op: 'makeOffer', offered: e.params.offered, requested: e.params.requested, fee: e.params.fee });
           if (made && made.success !== false && made.offerSummary) {
             e.summary = made.offerSummary;
             e.built = { offer: made.offer as string | undefined };
@@ -432,19 +433,19 @@ export class DappApprovalManager {
       return ok({ address: r.address });
     }
     if (norm === 'chip0002_getPublicKeys') {
-      const r = await this.deps.callVault({ op: 'getPublicKeys', gapLimit: this.deps.gapLimit });
+      const r = await this.deps.callVault({ op: 'getPublicKeys' });
       if (!r || r.success === false) return this.#lockedOr(r);
       return ok(r.publicKeys);
     }
     if (norm === 'chip0002_getAssetBalance') {
       // Asset routing by assetId (any CAT, or native XCH) — forwarded to the vault verbatim so a CAT
       // is never silently treated as XCH (#121 regression guard lives in the vault + this forwarding).
-      const r = await this.deps.callVault({ op: 'getAssetBalance', assetId: extractAssetId(params), gapLimit: this.deps.gapLimit });
+      const r = await this.deps.callVault({ op: 'getAssetBalance', assetId: extractAssetId(params) });
       if (!r || r.success === false) return this.#lockedOr(r);
       return ok(r.assetBalance);
     }
     if (norm === 'chip0002_getAssetCoins') {
-      const r = await this.deps.callVault({ op: 'getAssetCoins', assetId: extractAssetId(params), gapLimit: this.deps.gapLimit });
+      const r = await this.deps.callVault({ op: 'getAssetCoins', assetId: extractAssetId(params) });
       if (!r || r.success === false) return this.#lockedOr(r);
       return ok(r.assetCoins);
     }
@@ -455,7 +456,7 @@ export class DappApprovalManager {
       return ok(coins);
     }
     if (norm === 'chia_getNfts') {
-      const r = await this.deps.callVault({ op: 'listNfts', gapLimit: this.deps.gapLimit });
+      const r = await this.deps.callVault({ op: 'listNfts' });
       if (!r || r.success === false) return this.#lockedOr(r);
       return ok(r.nfts);
     }
@@ -516,14 +517,14 @@ export class DappApprovalManager {
   async #performApproved(entry: QueueEntry): Promise<BrokerEnvelope> {
     switch (entry.kind) {
       case 'signCoinSpends': {
-        const res = await this.deps.callVault({ op: 'signDappSpend', coinSpends: entry.params.coinSpends, gapLimit: this.deps.gapLimit });
+        const res = await this.deps.callVault({ op: 'signDappSpend', coinSpends: entry.params.coinSpends });
         if (!res || res.success === false) {
           return err(res && res.code === 'MISSING_KEY' ? 401 : 502, (res && res.message) || 'signing failed');
         }
         return ok(res.signature);
       }
       case 'signMessage': {
-        const res = await this.deps.callVault({ op: 'signMessage', message: entry.params.message as string, publicKey: entry.params.publicKey, gapLimit: this.deps.gapLimit });
+        const res = await this.deps.callVault({ op: 'signMessage', message: entry.params.message as string, publicKey: entry.params.publicKey });
         if (!res || res.success === false) return this.#lockedOr(res);
         return ok({ signature: res.signature, publicKey: res.signerPublicKey });
       }

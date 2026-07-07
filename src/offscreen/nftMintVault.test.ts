@@ -56,7 +56,7 @@ async function unlockedVault(): Promise<{ vault: Vault; seed: Uint8Array }> {
 describe('Vault NFT minting (#92)', () => {
   it('prepareNftMint builds a mint held under a pending id, with a decode-from-spend summary', async () => {
     const { vault, seed } = await unlockedVault();
-    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 2 });
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 5_000_000_000_000n);
     const chain = simChain(sim);
@@ -65,7 +65,7 @@ describe('Vault NFT minting (#92)', () => {
       {
         op: 'prepareNftMint',
         nftMint: { dataUris: ['https://example.test/img.png'], royaltyBasisPoints: 250, fee: '0' },
-        gapLimit: 2,
+        activeIndex: 0,
       },
       { chia: chia as never, chain },
     );

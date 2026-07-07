@@ -58,12 +58,12 @@ async function unlockedVault(): Promise<{ vault: Vault; seed: Uint8Array }> {
 describe('Vault coin control (#91)', () => {
   it('listCoins returns the wallet XCH coins with amount + confirmed height', async () => {
     const { vault, seed } = await unlockedVault();
-    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 4 });
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1000n);
     sim.newCoin(chia.fromHex(ring[1].puzzleHashHex), 2000n);
 
-    const res = await vault.handle({ op: 'listCoins', gapLimit: 4 }, { chia: chia as never, chain: simChain(sim) });
+    const res = await vault.handle({ op: 'listCoins', activeIndex: 0 }, { chia: chia as never, chain: simChain(sim) });
     expect(res.success).toBe(true);
     expect(res.coins).toHaveLength(2);
     expect(res.coins?.map((c) => c.amount).sort()).toEqual(['1000', '2000']);
@@ -72,12 +72,12 @@ describe('Vault coin control (#91)', () => {
 
   it('prepareSplit builds a split held under a pending id with a decode-from-spend summary', async () => {
     const { vault, seed } = await unlockedVault();
-    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 8 });
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 9000n);
     const id = hx(sim.unspentCoins(chia.fromHex(ring[0].puzzleHashHex), false)[0].coinId());
 
-    const res = await vault.handle({ op: 'prepareSplit', coinIds: [id], outputs: 3, fee: '0', gapLimit: 8 }, { chia: chia as never, chain: simChain(sim) });
+    const res = await vault.handle({ op: 'prepareSplit', coinIds: [id], outputs: 3, fee: '0', activeIndex: 0 }, { chia: chia as never, chain: simChain(sim) });
     expect(res.success).toBe(true);
     expect(res.pendingId).toBeTruthy();
     expect(res.coinOpSummary?.kind).toBe('split');
@@ -91,14 +91,14 @@ describe('Vault coin control (#91)', () => {
 
   it('prepareCombine builds a one-coin consolidation for a CAT (asset preserved — #121)', async () => {
     const { vault, seed } = await unlockedVault();
-    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 8 });
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 5_000_000_000_000n);
     const tail = issueCatTo(chia, chia as unknown as SigningWasm, sim, ring, 1000n);
     // Split into two CAT coins first, then combine — via the vault helpers directly for the coin set.
     const chain = simChain(sim);
-    const catList = await vault.handle({ op: 'listCoins', assetId: tail, gapLimit: 8 }, { chia: chia as never, chain });
-    const split = await vault.handle({ op: 'prepareSplit', assetId: tail, coinIds: [catList.coins![0].coinId], outputs: 2, fee: '0', gapLimit: 8 }, { chia: chia as never, chain });
+    const catList = await vault.handle({ op: 'listCoins', assetId: tail, activeIndex: 0 }, { chia: chia as never, chain });
+    const split = await vault.handle({ op: 'prepareSplit', assetId: tail, coinIds: [catList.coins![0].coinId], outputs: 2, fee: '0', activeIndex: 0 }, { chia: chia as never, chain });
     // Broadcast the split into the sim via its (self) signing to materialize two coins is covered in
     // coins.test.ts; here we assert the combine BUILD over two live coins routes as the CAT.
     expect(split.coinOpSummary?.asset).toBe(tail);
@@ -106,7 +106,7 @@ describe('Vault coin control (#91)', () => {
 
   it('prepareSend honours a hand-picked coin selection (only the chosen coin funds it)', async () => {
     const { vault, seed } = await unlockedVault();
-    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 4 });
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
     const sim = new chia.Simulator();
     const a = sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     sim.newCoin(chia.fromHex(ring[1].puzzleHashHex), 2_000_000_000_000n);

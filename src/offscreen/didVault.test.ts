@@ -57,12 +57,12 @@ async function unlockedVault(): Promise<{ vault: Vault; seed: Uint8Array }> {
 describe('Vault DID management (#93)', () => {
   it('prepareDidCreate builds a DID held under a pending id, with a decode-from-spend summary', async () => {
     const { vault, seed } = await unlockedVault();
-    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 2 });
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     const chain = simChain(sim);
 
-    const res = await vault.handle({ op: 'prepareDidCreate', gapLimit: 2 }, { chia: chia as never, chain });
+    const res = await vault.handle({ op: 'prepareDidCreate', activeIndex: 0 }, { chia: chia as never, chain });
     expect(res.success).toBe(true);
     expect(res.pendingId).toBeTruthy();
     expect(res.launcherId).toMatch(/^[0-9a-f]{64}$/);
@@ -91,10 +91,10 @@ describe('Vault DID management (#93)', () => {
 
   it('listDids returns the wallet DIDs (empty when none held)', async () => {
     const { vault, seed } = await unlockedVault();
-    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 2 });
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
-    const res = await vault.handle({ op: 'listDids', gapLimit: 2 }, { chia: chia as never, chain: simChain(sim) });
+    const res = await vault.handle({ op: 'listDids', activeIndex: 0 }, { chia: chia as never, chain: simChain(sim) });
     expect(res.success).toBe(true);
     expect(res.dids).toEqual([]);
   });

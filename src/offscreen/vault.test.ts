@@ -251,7 +251,7 @@ describe('Vault dApp RPC ops (#56 §5.5)', () => {
 
   it('getPublicKeys returns the wallet synthetic public keys (both schemes)', async () => {
     const v = await goldenWallet();
-    const res = await v.handle({ op: 'getPublicKeys', gapLimit: 3 }, { ...deps, chia });
+    const res = await v.handle({ op: 'getPublicKeys', activeIndex: 0 }, { ...deps, chia });
     expect(res.success).toBe(true);
     expect(res.publicKeys).toContain(golden.unhardened[0].syntheticPkHex);
     expect(res.publicKeys).toContain(golden.hardened[0].syntheticPkHex);
@@ -259,7 +259,7 @@ describe('Vault dApp RPC ops (#56 §5.5)', () => {
 
   it('decodeDappSpend classifies an own coin spend as self + owned signer', async () => {
     const v = await goldenWallet();
-    const res = await v.handle({ op: 'decodeDappSpend', coinSpends: goldenOwnedWire(), gapLimit: 3 }, { ...deps, chia });
+    const res = await v.handle({ op: 'decodeDappSpend', coinSpends: goldenOwnedWire(), activeIndex: 0 }, { ...deps, chia });
     expect(res.success).toBe(true);
     expect(res.dappSummary?.coinCount).toBe(1);
     expect(res.dappSummary?.inputs[0].isSelf).toBe(true);
@@ -270,21 +270,21 @@ describe('Vault dApp RPC ops (#56 §5.5)', () => {
 
   it('signDappSpend signs an own coin spend (returns a 96-byte signature)', async () => {
     const v = await goldenWallet();
-    const res = await v.handle({ op: 'signDappSpend', coinSpends: goldenOwnedWire(), gapLimit: 3 }, { ...deps, chia });
+    const res = await v.handle({ op: 'signDappSpend', coinSpends: goldenOwnedWire(), activeIndex: 0 }, { ...deps, chia });
     expect(res.success).toBe(true);
     expect(res.signature).toMatch(/^[0-9a-f]{192}$/);
   });
 
   it('signDappSpend fails MISSING_KEY on a foreign spend the wallet cannot sign', async () => {
     const v = await goldenWallet();
-    const res = await v.handle({ op: 'signDappSpend', coinSpends: foreignWire(), gapLimit: 3 }, { ...deps, chia });
+    const res = await v.handle({ op: 'signDappSpend', coinSpends: foreignWire(), activeIndex: 0 }, { ...deps, chia });
     expect(res.success).toBe(false);
     expect(res.code).toBe('MISSING_KEY');
   });
 
   it('signMessage signs and reports the signer public key', async () => {
     const v = await goldenWallet();
-    const res = await v.handle({ op: 'signMessage', message: 'hello dig', gapLimit: 3 }, { ...deps, chia });
+    const res = await v.handle({ op: 'signMessage', message: 'hello dig', activeIndex: 0 }, { ...deps, chia });
     expect(res.success).toBe(true);
     expect(res.signature).toMatch(/^[0-9a-f]{192}$/);
     expect(res.signerPublicKey).toMatch(/^[0-9a-f]{96}$/);
@@ -318,20 +318,37 @@ describe('Vault balance + address ops', () => {
     coinRecords: async () => [],
   });
 
-  it('derives the pooled receive address for the held wallet', async () => {
+  it('derives the active index (default 0) receive address for the held wallet', async () => {
     const v = await unlockedZerosWallet();
     const res = await v.handle({ op: 'getReceiveAddress' }, { ...deps, chia });
     expect(res.success).toBe(true);
     expect(res.address).toBe(golden.unhardened[0].address);
   });
 
-  it('scans XCH + CAT balances for the held wallet', async () => {
+  it('navigating the active index (#165) changes the receive address', async () => {
+    const v = await unlockedZerosWallet();
+    const res = await v.handle({ op: 'getReceiveAddress', activeIndex: 1 }, { ...deps, chia });
+    expect(res.success).toBe(true);
+    expect(res.address).toBe(golden.unhardened[1].address);
+    expect(res.address).not.toBe(golden.unhardened[0].address);
+  });
+
+  it('scans XCH + CAT balances for the held wallet at the active index', async () => {
     const v = await unlockedZerosWallet();
     const res = await v.handle(
-      { op: 'scanBalances', gapLimit: 5 },
+      { op: 'scanBalances', activeIndex: 0 },
       { ...deps, chia, chain: chain({ [golden.unhardened[0].puzzleHashHex]: 2_000_000_000_000 }) },
     );
     expect(res.balances?.xch).toBe(2_000_000_000_000);
+  });
+
+  it('scanBalances at a non-active index does not see index-0 funds — no multi-index sweep (#165)', async () => {
+    const v = await unlockedZerosWallet();
+    const res = await v.handle(
+      { op: 'scanBalances', activeIndex: 1 },
+      { ...deps, chia, chain: chain({ [golden.unhardened[0].puzzleHashHex]: 2_000_000_000_000 }) },
+    );
+    expect(res.balances?.xch).toBe(0);
   });
 
   it('returns LOCKED when no key is held', async () => {
@@ -462,7 +479,7 @@ describe('Vault trade ops', () => {
   it('makeOffer builds an offer1… string + two-sided summary; inspectOffer round-trips it', async () => {
     const v = await unlockedZerosWallet();
     const chain = tradeChain();
-    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, gapLimit: 2 }, { ...deps, chia, chain });
+    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, activeIndex: 0 }, { ...deps, chia, chain });
     expect(made.success).toBe(true);
     expect(made.offer?.startsWith('offer1')).toBe(true);
     expect(made.offerSummary?.offered[0]).toEqual({ asset: { kind: 'xch' }, amount: '100000000000' });
@@ -477,8 +494,8 @@ describe('Vault trade ops', () => {
   it('prepareTrade(cancel) → confirmTrade broadcasts a self-spend; a second confirm is NO_PENDING', async () => {
     const v = await unlockedZerosWallet();
     const chain = tradeChain();
-    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, gapLimit: 2 }, { ...deps, chia, chain });
-    const prep = await v.handle({ op: 'prepareTrade', offerStr: made.offer!, tradeKind: 'cancel', gapLimit: 2 }, { ...deps, chia, chain });
+    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, activeIndex: 0 }, { ...deps, chia, chain });
+    const prep = await v.handle({ op: 'prepareTrade', offerStr: made.offer!, tradeKind: 'cancel', activeIndex: 0 }, { ...deps, chia, chain });
     expect(prep.success).toBe(true);
     expect(prep.pendingId).toBeTruthy();
     const conf = await v.handle({ op: 'confirmTrade', pendingId: prep.pendingId }, { ...deps, chia, chain });
@@ -491,8 +508,8 @@ describe('Vault trade ops', () => {
   it('lock clears pending trades', async () => {
     const v = await unlockedZerosWallet();
     const chain = tradeChain();
-    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, gapLimit: 2 }, { ...deps, chia, chain });
-    const prep = await v.handle({ op: 'prepareTrade', offerStr: made.offer!, tradeKind: 'cancel', gapLimit: 2 }, { ...deps, chia, chain });
+    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, activeIndex: 0 }, { ...deps, chia, chain });
+    const prep = await v.handle({ op: 'prepareTrade', offerStr: made.offer!, tradeKind: 'cancel', activeIndex: 0 }, { ...deps, chia, chain });
     v.lock();
     const conf = await v.handle({ op: 'confirmTrade', pendingId: prep.pendingId }, { ...deps, chia, chain });
     expect(conf.code).toBe('NO_PENDING');
@@ -501,7 +518,7 @@ describe('Vault trade ops', () => {
   it('guards: BAD_REQUEST / LOCKED / CHAIN_UNAVAILABLE / WASM_UNAVAILABLE / NO_PENDING', async () => {
     const v = await unlockedZerosWallet();
     const chain = tradeChain();
-    expect((await v.handle({ op: 'makeOffer', gapLimit: 2 }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
+    expect((await v.handle({ op: 'makeOffer', activeIndex: 0 }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
     expect((await v.handle({ op: 'inspectOffer' }, { ...deps, chia })).code).toBe('BAD_REQUEST');
     expect((await v.handle({ op: 'prepareTrade', tradeKind: 'take' }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
     expect((await v.handle({ op: 'makeOffer', ...offerXchForCat }, { ...deps, chia })).code).toBe('CHAIN_UNAVAILABLE');
@@ -555,21 +572,21 @@ describe('Vault dApp asset ops (getAssetBalance / getAssetCoins)', () => {
 
   it('getAssetBalance sums the wallet\'s unspent XCH coins (confirmed = spendable, with a count)', async () => {
     const v = await unlockedZerosWallet();
-    const res = await v.handle({ op: 'getAssetBalance', gapLimit: 5 }, { ...deps, chia, chain: assetChain() });
+    const res = await v.handle({ op: 'getAssetBalance', activeIndex: 0 }, { ...deps, chia, chain: assetChain() });
     expect(res.success).toBe(true);
     expect(res.assetBalance).toEqual({ confirmed: '2500000000000', spendable: '2500000000000', spendableCoinCount: 2 });
   });
 
   it('getAssetBalance routes a CAT assetId to its CAT puzzle hash (asset-generic, guards #121)', async () => {
     const v = await unlockedZerosWallet();
-    const res = await v.handle({ op: 'getAssetBalance', assetId: CAT, gapLimit: 5 }, { ...deps, chia, chain: assetChain() });
+    const res = await v.handle({ op: 'getAssetBalance', assetId: CAT, activeIndex: 0 }, { ...deps, chia, chain: assetChain() });
     expect(res.success).toBe(true);
     expect(res.assetBalance).toEqual({ confirmed: '250', spendable: '250', spendableCoinCount: 1 });
   });
 
   it('getAssetCoins returns the wallet\'s spendable coins (coin identity + name, unlocked)', async () => {
     const v = await unlockedZerosWallet();
-    const res = await v.handle({ op: 'getAssetCoins', gapLimit: 5 }, { ...deps, chia, chain: assetChain() });
+    const res = await v.handle({ op: 'getAssetCoins', activeIndex: 0 }, { ...deps, chia, chain: assetChain() });
     expect(res.success).toBe(true);
     expect(res.assetCoins?.length).toBe(2);
     const c0 = res.assetCoins![0];
@@ -582,7 +599,7 @@ describe('Vault dApp asset ops (getAssetBalance / getAssetCoins)', () => {
 
   it('getAssetCoins routes a CAT assetId to its CAT coins', async () => {
     const v = await unlockedZerosWallet();
-    const res = await v.handle({ op: 'getAssetCoins', assetId: CAT, gapLimit: 5 }, { ...deps, chia, chain: assetChain() });
+    const res = await v.handle({ op: 'getAssetCoins', assetId: CAT, activeIndex: 0 }, { ...deps, chia, chain: assetChain() });
     expect(res.success).toBe(true);
     expect(res.assetCoins?.length).toBe(1);
     expect(res.assetCoins![0].coin.amount).toBe('250');

@@ -66,7 +66,7 @@ function simChain(sim: SimHandle): ChainClient {
 describe('indexActivity', () => {
   it('reconstructs a received + a sent XCH event from chain', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 2 });
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
     const ph0 = ring[0].puzzleHashHex;
 
     const sim = new chia.Simulator();
@@ -87,7 +87,7 @@ describe('indexActivity', () => {
     sim.newTransaction(new chia.SpendBundle(built.coinSpends, sig));
     sim.createBlock();
 
-    const { events, cursorHeight } = await indexActivity(chia as unknown as ActivityWasm, simChain(sim), { seed, gapLimit: 2 });
+    const { events, cursorHeight } = await indexActivity(chia as unknown as ActivityWasm, simChain(sim), { seed, activeIndex: 0 });
 
     const recv = events.find((e) => e.kind === 'received');
     const sent = events.find((e) => e.kind === 'sent');
@@ -104,7 +104,21 @@ describe('indexActivity', () => {
   it('returns no events for an unused wallet', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
     const sim = new chia.Simulator();
-    const { events } = await indexActivity(chia as unknown as ActivityWasm, simChain(sim), { seed, gapLimit: 2 });
+    const { events } = await indexActivity(chia as unknown as ActivityWasm, simChain(sim), { seed, activeIndex: 0 });
     expect(events).toEqual([]);
+  });
+
+  it('does not surface activity at a non-active index — no multi-index sweep (#165)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring1 = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 1 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring1[0].puzzleHashHex), 1_000_000_000_000n); // funds at index 1
+    sim.createBlock();
+
+    const { events } = await indexActivity(chia as unknown as ActivityWasm, simChain(sim), { seed, activeIndex: 0 });
+    expect(events).toEqual([]); // index 0 is active — index 1's coin is invisible
+
+    const atIndex1 = await indexActivity(chia as unknown as ActivityWasm, simChain(sim), { seed, activeIndex: 1 });
+    expect(atIndex1.events).toHaveLength(1); // navigating to index 1 makes it visible
   });
 });

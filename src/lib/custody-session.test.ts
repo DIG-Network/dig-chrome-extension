@@ -40,6 +40,7 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'switchWallet',
       'renameWallet',
       'removeWallet',
+      'setActiveIndex',
       'prepareSend',
       'confirmSend',
       'sendStatus',
@@ -144,6 +145,8 @@ test('isSessionRenewingAction: real wallet activity renews; a status check or lo
   assert.ok(isSessionRenewingAction('confirmSend'));
   assert.ok(isSessionRenewingAction('getActivity'));
   assert.ok(isSessionRenewingAction('listWallets'));
+  // Navigating the active derivation index (#165) is real wallet use too.
+  assert.ok(isSessionRenewingAction('setActiveIndex'));
 });
 
 test('shouldApplyRenewal: an explicit lock racing a still-in-flight activity call always wins (#155)', () => {
@@ -228,8 +231,8 @@ test('deriveLockState: keystore + key in vault + fresh TTL → unlocked', () => 
 test('computeLockSnapshot: no keystore → none, purely from storage (never needs the vault)', () => {
   // The regression case: even with a stale/fresh expiry and an active id lingering, no blob = none.
   assert.deepEqual(
-    computeLockSnapshot({ hasKeystore: false, activeWalletId: 'main', unlockExpiry: 9e12, now: 100 }),
-    { lockState: LOCK_STATE.NONE, activeWalletId: null, unlockExpiry: null },
+    computeLockSnapshot({ hasKeystore: false, activeWalletId: 'main', unlockExpiry: 9e12, activeIndex: 5, now: 100 }),
+    { lockState: LOCK_STATE.NONE, activeWalletId: null, unlockExpiry: null, activeIndex: 0 },
   );
 });
 
@@ -250,6 +253,18 @@ test('computeLockSnapshot: keystore + expired unlock session → locked', () => 
 test('computeLockSnapshot: keystore + fresh unlock session → unlocked (carries id + expiry)', () => {
   assert.deepEqual(
     computeLockSnapshot({ hasKeystore: true, activeWalletId: 'main', unlockExpiry: 200, now: 100 }),
-    { lockState: LOCK_STATE.UNLOCKED, activeWalletId: 'main', unlockExpiry: 200 },
+    { lockState: LOCK_STATE.UNLOCKED, activeWalletId: 'main', unlockExpiry: 200, activeIndex: 0 },
   );
+});
+
+// ── Active derivation index in the snapshot (#165) ──
+test('computeLockSnapshot: carries the active wallet\'s active derivation index when unlocked', () => {
+  assert.deepEqual(
+    computeLockSnapshot({ hasKeystore: true, activeWalletId: 'main', unlockExpiry: 200, activeIndex: 7, now: 100 }),
+    { lockState: LOCK_STATE.UNLOCKED, activeWalletId: 'main', unlockExpiry: 200, activeIndex: 7 },
+  );
+});
+
+test('computeLockSnapshot: activeIndex defaults to 0 when omitted', () => {
+  assert.equal(computeLockSnapshot({ hasKeystore: true, unlockExpiry: 200, now: 100 }).activeIndex, 0);
 });

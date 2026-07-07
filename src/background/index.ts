@@ -50,7 +50,6 @@ import {
   BALANCES_CACHE_KEY,
   ACTIVITY_CACHE_KEY,
   LOCK_STATE,
-  SCAN_GAP_LIMIT,
   isCustodyAction,
   isSessionRenewingAction,
   shouldApplyRenewal,
@@ -75,6 +74,7 @@ import {
   toMeta,
   normalizeLabel,
   defaultLabel,
+  setWalletActiveIndex,
 } from '@/lib/wallet-registry';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from '@/lib/wallet-assets';
@@ -854,6 +854,22 @@ async function clearActiveWalletCaches() {
   try { await chrome.storage.local.remove([BALANCES_CACHE_KEY, ACTIVITY_CACHE_KEY]); } catch { /* ignore */ }
 }
 
+/**
+ * Read the ACTIVE wallet's active HD derivation index (#165 — the single active-index model)
+ * directly from storage. A light read (no full migration/normalization like {@link loadRegistry}),
+ * so it's cheap to call on every wallet read/send op — every one of them derives ONLY this index
+ * (both schemes), never a multi-index sweep. Defaults to 0 (no wallet / entry not found).
+ */
+async function activeDerivationIndex() {
+  const [active, wl] = await Promise.all([
+    chrome.storage.local.get(ACTIVE_WALLET_KEY),
+    chrome.storage.local.get(WALLETS_KEY),
+  ]);
+  const wallets = Array.isArray(wl[WALLETS_KEY]) ? wl[WALLETS_KEY] : [];
+  const entry = findWallet(wallets, active[ACTIVE_WALLET_KEY] || null);
+  return entry?.activeIndex ?? 0;
+}
+
 /** Start (or extend) the unlock window: persist the non-secret expiry + arm the auto-lock alarm. */
 async function startUnlockWindow() {
   const ttl = resolveTtlMinutes(await readWalletSettings());
@@ -877,17 +893,24 @@ async function lockVaultNow() {
  * offscreen document) resolves instantly to `none` → onboarding, instead of hanging on "Loading
  * wallet" (#68). Auto-lock (TTL sweep alarm + idle) independently zeroizes the vault when the
  * unlock window lapses, so a lapsed TTL reads as `locked` here without needing a vault call.
+ * Also carries the active wallet's active derivation index (#165) so the index navigator hydrates
+ * from this SAME poll — another light storage read, still no vault round-trip.
  */
 async function getLockStateSnapshot() {
-  const [record, sess, active] = await Promise.all([
+  const [record, sess, active, wl] = await Promise.all([
     readKeystore(),
     chrome.storage.session.get(UNLOCK_EXPIRY_KEY),
     chrome.storage.local.get(ACTIVE_WALLET_KEY),
+    chrome.storage.local.get(WALLETS_KEY),
   ]);
+  const activeWalletId = active[ACTIVE_WALLET_KEY] || null;
+  const wallets = Array.isArray(wl[WALLETS_KEY]) ? wl[WALLETS_KEY] : [];
+  const activeEntry = findWallet(wallets, activeWalletId);
   return computeLockSnapshot({
     hasKeystore: !!record,
-    activeWalletId: active[ACTIVE_WALLET_KEY] || null,
+    activeWalletId,
     unlockExpiry: sess[UNLOCK_EXPIRY_KEY] || null,
+    activeIndex: activeEntry?.activeIndex ?? 0,
     now: Date.now(),
   });
 }
@@ -936,7 +959,7 @@ async function handleCustodyActionInner(message) {
       const label = normalizeLabel(message.label, defaultLabel(state.wallets.length + 1));
       const res = await callVault({ op: 'createWallet', walletId, password: message.password, label, strong: message.strong });
       if (!res || res.success === false) return res || { success: false, code: 'CUSTODY_ERROR', message: 'create failed' };
-      const entry = { id: walletId, label, record: res.record, createdAt: Date.now() };
+      const entry = { id: walletId, label, record: res.record, createdAt: Date.now(), activeIndex: 0 };
       await persistRegistry({ wallets: addWallet(state.wallets, entry), activeId: walletId, keystore: res.record });
       await clearActiveWalletCaches();
       await startUnlockWindow();
@@ -949,7 +972,7 @@ async function handleCustodyActionInner(message) {
       const label = normalizeLabel(message.label, defaultLabel(state.wallets.length + 1));
       const res = await callVault({ op: 'importWallet', walletId, mnemonic: message.mnemonic, password: message.password, label, strong: message.strong });
       if (!res || res.success === false) return res || { success: false, code: 'CUSTODY_ERROR', message: 'import failed' };
-      const entry = { id: walletId, label, record: res.record, createdAt: Date.now() };
+      const entry = { id: walletId, label, record: res.record, createdAt: Date.now(), activeIndex: 0 };
       await persistRegistry({ wallets: addWallet(state.wallets, entry), activeId: walletId, keystore: res.record });
       await clearActiveWalletCaches();
       await startUnlockWindow();
@@ -1024,8 +1047,21 @@ async function handleCustodyActionInner(message) {
       await clearActiveWalletCaches();
       return { success: true, wallets: toMeta(wallets, activeId), activeWalletId: activeId, lockState };
     }
+    case ACTIONS.setActiveIndex: {
+      // Navigate the ACTIVE wallet's active HD derivation index (#165 — prev/next/jump). A pure SW
+      // registry op (like renameWallet) — no vault round-trip, no key involved. Every derived view
+      // (balances/assets/NFTs/DIDs/activity/receive) is scoped to this index, so the caches (keyed
+      // to the PREVIOUS index) must be dropped.
+      const state = await loadRegistry();
+      if (!state.activeId) return { success: false, code: 'NO_WALLET', message: 'no wallet' };
+      const wallets = setWalletActiveIndex(state.wallets, state.activeId, message.index);
+      await persistRegistry({ wallets, activeId: state.activeId, keystore: activeRecord(wallets, state.activeId) });
+      await clearActiveWalletCaches();
+      const entry = findWallet(wallets, state.activeId);
+      return { success: true, activeIndex: entry ? entry.activeIndex : 0 };
+    }
     case ACTIONS.getReceiveAddress:
-      return callVault({ op: 'getReceiveAddress' });
+      return callVault({ op: 'getReceiveAddress', activeIndex: await activeDerivationIndex() });
     case ACTIONS.getCustodyBalances: {
       const settings = await readWalletSettings();
       const coinsetUrl = resolveCoinsetUrl(settings);
@@ -1033,7 +1069,7 @@ async function handleCustodyActionInner(message) {
       // Auto-discovery surfaces every held CAT; the watch list is the explicit override, and the
       // built-in $DIG is always queried directly so its balance resolves even if held as un-hinted change.
       const watchedCats = [...new Set([DIG_ASSET_ID.toLowerCase(), ...parseWatchedCats(watchedRaw).map((c) => c.assetId)])];
-      const res = await callVault({ op: 'scanBalances', watchedCats, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      const res = await callVault({ op: 'scanBalances', watchedCats, activeIndex: await activeDerivationIndex(), coinsetUrl });
       if (res && res.success !== false && res.balances) {
         await chrome.storage.local.set({ [BALANCES_CACHE_KEY]: { balances: res.balances, at: Date.now() } });
         return { balances: res.balances, cached: false };
@@ -1047,7 +1083,8 @@ async function handleCustodyActionInner(message) {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       // Forward assetId (#121): the vault decides native-XCH vs CAT purely from it; dropping it
       // silently sent a selected token as native XCH. The mapping is a pure, unit-tested helper.
-      return callVault(prepareSendVaultRequest(message, coinsetUrl));
+      // Sends spend FROM the active index (#165); change returns to it (sendFlow.ts).
+      return callVault({ ...prepareSendVaultRequest(message, coinsetUrl), activeIndex: await activeDerivationIndex() });
     }
     case ACTIONS.confirmSend: {
       // The ONLY place a real spend is broadcast — reached only after the user approves in the UI.
@@ -1077,7 +1114,7 @@ async function handleCustodyActionInner(message) {
     }
     case ACTIONS.makeOffer: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'makeOffer', offered: message.offered, requested: message.requested, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'makeOffer', offered: message.offered, requested: message.requested, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.inspectOffer: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
@@ -1085,7 +1122,7 @@ async function handleCustodyActionInner(message) {
     }
     case ACTIONS.prepareTrade: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareTrade', offerStr: message.offerStr, tradeKind: message.tradeKind, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'prepareTrade', offerStr: message.offerStr, tradeKind: message.tradeKind, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.confirmTrade: {
       // The ONLY place a prepared trade is broadcast — reached only after the user approves in the UI.
@@ -1096,11 +1133,11 @@ async function handleCustodyActionInner(message) {
     }
     case ACTIONS.listNfts: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'listNfts', gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'listNfts', activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.prepareNftTransfer: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareNftTransfer', launcherId: message.launcherId, recipient: message.recipient, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'prepareNftTransfer', launcherId: message.launcherId, recipient: message.recipient, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.confirmNftTransfer: {
       // The ONLY place a prepared NFT transfer is broadcast — reuses the vault confirmSend path.
@@ -1112,7 +1149,7 @@ async function handleCustodyActionInner(message) {
     case ACTIONS.prepareNftMint: {
       // Build (not broadcast) a new-NFT mint (#92): CHIP-0007 metadata + royalty; held for approval.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareNftMint', nftMint: message.nftMint, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'prepareNftMint', nftMint: message.nftMint, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.confirmNftMint: {
       // The ONLY place a prepared NFT mint is broadcast — reuses the vault confirmSend path.
@@ -1123,12 +1160,12 @@ async function handleCustodyActionInner(message) {
     }
     case ACTIONS.listDids: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'listDids', gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'listDids', activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.prepareDidCreate: {
       // Build (not broadcast) a new "simple" DID (#93); held for approval.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareDidCreate', fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'prepareDidCreate', fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.confirmDidCreate: {
       // The ONLY place a prepared DID create is broadcast — reuses the vault confirmSend path.
@@ -1139,7 +1176,7 @@ async function handleCustodyActionInner(message) {
     }
     case ACTIONS.prepareDidTransfer: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareDidTransfer', launcherId: message.launcherId, recipient: message.recipient, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'prepareDidTransfer', launcherId: message.launcherId, recipient: message.recipient, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.confirmDidTransfer: {
       // The ONLY place a prepared DID transfer is broadcast — reuses the vault confirmSend path.
@@ -1150,7 +1187,7 @@ async function handleCustodyActionInner(message) {
     }
     case ACTIONS.prepareDidProfileUpdate: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareDidProfileUpdate', launcherId: message.launcherId, profileName: message.profileName, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'prepareDidProfileUpdate', launcherId: message.launcherId, profileName: message.profileName, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.confirmDidProfileUpdate: {
       // The ONLY place a prepared DID profile update is broadcast — reuses the vault confirmSend path.
@@ -1161,7 +1198,7 @@ async function handleCustodyActionInner(message) {
     }
     case ACTIONS.prepareNftDidAssign: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareNftDidAssign', launcherId: message.launcherId, didLauncherId: message.didLauncherId, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'prepareNftDidAssign', launcherId: message.launcherId, didLauncherId: message.didLauncherId, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.confirmNftDidAssign: {
       // The ONLY place a prepared NFT↔DID assignment is broadcast — reuses the vault confirmSend path.
@@ -1173,15 +1210,15 @@ async function handleCustodyActionInner(message) {
     case ACTIONS.listCoins: {
       // Read-only per-asset coin listing (coin control #91). Routed on assetId (#121).
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'listCoins', assetId: message.assetId, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'listCoins', assetId: message.assetId, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.prepareSplit: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareSplit', assetId: message.assetId, coinIds: message.coinIds, outputs: message.outputs, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'prepareSplit', assetId: message.assetId, coinIds: message.coinIds, outputs: message.outputs, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     case ACTIONS.prepareCombine: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'prepareCombine', assetId: message.assetId, coinIds: message.coinIds, fee: message.fee, gapLimit: SCAN_GAP_LIMIT, coinsetUrl });
+      return callVault({ op: 'prepareCombine', assetId: message.assetId, coinIds: message.coinIds, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
     default:
       return { success: false, code: 'CUSTODY_ERROR', message: 'unknown custody action' };
@@ -1276,13 +1313,13 @@ refreshPhishingBlocklist();
 const dappApproval = new DappApprovalManager({
   isOriginApproved: (o) => isOriginApproved(chrome.storage.local, o),
   recordPendingOrigin: (o) => recordPendingOrigin(o),
-  // Attach the resolved coinset endpoint to EVERY dApp vault call — the asset-generic reads
-  // (getAssetBalance/getAssetCoins) + the write build/broadcast ops need chain access; ops that
-  // ignore coinsetUrl are unaffected. (§5.3 node ladder — the coinset URL is the read endpoint.)
-  callVault: async (req) => callVault({ ...req, coinsetUrl: resolveCoinsetUrl(await readWalletSettings()) }),
+  // Attach the resolved coinset endpoint + the CURRENT active derivation index (#165) to EVERY dApp
+  // vault call, read fresh on each call (never captured once at construction) — the user may
+  // navigate the active index via prev/next while the SW is alive, and a dApp request must always
+  // operate on whichever index is active AT CALL TIME, not whatever was active when the SW booted.
+  callVault: async (req) => callVault({ ...req, coinsetUrl: resolveCoinsetUrl(await readWalletSettings()), activeIndex: await activeDerivationIndex() }),
   summonWindow: () => summonApprovalWindow(),
   assessOrigin: (o) => assessOriginNow(o),
-  gapLimit: SCAN_GAP_LIMIT,
   randomId: () => crypto.randomUUID(),
 });
 

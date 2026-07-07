@@ -18,8 +18,6 @@ import type { SigCoinSpend, SigSecretKey } from '@/offscreen/signing';
 
 /** CLVM max cost when running a puzzle to read its output conditions. */
 const MAX_COST = 11_000_000_000n;
-/** Default HD scan gap limit per scheme; also caps how many distinct self addresses a split can use. */
-const DEFAULT_GAP_LIMIT = 20;
 
 const strip0x = (h: string): string => h.replace(/^0x/i, '').toLowerCase();
 
@@ -68,15 +66,16 @@ function catPuzzleHashes(chia: CoinsWasm, keyring: KeyringEntry[], assetIdHex: s
 
 /**
  * List the wallet's UNSPENT coins for one asset — native XCH at the derived inner (p2) puzzle hashes,
- * or a CAT at its CAT puzzle hash over the same inner hashes — both HD schemes to `gapLimit`. Each
- * coin carries its id, amount, and confirmed height. Read-only. Routed purely by `assetId` (#121).
+ * or a CAT at its CAT puzzle hash over the same inner hashes — both HD schemes AT THE ACTIVE INDEX
+ * (§165). Each coin carries its id, amount, and confirmed height. Read-only. Routed purely by
+ * `assetId` (#121).
  */
 export async function listCoins(
   chia: CoinsWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; assetId?: string; gapLimit?: number },
+  opts: { seed: Uint8Array; assetId?: string; activeIndex?: number },
 ): Promise<CoinInfo[]> {
-  const keyring = buildKeyring(chia, opts.seed, { count: opts.gapLimit ?? DEFAULT_GAP_LIMIT });
+  const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const innerPhs = keyring.map((k) => k.puzzleHashHex);
   const phs = isCatAsset(opts.assetId) ? catPuzzleHashes(chia, keyring, opts.assetId as string) : innerPhs;
   const records = await chain.coinRecords(phs, { includeSpent: false });
@@ -204,32 +203,47 @@ function ownPhSets(chia: CoinsWasm, keyring: KeyringEntry[], isCat: boolean, ass
 }
 
 /**
- * SPLIT one or more coins of an asset into `outputs` distinct self coins — e.g. to make change
- * denominations. Amounts divide as evenly as possible (the remainder lands on the last piece), each
- * to a DISTINCT wallet address so no two outputs collide. For XCH the fee comes out of the split
- * amount; for a CAT the amount is conserved (CAT can't pay an XCH fee) and XCH coins fund the fee.
- * Builds only — does NOT sign or broadcast.
+ * Compute `outputs` pairwise-DISTINCT positive amounts summing to `spendable` — e.g. to make change
+ * denominations. Every piece is assigned to the SAME destination puzzle hash (§165 — the single
+ * active-index model has only the active index's own addresses to send change to, not a distinct
+ * address per piece), so amounts must never tie: two CREATE_COINs with the same (puzzle hash, amount)
+ * pair would collide on-chain (identical coin id). Amounts are consecutive integers `base..base+n-2`
+ * plus a strictly-larger final piece absorbing the remainder — provably distinct and positive
+ * whenever `base > 0` (the final piece is always `> base+n-2`, the largest of the others).
+ */
+export function distinctSplitAmounts(spendable: bigint, outputs: number): bigint[] {
+  const n = BigInt(outputs);
+  const triangular = (n * (n - 1n)) / 2n; // 0+1+...+(outputs-2)
+  const base = (spendable - triangular) / n;
+  if (base <= 0n) throw new Error('SPLIT_TOO_SMALL: not enough value to make that many distinct coins');
+  const amounts: bigint[] = [];
+  for (let i = 0; i < outputs - 1; i++) amounts.push(base + BigInt(i));
+  amounts.push(spendable - amounts.reduce((a, b) => a + b, 0n));
+  return amounts;
+}
+
+/**
+ * SPLIT one or more coins of an asset into `outputs` self coins of distinct amounts — e.g. to make
+ * change denominations. All pieces return to the ACTIVE index's own address (§165 — never spreads
+ * across other derivation indexes, which the single-active-index model would then be unable to see).
+ * For XCH the fee comes out of the split amount; for a CAT the amount is conserved (CAT can't pay an
+ * XCH fee) and XCH coins fund the fee. Builds only — does NOT sign or broadcast.
  */
 export async function prepareSplit(
   chia: CoinsWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; assetId?: string; coinIds: string[]; outputs: number; fee: bigint; gapLimit?: number },
+  opts: { seed: Uint8Array; assetId?: string; coinIds: string[]; outputs: number; fee: bigint; activeIndex?: number },
 ): Promise<PreparedCoinOp> {
   const outputs = Math.floor(opts.outputs);
   if (!(outputs >= 2)) throw new Error('SPLIT_MIN_OUTPUTS: split into at least 2 coins');
-  const keyring = buildKeyring(chia, opts.seed, { count: opts.gapLimit ?? DEFAULT_GAP_LIMIT });
-  if (outputs > keyring.length) throw new Error('SPLIT_TOO_MANY: not enough wallet addresses for that many pieces');
+  const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const isCat = isCatAsset(opts.assetId);
 
   const selected = await selectAssetCoins(chia, chain, keyring, isCat, opts.assetId, opts.coinIds);
   if (selected.count === 0) throw new Error('NO_SELECTED_COINS: none of the chosen coins are in this wallet');
 
   const spendable = isCat ? selected.total : selected.total - opts.fee;
-  const base = spendable / BigInt(outputs);
-  if (base <= 0n) throw new Error('SPLIT_TOO_SMALL: not enough value to make that many coins');
-  const amounts: bigint[] = [];
-  for (let i = 0; i < outputs - 1; i++) amounts.push(base);
-  amounts.push(spendable - base * BigInt(outputs - 1));
+  const amounts = distinctSplitAmounts(spendable, outputs);
 
   const clvm = new chia.Clvm() as unknown as DriverClvm;
   const changePh = chia.fromHex(keyring[0].puzzleHashHex);
@@ -243,12 +257,10 @@ export async function prepareSplit(
   }
 
   const assetBytes = isCat ? chia.fromHex(strip0x(opts.assetId as string)) : new Uint8Array();
-  const actionList: unknown[] = amounts.map((amt, i) => {
-    const destPh = chia.fromHex(keyring[i].puzzleHashHex);
-    return isCat
-      ? act.send(act.existing(assetBytes), destPh, amt, clvm.alloc([destPh]))
-      : act.send(act.xch(), destPh, amt, undefined);
-  });
+  const destPh = chia.fromHex(keyring[0].puzzleHashHex); // every piece returns to the active index's own address
+  const actionList: unknown[] = amounts.map((amt) =>
+    isCat ? act.send(act.existing(assetBytes), destPh, amt, clvm.alloc([destPh])) : act.send(act.xch(), destPh, amt, undefined),
+  );
   if (opts.fee > 0n) actionList.push(act.fee(opts.fee));
 
   const coinSpends = finalize(chia, clvm, spends, keyring, actionList);
@@ -272,10 +284,10 @@ export async function prepareSplit(
 export async function prepareCombine(
   chia: CoinsWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; assetId?: string; coinIds: string[]; fee: bigint; gapLimit?: number },
+  opts: { seed: Uint8Array; assetId?: string; coinIds: string[]; fee: bigint; activeIndex?: number },
 ): Promise<PreparedCoinOp> {
   if (opts.coinIds.length < 2) throw new Error('NEED_TWO_COINS: combine needs at least two coins');
-  const keyring = buildKeyring(chia, opts.seed, { count: opts.gapLimit ?? DEFAULT_GAP_LIMIT });
+  const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const isCat = isCatAsset(opts.assetId);
 
   const selected = await selectAssetCoins(chia, chain, keyring, isCat, opts.assetId, opts.coinIds);
