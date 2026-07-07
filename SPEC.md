@@ -969,6 +969,12 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
   (`custodyAssetBalances`) and the Activity ledger (§18.9) both resolve through it, so a token's ticker
   is consistent everywhere it appears (#151 fixed a regression where Activity bypassed this registry
   entirely and showed a hardcoded generic ticker).
+- **XCH icon (#161).** The dexie registry is CAT-only, so the native coin has no registry `iconUrl`.
+  XCH is given a dedicated, BUNDLED icon — the standard Chia Network leaf mark (`src/assets/chia-leaf.png`,
+  sourced from Chia Network's own site assets, not hand-drawn) shipped in the extension bundle so it
+  renders fully offline with no external fetch (unlike CAT icons, which load from
+  `icons.dexie.space`). `custodyAssetBalances` sets it directly on the XCH descriptor, so XCH never
+  falls back to the `AssetBadge` monogram.
 - **Chain source.** The wasm coinset `RpcClient` fetches the configured chain endpoint from the
   offscreen document (extensions bypass CORS). Default `https://api.coinset.org`; an explicit
   `wallet.settings.chainRpcUrl` override wins (§5.3 — a user-facing custom node, settable +

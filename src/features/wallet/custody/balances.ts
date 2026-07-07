@@ -5,6 +5,11 @@ import { resolveCatMeta, type CatMetaMap } from '@/features/wallet/catMetadata';
 import type { AssetDescriptor } from '@/lib/wallet-assets';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { CustodyBalances } from '@/features/wallet/custodyApi';
+// The dexie CAT registry has no entry for the native coin, so XCH gets a dedicated BUNDLED icon
+// (#161) instead of falling back to the `AssetBadge` monogram — the standard Chia Network leaf mark,
+// sourced from chia.net's own site assets (not hand-drawn), shipped locally so it renders offline
+// with no external fetch (unlike CAT icons, which come from icons.dexie.space).
+import chiaLeafUrl from '@/assets/chia-leaf.png';
 
 const strip0x = (h: string | null | undefined): string => String(h ?? '').replace(/^0x/i, '').toLowerCase();
 const DIG_ID = strip0x(DIG_ASSET_ID);
@@ -21,9 +26,10 @@ export interface AssetBalanceOpts {
  * Map a self-custody balance scan → the shared `AssetBalance[]` the wallet UI renders. The CAT set is
  * AUTO-DISCOVERED (#87): every TAIL present in `scan.cats` becomes a row (plus any manually-watched
  * TAIL), enriched with human name/ticker/icon/decimals from the CAT registry and MINUS the user's
- * hidden set. Order: XCH, then the built-in $DIG row (canonical branding; the registry only lends its
- * icon), then the remaining discovered/watched CATs. A missing balance renders as `null` (never a
- * false 0). Pure — the network scan + registry fetch happen upstream; this is the formatting step.
+ * hidden set. Order: XCH (bundled Chia-leaf icon, #161 — the registry has no native-coin entry), then
+ * the built-in $DIG row (canonical branding; the registry only lends its icon), then the remaining
+ * discovered/watched CATs. A missing balance renders as `null` (never a false 0). Pure — the network
+ * scan + registry fetch happen upstream; this is the formatting step.
  */
 export function custodyAssetBalances(
   scan: CustodyBalances['balances'] | undefined,
@@ -37,7 +43,7 @@ export function custodyAssetBalances(
   for (const [k, v] of Object.entries(cats)) byTail[strip0x(k)] = v;
 
   const descriptors: AssetDescriptor[] = [
-    { key: 'xch', ticker: XCH_META.ticker, name: XCH_META.name, decimals: 12, assetId: null, type: null, iconUrl: null },
+    { key: 'xch', ticker: XCH_META.ticker, name: XCH_META.name, decimals: 12, assetId: null, type: null, iconUrl: chiaLeafUrl },
     // $DIG is a built-in row with fixed branding; the registry contributes only its icon.
     { key: 'dig', ticker: DIG_META.ticker, name: DIG_META.name, decimals: 3, assetId: DIG_META.assetId, type: 'cat', iconUrl: registry?.[DIG_ID]?.iconUrl ?? null },
   ];

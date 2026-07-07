@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { custodyAssetBalances } from './balances';
 import { DIG_ASSET_ID } from '@/lib/links';
 import { parseCatRegistry } from '@/features/wallet/catMetadata';
+import chiaLeafUrl from '@/assets/chia-leaf.png';
 
 describe('custodyAssetBalances', () => {
   it('maps XCH + $DIG from a scan onto the shared asset rows', () => {
@@ -11,6 +12,12 @@ describe('custodyAssetBalances', () => {
     expect(xch?.balance).toBe(2_510_000_000_000);
     expect(dig?.balance).toBe(1000);
     expect(xch?.label).toBeTruthy();
+  });
+
+  it('#161 XCH shows the bundled Chia leaf icon, never a monogram fallback', () => {
+    const rows = custodyAssetBalances({ xch: 1_000_000_000_000, cats: {} }, []);
+    const xch = rows.find((r) => r.descriptor.key === 'xch');
+    expect(xch?.descriptor.iconUrl).toBe(chiaLeafUrl);
   });
 
   it('renders null (not 0) for assets absent from the scan', () => {
