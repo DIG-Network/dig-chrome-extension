@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.42.0] - 2026-07-07
+
+### Features
+- **wallet:** NFT offers with CHIP-0011 royalty; drag-and-drop offer accept (#61)
+
 ## [1.41.2] - 2026-07-07
 
 ### Bug Fixes
