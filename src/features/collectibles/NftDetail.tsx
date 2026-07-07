@@ -19,6 +19,7 @@ import {
   shortHex,
 } from '@/features/collectibles/nftDisplay';
 import { getSharedNftImageCache } from '@/features/collectibles/nftImageCache';
+import { NftImageLightbox } from '@/features/collectibles/NftImageLightbox';
 
 const XCH_DECIMALS = 12;
 
@@ -135,7 +136,7 @@ export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft:
       <ViewHeader onBack={onBack} backLabel={<FormattedMessage id="nft.detail.back" />} backTestId="nft-detail-back" />
       <section className="dig-card" aria-labelledby="nft-detail-title">
       <div className="dig-nft-hero" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', margin: '8px 0 14px' }}>
-        <NftMedia nft={nft} imageSrc={imageSrc} big />
+        <NftMedia nft={nft} imageSrc={imageSrc} big enableLightbox />
         <div style={{ minWidth: 0 }}>
           <h2 className="dig-heading dig-mono" id="nft-detail-title" style={{ margin: 0, wordBreak: 'break-all' }}>
             {nftDisplayName(nft)}
@@ -398,13 +399,21 @@ function useCachedNftImageSrc(imageSrc: string | null): string | null {
  * is known AND has not failed to load, else a deterministic monogram tile. An image that 404s / times
  * out / errors (at fetch time, or an `<img onerror>` for a cached-but-corrupt blob) falls back to the
  * monogram (`erroredSrc`) rather than showing a broken-image icon.
+ *
+ * `enableLightbox` (#173, opt-in — the NftDetail hero passes it; the Collectibles grid tile does not,
+ * since its own wrapping `<button>` already navigates to the detail view on click) wraps the resolved
+ * image in a click target that opens an {@link NftImageLightbox} showing the SAME resolved src — no
+ * re-fetch. It only ever applies to a REAL image (this branch), never the monogram fallback below, so
+ * a "no art yet" tile can't open an empty lightbox.
  */
-export function NftMedia({ nft, imageSrc, big = false }: { nft: WalletNft; imageSrc: string | null; big?: boolean }) {
+export function NftMedia({ nft, imageSrc, big = false, enableLightbox = false }: { nft: WalletNft; imageSrc: string | null; big?: boolean; enableLightbox?: boolean }) {
+  const intl = useIntl();
   const cachedSrc = useCachedNftImageSrc(imageSrc);
   const [erroredSrc, setErroredSrc] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const side = big ? 96 : '100%';
   if (cachedSrc && cachedSrc !== erroredSrc) {
-    return (
+    const img = (
       <img
         src={cachedSrc}
         alt=""
@@ -412,6 +421,27 @@ export function NftMedia({ nft, imageSrc, big = false }: { nft: WalletNft; image
         onError={() => setErroredSrc(cachedSrc)}
         style={{ width: side, height: big ? 96 : 'auto', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 10, background: 'var(--dig-surface, #f2f2f7)' }}
       />
+    );
+    if (!enableLightbox) return img;
+    return (
+      <>
+        <button
+          type="button"
+          className="dig-nft-media-trigger"
+          data-testid="nft-image-trigger"
+          aria-label={intl.formatMessage({ id: 'nft.lightbox.trigger' })}
+          onClick={() => setLightboxOpen(true)}
+        >
+          {img}
+        </button>
+        {lightboxOpen && (
+          <NftImageLightbox
+            src={cachedSrc}
+            label={intl.formatMessage({ id: 'nft.lightbox.title' }, { name: nftDisplayName(nft) })}
+            onClose={() => setLightboxOpen(false)}
+          />
+        )}
+      </>
     );
   }
   return (
