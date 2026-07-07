@@ -309,4 +309,66 @@ describe('NftDetail', () => {
     fireEvent.click(back);
     expect(onBack).toHaveBeenCalledTimes(1);
   });
+
+  describe('image lightbox (#173: click the hero image to view it larger)', () => {
+    it('opens an XL lightbox showing the SAME cached image on click — no re-fetch', async () => {
+      mockSw(() => ({ success: true }));
+      const loadSpy = installFakeNftImageCache();
+      renderWithProviders(<NftDetail nft={nft({ dataUris: ['https://ipfs.test/big.png'] })} onBack={() => {}} />);
+      const img = await screen.findByTestId('nft-image');
+      const cachedSrc = img.getAttribute('src');
+      expect(loadSpy).toHaveBeenCalledTimes(1);
+
+      expect(screen.queryByTestId('nft-lightbox')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('nft-image-trigger'));
+
+      expect(screen.getByTestId('nft-lightbox')).toBeInTheDocument();
+      expect(screen.getByTestId('nft-lightbox-image')).toHaveAttribute('src', cachedSrc);
+      expect(loadSpy).toHaveBeenCalledTimes(1); // still 1 — the lightbox reuses the resolved image, no re-fetch
+    });
+
+    it('closes via the close button, the backdrop, and Escape', async () => {
+      mockSw(() => ({ success: true }));
+      renderWithProviders(<NftDetail nft={nft({ dataUris: ['data:image/png;base64,AAA'] })} onBack={() => {}} />);
+      fireEvent.click(await screen.findByTestId('nft-image-trigger'));
+      fireEvent.click(screen.getByTestId('nft-lightbox-close'));
+      expect(screen.queryByTestId('nft-lightbox')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('nft-image-trigger'));
+      fireEvent.mouseDown(screen.getByTestId('nft-lightbox'));
+      expect(screen.queryByTestId('nft-lightbox')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('nft-image-trigger'));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByTestId('nft-lightbox')).not.toBeInTheDocument();
+    });
+
+    it('moves focus into the dialog on open and restores it to the trigger on close', async () => {
+      mockSw(() => ({ success: true }));
+      renderWithProviders(<NftDetail nft={nft({ dataUris: ['data:image/png;base64,AAA'] })} onBack={() => {}} />);
+      const trigger = await screen.findByTestId('nft-image-trigger');
+      trigger.focus(); // real browsers focus a button on click; jsdom's fireEvent.click doesn't, so set it explicitly
+      fireEvent.click(trigger);
+      expect(document.activeElement).toBe(screen.getByRole('dialog'));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it('does not offer a clickable trigger, and never opens an empty lightbox, when the tile shows the monogram fallback', () => {
+      mockSw(() => ({ success: true }));
+      renderWithProviders(<NftDetail nft={nft()} onBack={() => {}} />); // no dataUris → monogram
+      expect(screen.getByTestId('nft-monogram')).toBeInTheDocument();
+      expect(screen.queryByTestId('nft-image-trigger')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('nft-monogram'));
+      expect(screen.queryByTestId('nft-lightbox')).not.toBeInTheDocument();
+    });
+
+    it('has no WCAG violations with the lightbox open', async () => {
+      mockSw(() => ({ success: true }));
+      const { container } = renderWithProviders(<NftDetail nft={nft({ dataUris: ['data:image/png;base64,AAA'] })} onBack={() => {}} />);
+      fireEvent.click(await screen.findByTestId('nft-image-trigger'));
+      expect(screen.getByTestId('nft-lightbox')).toBeInTheDocument();
+      expect((await axe(container, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([]);
+    });
+  });
 });

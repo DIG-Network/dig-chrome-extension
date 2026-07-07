@@ -1481,6 +1481,16 @@ decrypted key never leaves the offscreen vault.
   privacy-conscious opt-out ("render on-chain `data:` art only") is a tracked follow-up. The local
   image cache (#159) reduces this exposure in practice: once an image is cached, every later render
   (grid, detail, a reopened popup) is served from disk with NO further request to the art's host.
+- **Image lightbox (#173).** On the NFT detail view only, `NftMedia`'s resolved hero image (never the
+  monogram fallback) is wrapped in a click target (`enableLightbox` prop — the Collectibles grid tile
+  does not set it, since its own wrapping tile button already opens the detail view) that opens
+  `NftImageLightbox` (`src/features/collectibles/NftImageLightbox.tsx`): an XL modal showing the SAME
+  already-resolved, already-cached (#159) image src fit-to-viewport (`max-width`/`max-height: 92vw`/
+  `92vh`, `object-fit: contain`) with its aspect ratio preserved, centered on a dimmed backdrop — never
+  a re-fetch. Accessible like the Send/Receive `Sheet`: `role="dialog"` + `aria-modal`, focus moves
+  into the dialog on open and is restored to the trigger on close, Tab is trapped within the dialog,
+  Escape closes, and a backdrop click closes (a click on the image itself does not). The entrance
+  transition is skipped under `prefers-reduced-motion: reduce`.
 - **Same-allocator invariant (MUST).** The reconstructed `Nft` carries a `metadata` CLVM `Program`
   bound to the `Clvm` allocator that produced it. It MUST be reconstructed in the SAME `Clvm` that the
   `Spends` driver later consumes (`addNft`), else the wasm traps (`unreachable`) on a cross-arena handle.
