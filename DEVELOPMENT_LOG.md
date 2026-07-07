@@ -345,3 +345,42 @@ should never block a PR; verify the underlying concern (e.g. popup horizontal-ov
 new header control) by design/inspection or via the `e2e/sw/` built-extension harness instead
 (`playwright.sw.config.ts`, no static server / no shared port), and retry the dist-web harness later
 when sibling lanes have quieted down.
+
+## A `position: fixed` modal nested in a mobile screen can be silently trapped — portal it (#170)
+
+Discovered building the NFT-trade picker's XL modal: a `position: fixed` full-screen modal rendered
+INLINE deep in the component tree (rather than portaled to `document.body`) can be silently confined
+to a smaller ancestor box AND stacked below sibling chrome, even though `position: fixed` is supposed
+to be relative to the viewport. Two independent, compounding CSS facts cause it in this codebase:
+
+1. **A non-`none` `transform` on ANY ancestor establishes a new containing block for `position:
+   fixed` descendants** — per spec this includes an ANIMATED transform that is still "in effect"
+   even once its keyframe reaches `transform: none`. `.dig-screen`'s entrance animation
+   (`animation: dig-screen-enter 0.22s ease both;`, `theme.css`) uses `animation-fill-mode: both`,
+   which keeps the animation "in effect" (and its resolved transform reported as
+   `matrix(1, 0, 0, 1, 0, 0)`, NOT the literal `none` keyword) for as long as the element exists —
+   so every screen permanently carries a containing block that traps fixed descendants inside its
+   own (possibly scrolled, possibly off-screen) box instead of the true viewport.
+2. **Equal `z-index` + DOM order beats a high `z-index` on a deeply-nested descendant.**
+   `.dig-app[data-layout='compact'] > *` forces `position: relative; z-index: 1;` onto the compact
+   layout's direct children (header / `.dig-main` / the bottom `TabBar`) by SPECIFICITY (this
+   universal-child selector's specificity beats `.dig-tabbar`'s own `z-index: 5` declaration, and
+   `.dig-main`'s own explicit `position:relative; z-index:1` establishes ITS OWN stacking context).
+   A fixed modal nested inside `.dig-main` is scoped to `.dig-main`'s LOCAL stacking context no
+   matter how high its own `z-index` is — from the OUTER (`.dig-app`) context's point of view, all
+   of `.dig-main`'s content paints at z-index 1 as a single unit, and the bottom `TabBar` (a LATER
+   sibling at the same z-index 1) paints ON TOP of it, intercepting the modal's clicks.
+
+Both are invisible in the compact **popup** (372×600) because the modal's "confined" box happens to
+roughly fill the whole popup anyway — the bug only becomes visually obvious on a **narrow fullscreen
+viewport** (`app.html` resized to a phone width), where the real browser viewport is taller than the
+600px "phone frame" and a confined/mis-stacked modal leaves the real page header/nav floating outside
+it. Any inline `position: fixed` modal (`Sheet`, `NftImageLightbox`) rendered from inside a
+`.dig-screen` carries this same latent risk — `NftPickerModal` (#170) is the first to actually
+render at true viewport-covering size on a narrow width, which is what surfaced it. **Fix: portal the
+modal to `document.body`** (`createPortal` from `react-dom`) instead of relying on ordinary DOM
+nesting — this escapes the ancestor chain for BOTH positioning (containing block) and stacking
+(z-index context) without touching the shared layout CSS other modals still depend on. RTL's `screen`
+queries and Playwright's `page.getByTestId` both search the whole document, so a portaled modal needs
+no test changes. Prefer this pattern for any FUTURE full-screen/XL modal in this codebase; retrofitting
+`Sheet`/`NftImageLightbox` is a tracked follow-up, not yet done.

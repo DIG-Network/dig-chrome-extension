@@ -4,6 +4,7 @@ import { renderWithProviders } from '@/test/harness';
 import { TradePanel } from '@/features/wallet/custody/TradePanel';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { DIG_ASSET_ID } from '@/lib/links';
+import { nftDisplayName } from '@/features/collectibles/nftDisplay';
 
 /** XCH + $DIG assets so the give/get pickers have two distinct legs. */
 function twoAssets() {
@@ -241,6 +242,11 @@ describe('TradePanel — make an NFT (offering a self-custody singleton, #94 —
 
     fireEvent.click(screen.getByTestId('trade-give-kind-nft'));
     await screen.findByTestId('trade-give-nft');
+    fireEvent.click(screen.getByTestId('trade-give-nft-select'));
+    fireEvent.click(await screen.findByTestId(`nft-tile-${nftFixture().launcherId}`));
+    fireEvent.click(screen.getByTestId('nft-picker-confirm'));
+    expect(await screen.findByTestId('trade-give-nft-chosen')).toBeInTheDocument();
+
     fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
     fireEvent.click(screen.getByTestId('trade-make-continue'));
     await screen.findByTestId('trade-make-review');
@@ -266,6 +272,62 @@ describe('TradePanel — make an NFT (offering a self-custody singleton, #94 —
     fireEvent.click(screen.getByTestId('trade-give-kind-currency'));
     expect(screen.getByTestId('trade-give-asset')).toBeInTheDocument();
     expect(screen.queryByTestId('trade-give-nft')).not.toBeInTheDocument();
+  });
+
+  describe('NFT-trade picker — XL modal (#170)', () => {
+    const NFT_A = nftFixture();
+    const NFT_B = { ...nftFixture(), launcherId: 'cd'.repeat(32) };
+
+    it('opens the XL modal picker, and picking a tile shows it as the chosen NFT', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A, NFT_B] } : { success: true }));
+      renderWithProviders(<TradePanel assets={twoAssets()} full />);
+      fireEvent.click(screen.getByTestId('trade-give-kind-nft'));
+      fireEvent.click(await screen.findByTestId('trade-give-nft-select'));
+
+      expect(screen.getByTestId('nft-picker-modal')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      fireEvent.click(screen.getByTestId('nft-picker-confirm'));
+
+      expect(screen.queryByTestId('nft-picker-modal')).not.toBeInTheDocument();
+      expect(screen.getByTestId('trade-give-nft-chosen')).toBeInTheDocument();
+      expect(screen.queryByTestId('trade-give-nft-select')).not.toBeInTheDocument();
+    });
+
+    it('opens in single-select mode — the offer engine supports at most one offered NFT', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A, NFT_B] } : { success: true }));
+      renderWithProviders(<TradePanel assets={twoAssets()} full />);
+      fireEvent.click(screen.getByTestId('trade-give-kind-nft'));
+      fireEvent.click(await screen.findByTestId('trade-give-nft-select'));
+      // single-select mode never shows select-all/clear (they have no meaning for one pick)
+      expect(screen.queryByTestId('nft-picker-select-all')).not.toBeInTheDocument();
+    });
+
+    it('"Change" reopens the picker pre-selecting the current pick, and picking another replaces it', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A, NFT_B] } : { success: true }));
+      renderWithProviders(<TradePanel assets={twoAssets()} full />);
+      fireEvent.click(screen.getByTestId('trade-give-kind-nft'));
+      fireEvent.click(await screen.findByTestId('trade-give-nft-select'));
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      fireEvent.click(screen.getByTestId('nft-picker-confirm'));
+      await screen.findByTestId('trade-give-nft-chosen');
+
+      fireEvent.click(screen.getByTestId('trade-give-nft-change'));
+      expect(screen.getByTestId('nft-picker-count')).toHaveTextContent('1 selected'); // pre-selected
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_B.launcherId}`));
+      expect(screen.getByTestId('nft-picker-count')).toHaveTextContent('1 selected'); // replaced, not added
+      fireEvent.click(screen.getByTestId('nft-picker-confirm'));
+      expect(screen.getByTestId('trade-give-nft-chosen')).toHaveTextContent(nftDisplayName(NFT_B));
+    });
+
+    it('Cancel closes the picker without changing the current pick', async () => {
+      mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A, NFT_B] } : { success: true }));
+      renderWithProviders(<TradePanel assets={twoAssets()} full />);
+      fireEvent.click(screen.getByTestId('trade-give-kind-nft'));
+      fireEvent.click(await screen.findByTestId('trade-give-nft-select'));
+      fireEvent.click(screen.getByTestId('nft-picker-cancel'));
+      expect(screen.queryByTestId('nft-picker-modal')).not.toBeInTheDocument();
+      expect(screen.getByTestId('trade-give-nft-select')).toBeInTheDocument(); // still nothing chosen
+    });
   });
 
   it('#166: Close lives in the sticky ViewHeader on both the compact and full surfaces', () => {
