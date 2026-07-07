@@ -176,6 +176,15 @@ export const de: Record<string, string> = {
   'send.sending': 'Wird gesendet… Ihre Transaktion wird übertragen.',
   'send.confirmed': 'Bestätigt — Ihre Transaktion ist endgültig.',
   'send.failed': 'Nicht bestätigt — die Transaktion wurde nicht angenommen. Ihr Guthaben bleibt unverändert; versuchen Sie es erneut.',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'Mit Rückholung senden (rückholbar)',
+  'send.clawback.hint': 'Der Empfänger kann erst nach Ablauf des Zeitfensters abrufen. Bis dahin können nur Sie es zurückholen.',
+  'send.clawback.window': 'Rückhol-Zeitfenster',
+  'send.clawback.window.1h': '1 Stunde',
+  'send.clawback.window.1d': '1 Tag',
+  'send.clawback.window.3d': '3 Tage',
+  'send.clawback.window.7d': '7 Tage',
+  'send.clawback.review': 'Von Ihnen rückholbar bis {when}, danach vom Empfänger abrufbar.',
 
   // ── wallet: receive ──
   'receive.title': 'Empfangen',
@@ -598,6 +607,29 @@ export const de: Record<string, string> = {
   'send.coins.selected': '{count} ausgewählt',
   'send.coins.loading': 'Coins werden geladen…',
   'send.coins.none': 'Keine Coins verfügbar.',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'Rückholung',
+  'clawback.open': 'Ausstehende Rückholungen ({count})',
+  'clawback.popupHint': '{count} ausstehende Rückholung(en).',
+  'clawback.intro': 'Gesendete oder empfangene Beträge mit Rückholfenster. Der Empfänger kann nach Ablauf abrufen; davor kann der Absender das Geld zurückholen.',
+  'clawback.loading': 'Ausstehende Rückholungen werden geladen…',
+  'clawback.error': 'Ausstehende Rückholungen konnten nicht geladen werden — erneut versuchen',
+  'clawback.empty': 'Keine ausstehenden Rückholungen.',
+  'clawback.direction.incoming': 'An Sie gesendet',
+  'clawback.direction.outgoing': 'Von Ihnen gesendet',
+  'clawback.status.claimableNow': 'Jetzt abrufbar',
+  'clawback.status.claimableAfter': 'Abrufbar ab {when}',
+  'clawback.status.reclaimableUntil': 'Von Ihnen rückholbar bis {when}',
+  'clawback.status.windowElapsed': 'Zeitfenster abgelaufen — der Empfänger kann es jetzt abrufen',
+  'clawback.action.claim': 'Abrufen',
+  'clawback.action.reclaim': 'Zurückholen',
+  'clawback.review.introClaim': 'Diese Mittel in Ihre Wallet abrufen. Zum Signieren und Senden bestätigen.',
+  'clawback.review.introReclaim': 'Diese Mittel in Ihre Wallet zurückholen. Zum Signieren und Senden bestätigen.',
+  'clawback.sending': 'Wird bearbeitet… Transaktion wird gesendet.',
+  'clawback.confirmed': 'Fertig — Ihr Guthaben wurde aktualisiert.',
+  'clawback.failed': 'Nicht bestätigt — nichts hat sich geändert. Erneut versuchen.',
+  'clawback.error.build': 'Konnte nicht vorbereitet werden — erneut versuchen.',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'Wallet',

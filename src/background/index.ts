@@ -918,7 +918,7 @@ async function readActivityLogState() {
  * the extension broadcasts it — `pending` until the confirm-poll (`sendStatus`) observes it on-chain.
  * A no-op without an active wallet or a coin id (nothing to key the confirm-poll match on).
  */
-async function logActivity(kind, hint, coinId) {
+async function logActivity(kind, hint, coinId, extra) {
   if (!coinId) return;
   const state = await loadRegistry();
   if (!state.activeId) return;
@@ -932,6 +932,9 @@ async function logActivity(kind, hint, coinId) {
     coinId,
     timestamp: Date.now(),
     status: 'pending',
+    // #152 — a send-with-clawback carries its locked-coin params so the Clawback panel can list it
+    // as a pending OUTGOING candidate later (see ACTIONS.listClawbacks).
+    ...(extra?.clawback ? { clawback: extra.clawback } : {}),
   };
   const next = appendActivityEntry(await readActivityLogState(), state.activeId, index, entry);
   try { await chrome.storage.local.set({ [ACTIVITY_LOG_KEY]: next }); } catch { /* best-effort */ }
@@ -1229,7 +1232,9 @@ async function handleCustodyActionInner(message) {
         try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
         // #154 — only a REAL send has a counterparty; split/combine (self-only) reuse this exact same
         // path and must NOT be logged as "sent" (nothing was sent to anyone).
-        if (res.activityHint?.counterparty) await logActivity('sent', res.activityHint, res.spentCoinId);
+        // #152 — a send-with-clawback carries its locked-coin params onto the logged 'sent' entry so
+        // the Clawback panel can later list it as a pending OUTGOING candidate.
+        if (res.activityHint?.counterparty) await logActivity('sent', res.activityHint, res.spentCoinId, { clawback: res.clawbackInfo });
       }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'send failed' };
     }
@@ -1376,6 +1381,44 @@ async function handleCustodyActionInner(message) {
     case ACTIONS.prepareCombine: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       return callVault({ op: 'prepareCombine', assetId: message.assetId, coinIds: message.coinIds, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
+    }
+    case ACTIONS.listClawbacks: {
+      // Read-only (#152): INCOMING is discovered on chain by hint at the active index; OUTGOING
+      // candidates come from this wallet+index's OWN local activity log — the vault has no other way
+      // to enumerate a wallet's past clawback sends (each 'sent' entry that used a clawback window
+      // carries its locked-coin params, see logActivity's `extra.clawback`).
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const state = await loadRegistry();
+      const index = await activeDerivationIndex();
+      const entries = state.activeId ? entriesFor(await readActivityLogState(), state.activeId, index) : [];
+      const clawbackCandidates = entries.filter((e) => e.kind === 'sent' && e.clawback).map((e) => e.clawback);
+      return callVault({ op: 'listClawbacks', clawbackCandidates, activeIndex: index, coinsetUrl });
+    }
+    case ACTIONS.prepareClawbackAction: {
+      // Build (not broadcast) the CLAIM (receiver) / CLAW BACK (sender) spend for one pending
+      // clawback (#152); held for approval. Broadcast via confirmClawbackAction.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({
+        op: 'prepareClawbackAction',
+        direction: message.direction,
+        clawbackInfo: message.clawbackInfo,
+        fee: message.fee,
+        activeIndex: await activeDerivationIndex(),
+        coinsetUrl,
+      });
+    }
+    case ACTIONS.confirmClawbackAction: {
+      // The ONLY place a prepared clawback claim/claw-back is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        // #154 — a claim/claw-back moves funds to the actor's OWN address; logged as kind 'clawback'
+        // regardless of direction (the "Clawed back {amount} {ticker}" copy fits both — the funds
+        // return to this wallet's own custody either way).
+        await logActivity('clawback', res.activityHint, res.spentCoinId);
+      }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'clawback action failed' };
     }
     default:
       return { success: false, code: 'CUSTODY_ERROR', message: 'unknown custody action' };

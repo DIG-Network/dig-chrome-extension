@@ -490,7 +490,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `21`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `22`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -545,6 +545,11 @@ the SW can log the action without any coinset round-trip).
 `MESSAGE_PROTOCOL_VERSION` `21` (#175) added `getDigDnsStatus` — the shared dig-dns Path-B
 availability signal (§8.5): reachability, the bound gateway port, the PAC URL, and whether the PAC
 proxy is currently engaged. Purely additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `22` (#152) added the clawback actions — `listClawbacks`,
+`prepareClawbackAction`, `confirmClawbackAction` (§18.8a) — plus an optional `clawbackSeconds` on
+`prepareSend` and an optional `clawbackInfo` on its response. Purely additive — no existing
+action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1279,6 +1284,60 @@ An XCH send is built with the `Spends`/`Action` driver in the offscreen vault:
   (`Puzzle.parseChildCats`); XCH coins are added to cover the fee; the driver builds via
   `Action.send(Id.existing(assetId), …)`. Amounts use the CAT's decimals; the fee is XCH.
 
+### 18.8a Clawback — send with a reclaimable timelock (#152)
+
+`prepareSend` accepts an optional `clawbackSeconds` (an ABSOLUTE unix timestamp, XCH only — a CAT
+send with `clawbackSeconds` is rejected `BAD_REQUEST`): instead of a plain send, the built
+CREATE_COIN targets the `chia-wallet-sdk-wasm` `ClawbackV2` puzzle hash (constructed
+`new ClawbackV2(senderPuzzleHash, receiverPuzzleHash, seconds, amount, hinted:false)` — a REAL
+public constructor, unlike the `RpcClient.new(...)`-only factory pattern, #148) with memos
+`[receiverPuzzleHash, clawback.memo(clvm)]` attached to the CREATE_COIN — built against the SAME
+`Clvm` instance the send driver allocates internally (`send.ts`'s `buildMemos` hook), matching the
+memo shape `xch-dev/sage`'s reference wallet uses (`sage-wallet/src/wallet/xch.rs` +
+`child_kind.rs`) so the coin is byte-compatible with any wallet implementing the same puzzle.
+`senderPuzzleHash` is always the ACTIVE index's own (unhardened) puzzle hash — the same one
+`changePuzzleHash` uses.
+
+**Hard on-chain cutover — NOT a race.** Proven against the wasm Simulator (`clawback.test.ts`):
+STRICTLY BEFORE `seconds`, only the SENDER's key can spend the locked coin (`senderSpend`,
+`ASSERT_BEFORE_SECONDS_ABSOLUTE`-gated) — this is the CLAW BACK path. AT/AFTER `seconds`, only the
+RECEIVER's key can (`receiverSpend`, `ASSERT_SECONDS_ABSOLUTE`-gated) — this is the CLAIM path.
+There is no window where both are simultaneously valid; a claim broadcast before the deadline, or a
+claw-back broadcast at/after it, is rejected by consensus
+(`AssertSecondsAbsoluteFailed`/`AssertBeforeSecondsAbsoluteFailed`).
+
+**Discovery.**
+- **Outgoing** (this wallet's own clawback sends): the vault has no on-chain way to enumerate a
+  wallet's past sends, so the caller supplies candidates from the LOCAL activity log's `clawback`
+  field (§18.9) — the vault checks each against LIVE chain state
+  (`findClawbackCoin` → `chain.unspentCoins([clawbackPuzzleHashHex])`, unique per
+  sender/receiver/seconds/amount tuple) and reports back only those still actually pending.
+- **Incoming** (clawbacks sent TO this wallet): `discoverIncomingClawbacks` hint-scans
+  `chain.coinsByHints` at the ACTIVE index's own puzzle hashes (the memo's first entry is always the
+  receiver's puzzle hash — exactly parallel to the CAT-lineage reconstruction, §18.8), fetches each
+  hinted coin's PARENT spend (the memo lives on the parent's CREATE_COIN, not the coin itself), and
+  reconstructs via `ClawbackV2.fromMemo(memo, receiverPuzzleHash, amount, hinted:false,
+  expectedPuzzleHash)` — which VERIFIES the reconstruction against the coin's own on-chain puzzle
+  hash, so a coin merely mentioning this wallet's address in an unrelated/forged memo is silently
+  skipped, never trusted blind.
+
+**Claim / claw back.** `prepareClawbackAction({ direction: 'claim'|'reclaim', clawbackInfo, fee })`
+requires the ACTIVE index's keyring to own the relevant side (`receiverPuzzleHashHex` for claim,
+`senderPuzzleHashHex` for reclaim — `MISSING_KEY` otherwise) and the coin to currently be pending
+(`NO_CLAWBACK_COIN` otherwise). Builds directly via `Clvm.spendCoin` (not the `Spends`/`Action`
+driver — there is exactly one, already-known coin/puzzle, no coin selection needed): a
+`createCoin(actorOwnPuzzleHash, amount - fee)` (+ `reserveFee(fee)` when `fee > 0`) wrapped in
+`standardSpend(actorPk, …)`, itself wrapped by `cb.receiverSpend(...)`/`cb.senderSpend(...)`. The
+result carries a normal AGG_SIG_ME under the actor's synthetic key, so it signs via the SAME
+`signing.ts`/`sendFlow.signAndBundle` used everywhere else — no bespoke signing path. Broadcasts via
+the shared `confirmSend` path (`confirmClawbackAction` → vault op `confirmSend`).
+
+**Surface tiering (#145).** Basic send stays in the popup unchanged; the clawback checkbox + window
+picker (1h/1d/3d/7d presets) render ONLY in the fullscreen `SendPanel` (`full` prop). The pending-
+clawback management list (`ClawbackPanel`, claim/claw-back actions) is fullscreen-only, reachable
+from the Assets view's "Clawback pending (N)" link; the popup shows a lighter "N pending
+clawback(s) — open full screen" hint instead of the management UI.
+
 ### 18.9 Activity — the LOCAL activity log (#154, MetaMask-style)
 
 Activity is a LOCAL transaction log the extension writes to the moment IT performs an action —
@@ -1296,13 +1355,21 @@ at 200 per scope (`MAX_ACTIVITY_LOG_ENTRIES`, `src/lib/activity-log.ts`). Unlike
 navigation (`clearActiveWalletCaches`) — per-wallet/index isolation comes from the composite key
 alone, so switching back to a wallet/index later reads exactly the slice that scope wrote.
 
-**Entry shape:** `{ id, kind, asset, amount, counterparty, coinId, timestamp, status }` —
-- `kind` ∈ `sent | received | mint | did | offer | trade | clawback | melt`. Only `sent` / `received`
-  / `mint` / `did` / `trade` are currently EMITTED; `offer` (making one has no coin spent yet to poll
-  for confirmation — the spend happens only if/when a counterparty takes it) and `clawback`/`melt`
-  (no corresponding custody action yet) are reserved schema members the UI still renders correctly.
+**Entry shape:** `{ id, kind, asset, amount, counterparty, coinId, timestamp, status, clawback? }` —
+- `kind` ∈ `sent | received | mint | did | offer | trade | clawback | melt`. `sent` / `received` /
+  `mint` / `did` / `trade` / `clawback` (#152) are EMITTED; `offer` (making one has no coin spent yet
+  to poll for confirmation — the spend happens only if/when a counterparty takes it) and `melt` (no
+  corresponding custody action yet) are reserved schema members the UI still renders correctly.
+  `clawback` covers ONLY the sender's claw-back action (`confirmClawbackAction`, logged with
+  `counterparty: null` — funds return to this wallet's own address either way); a send-WITH-clawback
+  is logged as an ordinary `sent` entry (§18.8a — it's still fundamentally a send), and a receiver's
+  claim is never logged explicitly — it surfaces for free via the receive-detection delta below once
+  the claimed coin lands at the receiver's own address.
 - `asset` is `'XCH'`, a CAT asset id (TAIL hex), or a synthetic `'NFT'`/`'DID'` label for a non-token
   spend (mint/DID actions carry no meaningful fungible amount).
+- `clawback` (§18.8a) — present ONLY on a `sent` entry that used a clawback window:
+  `{ senderPuzzleHashHex, receiverPuzzleHashHex, seconds, amount }`, the params the Clawback panel
+  needs to recheck live chain state and later offer a claw-back.
 - `status` is `pending` (logged the moment the extension broadcast the spend) or `confirmed` (the
   confirm-poll saw it on-chain); a `received` entry is logged straight to `confirmed` (a balance delta
   is already-settled by the time it's observed) with `coinId: null` (best-effort — no specific coin is

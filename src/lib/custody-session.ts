@@ -116,6 +116,10 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'listCoins',
   'prepareSplit',
   'prepareCombine',
+  // Clawback (#152): list pending incoming/outgoing + claim (receiver) / claw back (sender).
+  'listClawbacks',
+  'prepareClawbackAction',
+  'confirmClawbackAction',
 ] as const);
 
 /** True if `action` is a custody action the SW routes to the offscreen vault. */
@@ -173,6 +177,9 @@ export interface PrepareSendMessage {
   assetId?: string;
   /** Coin control (#91): hand-picked coin ids (hex) to fund the send, overriding auto-selection. */
   coinIds?: string[];
+  /** Send WITH a clawback window (#152, XCH only) — an absolute unix timestamp (decimal string)
+   * after which the receiver may claim; strictly before it, only the sender may claw back. */
+  clawbackSeconds?: string;
 }
 
 /** The `prepareSend` request the SW forwards to the offscreen vault. */
@@ -183,6 +190,7 @@ export interface PrepareSendVaultRequest {
   fee?: string;
   assetId?: string;
   coinIds?: string[];
+  clawbackSeconds?: string;
   coinsetUrl: string;
 }
 
@@ -203,6 +211,7 @@ export function prepareSendVaultRequest(
     fee: message.fee,
     assetId: message.assetId,
     ...(message.coinIds && message.coinIds.length ? { coinIds: message.coinIds } : {}),
+    ...(message.clawbackSeconds ? { clawbackSeconds: message.clawbackSeconds } : {}),
     coinsetUrl,
   };
 }

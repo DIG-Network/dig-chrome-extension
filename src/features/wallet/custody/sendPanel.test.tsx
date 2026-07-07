@@ -193,4 +193,74 @@ describe('SendPanel', () => {
       expect(await screen.findByTestId('send-recipient')).toBeInTheDocument();
     });
   });
+
+  /**
+   * Clawback (#152) — an ADVANCED send option, FULLSCREEN-ONLY (§145): the popup (compact) surface
+   * never shows it; the basic send stays untouched there. XCH only (v1) — hidden for a CAT.
+   */
+  describe('clawback (#152) — fullscreen-only advanced send option', () => {
+    it('the popup surface (full=false) never renders the clawback toggle', () => {
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} full={false} />);
+      expect(screen.queryByTestId('send-clawback-toggle')).not.toBeInTheDocument();
+    });
+
+    it('fullscreen (full=true) renders the toggle for an XCH send; a CAT selection hides it', () => {
+      const assets = [
+        ...xchAssets(1_000_000_000_000),
+        { descriptor: { key: 'cat', assetId: DIG_ASSET_ID, ticker: '$DIG', name: 'DIG', decimals: 3 }, balance: 500, label: '0.5' } as never,
+      ];
+      renderWithProviders(<SendPanel assets={assets} full={true} />);
+      expect(screen.getByTestId('send-clawback-toggle')).toBeInTheDocument();
+      fireEvent.change(screen.getByTestId('send-asset'), { target: { value: '1' } }); // switch to the CAT
+      expect(screen.queryByTestId('send-clawback-toggle')).not.toBeInTheDocument();
+    });
+
+    it('enabling the toggle reveals the window picker; disabling hides it again', () => {
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} full={true} />);
+      expect(screen.queryByTestId('send-clawback-options')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('send-clawback-toggle'));
+      expect(screen.getByTestId('send-clawback-window')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('send-clawback-toggle'));
+      expect(screen.queryByTestId('send-clawback-options')).not.toBeInTheDocument();
+    });
+
+    it('submitting with clawback enabled sends an absolute clawbackSeconds computed from the chosen window', async () => {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      const prepareSpy = vi.fn((m: { action: string; [k: string]: unknown }) =>
+        m.action === 'prepareSend'
+          ? { pendingId: 'p1', summary: SUMMARY, clawbackInfo: { senderPuzzleHashHex: 'aa', receiverPuzzleHashHex: 'bb', seconds: '1767225600', amount: '250000000000' } }
+          : { success: true },
+      );
+      mockSw(prepareSpy);
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} full={true} />);
+
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+      fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+      fireEvent.click(screen.getByTestId('send-clawback-toggle'));
+      fireEvent.change(screen.getByTestId('send-clawback-window'), { target: { value: '1h' } });
+      fireEvent.click(screen.getByTestId('send-review'));
+
+      await screen.findByTestId('send-review-panel');
+      const call = prepareSpy.mock.calls.find(([m]) => (m as { action: string }).action === 'prepareSend');
+      expect(call?.[0]).toMatchObject({ clawbackSeconds: String(Math.floor(new Date('2026-01-01T00:00:00.000Z').getTime() / 1000) + 3600) });
+      // The review step shows the reclaim/claim deadline once the vault confirms it was a clawback send.
+      expect(screen.getByTestId('review-clawback')).toBeInTheDocument();
+      vi.useRealTimers();
+    });
+
+    it('a plain (non-clawback) send never sends clawbackSeconds', async () => {
+      const prepareSpy = vi.fn((m: { action: string; [k: string]: unknown }) => (m.action === 'prepareSend' ? { pendingId: 'p1', summary: SUMMARY } : { success: true }));
+      mockSw(prepareSpy);
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} full={true} />);
+
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+      fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+      fireEvent.click(screen.getByTestId('send-review'));
+
+      await screen.findByTestId('send-review-panel');
+      const call = prepareSpy.mock.calls.find(([m]) => (m as { action: string }).action === 'prepareSend');
+      expect(call?.[0]).not.toHaveProperty('clawbackSeconds');
+      expect(screen.queryByTestId('review-clawback')).not.toBeInTheDocument();
+    });
+  });
 });

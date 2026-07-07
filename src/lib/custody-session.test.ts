@@ -66,6 +66,9 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'listCoins',
       'prepareSplit',
       'prepareCombine',
+      'listClawbacks',
+      'prepareClawbackAction',
+      'confirmClawbackAction',
     ].sort(),
   );
 });
@@ -106,6 +109,26 @@ test('prepareSendVaultRequest forwards the CAT assetId to the vault (#121)', () 
 test('prepareSendVaultRequest omits assetId for a native XCH send', () => {
   const req = prepareSendVaultRequest({ recipient: 'xch1r', amount: '1', fee: '0' }, DEFAULT_COINSET_URL);
   assert.equal(req.assetId, undefined);
+});
+
+// #152 — a send-with-clawback window must reach the vault so it locks the coin instead of a plain send.
+test('prepareSendVaultRequest forwards clawbackSeconds (#152)', () => {
+  const req = prepareSendVaultRequest(
+    { recipient: 'xch1r', amount: '5', fee: '0', clawbackSeconds: '1751200000' },
+    DEFAULT_COINSET_URL,
+  );
+  assert.equal(req.clawbackSeconds, '1751200000');
+});
+
+test('prepareSendVaultRequest omits clawbackSeconds for a plain send', () => {
+  const req = prepareSendVaultRequest({ recipient: 'xch1r', amount: '1', fee: '0' }, DEFAULT_COINSET_URL);
+  assert.equal(req.clawbackSeconds, undefined);
+});
+
+test('isCustodyAction recognises the #152 clawback actions', () => {
+  assert.ok(isCustodyAction('listClawbacks'));
+  assert.ok(isCustodyAction('prepareClawbackAction'));
+  assert.ok(isCustodyAction('confirmClawbackAction'));
 });
 
 test('isCustodyAction recognises custody actions and rejects others', () => {

@@ -58,6 +58,9 @@ export interface CustodyBalances {
 export interface PreparedSend {
   pendingId: string;
   summary: { asset: string; sent: string; change: string; fee: string; recipientPuzzleHashHex: string; coinCount: number };
+  /** #152 — present iff sent WITH a clawback window; persist it (the local activity log carries it
+   * automatically once confirmed) so the pending clawback can later be listed/claimed/clawed back. */
+  clawbackInfo?: WireClawbackInfo;
 }
 /** One listed unspent coin (coin control #91): id (hex) + amount (base units) + confirmed height. */
 export interface WalletCoin {
@@ -69,6 +72,26 @@ export interface WalletCoin {
 export interface PreparedCoinOp {
   pendingId: string;
   coinOpSummary: { asset: string; kind: 'split' | 'combine'; inputCoinCount: number; outputCoinCount: number; total: string; fee: string };
+}
+/** Clawback params (#152) for one locked coin — wire-safe (decimal strings). `seconds` is an
+ * ABSOLUTE unix timestamp, not a duration. */
+export interface WireClawbackInfo {
+  senderPuzzleHashHex: string;
+  receiverPuzzleHashHex: string;
+  seconds: string;
+  amount: string;
+}
+/** One pending clawback (#152) — either an incoming coin this wallet can CLAIM, or an outgoing one
+ * (from this wallet+index's own activity log) it can still CLAW BACK. */
+export interface PendingClawback {
+  direction: 'incoming' | 'outgoing';
+  info: WireClawbackInfo;
+  coinIdHex: string;
+}
+/** A prepared (unsigned) clawback claim/claw-back: the pending id + the amount actually delivered. */
+export interface PreparedClawbackAction {
+  pendingId: string;
+  clawbackAmountOut: string;
 }
 
 /**
@@ -204,14 +227,16 @@ export const custodyApi = api.injectEndpoints({
     }),
 
     // Build (not broadcast) a send → returns the decoded summary to approve. An optional `assetId`
-    // routes a CAT send (#121); an optional `coinIds` hand-picks the funding coins (#91).
-    prepareSend: build.mutation<PreparedSend, { recipient: string; amount: string; fee?: string; assetId?: string; coinIds?: string[] }>({
+    // routes a CAT send (#121); an optional `coinIds` hand-picks the funding coins (#91). An optional
+    // `clawbackSeconds` (#152, XCH only) sends WITH a reclaimable timelock instead of a plain send.
+    prepareSend: build.mutation<PreparedSend, { recipient: string; amount: string; fee?: string; assetId?: string; coinIds?: string[]; clawbackSeconds?: string }>({
       query: (arg) => ({ action: ACTIONS.prepareSend, ...arg }),
     }),
     // Sign + BROADCAST a prepared send / split / combine (the approved step). Invalidates the caches.
+    // 'Clawbacks' too (#152): a send-with-clawback creates a new pending OUTGOING entry.
     confirmSend: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
       query: (arg) => ({ action: ACTIONS.confirmSend, ...arg }),
-      invalidatesTags: ['Balances', 'Activity', 'Coins'],
+      invalidatesTags: ['Balances', 'Activity', 'Coins', 'Clawbacks'],
     }),
 
     // ── Coin control (#91) ──
@@ -231,6 +256,24 @@ export const custodyApi = api.injectEndpoints({
     // Poll whether a broadcast send has confirmed.
     sendStatus: build.query<{ confirmed: boolean }, { coinId: string }>({
       query: (arg) => ({ action: ACTIONS.sendStatus, ...arg }),
+    }),
+
+    // ── Clawback (#152) ──
+    // The wallet's currently-pending clawbacks: INCOMING (discovered on chain by hint) + OUTGOING
+    // (from this wallet+index's own activity log, checked against live chain state).
+    getClawbacks: build.query<{ clawbacks: PendingClawback[] }, void>({
+      query: () => ({ action: ACTIONS.listClawbacks }),
+      providesTags: ['Clawbacks'],
+    }),
+    // Build (not broadcast) the CLAIM (receiver) / CLAW BACK (sender) spend → held under a pending
+    // id + the amount actually delivered to approve. Broadcast via confirmClawbackAction.
+    prepareClawbackAction: build.mutation<PreparedClawbackAction, { direction: 'claim' | 'reclaim'; clawbackInfo: WireClawbackInfo; fee?: string }>({
+      query: (arg) => ({ action: ACTIONS.prepareClawbackAction, ...arg }),
+    }),
+    // Sign + BROADCAST a prepared clawback claim/claw-back (the approved step).
+    confirmClawbackAction: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
+      query: (arg) => ({ action: ACTIONS.confirmClawbackAction, ...arg }),
+      invalidatesTags: ['Balances', 'Activity', 'Clawbacks'],
     }),
 
     // The LOCAL activity log (#154) for the active wallet + index — an instant storage read, NOT an
@@ -282,6 +325,9 @@ export const {
   useGetCoinsQuery,
   usePrepareSplitMutation,
   usePrepareCombineMutation,
+  useGetClawbacksQuery,
+  usePrepareClawbackActionMutation,
+  useConfirmClawbackActionMutation,
   useGetCustodyActivityQuery,
   useMakeCustodyOfferMutation,
   useInspectCustodyOfferMutation,

@@ -176,6 +176,15 @@ export const hi: Record<string, string> = {
   'send.sending': 'भेजा जा रहा है… आपका ट्रांज़ैक्शन ब्रॉडकास्ट हो रहा है।',
   'send.confirmed': 'कन्फ़र्म हो गया — आपका ट्रांज़ैक्शन अंतिम है।',
   'send.failed': 'कन्फ़र्म नहीं हुआ — ट्रांज़ैक्शन स्वीकार नहीं किया गया। आपका बैलेंस अपरिवर्तित है; फिर से कोशिश करें।',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'क्लॉबैक के साथ भेजें (वापस लेने योग्य)',
+  'send.clawback.hint': 'प्राप्तकर्ता समय-सीमा बीतने के बाद ही दावा कर सकता है। उससे पहले, केवल आप इसे वापस ले सकते हैं।',
+  'send.clawback.window': 'क्लॉबैक समय-सीमा',
+  'send.clawback.window.1h': '1 घंटा',
+  'send.clawback.window.1d': '1 दिन',
+  'send.clawback.window.3d': '3 दिन',
+  'send.clawback.window.7d': '7 दिन',
+  'send.clawback.review': 'आपके द्वारा {when} तक वापस लेने योग्य, उसके बाद प्राप्तकर्ता द्वारा दावा किया जा सकता है।',
 
   // ── wallet: receive ──
   'receive.title': 'प्राप्त करें',
@@ -598,6 +607,29 @@ export const hi: Record<string, string> = {
   'send.coins.selected': '{count} चयनित',
   'send.coins.loading': 'सिक्के लोड हो रहे हैं…',
   'send.coins.none': 'कोई सिक्का उपलब्ध नहीं है।',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'क्लॉबैक',
+  'clawback.open': 'लंबित क्लॉबैक ({count})',
+  'clawback.popupHint': '{count} लंबित क्लॉबैक।',
+  'clawback.intro': 'रिक्लेम विंडो के साथ भेजी या प्राप्त की गई राशि। विंडो बीतने के बाद प्राप्तकर्ता दावा कर सकता है; उससे पहले प्रेषक राशि वापस ले सकता है।',
+  'clawback.loading': 'लंबित क्लॉबैक लोड हो रहे हैं…',
+  'clawback.error': 'आपके लंबित क्लॉबैक लोड नहीं हो सके — पुनः प्रयास करें',
+  'clawback.empty': 'कोई लंबित क्लॉबैक नहीं।',
+  'clawback.direction.incoming': 'आपको भेजा गया',
+  'clawback.direction.outgoing': 'आपके द्वारा भेजा गया',
+  'clawback.status.claimableNow': 'अभी दावा किया जा सकता है',
+  'clawback.status.claimableAfter': '{when} के बाद दावा किया जा सकता है',
+  'clawback.status.reclaimableUntil': 'आपके द्वारा {when} तक वापस लिया जा सकता है',
+  'clawback.status.windowElapsed': 'समय-सीमा समाप्त — प्राप्तकर्ता अब इसका दावा कर सकता है',
+  'clawback.action.claim': 'दावा करें',
+  'clawback.action.reclaim': 'वापस लें',
+  'clawback.review.introClaim': 'इन फंड को अपने वॉलेट में दावा करें। साइन करने और प्रसारित करने के लिए पुष्टि करें।',
+  'clawback.review.introReclaim': 'इन फंड को अपने वॉलेट में वापस लें। साइन करने और प्रसारित करने के लिए पुष्टि करें।',
+  'clawback.sending': 'काम जारी है… आपका लेनदेन प्रसारित हो रहा है।',
+  'clawback.confirmed': 'पूर्ण — आपका बैलेंस अपडेट कर दिया गया है।',
+  'clawback.failed': 'पुष्टि नहीं हुई — कुछ भी नहीं बदला। पुनः प्रयास करें।',
+  'clawback.error.build': 'वह तैयार नहीं हो सका — पुनः प्रयास करें।',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'वॉलेट',

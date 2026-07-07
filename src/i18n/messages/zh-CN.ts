@@ -176,6 +176,15 @@ export const zhCN: Record<string, string> = {
   'send.sending': '发送中……正在广播您的交易。',
   'send.confirmed': '已确认——您的交易已最终完成。',
   'send.failed': '未确认——交易未被接受。您的余额未发生变化，请重试。',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': '发送并附加追回条款（可撤回）',
+  'send.clawback.hint': '收款人只有在窗口期结束后才能领取。在此之前，只有您可以将其追回。',
+  'send.clawback.window': '追回窗口期',
+  'send.clawback.window.1h': '1 小时',
+  'send.clawback.window.1d': '1 天',
+  'send.clawback.window.3d': '3 天',
+  'send.clawback.window.7d': '7 天',
+  'send.clawback.review': '您可在 {when} 之前追回，此后收款人可领取。',
 
   // ── wallet: receive ──
   'receive.title': '接收',
@@ -598,6 +607,29 @@ export const zhCN: Record<string, string> = {
   'send.coins.selected': '已选 {count} 个',
   'send.coins.loading': '正在加载币…',
   'send.coins.none': '没有可用的币。',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': '追回',
+  'clawback.open': '待处理的追回（{count}）',
+  'clawback.popupHint': '{count} 项待处理的追回。',
+  'clawback.intro': '带追回窗口发送或收到的资金。窗口期结束后收款人可领取；在此之前，发送方可将其追回。',
+  'clawback.loading': '正在加载待处理的追回…',
+  'clawback.error': '无法加载待处理的追回 — 重试',
+  'clawback.empty': '没有待处理的追回。',
+  'clawback.direction.incoming': '发送给您',
+  'clawback.direction.outgoing': '由您发送',
+  'clawback.status.claimableNow': '现在可领取',
+  'clawback.status.claimableAfter': '{when} 之后可领取',
+  'clawback.status.reclaimableUntil': '您可在 {when} 之前追回',
+  'clawback.status.windowElapsed': '窗口期已过 — 收款人现在可以领取',
+  'clawback.action.claim': '领取',
+  'clawback.action.reclaim': '追回',
+  'clawback.review.introClaim': '将这笔资金领取到您的钱包。确认以签名并广播。',
+  'clawback.review.introReclaim': '将这笔资金追回到您的钱包。确认以签名并广播。',
+  'clawback.sending': '处理中…正在广播您的交易。',
+  'clawback.confirmed': '完成 — 您的余额已更新。',
+  'clawback.failed': '未确认 — 没有任何变化。请重试。',
+  'clawback.error.build': '无法准备该操作 — 请重试。',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': '钱包',

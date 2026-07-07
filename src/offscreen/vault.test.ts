@@ -2,10 +2,14 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { Vault } from './vault';
 import type { Argon2Fn } from '@/lib/keystore/digwx1';
 import { isValidMnemonic, mnemonicToEntropy } from '@/lib/keystore/bip39';
+import { mnemonicToSeed } from '@/lib/keystore/bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
 import type { ScanWasm } from '@/offscreen/scan';
 import type { ChainClient } from '@/offscreen/chain';
 import { signDappCoinSpends, type WireCoinSpend } from '@/offscreen/dappSign';
+import { buildKeyring, prepareXchSend, signAndBundle, type SendFlowWasm } from '@/offscreen/sendFlow';
+import { TESTNET11_AGG_SIG_ME } from '@/offscreen/signing';
+import { prepareClawbackAction, type ClawbackInfo, type ClawbackWasm } from '@/offscreen/clawback';
 import golden from '@/lib/keystore/derive.golden.json';
 
 // Fast, deterministic Argon2 stand-in so the vault's create/unlock cycle doesn't pay the 64 MiB KDF
@@ -438,6 +442,220 @@ describe('Vault send ops', () => {
     const conf = await v.handle({ op: 'confirmSend', pendingId: prep.pendingId }, { ...deps, chia, chain });
     expect(conf.success).toBe(true);
     expect(conf.activityHint).toEqual({ asset: 'XCH', amount: '250000000000', counterparty: recipient });
+  });
+});
+
+describe('Vault clawback ops (#152)', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  async function unlockedZerosWallet(): Promise<Vault> {
+    const v = new Vault();
+    await v.handle({ op: 'importWallet', password: PW, mnemonic: golden.mnemonic }, deps);
+    return v;
+  }
+
+  interface SimHandle {
+    newCoin(ph: Uint8Array, a: bigint): { coinId(): Uint8Array; parentCoinInfo: Uint8Array; puzzleHash: Uint8Array; amount: bigint };
+    newTransaction(b: unknown): void;
+    createBlock(): void;
+    nextTimestamp(): bigint;
+    unspentCoins(ph: Uint8Array, includeHints: boolean): unknown[];
+    coinSpend(id: Uint8Array): unknown;
+  }
+  interface SimWasm {
+    Simulator: new () => SimHandle;
+    fromHex(h: string): Uint8Array;
+    toHex(b: Uint8Array): string;
+    Address: new (ph: Uint8Array, p: string) => { encode(): string };
+  }
+
+  /**
+   * A chain funding the golden index-0 unhardened address, with real hint lookups against the wasm
+   * Simulator. `pushSpendBundle` is a STUB (matches `sendChain()`'s established convention above) —
+   * the vault's production `confirmSend` hardcodes the MAINNET AGG_SIG_ME domain (correctly, for real
+   * broadcasts), which the Simulator's own genesis does not accept, so a real push through the vault
+   * would spuriously fail here on signature validation alone. These tests exercise vault
+   * ORCHESTRATION (pending-id handling, wire (de)serialization, BAD_REQUEST/MISSING_KEY guards) —
+   * deep consensus correctness (timelock enforcement, signature validity, coin math) is fully proven
+   * in `clawback.test.ts` against the domain-correct testnet11 constant. Real on-chain state (so
+   * `listClawbacks`'s hint discovery has something to find) is seeded directly via
+   * {@link seedClawbackSend}, which signs for the SAME domain the Simulator actually accepts.
+   */
+  function clawbackChain() {
+    const wasm = chia as unknown as SimWasm;
+    const sim = new wasm.Simulator();
+    const ph0 = golden.unhardened[0].puzzleHashHex;
+    sim.newCoin(wasm.fromHex(ph0), 1_000_000_000_000n);
+    const receiverPh = golden.unhardened[2].puzzleHashHex;
+    const recipient = new wasm.Address(wasm.fromHex(receiverPh), 'xch').encode();
+    const chain: ChainClient = {
+      totalUnspent: async () => 0,
+      unspentCoins: async (phs) => phs.flatMap((h) => sim.unspentCoins(wasm.fromHex(h), false) as never[]),
+      coinsByHints: async (hints) => hints.flatMap((h) => sim.unspentCoins(wasm.fromHex(h), true) as never[]),
+      pushSpendBundle: async () => ({ success: true }),
+      coinConfirmed: async () => true,
+      getCoinSpend: async (idHex) => (sim.coinSpend(wasm.fromHex(idHex)) as never) ?? null,
+      coinRecords: async () => [],
+    };
+    return { sim, wasm, chain, recipient, receiverIndex: 2 };
+  }
+
+  /** Build + sign (testnet11 domain, matching the Simulator's genesis) + push a send-with-clawback
+   * DIRECTLY against the sim, bypassing the vault's confirmSend (see {@link clawbackChain}'s doc). */
+  async function seedClawbackSend(sim: SimHandle, wasm: SimWasm, recipient: string, seconds: bigint, amount = 250_000_000_000n) {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const seedChain: ChainClient = {
+      totalUnspent: async () => 0,
+      unspentCoins: async (phs) => phs.flatMap((h) => sim.unspentCoins(wasm.fromHex(h), false) as never[]),
+      coinsByHints: async () => [],
+      pushSpendBundle: async () => ({ success: true }),
+      coinConfirmed: async () => true,
+      getCoinSpend: async () => null,
+      coinRecords: async () => [],
+    };
+    const prepared = await prepareXchSend(chia as unknown as SendFlowWasm, seedChain, {
+      seed,
+      recipient,
+      amount,
+      fee: 0n,
+      activeIndex: 0,
+      clawbackSeconds: seconds,
+    });
+    const bundle = signAndBundle(chia as unknown as SendFlowWasm, prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    sim.newTransaction(bundle);
+    sim.createBlock();
+    return prepared.clawbackInfo!;
+  }
+
+  const toWire = (i: ClawbackInfo) => ({
+    senderPuzzleHashHex: i.senderPuzzleHashHex,
+    receiverPuzzleHashHex: i.receiverPuzzleHashHex,
+    seconds: i.seconds.toString(),
+    amount: i.amount.toString(),
+  });
+
+  it('prepareSend clawbackSeconds locks the coin under a distinct puzzle hash and returns clawbackInfo', async () => {
+    const v = await unlockedZerosWallet();
+    const { sim, chain, recipient } = clawbackChain();
+    const seconds = (sim.nextTimestamp() + 3600n).toString();
+    const prep = await v.handle(
+      { op: 'prepareSend', recipient, amount: '250000000000', fee: '0', clawbackSeconds: seconds },
+      { ...deps, chia, chain },
+    );
+    expect(prep.success).toBe(true);
+    expect(prep.clawbackInfo).toBeDefined();
+    expect(prep.clawbackInfo?.seconds).toBe(seconds);
+    expect(prep.clawbackInfo?.amount).toBe('250000000000');
+    expect(prep.summary?.recipientPuzzleHashHex).not.toBe(golden.unhardened[2].puzzleHashHex); // locked, not the plain receiver address
+
+    const conf = await v.handle({ op: 'confirmSend', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(conf.success).toBe(true);
+    // #152 — confirmSend hands the SAME clawbackInfo back (so the caller can persist it for later).
+    expect(conf.clawbackInfo).toEqual(prep.clawbackInfo);
+  });
+
+  it('a CAT send with clawbackSeconds is rejected (v1 is XCH-only)', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = clawbackChain();
+    const res = await v.handle(
+      { op: 'prepareSend', recipient, amount: '1000', fee: '0', assetId: 'ab'.repeat(32), clawbackSeconds: '999999999999' },
+      { ...deps, chia, chain },
+    );
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('BAD_REQUEST');
+  });
+
+  it('listClawbacks discovers the incoming pending clawback for the receiver’s wallet', async () => {
+    const { sim, wasm, chain, recipient, receiverIndex } = clawbackChain();
+    const info = await seedClawbackSend(sim, wasm, recipient, sim.nextTimestamp() + 3600n);
+
+    // The SAME wallet, viewed at the RECEIVER's active index, discovers it by hint.
+    const receiver = await unlockedZerosWallet();
+    const list = await receiver.handle({ op: 'listClawbacks', activeIndex: receiverIndex }, { ...deps, chia, chain });
+    expect(list.success).toBe(true);
+    expect(list.clawbacks).toHaveLength(1);
+    expect(list.clawbacks?.[0]?.direction).toBe('incoming');
+    expect(list.clawbacks?.[0]?.info).toEqual(toWire(info));
+  });
+
+  it('listClawbacks reports an OUTGOING candidate only while it is still actually pending on chain', async () => {
+    const { sim, wasm, chain, recipient } = clawbackChain();
+    const info = await seedClawbackSend(sim, wasm, recipient, sim.nextTimestamp() + 3600n);
+    const candidate = toWire(info);
+
+    const v = await unlockedZerosWallet();
+    const before = await v.handle({ op: 'listClawbacks', activeIndex: 0, clawbackCandidates: [candidate] }, { ...deps, chia, chain });
+    expect(before.clawbacks?.some((c) => c.direction === 'outgoing')).toBe(true);
+
+    // Reclaim it DIRECTLY on the sim (testnet11 domain) — mirrors what a real broadcast would do —
+    // then re-list: it must no longer be reported as a pending outgoing candidate.
+    const keyring = buildKeyring(chia as unknown as SendFlowWasm, await mnemonicToSeed(golden.mnemonic), { index: 0 });
+    const reclaimed = await prepareClawbackAction(chia as unknown as ClawbackWasm, chain, { keyring, info, direction: 'reclaim', fee: 0n });
+    const reclaimBundle = signAndBundle(chia as unknown as SendFlowWasm, reclaimed.coinSpends, reclaimed.secretKeys, TESTNET11_AGG_SIG_ME);
+    sim.newTransaction(reclaimBundle);
+    sim.createBlock();
+
+    const after = await v.handle({ op: 'listClawbacks', activeIndex: 0, clawbackCandidates: [candidate] }, { ...deps, chia, chain });
+    expect(after.clawbacks?.some((c) => c.direction === 'outgoing')).toBe(false);
+  });
+
+  it('prepareClawbackAction (reclaim) builds + confirmSend consumes the pending entry (orchestration)', async () => {
+    const { sim, wasm, chain, recipient } = clawbackChain();
+    const info = await seedClawbackSend(sim, wasm, recipient, sim.nextTimestamp() + 3600n);
+
+    const v = await unlockedZerosWallet();
+    const reclaim = await v.handle(
+      { op: 'prepareClawbackAction', activeIndex: 0, direction: 'reclaim', clawbackInfo: toWire(info), fee: '1000' },
+      { ...deps, chia, chain },
+    );
+    expect(reclaim.success).toBe(true);
+    expect(reclaim.clawbackAmountOut).toBe('249999999000');
+
+    const conf = await v.handle({ op: 'confirmSend', pendingId: reclaim.pendingId }, { ...deps, chia, chain });
+    expect(conf.success).toBe(true);
+    expect(conf.spentCoinId).toBeTruthy();
+
+    // The pending entry is consumed — a second confirm is NO_PENDING (mirrors the plain-send test above).
+    const again = await v.handle({ op: 'confirmSend', pendingId: reclaim.pendingId }, { ...deps, chia, chain });
+    expect(again.code).toBe('NO_PENDING');
+  });
+
+  it('prepareClawbackAction requires clawbackInfo + direction', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain } = clawbackChain();
+    const res = await v.handle({ op: 'prepareClawbackAction', activeIndex: 0 }, { ...deps, chia, chain });
+    expect(res.code).toBe('BAD_REQUEST');
+  });
+
+  it('prepareClawbackAction NO_CLAWBACK_COIN when nothing matching is pending on chain', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain } = clawbackChain();
+    const bogus = {
+      senderPuzzleHashHex: golden.unhardened[0].puzzleHashHex,
+      receiverPuzzleHashHex: golden.unhardened[2].puzzleHashHex,
+      seconds: '9999999999',
+      amount: '1000',
+    };
+    const res = await v.handle({ op: 'prepareClawbackAction', activeIndex: 0, direction: 'reclaim', clawbackInfo: bogus }, { ...deps, chia, chain });
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('VAULT_ERROR');
+  });
+
+  it('prepareClawbackAction (claim) fails when this wallet does not own the receiver address', async () => {
+    const { sim, wasm, chain, recipient } = clawbackChain();
+    const info = await seedClawbackSend(sim, wasm, recipient, sim.nextTimestamp() + 3600n);
+
+    // Viewed at index 0 (the SENDER's own index) — it does not own the RECEIVER's address (index 2).
+    const v = await unlockedZerosWallet();
+    const res = await v.handle(
+      { op: 'prepareClawbackAction', activeIndex: 0, direction: 'claim', clawbackInfo: toWire(info) },
+      { ...deps, chia, chain },
+    );
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('VAULT_ERROR');
   });
 });
 

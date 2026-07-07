@@ -176,6 +176,15 @@ export const ja: Record<string, string> = {
   'send.sending': '送信しています… トランザクションをネットワークに送信中です。',
   'send.confirmed': '確認済み — トランザクションは確定しました。',
   'send.failed': '未確認 — トランザクションは承認されませんでした。残高に変更はありません。もう一度お試しください。',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'クロウバック付きで送金（返金可能）',
+  'send.clawback.hint': '受取人は期限が過ぎるまで受け取れません。それまでは、あなただけが取り戻せます。',
+  'send.clawback.window': 'クロウバック期限',
+  'send.clawback.window.1h': '1時間',
+  'send.clawback.window.1d': '1日',
+  'send.clawback.window.3d': '3日',
+  'send.clawback.window.7d': '7日',
+  'send.clawback.review': '{when}まであなたが取り戻せます。それ以降は受取人が受け取れます。',
 
   // ── wallet: receive ──
   'receive.title': '受け取る',
@@ -598,6 +607,29 @@ export const ja: Record<string, string> = {
   'send.coins.selected': '{count}件選択中',
   'send.coins.loading': 'コインを読み込み中…',
   'send.coins.none': '利用可能なコインがありません。',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'クロウバック',
+  'clawback.open': '保留中のクロウバック（{count}件）',
+  'clawback.popupHint': '保留中のクロウバックが{count}件あります。',
+  'clawback.intro': '返金期限付きで送受金された資金です。期限が過ぎると受取人が受け取れます。それまでは送金者が取り戻せます。',
+  'clawback.loading': '保留中のクロウバックを読み込み中…',
+  'clawback.error': '保留中のクロウバックを読み込めませんでした — 再試行',
+  'clawback.empty': '保留中のクロウバックはありません。',
+  'clawback.direction.incoming': 'あなた宛て',
+  'clawback.direction.outgoing': 'あなたが送金',
+  'clawback.status.claimableNow': '今すぐ受け取り可能',
+  'clawback.status.claimableAfter': '{when}以降に受け取り可能',
+  'clawback.status.reclaimableUntil': '{when}まであなたが取り戻し可能',
+  'clawback.status.windowElapsed': '期限切れ — 受取人が今すぐ受け取れます',
+  'clawback.action.claim': '受け取る',
+  'clawback.action.reclaim': '取り戻す',
+  'clawback.review.introClaim': 'これらの資金をウォレットに受け取ります。署名して送信するには確認してください。',
+  'clawback.review.introReclaim': 'これらの資金をウォレットに取り戻します。署名して送信するには確認してください。',
+  'clawback.sending': '処理中…取引を送信しています。',
+  'clawback.confirmed': '完了 — 残高が更新されました。',
+  'clawback.failed': '未確認 — 変更はありません。再試行してください。',
+  'clawback.error.build': '準備できませんでした — 再試行してください。',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'ウォレット',
