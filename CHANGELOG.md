@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.51.0] - 2026-07-07
+
+### Features
+- **wallet:** Activity = local transaction log (MetaMask-style), not on-chain scan (#74)
+
 ## [1.50.0] - 2026-07-07
 
 ### Features
