@@ -10,6 +10,7 @@ import { useLayoutMode, type Surface } from '@/app/layout';
 import { routeFromHash } from '@/features/ui/uiSlice';
 import { routeToHash } from '@/app/tabs';
 import { installStorageSync } from '@/app/storageSync';
+import { useBackgroundPrefetch } from '@/app/useBackgroundPrefetch';
 import { publishVersionGlobal } from '@/lib/version';
 import { messagesFor, DEFAULT_LOCALE } from '@/i18n';
 
@@ -23,7 +24,13 @@ function LocaleGate({ children }: { children: ReactNode }) {
   );
 }
 
-/** The mounted shell: layout switch + hash↔route sync + one-time boot side effects + bug widget. */
+/**
+ * The mounted shell: layout switch + hash↔route sync + one-time boot side effects + bug widget +
+ * background prefetch. Mounting `useBackgroundPrefetch` (#168) HERE — not inside any one tab/view —
+ * is what makes it fire regardless of which screen is showing: the mobile-OS Home tab never mounts
+ * the wallet body, and Collectibles isn't mounted until its segmented tab is picked, so a per-view
+ * fetch alone can't warm those caches ahead of navigation (§18.5a).
+ */
 function Shell({ surface }: { surface: Surface }) {
   const dispatch = useAppDispatch();
   const store = useAppStore();
@@ -31,6 +38,9 @@ function Shell({ surface }: { surface: Surface }) {
   const tab = useAppSelector((s) => s.ui.tab);
   const walletView = useAppSelector((s) => s.ui.walletView);
   const networkView = useAppSelector((s) => s.ui.networkView);
+
+  // #168 — warm balances/assets/collectibles/activity on unlock + on wallet/index switch.
+  useBackgroundPrefetch();
 
   // Boot: publish version (§6.7) + install the storage→store bridge (§3.4).
   useEffect(() => {
