@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.46.0] - 2026-07-07
+
+### Features
+- **collectibles:** Cache remote NFT art locally so a 2nd view never re-fetches (#159) (#67)
+
 ## [1.45.0] - 2026-07-07
 
 ### Features
