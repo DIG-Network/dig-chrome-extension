@@ -1037,6 +1037,34 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
 - **Receive.** The receive address is the ACTIVE index's unhardened address (§18.1a,
   `getReceiveAddress`) — navigating the index changes which address Receive shows.
 
+### 18.6a Assets list — value ordering + live filter (#167)
+
+The Home Assets list is a VIEW transform over `custodyAssetBalances` (§18.6) — it never changes the
+scan/discovery, only how the resolved rows are ordered and which of them are shown:
+
+- **Ordering (`orderAssetsByValue`).** XCH is the hero/prominent row (`pickHeroBalance`) and always
+  renders first, unmoved. Every other row — the built-in $DIG row + discovered/watched CATs — sorts
+  beneath it, highest value first, in two tiers:
+  1. Rows with a KNOWN USD value (`assetUsdValue`, §18.13 pricing) sort by that value, descending.
+  2. Rows with NO known price sort after every priced row: a "known" token ($DIG, or a CAT whose
+     ticker resolved via the registry — i.e. NOT the generic `CAT` fallback, §18.6) outranks a
+     generic-unknown one, then within a tier by held amount (normalized by decimals), descending. A
+     null/unknown balance sorts last within its tier. Ties preserve the original discovery order
+     (a stable sort) — never a re-shuffle on every render for equal-value rows.
+- **Live filter (`filterAssetsByQuery` + `AssetFilterField`).** A search field renders directly above
+  the token rows (below the pinned XCH row): it narrows the $DIG + CAT rows live by a case-insensitive
+  substring match against EITHER the ticker or the display name; XCH itself is never filtered out. A
+  blank query shows every row unchanged; a query matching nothing shows a dedicated empty-state line
+  (`wallet.assets.filter.empty`) rather than silently rendering nothing — Clear restores the full list.
+- **Autocomplete (`assetAutocompleteSuggestions`).** The filter field's native `<datalist>` suggests
+  candidates from BOTH the currently-held rows AND the full known-CAT registry (so a recognized
+  name/ticker not currently held still autocompletes — filtering on it then honestly shows the empty
+  state, never a silent no-op). Deduped by ticker (a held row wins over a registry duplicate), a
+  prefix match ranks above a mere substring match, capped to 8 suggestions.
+- **Scope.** Every other consumer of `custodyAssetBalances` (`SendPanel`'s asset picker,
+  `ManageTokens`, `CoinControlPanel`, `TradePanel`) receives the UNSORTED, UNFILTERED array — this
+  ordering/filtering is local to the Home Assets list's own render.
+
 ### 18.7 Spend signing
 
 Signing runs in the offscreen vault (it holds the key) using the shipped `chia-wallet-sdk-wasm` — NO

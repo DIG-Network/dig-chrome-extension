@@ -10,6 +10,9 @@ import { useGetCustodyBalancesQuery, useGetReceiveAddressQuery } from '@/feature
 import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
+import { orderAssetsByValue } from '@/features/wallet/custody/assetOrder';
+import { filterAssetsByQuery, assetAutocompleteSuggestions } from '@/features/wallet/custody/assetFilter';
+import { AssetFilterField } from '@/features/wallet/custody/AssetFilterField';
 import { ManageTokens } from '@/features/wallet/custody/ManageTokens';
 import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
 import { PortfolioHero } from '@/features/wallet/PortfolioHero';
@@ -27,7 +30,7 @@ import { ContactsManager } from '@/features/contacts/ContactsManager';
 import { CustodyActivity } from '@/features/wallet/custody/CustodyActivity';
 import { CollectiblesPanel } from '@/features/collectibles/CollectiblesPanel';
 import { DidPanel } from '@/features/identity/DidPanel';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { WalletView } from '@/app/tabs';
 
 const SEG_OPTIONS: { value: WalletView; labelId: string }[] = [
@@ -58,16 +61,46 @@ export function CustodyWallet() {
 
   const assets = custodyAssetBalances(balances.data?.balances, watchedCats, { registry: registry.data, hidden: hiddenCats });
   const hero = pickHeroBalance(assets);
-  const priceMap = prices.data ?? {};
+  // Stable reference (not a fresh `?? {}` object every render) so it doesn't defeat the `useMemo`
+  // below on every render even when the underlying price data hasn't changed.
+  const priceMap = useMemo(() => prices.data ?? {}, [prices.data]);
   const total = portfolioValue(assets, priceMap);
   const cached = balances.data?.cached === true;
   const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'contacts' | 'tokens' | 'coins'>('assets');
+
+  // #167 — value-ordered, live-filterable Assets list. XCH is rendered separately (the pinned
+  // hero row); every other row ($DIG + discovered/watched CATs) sorts by value beneath it, and the
+  // filter narrows THAT set only — XCH always stays visible. Pure selectors do the work
+  // (`assetOrder`/`assetFilter`); this is just the memoized wiring + the filter's own input state.
+  const [assetFilter, setAssetFilter] = useState('');
+  const orderedAssets = useMemo(() => orderAssetsByValue(assets, priceMap), [assets, priceMap]);
+  const xchRow = orderedAssets.find((a) => a.descriptor.key === 'xch') ?? null;
+  const tokenRows = useMemo(() => orderedAssets.filter((a) => a.descriptor.key !== 'xch'), [orderedAssets]);
+  const visibleTokenRows = useMemo(() => filterAssetsByQuery(tokenRows, assetFilter), [tokenRows, assetFilter]);
+  const filterSuggestions = useMemo(
+    () => assetAutocompleteSuggestions(tokenRows, registry.data, assetFilter),
+    [tokenRows, registry.data, assetFilter],
+  );
 
   /** Format a row's fiat value as `≈ $x.xx`, or null when it can't be priced. */
   const fiatLabelFor = (row: (typeof assets)[number]): string | null => {
     const usd = assetUsdValue(row, priceMap);
     return usd == null ? null : `≈ ${intl.formatNumber(usd, { style: 'currency', currency: 'USD' })}`;
   };
+
+  /** Render one Assets-list row (shared by the pinned XCH row and the sorted/filtered token rows). */
+  const renderAssetRow = (a: (typeof assets)[number]) => (
+    <AssetRow
+      key={a.descriptor.key + (a.descriptor.assetId ?? '')}
+      ticker={a.descriptor.ticker}
+      name={a.descriptor.name}
+      amountLabel={a.label}
+      fiatLabel={fiatLabelFor(a)}
+      iconUrl={a.descriptor.iconUrl}
+      priceLoading={prices.isLoading}
+      testid={a.descriptor.key === 'cat' ? `asset-cat-${a.descriptor.assetId}` : `asset-${a.descriptor.key}`}
+    />
+  );
 
   return (
     <div data-testid="custody-wallet">
@@ -154,18 +187,15 @@ export function CustodyWallet() {
             errorId="wallet.assets.error"
           >
             <div data-testid="custody-assets">
-              {assets.map((a) => (
-                <AssetRow
-                  key={a.descriptor.key + (a.descriptor.assetId ?? '')}
-                  ticker={a.descriptor.ticker}
-                  name={a.descriptor.name}
-                  amountLabel={a.label}
-                  fiatLabel={fiatLabelFor(a)}
-                  iconUrl={a.descriptor.iconUrl}
-                  priceLoading={prices.isLoading}
-                  testid={a.descriptor.key === 'cat' ? `asset-cat-${a.descriptor.assetId}` : `asset-${a.descriptor.key}`}
-                />
-              ))}
+              {xchRow && renderAssetRow(xchRow)}
+              <AssetFilterField value={assetFilter} onChange={setAssetFilter} suggestions={filterSuggestions} testid="asset-filter" />
+              {visibleTokenRows.length === 0 && assetFilter.trim() ? (
+                <p className="dig-muted" data-testid="custody-assets-filter-empty">
+                  <FormattedMessage id="wallet.assets.filter.empty" values={{ query: assetFilter.trim() }} />
+                </p>
+              ) : (
+                visibleTokenRows.map(renderAssetRow)
+              )}
             </div>
           </FourState>
 

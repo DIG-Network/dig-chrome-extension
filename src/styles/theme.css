@@ -466,6 +466,46 @@ h2.dig-heading {
   font-size: 12px;
 }
 
+/* ── asset-list filter (#167) — a compact search field above the CAT rows, no horizontal overflow */
+.dig-asset-filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 4px 0 2px;
+  max-width: 100%;
+}
+.dig-asset-filter .dig-input {
+  padding-right: 30px;
+  box-sizing: border-box;
+}
+/* Suppress the native WebKit "clear" cross so it doesn't collide with our own clear button. */
+.dig-asset-filter .dig-input::-webkit-search-cancel-button {
+  display: none;
+}
+.dig-asset-filter-clear {
+  position: absolute;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dig-text-faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dig-asset-filter-clear:hover {
+  background: var(--dig-bg-elev);
+  color: var(--dig-text);
+}
+.dig-asset-filter-clear:focus-visible {
+  outline: 2px solid var(--dig-accent);
+  outline-offset: 1px;
+}
+
 /* ── portfolio hero ── */
 .dig-hero {
   text-align: center;
