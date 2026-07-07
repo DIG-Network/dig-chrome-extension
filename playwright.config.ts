@@ -12,7 +12,14 @@ export default defineConfig({
   // The dist-web specs: the screenshot harness + the #86 price-feed end-user e2e (both drive the
   // real popup bundle over the static server with a stubbed chrome.*). The SW-registration harness
   // (e2e/sw/) has its own config (playwright.sw.config.ts) — it loads the built unpacked extension.
-  testMatch: ['**/screenshots.spec.ts', '**/prices.spec.ts', '**/contacts.spec.ts', '**/wallet-switcher.spec.ts', '**/home-balance.spec.ts'],
+  testMatch: [
+    '**/screenshots.spec.ts',
+    '**/prices.spec.ts',
+    '**/contacts.spec.ts',
+    '**/wallet-switcher.spec.ts',
+    '**/home-balance.spec.ts',
+    '**/did-create-errors.spec.ts',
+  ],
   fullyParallel: true,
   reporter: 'list',
   use: {

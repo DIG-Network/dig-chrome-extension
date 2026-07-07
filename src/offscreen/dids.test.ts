@@ -104,6 +104,39 @@ describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
     await expect(prepareDidCreate(asDid(), simChain(sim), { seed, activeIndex: 0 })).rejects.toThrow(/NO_XCH_COINS/);
   });
 
+  it('funds a DID create by combining MULTIPLE coins when no single coin covers the amount plus fee (#179)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
+    const sim = new chia.Simulator();
+    // Two coins, each smaller than DID_AMOUNT(1) + fee(1_000_000) — neither alone suffices, but
+    // combined (1_200_000) they cover it. Pre-#179 this threw NO_SUITABLE_COIN (single-coin only).
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 600_000n);
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 600_000n);
+    const chain = simChain(sim);
+
+    const prepared = await prepareDidCreate(asDid(), chain, { seed, fee: 1_000_000n, activeIndex: 0 });
+    expect(prepared.summary.fee).toBe('1000000');
+    // Both funding coins spent (2) + the auto-registered launcher spend (1) + the eve DID commit
+    // spend (1) = 4 — one more than the single-coin case (proves the SECOND coin was really used).
+    expect(prepared.coinSpends).toHaveLength(4);
+
+    const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
+
+    const dids = await listDids(asDid(), chain, { seed, activeIndex: 0 });
+    expect(dids.map((d) => d.launcherId)).toContain(prepared.launcherId);
+  });
+
+  it('rejects creating a DID when even combining EVERY coin the total XCH is short of the amount plus fee (#179)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 100n);
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 100n);
+    const chain = simChain(sim);
+    await expect(prepareDidCreate(asDid(), chain, { seed, fee: 1_000_000n, activeIndex: 0 })).rejects.toThrow(/NO_SUITABLE_COIN/);
+  });
+
   it('returns an empty list when the wallet holds no DIDs', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
     const ring = buildKeyring(asFlow(), seed, { index: 0 });

@@ -1,12 +1,38 @@
 import { useEffect, useState } from 'react';
-import { FormattedMessage, useIntl } from 'react-intl';
+import { FormattedMessage, useIntl, type IntlShape } from 'react-intl';
 import { formatBaseUnits, toBaseUnits } from '@/lib/wallet-view';
 import { usePrepareDidCreateMutation, useConfirmDidCreateMutation } from '@/features/identity/identityApi';
 import { useLazySendStatusQuery } from '@/features/wallet/custodyApi';
+import { useAppSelector } from '@/app/hooks';
+import { selectActiveDerivationIndex } from '@/features/wallet/walletSlice';
+import type { ChromeQueryError } from '@/api/baseQuery';
 
 const XCH_DECIMALS = 12;
 
 type Phase = 'form' | 'review' | 'sending' | 'confirmed' | 'failed';
+
+/**
+ * Map a failed `prepareDidCreate` into the SPECIFIC, actionable message its code calls for (#179) —
+ * never the generic "try again" that used to hide a funding problem from the user. `NO_XCH_COINS`
+ * (the active index has no XCH) and `NO_SUITABLE_COIN` (even every coin at this address combined
+ * falls short — see `dids.ts`'s multi-coin funding) get a plain-language, actionable message; any
+ * other/unexpected code surfaces the REAL underlying error text rather than a canned string.
+ */
+function didCreateErrorMessage(intl: IntlShape, error: ChromeQueryError | undefined, activeIndex: number): string {
+  switch (error?.code) {
+    case 'NO_XCH_COINS':
+      return intl.formatMessage({ id: 'did.create.error.noXchCoins' }, { index: activeIndex });
+    case 'NO_SUITABLE_COIN':
+      return intl.formatMessage({ id: 'did.create.error.noSuitableCoin' });
+    default:
+      // A code we don't specifically handle (or a raw wasm/clvm throw) — show the REAL message,
+      // never a canned "try again" (#179). `did.create.error.build` is the true-defensive fallback
+      // for the (should-never-happen) case where the SW reply carried no error detail at all.
+      return error?.message
+        ? intl.formatMessage({ id: 'did.create.error.unexpected' }, { detail: error.message })
+        : intl.formatMessage({ id: 'did.create.error.build' });
+  }
+}
 
 /**
  * Create a new "simple" DID (#93) — a plain-language form (an optional network fee) → a pre-sign
@@ -15,9 +41,12 @@ type Phase = 'form' | 'review' | 'sending' | 'confirmed' | 'failed';
  * shared `sendStatus` (a DID create is a coin spend). The new DID then appears in the Identity list
  * (the mutation invalidates the `Identity` cache). The decrypted key never leaves the vault. `pollMs`
  * is injectable for tests. Fullscreen-only surface (§145) — rendered only from `DidPanel` when full.
+ * A failed build surfaces the SPECIFIC cause (unfunded active index, fragmented coins, or the real
+ * underlying error) — never a generic "try again" (#179).
  */
 export function CreateDid({ onDone, pollMs = 8000 }: { onDone: () => void; pollMs?: number }) {
   const intl = useIntl();
+  const activeIndex = useAppSelector(selectActiveDerivationIndex);
   const [phase, setPhase] = useState<Phase>('form');
   const [fee, setFee] = useState('0');
   const [feeError, setFeeError] = useState<string | null>(null);
@@ -60,7 +89,8 @@ export function CreateDid({ onDone, pollMs = 8000 }: { onDone: () => void; pollM
       setFeeSummary(res.data.didCreateSummary.fee);
       setPhase('review');
     } else {
-      setBuildError(intl.formatMessage({ id: 'did.create.error.build' }));
+      const error = 'error' in res ? (res.error as ChromeQueryError | undefined) : undefined;
+      setBuildError(didCreateErrorMessage(intl, error, activeIndex));
     }
   }
 

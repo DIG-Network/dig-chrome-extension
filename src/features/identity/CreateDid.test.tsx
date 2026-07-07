@@ -2,6 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import { renderWithProviders } from '@/test/harness';
+import { createStore } from '@/app/store';
+import { setActiveDerivationIndex } from '@/features/wallet/walletSlice';
 import { CreateDid } from '@/features/identity/CreateDid';
 import type { DidCreateSummary } from '@/offscreen/dids';
 
@@ -85,11 +87,36 @@ describe('CreateDid', () => {
     expect(await screen.findByTestId('did-create-failed')).toBeInTheDocument();
   });
 
-  it('surfaces a build failure as an inline error', async () => {
+  // #179: the build-error branch used to collapse every failure to one generic "try again" string,
+  // hiding whether the cause was an unfunded active index, fragmented coins, or something else.
+  it('NO_XCH_COINS names the active derivation index and never says "try again"', async () => {
     mockSw((m) => (m.action === 'prepareDidCreate' ? { success: false, code: 'NO_XCH_COINS' } : { success: true }));
+    const store = createStore();
+    store.dispatch(setActiveDerivationIndex(3));
+    renderWithProviders(<CreateDid onDone={() => {}} />, { store });
+    fireEvent.click(screen.getByTestId('did-create-review'));
+    const error = await screen.findByTestId('did-create-build-error');
+    expect(error).toHaveTextContent('3');
+    expect(error).not.toHaveTextContent(/try again/i);
+  });
+
+  it('NO_SUITABLE_COIN shows the insufficient-total-funds message', async () => {
+    mockSw((m) => (m.action === 'prepareDidCreate' ? { success: false, code: 'NO_SUITABLE_COIN' } : { success: true }));
     renderWithProviders(<CreateDid onDone={() => {}} />);
     fireEvent.click(screen.getByTestId('did-create-review'));
-    expect(await screen.findByTestId('did-create-build-error')).toBeInTheDocument();
+    const error = await screen.findByTestId('did-create-build-error');
+    expect(error).not.toHaveTextContent(/try again/i);
+  });
+
+  it('an unrecognized failure surfaces the ACTUAL error message, never a canned "try again"', async () => {
+    mockSw((m) =>
+      m.action === 'prepareDidCreate' ? { success: false, code: 'WASM_ERROR', message: 'clvm raise (SPEND_ASSERT)' } : { success: true },
+    );
+    renderWithProviders(<CreateDid onDone={() => {}} />);
+    fireEvent.click(screen.getByTestId('did-create-review'));
+    const error = await screen.findByTestId('did-create-build-error');
+    expect(error).toHaveTextContent('clvm raise (SPEND_ASSERT)');
+    expect(error).not.toHaveTextContent(/try again/i);
   });
 
   it('has no WCAG violations (create form)', async () => {

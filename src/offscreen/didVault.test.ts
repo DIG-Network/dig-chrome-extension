@@ -79,7 +79,23 @@ describe('Vault DID management (#93)', () => {
     const { vault } = await unlockedVault();
     const res = await vault.handle({ op: 'prepareDidCreate' }, { chia: chia as never, chain: simChain(new chia.Simulator()) });
     expect(res.success).toBe(false);
-    expect(res.code).not.toBe('NO_PENDING');
+    // #179 regression: `handle()`'s catch used to collapse every domain throw (dids.ts's
+    // `NO_XCH_COINS`/`NO_SUITABLE_COIN` "CODE: message" convention) to a generic `VAULT_ERROR`,
+    // hiding the real cause from the UI. The specific code must survive to the caller.
+    expect(res.code).toBe('NO_XCH_COINS');
+    expect(res.message).toMatch(/NO_XCH_COINS/);
+  });
+
+  it('prepareDidCreate fails NO_SUITABLE_COIN when even combining every coin the total is short of the DID amount plus fee (#179)', async () => {
+    const { vault, seed } = await unlockedVault();
+    const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 100n);
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 100n);
+    const chain = simChain(sim);
+    const res = await vault.handle({ op: 'prepareDidCreate', fee: '1000000', activeIndex: 0 }, { chia: chia as never, chain });
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('NO_SUITABLE_COIN');
   });
 
   it('prepareDidCreate fails LOCKED when the wallet holds no key', async () => {
