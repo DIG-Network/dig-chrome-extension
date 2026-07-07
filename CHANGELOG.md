@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.56.0] - 2026-07-07
+
+### Features
+- **wallet:** Clawback support when sending funds (#79)
+
 ## [1.55.0] - 2026-07-07
 
 ### Features
