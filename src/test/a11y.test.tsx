@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { screen, fireEvent } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import { ResolverTab } from '@/features/resolver/ResolverTab';
 import { NoWalletCard } from '@/features/wallet/custody/NoWalletCard';
@@ -26,6 +27,32 @@ describe('accessibility (axe)', () => {
 
   it('AppsTab has no WCAG violations', async () => {
     const { container } = renderWithProviders(<AppsTab />);
+    const results = await axe(container, AXE_OPTS);
+    expect(results.violations).toEqual([]);
+  });
+
+  it('AppsTab in personalization edit mode (drag/keyboard-reorder + hide controls, #164) has no WCAG violations', async () => {
+    (chrome.storage as unknown as { local: unknown }).local = {
+      get: vi.fn(async () => ({})),
+      set: vi.fn(async () => {}),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          apps: [
+            { slug: 'a', name: 'App A', icon: 'https://explore.dig.net/a.png', link: 'https://a.on.dig.net/', category: 'tools', featured: false },
+            { slug: 'b', name: 'App B', icon: 'https://explore.dig.net/b.png', link: 'https://b.on.dig.net/', category: 'tools', featured: false },
+          ],
+        }),
+      })),
+    );
+    const { container } = renderWithProviders(<AppsTab />);
+    await screen.findByTestId('apps-launcher');
+    fireEvent.click(screen.getByTestId('apps-edit-toggle'));
+    fireEvent.click(screen.getByTestId('app-hide-b'));
+    fireEvent.click(screen.getByTestId('apps-hidden-toggle')); // expand "Show hidden (1)"
     const results = await axe(container, AXE_OPTS);
     expect(results.violations).toEqual([]);
   });

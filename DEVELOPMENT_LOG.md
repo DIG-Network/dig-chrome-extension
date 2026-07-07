@@ -328,3 +328,20 @@ exact mainnet address string and asserting byte-identity (`nfts.test.ts`) — wo
 (construct as `Uint8Array(32)` with `[30]=0xde, [31]=0xad`, avoiding any hex-string transcription
 risk) anywhere else in the ecosystem that needs a burn destination (CAT melt/burn, a future
 dig-sdk/hub burn action, etc.) rather than re-deriving it.
+
+## `playwright.config.ts`'s dist-web screenshot harness (`npm run screenshots`) uses a HARDCODED port shared across every parallel worktree
+
+The dist-web static server (`python -m http.server 4173 --directory dist-web`) and `baseURL:
+'http://127.0.0.1:4173'` are fixed in `playwright.config.ts`. When multiple agent lanes are working
+this repo concurrently in separate git worktrees (each with its own `dist-web`, e.g. two `#16x`
+issues in flight at once), every lane's `npm run screenshots` binds/serves on the SAME port — one
+lane's requests silently round-robin to a SIBLING lane's server process and get its (unrelated or
+absent) `dist-web` content, producing spurious 404s or wrong-build screenshots, and Playwright's own
+`webServer` startup can time out (`Timed out waiting 30000ms from config.webServer`) if the port is
+already bound by another lane. This is an ENVIRONMENT collision, not a code bug — `netstat -ano |
+grep :4173` shows many `LISTENING` PIDs when it happens. The harness is explicitly documented as
+"not part of the CI test/coverage gate" (local visual-verification only), so a blocked run here
+should never block a PR; verify the underlying concern (e.g. popup horizontal-overflow risk from a
+new header control) by design/inspection or via the `e2e/sw/` built-extension harness instead
+(`playwright.sw.config.ts`, no static server / no shared port), and retry the dist-web harness later
+when sibling lanes have quieted down.
