@@ -27,8 +27,8 @@ import {
 /** How many dApp icons the Home launcher widget shows before "see all". */
 const HOME_LAUNCHER_LIMIT = 8;
 
-/** Glyph per activity kind for the recent-activity peek (#154 — mirrors `CustodyActivity.tsx`'s
- * `ICON`; all eight schema kinds so a future mint/DID/offer/clawback/melt entry never crashes). */
+/** Glyph per activity kind for the recent-activity peek (#154/#171 — mirrors `CustodyActivity.tsx`'s
+ * `ICON`; all nine schema kinds so a future mint/DID/offer/clawback/melt entry never crashes). */
 const KIND_GLYPH: Record<ActivityRow['kind'], string> = {
   sent: '↑',
   received: '⇩',
@@ -38,6 +38,7 @@ const KIND_GLYPH: Record<ActivityRow['kind'], string> = {
   offer: '⇗',
   clawback: '↩',
   melt: '⟲',
+  burn: '🔥',
 };
 
 /**

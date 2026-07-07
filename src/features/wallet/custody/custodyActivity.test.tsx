@@ -72,6 +72,16 @@ describe('CustodyActivity (#154 — local log, instant load, pending→confirmed
     expect(await screen.findByTestId('activity-mint:1')).toHaveTextContent('Minted 1 NFT');
   });
 
+  it('#171 renders a bulk NFT burn entry with its own sentence + glyph, no counterparty', async () => {
+    const burn: LocalActivityEntry = { id: 'burn:1', kind: 'burn', asset: 'NFT', amount: '3', counterparty: null, timestamp: 500, coinId: 'f'.repeat(64), status: 'confirmed' };
+    mockSw([burn]);
+    renderWithProviders(<CustodyActivity />);
+    expect(await screen.findByTestId('activity-burn:1')).toHaveTextContent('Burned 3 NFT');
+    fireEvent.click(screen.getByTestId('activity-line-burn:1'));
+    // A burn has no counterparty (the destination has no spending key) — the receipt never shows "To".
+    expect(screen.queryByTestId('activity-receipt-burn:1')).not.toHaveTextContent('To');
+  });
+
   it('shows the empty state when there is no activity', async () => {
     mockSw([]);
     renderWithProviders(<CustodyActivity />);

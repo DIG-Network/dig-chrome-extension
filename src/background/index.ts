@@ -1293,6 +1293,39 @@ async function handleCustodyActionInner(message) {
       }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft transfer failed' };
     }
+    case ACTIONS.prepareNftBulkTransfer: {
+      // Build (not broadcast) a bulk transfer of the selected NFTs (#171) — held for approval.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareNftBulkTransfer', launcherIds: message.launcherIds, recipient: message.recipient, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
+    }
+    case ACTIONS.confirmNftBulkTransfer: {
+      // The ONLY place a prepared bulk NFT transfer is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('sent', res.activityHint, res.spentCoinId);
+      }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft bulk transfer failed' };
+    }
+    case ACTIONS.prepareNftBulkBurn: {
+      // Build (not broadcast) a bulk burn of the selected NFTs (#171) — held for approval. Building
+      // the spend is NOT destructive by itself; only confirmNftBulkBurn (below) actually broadcasts.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareNftBulkBurn', launcherIds: message.launcherIds, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
+    }
+    case ACTIONS.confirmNftBulkBurn: {
+      // The ONLY place a prepared bulk NFT burn is broadcast — IRREVERSIBLE. The UI is responsible
+      // for having already obtained the user's explicit, distinct destructive confirmation before
+      // ever sending this action; the SW does not re-confirm, it only executes + logs.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('burn', res.activityHint, res.spentCoinId);
+      }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft bulk burn failed' };
+    }
     case ACTIONS.prepareNftMint: {
       // Build (not broadcast) a new-NFT mint (#92): CHIP-0007 metadata + royalty; held for approval.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());

@@ -35,7 +35,18 @@ import { deriveAccounts } from '@/lib/keystore/derive';
 import type { ChainClient, ChainCoin } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { listCoins as buildCoinList, prepareSplit as buildSplit, prepareCombine as buildCombine, type CoinsWasm, type CoinInfo, type CoinOpSummary } from '@/offscreen/coins';
-import { listNfts, prepareNftTransfer, prepareNftMint, type NftWasm, type WalletNft, type NftTransferSummary, type NftMintSummary } from '@/offscreen/nfts';
+import {
+  listNfts,
+  prepareNftTransfer,
+  prepareNftBulkTransfer,
+  prepareNftBulkBurn,
+  prepareNftMint,
+  type NftWasm,
+  type WalletNft,
+  type NftTransferSummary,
+  type NftBulkTransferSummary,
+  type NftMintSummary,
+} from '@/offscreen/nfts';
 import { listDids, prepareDidCreate, prepareDidTransfer, prepareDidProfileUpdate, type DidWasm, type WalletDid, type DidCreateSummary, type DidTransferSummary, type DidProfileUpdateSummary } from '@/offscreen/dids';
 import { prepareNftDidAssign, type AssignWasm, type NftDidAssignSummary } from '@/offscreen/didAssign';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
@@ -170,6 +181,10 @@ export type VaultOp =
   | 'confirmTrade'
   | 'listNfts'
   | 'prepareNftTransfer'
+  // Bulk transfer/burn (#171 — Collectibles multi-select): move or burn MULTIPLE selected NFTs in ONE
+  // spend; broadcast via the shared confirmSend path exactly like a single-NFT transfer.
+  | 'prepareNftBulkTransfer'
+  | 'prepareNftBulkBurn'
   // NFT minting (#92): build a new NFT (CHIP-0007 metadata + royalty); broadcast via confirmSend.
   | 'prepareNftMint'
   // DID management (#93): create/list/transfer/profile-update a self-custody identity; broadcast via confirmSend.
@@ -272,6 +287,10 @@ export interface VaultRequest {
   /** prepareNftTransfer / prepareDidTransfer / prepareDidProfileUpdate: the asset's launcher id (hex).
    * prepareNftDidAssign: the NFT's launcher id (the DID's is {@link didLauncherId}). */
   launcherId?: string;
+  /** prepareNftBulkTransfer / prepareNftBulkBurn (#171): the launcher ids (hex) of EVERY selected NFT
+   * to move/burn in one spend. `recipient` (above) is required for a bulk TRANSFER, ignored for a
+   * bulk BURN (the destination is the fixed well-known burn puzzle hash). */
+  launcherIds?: string[];
   /** prepareNftDidAssign (#93): the DID's launcher id (hex) to assign as the NFT's owner. */
   didLauncherId?: string;
   /** prepareDidProfileUpdate (#93): the new on-chain profile name (plain UTF-8). */
@@ -332,6 +351,9 @@ export interface VaultResponse {
   nfts?: WalletNft[];
   /** prepareNftTransfer: the decoded transfer summary to approve. */
   nftSummary?: NftTransferSummary;
+  /** prepareNftBulkTransfer / prepareNftBulkBurn (#171): the decoded bulk summary (every launcher id
+   * moved, the destination, fee, and whether it's a burn) to approve. */
+  nftBulkSummary?: NftBulkTransferSummary;
   /** prepareNftMint (#92): the decoded (tamper-resistant) mint summary to approve. */
   nftMintSummary?: NftMintSummary;
   /** prepareNftMint (#92): the new NFT's launcher id (hex). */
@@ -472,6 +494,10 @@ export class Vault {
           return await this.listNfts(req, deps);
         case 'prepareNftTransfer':
           return await this.prepareNftTransfer(req, deps);
+        case 'prepareNftBulkTransfer':
+          return await this.prepareNftBulkTransfer(req, deps);
+        case 'prepareNftBulkBurn':
+          return await this.prepareNftBulkBurn(req, deps);
         case 'prepareNftMint':
           return await this.prepareNftMint(req, deps);
         case 'listDids':
@@ -822,6 +848,67 @@ export class Vault {
     const activityHint: ActivityHint = { asset: 'NFT', amount: '1', counterparty: req.recipient };
     this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, nftSummary: prepared.summary };
+  }
+
+  /**
+   * Prepare (build, don't sign/broadcast) a BULK transfer of every NFT in `req.launcherIds` to
+   * `req.recipient` in ONE spend bundle (#171 — Collectibles multi-select) — the SAME pending map +
+   * `confirmSend` broadcast path as a single NFT transfer.
+   */
+  private async prepareNftBulkTransfer(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.launcherIds || req.launcherIds.length === 0 || !req.recipient) {
+      return { success: false, code: 'BAD_REQUEST', message: 'launcherIds + recipient required' };
+    }
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as NftWasm;
+    const prepared = await prepareNftBulkTransfer(chia, deps.chain, {
+      seed,
+      launcherIds: req.launcherIds,
+      recipient: req.recipient,
+      fee: BigInt(req.fee ?? '0'),
+      activeIndex: req.activeIndex ?? 0,
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    // #154 — a bulk transfer is a "sent" activity entry to the recipient the user already typed;
+    // amount carries the NFT COUNT (there is no fungible amount for a bundle of singletons).
+    const activityHint: ActivityHint = { asset: 'NFT', amount: String(prepared.summary.launcherIds.length), counterparty: req.recipient };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
+    return { success: true, pendingId, nftBulkSummary: prepared.summary };
+  }
+
+  /**
+   * Prepare (build, don't sign/broadcast) a BULK BURN of every NFT in `req.launcherIds` — a transfer
+   * to the well-known provably-unspendable puzzle hash in ONE spend bundle (#171). Irreversible once
+   * `confirmSend` broadcasts it; this method only BUILDS the spend — the caller (the SW/UI) is
+   * responsible for requiring the user's explicit, distinct destructive confirmation before ever
+   * calling `confirmSend` on the returned pending id. Same pending map + broadcast path as a transfer.
+   */
+  private async prepareNftBulkBurn(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.launcherIds || req.launcherIds.length === 0) {
+      return { success: false, code: 'BAD_REQUEST', message: 'launcherIds required' };
+    }
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as NftWasm;
+    const prepared = await prepareNftBulkBurn(chia, deps.chain, {
+      seed,
+      launcherIds: req.launcherIds,
+      fee: BigInt(req.fee ?? '0'),
+      activeIndex: req.activeIndex ?? 0,
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    // #154 — a burn's destination has no spending key, so it is NOT a real "sent to" counterparty;
+    // the SW logs it under a distinct 'burn' activity kind regardless (it knows the action name).
+    const activityHint: ActivityHint = { asset: 'NFT', amount: String(prepared.summary.launcherIds.length), counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
+    return { success: true, pendingId, nftBulkSummary: prepared.summary };
   }
 
   /**
