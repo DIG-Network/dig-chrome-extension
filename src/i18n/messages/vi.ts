@@ -213,6 +213,8 @@ export const vi: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Tạo',
   'trade.mode.take': 'Nhận',
+  'trade.make.continue': 'Tiếp tục',
+  'trade.make.review.intro': 'Xem lại giao dịch của bạn trước khi tạo đề nghị.',
   'trade.make.submit': 'Tạo đề nghị',
   'trade.error.sameAsset': 'Chọn hai tài sản khác nhau để giao dịch',
   'trade.error.build': 'Không thể tạo giao dịch này — hãy kiểm tra số dư và thử lại',

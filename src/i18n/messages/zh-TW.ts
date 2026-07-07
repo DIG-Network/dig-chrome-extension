@@ -213,6 +213,8 @@ export const zhTW: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': '發起',
   'trade.mode.take': '接受',
+  'trade.make.continue': '繼續',
+  'trade.make.review.intro': '建立報價前請確認交易內容。',
   'trade.make.submit': '建立報價',
   'trade.error.sameAsset': '請選擇兩種不同的資產進行交易',
   'trade.error.build': '交易建立失敗——請檢查您的餘額後再試一次',

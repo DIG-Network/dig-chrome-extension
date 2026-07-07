@@ -217,6 +217,8 @@ export const en: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Make',
   'trade.mode.take': 'Take',
+  'trade.make.continue': 'Continue',
+  'trade.make.review.intro': 'Review your trade before you create the offer.',
   'trade.make.submit': 'Create offer',
   'trade.error.sameAsset': 'Pick two different assets to trade',
   'trade.error.build': "Couldn't build this trade — check your balances and try again",

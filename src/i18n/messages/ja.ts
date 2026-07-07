@@ -213,6 +213,8 @@ export const ja: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': '作成',
   'trade.mode.take': '承諾',
+  'trade.make.continue': '続ける',
+  'trade.make.review.intro': 'オファーを作成する前に取引内容を確認してください。',
   'trade.make.submit': 'オファーを作成',
   'trade.error.sameAsset': '取引する2つの異なる資産を選択してください',
   'trade.error.build': 'この取引を作成できませんでした。残高を確認してもう一度お試しください',

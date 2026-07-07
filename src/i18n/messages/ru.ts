@@ -213,6 +213,8 @@ export const ru: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Создать',
   'trade.mode.take': 'Принять',
+  'trade.make.continue': 'Продолжить',
+  'trade.make.review.intro': 'Проверьте условия сделки перед созданием предложения.',
   'trade.make.submit': 'Создать предложение',
   'trade.error.sameAsset': 'Выберите два разных актива для обмена',
   'trade.error.build': 'Не удалось сформировать сделку — проверьте балансы и попробуйте снова',
