@@ -262,6 +262,7 @@ export const vi: Record<string, string> = {
   'appview.back': 'Quay lại',
   'appview.expand': 'Mở trong tab đầy đủ',
   'appview.loading': 'Đang mở {name}…',
+  'appview.loading.sub': 'Đang kết nối an toàn · được hỗ trợ bởi DIG Network',
   'appview.blocked': '{name} không thể chạy bên trong DIG — đang mở trong tab mới.',
   'appview.openTab': 'Mở trong tab mới',
   // Inline bug-report entry

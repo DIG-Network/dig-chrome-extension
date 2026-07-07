@@ -262,6 +262,7 @@ export const ja: Record<string, string> = {
   'appview.back': '戻る',
   'appview.expand': 'フルタブで開く',
   'appview.loading': '{name} を開いています…',
+  'appview.loading.sub': '安全に接続しています · DIG Network が提供',
   'appview.blocked': '{name} はDIG内で実行できません。新しいタブで開きます。',
   'appview.openTab': '新しいタブで開く',
   // Inline bug-report entry

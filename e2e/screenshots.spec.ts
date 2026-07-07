@@ -259,6 +259,39 @@ test('popup app-view (dApp opened in-window)', async ({ page }) => {
   await page.screenshot({ path: 'e2e/__screenshots__/popup-appview.png' });
 });
 
+// #157 — the branded on.dig.net-matching DIG loader shows while the dApp is loading (before the
+// embed resolves). The route is held open past first paint but well inside the app-view's 6s
+// load-timeout, so the phase stays 'loading' long enough to capture it, at both widths.
+test('popup app-view loading (branded DIG loader, #157)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.route('https://chia-offer.on.dig.net/**', async (route) => {
+    await new Promise((r) => setTimeout(r, 4000));
+    await route.fulfill({ contentType: 'text/html', body: '<body>Chia-Offer</body>' });
+  });
+  await open(page, 'popup.html', 'home');
+  await page.getByTestId('app-tile-chia-offer').click();
+  const loading = page.getByTestId('appview-loading');
+  await loading.waitFor();
+  await expect(loading.getByRole('img', { name: 'DIG Network' })).toBeVisible();
+  await page.waitForTimeout(400); // let the app-view's 0.24s open transition settle before capturing
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-appview-loading.png' });
+});
+
+test('fullscreen app-view loading (branded DIG loader, #157)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await page.route('https://chia-offer.on.dig.net/**', async (route) => {
+    await new Promise((r) => setTimeout(r, 4000));
+    await route.fulfill({ contentType: 'text/html', body: '<body>Chia-Offer</body>' });
+  });
+  await open(page, 'app.html', 'home');
+  await page.getByTestId('app-tile-chia-offer').click();
+  const loading = page.getByTestId('appview-loading');
+  await loading.waitFor();
+  await expect(loading.getByRole('img', { name: 'DIG Network' })).toBeVisible();
+  await page.waitForTimeout(400); // let the app-view's 0.24s open transition settle before capturing
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-appview-loading.png' });
+});
+
 // DID management (#93): advanced → fullscreen only (§145). The fullscreen Identity view exposes
 // "Create DID" + per-DID "Transfer"/"Edit profile"; the popup shows a view-only list with an "open
 // full screen" affordance (never any of the forms).

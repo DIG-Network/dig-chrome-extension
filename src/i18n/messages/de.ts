@@ -262,6 +262,7 @@ export const de: Record<string, string> = {
   'appview.back': 'Zurück',
   'appview.expand': 'In einem vollständigen Tab öffnen',
   'appview.loading': '{name} wird geöffnet…',
+  'appview.loading.sub': 'Sichere Verbindung wird hergestellt · unterstützt von DIG Network',
   'appview.blocked': '{name} kann nicht innerhalb von DIG ausgeführt werden — wird in einem neuen Tab geöffnet.',
   'appview.openTab': 'In einem neuen Tab öffnen',
   // Inline bug-report entry

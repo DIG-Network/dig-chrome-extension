@@ -262,6 +262,7 @@ export const zhCN: Record<string, string> = {
   'appview.back': '返回',
   'appview.expand': '在完整标签页中打开',
   'appview.loading': '正在打开 {name}…',
+  'appview.loading.sub': '正在安全连接 · 由 DIG Network 提供支持',
   'appview.blocked': '{name} 无法在 DIG 内运行 — 正在新标签页中打开。',
   'appview.openTab': '在新标签页中打开',
   // Inline bug-report entry
