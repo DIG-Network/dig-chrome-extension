@@ -6,17 +6,38 @@ import { useGetCustodyActivityQuery } from '@/features/wallet/custodyApi';
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { activityRows, type ActivityRow } from '@/features/wallet/custody/activityRows';
 
-const ICON: Record<ActivityRow['kind'], string> = { sent: '↑', received: '⇩', trade: '⇄' };
+/** Decorative glyph per activity kind — covers all eight schema kinds (#154) even though only
+ * sent/received/mint/did/trade are currently EMITTED (see `lib/activity-log.ts`'s `ActivityKind`
+ * doc); offer/clawback/melt render correctly the moment a future change starts logging them. */
+const ICON: Record<ActivityRow['kind'], string> = {
+  sent: '↑',
+  received: '⇩',
+  trade: '⇄',
+  mint: '✦',
+  did: '◈',
+  offer: '⇗',
+  clawback: '↩',
+  melt: '⟲',
+};
+/** Message id per kind — sent/received/trade/mint/clawback/melt interpolate `{amount}`/`{ticker}`;
+ * did/offer are amount-agnostic (a DID/offer spend's "amount" is a non-meaningful mojo dust value). */
 const SENTENCE_ID: Record<ActivityRow['kind'], string> = {
   sent: 'activity.line.sent',
   received: 'activity.line.received',
   trade: 'activity.line.traded',
+  mint: 'activity.line.mint',
+  did: 'activity.line.did',
+  offer: 'activity.line.offer',
+  clawback: 'activity.line.clawback',
+  melt: 'activity.line.melt',
 };
 
 /**
- * The self-custody Activity ledger (§4.3) — human-sentence rows from the offscreen indexer, four
- * states (loading skeleton / error+retry / empty / success), each row expandable to a receipt
- * (counterparty, height, coin id, SpaceScan). Read-only; cached-first via the SW cache.
+ * The self-custody Activity ledger (§154) — human-sentence rows from the LOCAL activity log (the
+ * extension's own record of what it did, plus balance-delta receives — NOT an on-chain
+ * reconstruction), four states (loading skeleton / error+retry / empty / success), each row
+ * expandable to a receipt (counterparty, status, coin id, SpaceScan once confirmed). Read-only;
+ * loads instantly from `chrome.storage.local` (see `src/background/index.ts`'s `getActivity`).
  */
 export function CustodyActivity() {
   const activity = useGetCustodyActivityQuery();
@@ -71,10 +92,16 @@ export function CustodyActivity() {
                       <dd className="dig-mono">{row.counterparty}</dd>
                     </>
                   )}
-                  <dt><FormattedMessage id="activity.receipt.height" /></dt>
-                  <dd>{row.height}</dd>
-                  <dt><FormattedMessage id="activity.receipt.coin" /></dt>
-                  <dd className="dig-mono" style={{ wordBreak: 'break-all' }}>{row.coinId}</dd>
+                  <dt><FormattedMessage id="activity.receipt.status" /></dt>
+                  <dd data-testid={`activity-status-${row.id}`}>
+                    <FormattedMessage id={row.status === 'confirmed' ? 'activity.status.confirmed' : 'activity.status.pending'} />
+                  </dd>
+                  {row.coinId && (
+                    <>
+                      <dt><FormattedMessage id="activity.receipt.coin" /></dt>
+                      <dd className="dig-mono" style={{ wordBreak: 'break-all' }}>{row.coinId}</dd>
+                    </>
+                  )}
                   {row.spaceScanUrl && (
                     <dd>
                       <ExternalLink href={row.spaceScanUrl} testid={`activity-spacescan-${row.id}`}>

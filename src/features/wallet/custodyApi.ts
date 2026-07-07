@@ -2,7 +2,7 @@ import type { ThunkDispatch, UnknownAction } from '@reduxjs/toolkit';
 import { api } from '@/api/api';
 import { ACTIONS } from '@/lib/messages';
 import type { LockState } from '@/features/wallet/walletSlice';
-import type { ActivityEvent } from '@/offscreen/activity';
+import type { LocalActivityEntry } from '@/lib/activity-log';
 import type { WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 import type { WalletMeta } from '@/lib/wallet-registry';
 
@@ -233,8 +233,9 @@ export const custodyApi = api.injectEndpoints({
       query: (arg) => ({ action: ACTIONS.sendStatus, ...arg }),
     }),
 
-    // Reconstruct the transaction ledger (read-only) from the offscreen vault. Cached-first via SW.
-    getCustodyActivity: build.query<{ events: ActivityEvent[]; cursorHeight: number; cached?: boolean }, void>({
+    // The LOCAL activity log (#154) for the active wallet + index — an instant storage read, NOT an
+    // on-chain scan (see src/background/index.ts's getActivity + src/lib/activity-log.ts).
+    getCustodyActivity: build.query<{ events: LocalActivityEntry[] }, void>({
       query: () => ({ action: ACTIONS.getActivity }),
       providesTags: ['Activity'],
     }),

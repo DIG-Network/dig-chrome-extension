@@ -201,3 +201,39 @@ already-visible element wouldn't have scrolled anything. This defeats a "reachab
 scrolling" assertion taken right after a `.click()`. Use `.click({ force: true })` (skips Playwright's
 own actionability/scroll-into-view step) or explicitly reset `scrollTop = 0` before measuring — see
 `e2e/sw/view-header-receive.spec.ts`.
+
+## #154 — nearly every confirm* action already reuses `confirmSend`'s wire shape, so one enrichment fed activity-logging to nine action kinds for free
+
+Replacing the on-chain Activity scan with a local MetaMask-style log required knowing, at broadcast
+time, WHAT was just spent (asset/amount/counterparty) so the SW could write a real entry. The naive
+assumption was "every action kind needs its own plumbing" — false. `confirmNftTransfer`,
+`confirmNftMint`, `confirmDidCreate`, `confirmDidTransfer`, `confirmDidProfileUpdate`, and
+`confirmNftDidAssign` all literally call `vault.handle({ op: 'confirmSend', pendingId })` — the SAME
+vault method as a plain XCH/CAT send (`src/background/index.ts`'s case handlers just relabel the
+SW-level action name; `src/offscreen/vault.ts` has exactly ONE broadcast method for all of them,
+keyed off a single shared `this.pending` map). So adding ONE optional field —
+`activityHint: {asset, amount, counterparty}` — captured at each `prepare*` call site (where the
+real data already exists: `req.recipient` for a transfer, a synthetic `'NFT'`/`'DID'` label + null
+counterparty for a self-only mint/create) and echoed back by the single shared `confirmSend` method,
+gave SEVEN of the eight emitted activity kinds real data with zero new wire surface. Only
+`confirmTrade` needed its own (near-identical) treatment because offers use a separate
+`pendingTrades` map. The tell: before adding a new field/path per action, check whether the actions
+already collapse onto one shared vault method — coin-control's `prepareSplit`/`prepareCombine` ALSO
+reuse the plain `confirmSend` path, which is why a real send is distinguished from a self-only
+split/combine purely by `activityHint.counterparty` being non-null, not by a separate action check.
+
+## Receive-detection must skip the FIRST balance scan after any wallet/index switch, or a pre-existing balance reads as a fake "receive"
+
+`walletCache.balances` already gets cleared on every wallet switch AND every `setActiveIndex` call
+(`clearActiveWalletCaches`, pre-existing, unrelated to #154). Diffing "previous vs current" balance
+to detect a receive (`detectReceivedEntries`) is only correct because of that existing clear: the
+first `getCustodyBalances` scan after switching has NO prior snapshot, so the SW skips the delta
+call entirely (`logReceivedActivity` no-ops on a missing baseline) rather than comparing against
+`{xch:0, cats:{}}` and reporting the *entire* newly-active wallet's existing balance as a single
+giant "received" entry. The pure `detectReceivedEntries` function itself does NOT enforce this — it
+happily treats a missing baseline as zero (that's the right behavior for a genuinely brand-new
+wallet) — the skip-on-first-scan policy lives entirely in the SW glue
+(`src/background/index.ts`'s `getCustodyBalances` case), which is exactly the kind of policy
+decision easy to accidentally omit when only unit-testing the pure function in isolation. Any future
+consumer of `detectReceivedEntries` MUST replicate this "no prior snapshot → don't call it" guard,
+not rely on the function to do it.

@@ -144,8 +144,14 @@ import { DIG_ERR } from './error-codes';
  * never a gap-limit range. `getLockState`'s response also gained `activeIndex` (the active wallet's
  * current index) so the navigator UI hydrates from the same poll that already drives lock state.
  * #160 (configurable scan-index count) is SUPERSEDED — there is no multi-index scan left to size.
+ *
+ * `20` (#154) replaced `getActivity`'s on-chain reconstruction with the LOCAL activity log: its
+ * response dropped `cursorHeight` and each event's `height` field (BREAKING) in favor of a per-entry
+ * `status:'pending'|'confirmed'`, and its request no longer takes `watchedCats`/`sinceHeight` (a
+ * synchronous storage read needs neither). `confirmSend`/`confirmTrade` additively gained an optional
+ * `activityHint: { asset, amount, counterparty }` captured at prepare time.
  */
-export const MESSAGE_PROTOCOL_VERSION = 19;
+export const MESSAGE_PROTOCOL_VERSION = 20;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -446,19 +452,19 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: "{ pendingId:string, summary:{ asset:'XCH'|<assetId>, sent, change, fee, recipientPuzzleHashHex, coinCount } } | { success:false, code, message }",
   },
   [ACTIONS.confirmSend]: {
-    summary: 'Sign + BROADCAST a previously-prepared send (the approved step — the only place a real spend is pushed). Returns an input coin id to poll.',
+    summary: 'Sign + BROADCAST a previously-prepared send (the approved step — the only place a real spend is pushed). Returns an input coin id to poll, plus a #154 activityHint (asset/amount/counterparty captured at prepare time) the SW logs to the local activity log as a `sent` entry — absent a counterparty (a self-only split/combine reusing this path), nothing is logged.',
     request: '{ action, pendingId:string }',
-    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+    response: "{ spentCoinId:string, activityHint?:{ asset, amount, counterparty:string|null } } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },
   [ACTIONS.sendStatus]: {
-    summary: 'Poll whether a broadcast send has confirmed (an input coin is now recorded spent).',
+    summary: 'Poll whether a broadcast send has confirmed (an input coin is now recorded spent). #154: a `confirmed:true` result flips the matching local activity-log entry from `pending` to `confirmed`.',
     request: '{ action, coinId:string }',
     response: '{ confirmed:boolean } | { success:false, code, message }',
   },
   [ACTIONS.getActivity]: {
-    summary: 'Reconstruct the transaction ledger (read-only) from coinset in the offscreen vault: coin-diff (both HD schemes, incl. spent) → decode → classify (XCH/CAT/trade) → net + counterparty. Cached to walletCache.activity; incremental from a height cursor.',
+    summary: "#154 — the LOCAL activity log for the ACTIVE wallet + active index (#165): an instant chrome.storage.local read, NOT an on-chain scan. Entries are written the moment the extension performs an action (send/mint/DID/trade — see confirmSend/confirmTrade), starting `pending` until sendStatus confirms them; a `received` entry is detected from the balance scan's own before/after delta (getCustodyBalances).",
     request: '{ action }',
-    response: "{ events:[{ id, kind:'sent'|'received'|'trade', asset, amount, counterparty, height, timestamp, coinId }], cursorHeight:number } | { success:false, code, message }",
+    response: "{ events:[{ id, kind:'sent'|'received'|'mint'|'did'|'offer'|'trade'|'clawback'|'melt', asset, amount, counterparty, coinId, timestamp, status:'pending'|'confirmed' }] } | { success:false, code, message }",
   },
   [ACTIONS.makeOffer]: {
     summary: "Build (not broadcast) a shareable trade offer in the offscreen vault: spend the offered asset into the settlement puzzle + assert the requested payment; returns the `offer1…` string + two-sided summary. Offering an NFT (#94, OFFERED side only) with a nonzero on-chain royalty automatically declares the CHIP-0011 sale trade-price so the taker's royalty payment is chain-enforced. `requested.asset.kind:'nft'` is rejected with UNSUPPORTED_REQUEST (buying a specific NFT is a tracked follow-up); there is no `did` asset kind (DID is not an offer asset — see offers.ts).",
@@ -476,9 +482,9 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: '{ pendingId:string, offerSummary:{ offered, requested } } | { success:false, code, message }',
   },
   [ACTIONS.confirmTrade]: {
-    summary: 'BROADCAST a previously-prepared trade (the approved step — the only place a trade is pushed). Returns an input coin id to poll.',
+    summary: 'BROADCAST a previously-prepared trade (the approved step — the only place a trade is pushed). Returns an input coin id to poll, plus a #154 activityHint the SW logs as a `trade` entry (always present, even for a cancel).',
     request: '{ action, pendingId:string }',
-    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+    response: "{ spentCoinId:string, activityHint:{ asset, amount, counterparty:null } } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },
   [ACTIONS.listNfts]: {
     summary: "List the wallet's NFTs (Collectibles) — the offscreen vault derives both HD schemes, finds coins hinted to its inner puzzle hashes (coinset get_coin_records_by_hints), and reconstructs each NFT from its parent spend. Read-only.",

@@ -2,22 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { activityRows } from './activityRows';
 import { DIG_ASSET_ID } from '@/lib/links';
 import { parseCatRegistry } from '@/features/wallet/catMetadata';
-import type { ActivityEvent } from '@/offscreen/activity';
+import type { LocalActivityEntry } from '@/lib/activity-log';
 
-const ev = (o: Partial<ActivityEvent>): ActivityEvent => ({
+const ev = (o: Partial<LocalActivityEntry> = {}): LocalActivityEntry => ({
   id: 'x',
   kind: 'received',
   asset: 'XCH',
   amount: '0',
   counterparty: null,
-  height: 1,
   timestamp: 100,
   coinId: 'a'.repeat(64),
+  status: 'confirmed',
   ...o,
 });
 
-describe('activityRows', () => {
-  it('formats XCH amounts with 12 decimals + a SpaceScan link', () => {
+describe('activityRows (#154 — local log entries, not on-chain events)', () => {
+  it('formats XCH amounts with 12 decimals + a SpaceScan link when confirmed', () => {
     const [row] = activityRows([ev({ kind: 'received', asset: 'XCH', amount: '2510000000000' })]);
     expect(row.ticker).toBe('XCH');
     expect(row.amountLabel).toBe('2.51');
@@ -58,5 +58,26 @@ describe('activityRows', () => {
     const [row] = activityRows([ev({ kind: 'sent', counterparty: 'xch1qqqqexampleaddressqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzz' })]);
     expect(row.kind).toBe('sent');
     expect(row.counterparty).toContain('…');
+  });
+
+  it('#154 renders the synthetic NFT/DID asset labels as whole-unit tickers, never through the CAT decimal math', () => {
+    const [nftRow] = activityRows([ev({ kind: 'mint', asset: 'NFT', amount: '1' })]);
+    expect(nftRow.ticker).toBe('NFT');
+    expect(nftRow.amountLabel).toBe('1');
+    const [didRow] = activityRows([ev({ kind: 'did', asset: 'DID', amount: '1' })]);
+    expect(didRow.ticker).toBe('DID');
+    expect(didRow.amountLabel).toBe('1');
+  });
+
+  it('#154 carries status through, and omits the SpaceScan link while still pending', () => {
+    const [row] = activityRows([ev({ kind: 'sent', status: 'pending', coinId: 'f'.repeat(64) })]);
+    expect(row.status).toBe('pending');
+    expect(row.spaceScanUrl).toBeNull();
+  });
+
+  it('#154 a best-effort received entry (no specific coin id) never sets a SpaceScan link', () => {
+    const [row] = activityRows([ev({ kind: 'received', coinId: null })]);
+    expect(row.spaceScanUrl).toBeNull();
+    expect(row.coinId).toBeNull();
   });
 });

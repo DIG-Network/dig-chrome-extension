@@ -92,10 +92,13 @@ test.describe('Wallet reads over live coinset (#148 — the RpcClient null-point
     expect(res.message).not.toBe(UNKNOWN_ACTION);
   });
 
-  test('getActivity is wired to a real coinset round-trip (never the unknown-action stub)', async () => {
-    const res = await swSendRaced<{ events?: unknown[]; message?: string }>(ext, { action: 'getActivity' }, 18_000);
-    if ('timedOut' in res) return;
+  // #154 — getActivity is now the LOCAL activity log (an instant chrome.storage.local read), NOT a
+  // coinset round-trip; it never touches the network, so it resolves near-instantly with a real
+  // events array — no race/timeout budget needed like the coinset-backed reads above.
+  test('getActivity is the LOCAL activity log — an instant read, never the unknown-action stub', async () => {
+    const res = await swSend<{ events?: unknown[]; message?: string }>(ext, { action: 'getActivity' });
     expect(res.message).not.toBe(UNKNOWN_ACTION);
+    expect(Array.isArray(res.events)).toBe(true);
   });
 
   test('listNfts (hint-scan, same coinset adapter) is wired to a real coinset round-trip (never the unknown-action stub)', async () => {

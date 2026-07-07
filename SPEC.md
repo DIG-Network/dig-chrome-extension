@@ -125,8 +125,8 @@ grouping; the **default landing is Home**. Every surface stays reachable:
      sticky header + QR/address are the WHOLE body (no asset/CAT list shares it), so the QR/address
      are reachable with zero scrolling regardless of how many CATs the wallet holds. Tracked CATs
      persist in `chrome.storage.local` `wallet.watchedCats` (`wallet-assets.mjs`).
-   - **Activity** — the transaction ledger reconstructed from chain by the offscreen indexer
-     (`getActivity`; §18.9).
+   - **Activity** — the LOCAL transaction log (MetaMask-style, NOT an on-chain scan) the extension
+     writes to as it acts (`getActivity`; §18.9).
    - **Trade** — make / take / cancel a `offer1…` string, built + signed in the offscreen vault
      (`makeOffer` / `inspectOffer` / `prepareTrade` / `confirmTrade`; §18.10).
    - **Collectibles** — the wallet's NFTs, discovered + transferred via the vault (§18.11).
@@ -444,7 +444,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `19`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `20`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -487,6 +487,14 @@ retired `gapLimit`) on every derivation-touching request — `getReceiveAddress`
 `prepareDidTransfer`, `prepareDidProfileUpdate`, `prepareNftDidAssign`, `makeOffer`,
 `prepareTrade` — each of which now derives ONLY the active index's puzzle hashes. `getLockState`'s
 response also gained `activeIndex` (§18.1a).
+
+`MESSAGE_PROTOCOL_VERSION` `20` (#154) replaced `getActivity`'s on-chain reconstruction with the LOCAL
+activity log (§18.9): its response dropped `cursorHeight` and each event's `height` field (BREAKING —
+the response is now `{ events }` only, and each event carries `status:'pending'|'confirmed'` instead
+of a block height) and its request no longer takes `watchedCats`/`sinceHeight` (a synchronous
+`chrome.storage.local` read needs neither). `confirmSend` and `confirmTrade` additively gained an
+optional `activityHint: { asset, amount, counterparty }` (the #154 hint captured at prepare time, so
+the SW can log the action without any coinset round-trip).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -878,9 +886,12 @@ wallet view; the extension MUST NOT perform a multi-index gap-limit sweep anywhe
 - **Navigation.** `setActiveIndex` (§7) sets the ACTIVE wallet's active index to an absolute,
   non-negative value (clamped; the UI computes prev = current−1, next = current+1, or an explicit
   jump target). It is a PURE SW registry op — no vault round-trip, no key material involved — that
-  drops the balance/activity caches (scoped to the previous index) and returns the persisted value.
-  Every index-scoped RTK Query view (balances, activity, receive address, collectibles, coins)
-  re-reads for the newly-active index, mirroring exactly how a wallet switch (§18.16) invalidates. On
+  drops the balance cache (scoped to the previous index — also the #154 receive-delta baseline, §18.9)
+  and returns the persisted value. The LOCAL activity log (§18.9) is NOT dropped — it is durable
+  history keyed per wallet+index, so navigating back to a prior index reads exactly that index's own
+  log again. Every index-scoped RTK Query view (balances, activity, receive address, collectibles,
+  coins) re-reads for the newly-active index, mirroring exactly how a wallet switch (§18.16)
+  invalidates. On
   a CONFIRMED index change the whole RTK Query cache is also reset (`api.util.resetApiState()`, #162)
   — the same cache-reset behavior a wallet switch gets (§18.16), so no view can keep showing a stale
   value for the previous index while the new one loads.
@@ -996,8 +1007,8 @@ custody requests, owns storage, and enforces auto-lock.
 | `wallet.keystore` | `storage.local` | encrypted only | the ACTIVE wallet's DIGWX1 record (§18.2) — a mirror of the active registry entry, so every single-wallet read path keeps working; the only at-rest secret alongside the registry |
 | `wallet.activeId` | `storage.local` | no | active wallet id (multi-wallet switcher, §18.16) |
 | `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, `chainRpcUrl`, `chainPrivacyAck`, fee default…) |
-| `walletCache.balances` | `storage.local` | no | last balance scan (`{ balances, at }`) for cached-first paint |
-| `walletCache.activity` | `storage.local` | no | last activity ledger (`{ events, cursorHeight, at }`) for cached-first paint |
+| `walletCache.balances` | `storage.local` | no | last balance scan (`{ balances, at }`) for cached-first paint AND the #154 receive-delta baseline (§18.9); cleared on wallet/index switch |
+| `wallet.activityLog` | `storage.local` | no | the #154 LOCAL activity log (§18.9) — `{ "<walletId>:<index>": LocalActivityEntry[] }`, ring-buffered at 200/scope; durable history, NEVER cleared on switch |
 | `wallet.contacts` | `storage.local` | no | address book (§18.14) — array of `{ id, label, address, note?, createdAt, updatedAt }` |
 | `wallet.recentRecipients` | `storage.local` | no | recent send recipients (§18.14) — newest-first `{ address, lastUsedAt }`, capped |
 | `wallet.unlockExpiry` | `storage.session` | no | non-secret unlock-expiry timestamp (ms); never key material |
@@ -1144,28 +1155,73 @@ An XCH send is built with the `Spends`/`Action` driver in the offscreen vault:
   (`Puzzle.parseChildCats`); XCH coins are added to cover the fee; the driver builds via
   `Action.send(Id.existing(assetId), …)`. Amounts use the CAT's decimals; the fee is XCH.
 
-### 18.9 Activity indexer
+### 18.9 Activity — the LOCAL activity log (#154, MetaMask-style)
 
-There is no transaction-history endpoint, so the ledger is reconstructed (read-only) in the offscreen
-vault (`getActivity`):
+Activity is a LOCAL transaction log the extension writes to the moment IT performs an action —
+**NOT** a reconstruction from an on-chain scan. (v1 reconstructed the ledger by fetching every coin
+record, spent included, at the active index's puzzle hashes; that `includeSpent: true` full-history
+scan grew unboundedly with a wallet's coin-history depth and could exceed the coinset per-request
+timeout, leaving Activity permanently unable to load for a deep-history wallet — the root cause is
+retired along with the scan itself, not patched.)
 
-- Derive the HD puzzle hashes (both schemes) AT THE ACTIVE INDEX (§18.1a) + the watched-CAT puzzle
-  hashes; fetch their coin records INCLUDING spent (`getCoinRecordsByPuzzleHashes`).
-- **RECEIVED** = a coin created to us whose parent is NOT one of our coins (our own change is skipped).
-- **SENT / TRADE** = a coin of ours that was spent → decode its spend's CREATE_COINs
-  (`getPuzzleAndSolution`); outputs to others = sent (recipient resolved to an address), outputs to
-  the settlement puzzle hash = a trade. The first coin carries the outputs (§18.8), so multi-coin
-  sends dedupe naturally.
-- Classification covers XCH + watched CATs + offer-settlement trades; the events normalize to
-  human-sentence rows + SpaceScan links. Results are cached (`walletCache.activity`) for cached-first
-  paint; the height cursor is persisted for a future incremental scan (v1 re-scans fully for
-  correctness — a coin created before a cursor may be spent after it).
-- **Display ticker (MUST resolve through the registry, #151).** Each row's ticker/decimals resolve
-  from the event's raw asset id through the SAME §18.6 token-metadata path the Assets list uses: `XCH`
-  is fixed; the built-in $DIG TAIL keeps its canonical `$DIG` branding; every other TAIL resolves
-  against the dexie registry (real ticker + decimals on a hit), degrading to the generic short-form
-  fallback ONLY when the registry has no entry (or hasn't loaded) — never a hardcoded/generic ticker
-  for a token the registry actually knows.
+**Storage.** `chrome.storage.local[wallet.activityLog]` (`ACTIVITY_LOG_KEY`,
+`src/lib/custody-session.ts`) is a flat map keyed `"<walletId>:<activeIndex>"` (§18.1a's single active
+index — never a multi-index sweep) → that scope's own array of entries, newest-first, ring-buffered
+at 200 per scope (`MAX_ACTIVITY_LOG_ENTRIES`, `src/lib/activity-log.ts`). Unlike the balance cache
+(`walletCache.balances`), this key is durable history: it is NEVER cleared on a wallet switch or index
+navigation (`clearActiveWalletCaches`) — per-wallet/index isolation comes from the composite key
+alone, so switching back to a wallet/index later reads exactly the slice that scope wrote.
+
+**Entry shape:** `{ id, kind, asset, amount, counterparty, coinId, timestamp, status }` —
+- `kind` ∈ `sent | received | mint | did | offer | trade | clawback | melt`. Only `sent` / `received`
+  / `mint` / `did` / `trade` are currently EMITTED; `offer` (making one has no coin spent yet to poll
+  for confirmation — the spend happens only if/when a counterparty takes it) and `clawback`/`melt`
+  (no corresponding custody action yet) are reserved schema members the UI still renders correctly.
+- `asset` is `'XCH'`, a CAT asset id (TAIL hex), or a synthetic `'NFT'`/`'DID'` label for a non-token
+  spend (mint/DID actions carry no meaningful fungible amount).
+- `status` is `pending` (logged the moment the extension broadcast the spend) or `confirmed` (the
+  confirm-poll saw it on-chain); a `received` entry is logged straight to `confirmed` (a balance delta
+  is already-settled by the time it's observed) with `coinId: null` (best-effort — no specific coin is
+  attributed to a bare balance delta).
+
+**Write path — an action performed BY the extension:**
+- `confirmSend` / `confirmTrade` (the ONLY places a real spend broadcasts, §18.8/§18.10) return an
+  `activityHint: { asset, amount, counterparty }` captured at the corresponding `prepareSend` /
+  `prepareTrade` time (the counterparty is simply the user's own `recipient` input where one exists —
+  no address re-derivation needed). Every action that reuses the shared `confirmSend` broadcast path
+  (NFT transfer/mint, DID create/transfer/profile-update/assign) gets this back for free.
+- `src/background/index.ts`'s case handlers log an entry (`logActivity`, `pending`) keyed by the
+  action's OWN kind (`confirmSend`→`sent`, `confirmNftMint`→`mint`, every DID op→`did`,
+  `confirmTrade`→`trade`) the moment the broadcast succeeds — EXCEPT the generic `confirmSend` case
+  specifically skips logging when `activityHint.counterparty` is null, because `prepareSplit`/
+  `prepareCombine` (coin control, §18.11) reuse that exact same broadcast path for a self-only spend
+  that is not meaningfully any of the eight kinds.
+- `sendStatus` (the existing confirm-poll, `coinConfirmed`) flips the matching entry (by `coinId`) from
+  `pending` to `confirmed` the moment it reports `confirmed: true` — the ONLY place a logged entry
+  transitions state after being written.
+
+**Receive detection — balance-delta, not a scan.** `getCustodyBalances` already runs a balance scan
+(§18.7) at the active index; #154 diffs its PRE-scan `walletCache.balances` snapshot against the
+freshly-scanned one (`detectReceivedEntries`) and appends a `confirmed` `received` entry for every
+asset whose held amount increased. No prior snapshot (right after a wallet/index switch cleared it) →
+detection is skipped for that scan, which is exactly what prevents a wallet's PRE-EXISTING balance
+from misreporting as a fresh "receive" the first time it's scanned after becoming active. A passive
+receive while the extension is closed is caught, best-effort, by the delta on the NEXT scan — there is
+no background scan while closed, and no incremental on-chain reconstruction.
+
+**Read path.** `getActivity` is a synchronous `chrome.storage.local` read for the active wallet +
+active index — no coinset round-trip, no cursor, no cached-vs-fresh distinction (the log itself always
+IS the current state). This is why Activity now loads instantly regardless of a wallet's on-chain
+history depth.
+
+**Display ticker (MUST resolve through the registry, #151).** Each row's ticker/decimals resolve from
+the entry's raw `asset` through the SAME §18.6 token-metadata path the Assets list uses: `XCH` is
+fixed; the built-in $DIG TAIL keeps its canonical `$DIG` branding; the synthetic `NFT`/`DID` labels
+render as whole-unit tickers (never through CAT decimal math); every other TAIL resolves against the
+dexie registry (real ticker + decimals on a hit), degrading to the generic short-form fallback ONLY
+when the registry has no entry (or hasn't loaded) — never a hardcoded/generic ticker for a token the
+registry actually knows. A row's SpaceScan link is shown ONLY once `status === 'confirmed'` (a
+still-pending or coinId-less coin may not resolve on the block explorer yet).
 
 ### 18.10 Trade offers
 
