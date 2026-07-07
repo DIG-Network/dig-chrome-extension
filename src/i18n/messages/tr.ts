@@ -34,6 +34,10 @@ export const tr: Record<string, string> = {
   'home.status.node.local': 'Yerel düğüm',
   'home.status.node.gateway': 'Genel ağ geçidi',
   'home.activity.empty': 'Son etkinlik yok',
+  'home.open.label': 'Bir chia:// adresi veya DIG URN açın',
+  'home.open.placeholder': 'chia://… veya urn:dig:…',
+  'home.open.go': 'Aç',
+  'home.open.error.invalid': 'Geçerli bir chia:// adresi veya URN değil.',
 
   // ── generic four-state ──
   'state.loading': 'Yükleniyor…',

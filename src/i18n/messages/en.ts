@@ -35,6 +35,11 @@ export const en: Record<string, string> = {
   'home.status.node.local': 'Local node',
   'home.status.node.gateway': 'Public gateway',
   'home.activity.empty': 'No recent activity',
+  // ── #172 open-by-URN home input ──
+  'home.open.label': 'Open a chia:// address or DIG URN',
+  'home.open.placeholder': 'chia://… or urn:dig:…',
+  'home.open.go': 'Open',
+  'home.open.error.invalid': 'Not a valid chia:// address or URN.',
 
   // ── generic four-state ──
   'state.loading': 'Loading…',

@@ -34,6 +34,10 @@ export const hi: Record<string, string> = {
   'home.status.node.local': 'लोकल नोड',
   'home.status.node.gateway': 'पब्लिक गेटवे',
   'home.activity.empty': 'कोई हालिया गतिविधि नहीं',
+  'home.open.label': 'एक chia:// पता या DIG URN खोलें',
+  'home.open.placeholder': 'chia://… या urn:dig:…',
+  'home.open.go': 'खोलें',
+  'home.open.error.invalid': 'मान्य chia:// पता या URN नहीं है।',
 
   // ── generic four-state ──
   'state.loading': 'लोड हो रहा है…',

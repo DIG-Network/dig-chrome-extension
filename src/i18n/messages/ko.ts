@@ -34,6 +34,10 @@ export const ko: Record<string, string> = {
   'home.status.node.local': '로컬 노드',
   'home.status.node.gateway': '공용 게이트웨이',
   'home.activity.empty': '최근 활동이 없습니다',
+  'home.open.label': 'chia:// 주소 또는 DIG URN 열기',
+  'home.open.placeholder': 'chia://… 또는 urn:dig:…',
+  'home.open.go': '열기',
+  'home.open.error.invalid': '유효한 chia:// 주소 또는 URN이 아닙니다.',
 
   // ── generic four-state ──
   'state.loading': '불러오는 중…',
