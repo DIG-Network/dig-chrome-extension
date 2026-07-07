@@ -601,6 +601,11 @@ export const ptBR: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Remover',
   'wallet.switcher.active.badge': 'Ativa',
   'wallet.switcher.lock': 'Bloquear carteira',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': 'Carteira atual',
+  'wallet.switcher.copyAddress': 'Copiar endereço',
+  'wallet.switcher.addressCopied': 'Endereço copiado',
+  'wallet.switcher.address.unknown': 'Troque para esta carteira para ver o endereço dela',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Índice {index}',
   'wallet.index.prev': 'Índice anterior',

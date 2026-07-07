@@ -24,7 +24,10 @@ const STUB = `
   const unlocked = new Set(['w1']);
   const addr = (id) => 'xch1' + id + 'a'.repeat(52);
   const bal = (id) => (id === 'w1' ? 5000000000000 : 1230000000000);
-  const meta = () => wallets.map((w) => ({ id: w.id, label: w.label, createdAt: w.createdAt, active: w.id === activeId }));
+  // previewAddress (#176): every wallet's cached preview is deterministic from its id here (the real
+  // SW only populates it once a wallet has been active at index 0 — see e2e/sw for that proof); the
+  // stub back-fills it up front so the redesigned list's per-row address preview renders for real.
+  const meta = () => wallets.map((w) => ({ id: w.id, label: w.label, createdAt: w.createdAt, active: w.id === activeId, previewAddress: addr(w.id) }));
   const setActive = (id) => { activeId = id; };
   const add = (label) => { seq += 1; const id = 'w' + seq; wallets.push({ id, label: label || ('Wallet ' + seq), createdAt: Date.now() }); unlocked.add(id); setActive(id); lockState = 'unlocked'; return id; };
   const canned = (msg) => {
@@ -162,6 +165,33 @@ test.describe('#90 multi-wallet switcher', () => {
     await page.getByTestId('unlock-submit').click();
     await expect(page.getByTestId('custody-wallet')).toBeVisible();
     await expect(page.getByTestId('wallet-switcher-active')).toHaveText('Wallet 1');
+  });
+
+  test('#176 redesign: current-wallet card, per-row address previews, and arrow-key nav', async ({ page }) => {
+    await openWallet(page);
+    await importSecondWallet(page);
+    await openSwitcher(page);
+
+    // The prominent current-wallet card shows the active wallet's label + live address.
+    await expect(page.getByTestId('wallet-switcher-current-label')).toHaveText('Wallet 2');
+    await expect(page.getByTestId('wallet-switcher-current-address')).not.toBeEmpty();
+
+    // Every row (including the active one) shows its cached address preview, never a blank/wrong one.
+    await expect(page.getByTestId('wallet-address-preview-w1')).not.toBeEmpty();
+    await expect(page.getByTestId('wallet-address-preview-w2')).not.toBeEmpty();
+
+    // Keyboard: ArrowDown/ArrowUp roves focus between the switch buttons; Enter activates natively.
+    await page.getByTestId('wallet-switch-w1').focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('wallet-switch-w2')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('wallet-switcher-sheet')).toBeHidden();
+    await expect(page.getByTestId('wallet-switcher-active')).toHaveText('Wallet 2');
+
+    // Escape closes the sheet from anywhere in the list.
+    await openSwitcher(page);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('wallet-switcher-sheet')).toBeHidden();
   });
 
   // Visual capture (§6.5) — the manager sheet at phone (popup) + tablet (fullscreen) widths.

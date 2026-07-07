@@ -47,6 +47,15 @@ export interface WalletEntry {
    * switch). Default 0. Persisted per wallet so switching wallets restores each one's own place.
    */
   activeIndex: number;
+  /**
+   * Cached canonical receive address (#176 — the wallet switcher's per-row address preview), PUBLIC
+   * data (an address is meant to be shared to receive funds — never the private key), safe to keep
+   * unencrypted alongside the metadata. Populated opportunistically by the SW whenever this wallet's
+   * index-0 address is read while it is active (see {@link shouldCachePreviewAddress}); absent until
+   * then, so an older/never-yet-active wallet simply shows no preview (backwards compatible — an
+   * entry persisted before #176 has no `previewAddress` field at all).
+   */
+  previewAddress?: string;
 }
 
 /** Record-FREE wallet metadata for the UI switcher — the encrypted record is deliberately absent. */
@@ -58,6 +67,8 @@ export interface WalletMeta {
   active: boolean;
   /** This wallet's active HD derivation index (#165). */
   activeIndex: number;
+  /** Cached canonical receive address (#176), or absent if never yet cached. */
+  previewAddress?: string;
 }
 
 /** The normalized registry snapshot the SW persists: the entries, the active id, and the mirror. */
@@ -146,7 +157,28 @@ export function toMeta(wallets: WalletEntry[], activeId: string | null): WalletM
     createdAt: w.createdAt,
     active: w.id === activeId,
     activeIndex: w.activeIndex ?? 0,
+    previewAddress: w.previewAddress,
   }));
+}
+
+/** Set one wallet's cached preview address immutably (#176 — other wallets untouched). */
+export function setWalletPreviewAddress(wallets: WalletEntry[], id: string, address: string): WalletEntry[] {
+  return wallets.map((w) => (w.id === id ? { ...w, previewAddress: address } : w));
+}
+
+/**
+ * True when a freshly-read receive address should be cached onto the active wallet's
+ * `previewAddress` (#176): only at derivation index 0 (the wallet's canonical/default address —
+ * never whatever non-zero index the user happens to be viewing, which would show a misleadingly
+ * "wrong" address for the wallet's identity in the switcher list), only for a non-empty address,
+ * and only when it actually differs from what's already cached (skips a redundant storage write).
+ */
+export function shouldCachePreviewAddress(
+  activeIndex: number,
+  existing: string | undefined,
+  address: string | undefined | null,
+): boolean {
+  return activeIndex === 0 && !!address && existing !== address;
 }
 
 /**

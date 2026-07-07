@@ -601,6 +601,11 @@ export const hi: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'हटाएँ',
   'wallet.switcher.active.badge': 'सक्रिय',
   'wallet.switcher.lock': 'वॉलेट लॉक करें',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': 'मौजूदा वॉलेट',
+  'wallet.switcher.copyAddress': 'पता कॉपी करें',
+  'wallet.switcher.addressCopied': 'पता कॉपी हो गया',
+  'wallet.switcher.address.unknown': 'इसका पता देखने के लिए इस वॉलेट पर स्विच करें',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'इंडेक्स {index}',
   'wallet.index.prev': 'पिछला इंडेक्स',

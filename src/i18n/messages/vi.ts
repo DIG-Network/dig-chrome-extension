@@ -601,6 +601,11 @@ export const vi: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Xóa',
   'wallet.switcher.active.badge': 'Đang dùng',
   'wallet.switcher.lock': 'Khóa ví',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': 'Ví hiện tại',
+  'wallet.switcher.copyAddress': 'Sao chép địa chỉ',
+  'wallet.switcher.addressCopied': 'Đã sao chép địa chỉ',
+  'wallet.switcher.address.unknown': 'Chuyển sang ví này để hiển thị địa chỉ',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Chỉ số {index}',
   'wallet.index.prev': 'Chỉ số trước',

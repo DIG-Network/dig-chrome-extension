@@ -1544,13 +1544,29 @@ over the storage keys, driven by the actions in §7 (`listWallets`, `switchWalle
 `removeWallet`); the SW owns the `chrome.storage.*` I/O and the offscreen vault owns every decrypted
 key.
 
-- **Storage model.** `wallet.registry` holds `{ id, label, record, createdAt, activeIndex }` per
-  wallet (`id` a uuid; `activeIndex` — #165, default 0 — that wallet's own single active HD
-  derivation index, §18.1a); `wallet.activeId` names the active wallet; `wallet.keystore` MIRRORS the
-  active wallet's record so every pre-#90 single-wallet read path (unlock / reveal) works unchanged.
-  The encrypted records live only in the SW — the UI receives record-FREE metadata (`{ id, label,
-  createdAt, active, activeIndex }`) via `listWallets`. A registry persisted before #165 has entries
-  with no `activeIndex` field; migration normalizes it to 0.
+- **Storage model.** `wallet.registry` holds `{ id, label, record, createdAt, activeIndex,
+  previewAddress? }` per wallet (`id` a uuid; `activeIndex` — #165, default 0 — that wallet's own
+  single active HD derivation index, §18.1a; `previewAddress` — #176, optional — that wallet's
+  cached CANONICAL (index-0) receive address); `wallet.activeId` names the active wallet;
+  `wallet.keystore` MIRRORS the active wallet's record so every pre-#90 single-wallet read path
+  (unlock / reveal) works unchanged. The encrypted records live only in the SW — the UI receives
+  record-FREE metadata (`{ id, label, createdAt, active, activeIndex, previewAddress? }`) via
+  `listWallets`. A registry persisted before #165 has entries with no `activeIndex` field; migration
+  normalizes it to 0. A registry persisted before #176 has entries with no `previewAddress` at all —
+  this is fine (the field is fully optional, additive, never required for a read).
+- **Preview address caching (#176).** Every `getReceiveAddress` read opportunistically caches the
+  result onto the ACTIVE wallet's `previewAddress`, but ONLY when the active wallet's active
+  derivation index is 0 (its canonical/default address — never whichever non-zero index the user
+  happens to be viewing, §18.1a) AND the value actually changed (`shouldCachePreviewAddress`,
+  `lib/wallet-registry.ts`). This is a public-data cache — an address is meant to be shared to
+  receive funds, so storing it unencrypted alongside the metadata is safe (unlike the record, which
+  stays encrypted) — and it is what lets the switcher show an address preview for a wallet that is
+  NOT currently active/unlocked: once a wallet has been active at index 0 at least once (which
+  happens automatically the first time its Home view reads its receive address), its preview
+  persists across every subsequent switch, addition, or removal of other wallets. A wallet that has
+  never yet been active at index 0 (rare — creating/importing a wallet makes it active immediately,
+  so this only affects a registry entry from before #176 that hasn't been revisited) has no
+  `previewAddress` yet; the switcher shows a graceful placeholder instead of a fabricated address.
 - **Migration (once).** A pre-#90 single `wallet.keystore` is migrated ONCE into a one-entry registry
   with a fresh uuid (the legacy `wallet.activeId` held a label, not an id, and is discarded). An
   existing registry is never re-migrated.
@@ -1584,10 +1600,27 @@ key.
 - **Custody invariants.** The decrypted key never leaves the offscreen vault; every wallet's record
   is encrypted at rest; `storage.sync` is never used. Lock (explicit, TTL, idle, all-windows-close)
   zeroizes EVERY held wallet key together.
-- **UI.** A compact switcher pill in the wallet shell shows the active wallet's label and opens an
-  accessible manager sheet: switch (active-aware, inline unlock when a wallet needs its password),
-  rename (inline), remove (two-step confirm, never the last), add (create / import), and lock. Four
-  states + react-intl across the 14 locales.
+- **UI (redesigned #176).** A compact switcher pill (a small deterministic identicon + the active
+  wallet's label) opens an accessible manager sheet with two sections: a PROMINENT current-wallet
+  card (a larger identicon, the label, and the live receive address with a copy button) followed by
+  the full wallet list (every wallet, the active one included and marked with the Active badge — one
+  management surface, not a duplicate). Each list row shows its own identicon + label + a truncated
+  address preview (`previewAddress`, or a graceful placeholder when not yet cached) + switch
+  (active-aware, inline unlock when a wallet needs its password), rename (inline), and remove
+  (two-step confirm, never the last); add (create / import) and lock sit below the list. Kept as ONE
+  inline surface rather than a separate fullscreen-only management view — the popup's fixed 372px
+  width fits it without horizontal overflow, so the simpler single-surface design was chosen over
+  surface-gating the advanced actions. Keyboard: ArrowUp/ArrowDown roves focus between the list's
+  switch buttons (wrapping at the ends), Enter activates the focused row natively, Escape closes the
+  sheet. Four states + react-intl across the 14 locales.
+  - **Identicon (`lib/wallet-registry.ts` type, `features/wallet/custody/identicon.ts` +
+    `WalletIdenticon.tsx`).** A small deterministic geometric SVG avatar, purely decorative
+    (`aria-hidden`) — the adjacent label/address text carries the actual identity for assistive
+    tech. Keyed by PUBLIC data ONLY: the wallet's `previewAddress` when cached (itself a public
+    commitment), else its opaque registry `id` (a random uuid, already sent to the UI unencrypted).
+    The generator module never sees a mnemonic, private key, or decrypted record, so it structurally
+    cannot leak one. Same seed → same icon, always (a plain non-cryptographic string hash — a
+    decorative visual, not a security primitive).
 
 ### 18.17 DID management (#93)
 

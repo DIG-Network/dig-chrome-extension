@@ -601,6 +601,11 @@ export const ru: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Удалить',
   'wallet.switcher.active.badge': 'Активен',
   'wallet.switcher.lock': 'Заблокировать кошелёк',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': 'Текущий кошелёк',
+  'wallet.switcher.copyAddress': 'Скопировать адрес',
+  'wallet.switcher.addressCopied': 'Адрес скопирован',
+  'wallet.switcher.address.unknown': 'Переключитесь на этот кошелёк, чтобы увидеть его адрес',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Индекс {index}',
   'wallet.index.prev': 'Предыдущий индекс',

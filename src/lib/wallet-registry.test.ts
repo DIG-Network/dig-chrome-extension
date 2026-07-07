@@ -14,6 +14,8 @@ import {
   defaultLabel,
   clampDerivationIndex,
   setWalletActiveIndex,
+  setWalletPreviewAddress,
+  shouldCachePreviewAddress,
   type WalletEntry,
 } from '@/lib/wallet-registry';
 import type { Digwx1Record } from '@/lib/keystore/digwx1';
@@ -134,6 +136,42 @@ describe('active derivation index (#165 — single active index model)', () => {
   it('setWalletActiveIndex on an unknown wallet id is a no-op', () => {
     const w = [entry('a', 'A')];
     expect(setWalletActiveIndex(w, 'zzz', 5)).toEqual(w);
+  });
+});
+
+describe('preview address caching (#176 — wallet switcher redesign)', () => {
+  it('setWalletPreviewAddress sets only the target wallet, immutably', () => {
+    const w = [entry('a', 'A'), entry('b', 'B')];
+    const r = setWalletPreviewAddress(w, 'a', 'xch1aaa');
+    expect(findWallet(r, 'a')?.previewAddress).toBe('xch1aaa');
+    expect(findWallet(r, 'b')?.previewAddress).toBeUndefined();
+    expect(findWallet(w, 'a')?.previewAddress).toBeUndefined(); // original untouched
+  });
+
+  it('setWalletPreviewAddress on an unknown wallet id is a no-op', () => {
+    const w = [entry('a', 'A')];
+    expect(setWalletPreviewAddress(w, 'zzz', 'xch1aaa')).toEqual(w);
+  });
+
+  it('toMeta carries previewAddress through when present, omits it when absent', () => {
+    const w = [entry('a', 'A'), setWalletPreviewAddress([entry('b', 'B')], 'b', 'xch1bbb')[0]];
+    const meta = toMeta(w, 'b');
+    expect(meta[0].previewAddress).toBeUndefined();
+    expect(meta[1].previewAddress).toBe('xch1bbb');
+  });
+
+  it('shouldCachePreviewAddress only caches the canonical index-0 address', () => {
+    expect(shouldCachePreviewAddress(0, undefined, 'xch1aaa')).toBe(true);
+    expect(shouldCachePreviewAddress(1, undefined, 'xch1aaa')).toBe(false); // not the canonical index
+  });
+
+  it('shouldCachePreviewAddress skips a no-op re-cache of the identical address', () => {
+    expect(shouldCachePreviewAddress(0, 'xch1aaa', 'xch1aaa')).toBe(false);
+    expect(shouldCachePreviewAddress(0, 'xch1aaa', 'xch1bbb')).toBe(true); // a real change still caches
+  });
+
+  it('shouldCachePreviewAddress rejects an empty/falsy address', () => {
+    expect(shouldCachePreviewAddress(0, undefined, '')).toBe(false);
   });
 });
 
