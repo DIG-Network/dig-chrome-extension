@@ -676,6 +676,47 @@ h2.dig-heading {
 .dig-app-tile--skeleton .dig-app-icon {
   box-shadow: none;
 }
+
+/* ── Apps-tab personalization (#164) — edit-mode header action + per-tile reorder/hide controls +
+   the "show hidden" disclosure. Icon-only actions throughout so the popup never risks h-scroll
+   (#163) regardless of locale string length. */
+.dig-apps-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.dig-iconbtn--active {
+  color: var(--dig-accent);
+  border-color: var(--dig-accent);
+}
+.dig-app-tile--editable {
+  cursor: default;
+}
+.dig-app-tile-controls {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+.dig-app-tile-controls .dig-iconbtn--sm {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+.dig-app-tile-controls .dig-iconbtn--sm:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.dig-hidden-apps {
+  margin-top: 10px;
+  border-top: 1px solid var(--dig-border);
+  padding-top: 8px;
+}
+.dig-hidden-apps-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
 .dig-visually-hidden {
   position: absolute !important;
   width: 1px;
