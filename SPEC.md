@@ -1749,6 +1749,56 @@ same-allocator rules as §18.11 apply to every selected NFT.
   has no spending key, so it is not a real "sent to" counterparty) so the ledger never conflates an
   irreversible burn with an ordinary transfer.
 
+### 18.11b NFT picker — XL modal multi-select grid (#170)
+
+`NftPickerModal.tsx` (`src/features/collectibles/`) is a reusable XL modal for CHOOSING NFTs from the
+wallet's collectibles — a scrollable, searchable, multi-select grid used wherever a flow needs the
+user to pick from their NFTs. It fetches its own data (`useListCollectiblesQuery`) so any caller can
+drop it in without separately wiring the collectibles query.
+
+- **Reuses the §18.11a selection primitive, not a re-implementation.** The grid is the exact `NftGrid`
+  component #171's Collectibles bulk-select established (tile + checkbox overlay + `aria-pressed` +
+  "Select {name}" label), exported from `CollectiblesPanel.tsx` and imported here — only the
+  surrounding chrome (title, search, select-all/clear, pagination, the "Add N selected" confirm
+  footer) is new.
+- **Multi-select is the default, generic behavior; a single-select mode caps it to one.** `multiple`
+  (default `true`) allows choosing any number of NFTs, with select-all/clear controls and a live "N
+  selected" count. `multiple={false}` hides select-all/clear (they have no meaning for one pick) and
+  makes tapping a NEW tile REPLACE the current pick rather than adding to it. The NFT-trade give side
+  (§18.10) opens the modal with `multiple={false}`, because `makeOffer`'s v1 model supports at most
+  ONE offered NFT per trade — the modal itself stays generically multi-select-capable for any future
+  caller that needs more than one (a bundled multi-NFT offer, when the offer engine supports it,
+  changes only its call site's `multiple` prop, not the modal).
+- **Search** matches the displayed name, the full launcher id, or the collection id
+  (case-insensitive substring). A search that matches nothing shows a distinct "no results" message —
+  never the empty-wallet state (`FourState`'s `isEmpty` reflects the WALLET having zero NFTs, not the
+  current filter).
+- **Pagination, not virtualization.** The grid renders `PAGE_SIZE` (24) tiles at a time with a "Load
+  more" button revealing the rest, so a wallet with hundreds of NFTs never mounts every tile at once.
+- **Accessible like `Sheet`/`NftImageLightbox`.** `role="dialog"` + `aria-modal`, focus moves into the
+  dialog on open and restores to the trigger on close, Tab is TRAPPED within the dialog, Escape
+  closes, a backdrop click closes (a click on the dialog itself does not). Sized "XL" (`.dig-modal-xl`,
+  `theme.css`) — larger than `Sheet`, since a browsable grid needs real estate; on narrow viewports it
+  becomes a full-screen sheet (no page horizontal scroll, #163).
+- **Portaled to `document.body` (`createPortal`) — NOT rendered inline in the component tree.** This
+  sidesteps a real, pre-existing layout trap discovered while building this modal: the mobile-OS
+  screen wrapper (`.dig-screen`) plays a permanent (`animation-fill-mode: both`) entrance animation
+  whose resolved `transform` never reverts to the literal `none` keyword, which establishes a CSS
+  containing block for `position: fixed` descendants; separately, the compact layout's
+  `.dig-app[data-layout='compact'] > *` rule forces equal `z-index` onto the header/content/tab-bar
+  siblings, so the bottom tab bar (later in DOM order) paints ABOVE anything nested inside the content
+  area regardless of that content's own z-index. Together these would silently confine an ordinarily-
+  rendered fixed modal to the current screen's scrolled box AND stack it below the tab bar
+  (intercepting its clicks) on a narrow fullscreen viewport — reproducible today with `Sheet`/
+  `NftImageLightbox` rendered deep in a `.dig-screen`. A portal to `document.body` escapes that
+  ancestor chain entirely (for both positioning and stacking) without touching the shared layout CSS
+  other modals still rely on; see `DEVELOPMENT_LOG.md` for the full gotcha.
+- **Wired into Trade (§18.10).** `MakeTrade`'s NFT give-kind replaces the plain `<select>` dropdown
+  with a "Select NFT" trigger that opens this modal; the chosen NFT renders as a small thumbnail +
+  name chip with a "Change" affordance that reopens the modal pre-selecting the current pick. The
+  wallet-empty case (`nfts.length === 0`) still shows the existing inline empty message without
+  opening the modal at all.
+
 ### 18.12 dApp `window.chia` requests & the SW-summoned approval window (§5.5)
 
 A webpage's injected `window.chia` provider reaches the wallet as a `walletRpc` message (§7.3).

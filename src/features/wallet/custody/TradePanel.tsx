@@ -8,6 +8,9 @@ import { ViewHeader } from '@/components/ViewHeader';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { WireOfferAsset, WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 import { useListCollectiblesQuery } from '@/features/collectibles/collectiblesApi';
+import { NftPickerModal } from '@/features/collectibles/NftPickerModal';
+import { NftMedia } from '@/features/collectibles/NftDetail';
+import { nftDisplayName, nftImageSrc } from '@/features/collectibles/nftDisplay';
 import {
   useMakeCustodyOfferMutation,
   useInspectCustodyOfferMutation,
@@ -113,13 +116,21 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
  * the shareable deal card. Guided steps (#169): form → review → made, so nothing is built until
  * the maker has confirmed the exact terms. `full` gates the ADVANCED give-kind toggle (offering an
  * NFT, §94) — the compact popup only offers currency-for-currency (basic maker).
+ *
+ * **NFT picker (#170).** Choosing the offered NFT opens the {@link NftPickerModal} XL modal (the
+ * wallet's NFTs in a searchable grid) instead of a plain dropdown, giving real thumbnails + search
+ * for wallets with many NFTs. The modal is opened `multiple={false}`: the offer engine's v1 model
+ * supports at most ONE offered NFT per trade (§18.10), so picking a new tile REPLACES the prior
+ * pick rather than adding to it — the modal's own multi-select capability is generic (reused as-is
+ * for any future context that needs more than one), only this call site caps it to one.
  */
 function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) {
   const intl = useIntl();
   const [phase, setPhase] = useState<MakePhase>('form');
   const [giveKind, setGiveKind] = useState<GiveKind>('currency');
   const [giveIdx, setGiveIdx] = useState(0);
-  const [giveNftIdx, setGiveNftIdx] = useState(0);
+  const [giveNftLauncherId, setGiveNftLauncherId] = useState<string | null>(null);
+  const [nftPickerOpen, setNftPickerOpen] = useState(false);
   const [getIdx, setGetIdx] = useState(assets.length > 1 ? 1 : 0);
   const [giveAmount, setGiveAmount] = useState('');
   const [getAmount, setGetAmount] = useState('');
@@ -135,7 +146,7 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
 
   const give = assets[giveIdx];
   const get = assets[getIdx];
-  const giveNft = nfts.data?.nfts?.[giveNftIdx];
+  const giveNft = nfts.data?.nfts?.find((n) => n.launcherId === giveNftLauncherId);
   const qr = useMemo(() => (offer ? offerQrDataUrl(offer) : null), [offer]);
 
   /** Validate the current picks and build the two offer legs — the ONE validation path shared by
@@ -322,17 +333,43 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
             </div>
           </label>
         ) : nfts.data?.nfts?.length ? (
-          <select className="dig-input" data-testid="trade-give-nft" value={giveNftIdx} onChange={(e) => setGiveNftIdx(Number(e.target.value))} aria-label={intl.formatMessage({ id: 'trade.give.kind.nft' })}>
-            {nfts.data.nfts.map((n, i) => (
-              <option key={n.launcherId} value={i}>{n.launcherId.slice(0, 10)}…</option>
-            ))}
-          </select>
+          <div data-testid="trade-give-nft">
+            {giveNft ? (
+              <div className="dig-toggle-row" data-testid="trade-give-nft-chosen" style={{ gap: 10 }}>
+                <div style={{ width: 40, height: 40, flexShrink: 0 }}>
+                  <NftMedia nft={giveNft} imageSrc={nftImageSrc(giveNft)} />
+                </div>
+                <span className="dig-mono" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {nftDisplayName(giveNft)}
+                </span>
+                <button type="button" className="dig-link" data-testid="trade-give-nft-change" onClick={() => setNftPickerOpen(true)}>
+                  <FormattedMessage id="trade.give.nft.change" />
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="dig-btn" data-testid="trade-give-nft-select" onClick={() => setNftPickerOpen(true)}>
+                <FormattedMessage id="trade.give.nft.select" />
+              </button>
+            )}
+          </div>
         ) : (
           <p className="dig-muted" data-testid="trade-give-nft-empty" style={{ margin: 0 }}>
             <FormattedMessage id="trade.give.nft.empty" />
           </p>
         )}
       </div>
+      {nftPickerOpen && (
+        <NftPickerModal
+          multiple={false}
+          initialSelectedIds={giveNftLauncherId ? [giveNftLauncherId] : []}
+          titleId="trade.give.nft.select"
+          onClose={() => setNftPickerOpen(false)}
+          onConfirm={(chosen) => {
+            setGiveNftLauncherId(chosen[0]?.launcherId ?? null);
+            setNftPickerOpen(false);
+          }}
+        />
+      )}
       <label className="dig-field">
         <span><FormattedMessage id="trade.get" /></span>
         <div style={{ display: 'flex', gap: 8 }}>

@@ -208,6 +208,8 @@ export const en: Record<string, string> = {
   'trade.give.kind.currency': 'Currency',
   'trade.give.kind.nft': 'NFT',
   'trade.give.nft.empty': "You don't own any NFTs to offer yet.",
+  'trade.give.nft.select': 'Select NFT',
+  'trade.give.nft.change': 'Change',
   'trade.take.drop': 'Drag and drop an offer file here',
   'trade.take.label': 'Paste a trade (offer1…)',
   'trade.take.inspect': 'Inspect',
@@ -401,6 +403,22 @@ export const en: Record<string, string> = {
   'collectibles.bulk.burn.sending': 'Burning {count} NFTs… broadcasting your transaction.',
   'collectibles.bulk.burn.confirmed': 'Burned — {count} NFTs are now permanently unspendable.',
   'collectibles.bulk.burn.failed': 'Not confirmed — the burn was not accepted. Your NFTs are unchanged; try again.',
+
+  // ── NFT picker — XL modal multi-select grid (#170) ──
+  'nftPicker.title': 'Select NFTs',
+  'nftPicker.close': 'Close',
+  'nftPicker.search.placeholder': 'Search by name or ID',
+  'nftPicker.search.label': 'Search NFTs',
+  'nftPicker.selectAll': 'Select all',
+  'nftPicker.clear': 'Clear',
+  'nftPicker.loading': 'Loading your NFTs…',
+  'nftPicker.error': "Couldn't load your NFTs — retry",
+  'nftPicker.empty': 'No NFTs to choose from',
+  'nftPicker.noResults': 'No NFTs match your search',
+  'nftPicker.loadMore': 'Load more ({count} remaining)',
+  'nftPicker.count': '{count} selected',
+  'nftPicker.cancel': 'Cancel',
+  'nftPicker.confirm': 'Add {count} selected',
 
   // ── NFT minting (#92) — advanced, fullscreen-only ──
   'mint.button': 'Mint NFT',

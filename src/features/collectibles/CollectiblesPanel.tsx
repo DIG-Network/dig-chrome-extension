@@ -29,9 +29,10 @@ const POPUP_LIMIT = 6;
  * Multi-select bulk transfer/burn (#171) is ADVANCED → fullscreen only, mirroring mint (#92): the
  * popup never enters selection mode, offering an "open full screen" link instead. In selection mode
  * each tile becomes a toggle (checkbox overlay); a selection bar shows the count + select-all/clear +
- * Transfer/Burn, which hand the selected {@link WalletNft}s to {@link BulkNftActions}. #170 (an NFT
- * picker) will layer its own selection UI on top of this same grid later — the toggle/selectedIds
- * shape here is the seam it reuses, kept in `NftGrid`'s own props rather than baked into the tile.
+ * Transfer/Burn, which hand the selected {@link WalletNft}s to {@link BulkNftActions}. The exported
+ * `NftGrid` (below) is the reused selection primitive — #170's `NftPickerModal` (an XL modal picker
+ * used by the NFT trade flow) renders the SAME grid in `selecting` mode rather than re-implementing
+ * NFT tiles/checkboxes; only the surrounding chrome (search, pagination, confirm footer) differs.
  */
 export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
   const intl = useIntl();
@@ -195,26 +196,25 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
   );
 }
 
-/**
- * The responsive image grid of NFT tiles. Normally each tile opens the detail view; in `selecting`
- * mode (#171 — fullscreen-only bulk transfer/burn) a tile instead TOGGLES membership in
- * `selectedIds`, rendering a decorative checkmark overlay while the accessible state/name moves onto
- * the tile button itself (`aria-pressed` + a "Select {name}" label) — a screen reader announces the
- * toggle correctly without relying on the (aria-hidden) visual glyph.
- */
-function NftGrid({
-  nfts,
-  onOpen,
-  selecting,
-  selectedIds,
-  onToggle,
-}: {
+/** {@link NftGrid}'s props — exported so other selection surfaces (the #170 {@link NftPickerModal}) can
+ * reuse the exact same tile/checkbox-overlay markup instead of re-implementing it. */
+export interface NftGridProps {
   nfts: WalletNft[];
   onOpen: (nft: WalletNft) => void;
   selecting: boolean;
   selectedIds: ReadonlySet<string>;
   onToggle: (launcherId: string) => void;
-}) {
+}
+
+/**
+ * The responsive image grid of NFT tiles. Normally each tile opens the detail view; in `selecting`
+ * mode (#171 — fullscreen-only bulk transfer/burn; also #170's {@link NftPickerModal}) a tile instead
+ * TOGGLES membership in `selectedIds`, rendering a decorative checkmark overlay while the accessible
+ * state/name moves onto the tile button itself (`aria-pressed` + a "Select {name}" label) — a screen
+ * reader announces the toggle correctly without relying on the (aria-hidden) visual glyph. Exported
+ * (#170) so the NFT-trade picker modal reuses this exact grid rather than re-implementing NFT tiles.
+ */
+export function NftGrid({ nfts, onOpen, selecting, selectedIds, onToggle }: NftGridProps) {
   const intl = useIntl();
   return (
     <ul
