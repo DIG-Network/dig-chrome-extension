@@ -87,6 +87,10 @@ export const tr: Record<string, string> = {
   'custody.chain.hint': 'Varsayılanı (coinset.org) kullanmak için boş bırakın. Daha fazla gizlilik için coinset uyumlu kendi düğümünüzü girin.',
   'custody.chain.save': 'Zincir düğümünü kaydet',
   'custody.chain.saved': 'Kaydedildi',
+  'custody.autolock.label': 'Şu kadar dakika sonra otomatik kilitle',
+  'custody.autolock.hint': 'Cüzdan bu kadar dakika hareketsiz kaldıktan sonra kilitlenir. Herhangi bir cüzdan etkinliği zamanlayıcıyı sıfırlar. İzin verilen aralık: {min}–{max} dakika.',
+  'custody.autolock.save': 'Otomatik kilidi kaydet',
+  'custody.autolock.saved': 'Kaydedildi',
   'custody.soon.activity': 'Etkinlik geçmişi, kendi kontrolünüzdeki gönderim özelliğiyle birlikte eklenecek.',
   'custody.soon.trade': 'Takas özelliği, kendi kontrolünüzdeki imzalama ile birlikte eklenecek.',
 

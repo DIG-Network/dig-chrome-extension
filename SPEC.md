@@ -861,12 +861,31 @@ custody requests, owns storage, and enforces auto-lock.
 - **reveal recovery phrase.** Re-runs the FULL password decrypt in the vault (never from the TTL
   window); returns the phrase for one-time display without changing the held-key state.
 - **lock.** The vault zeroizes + drops the entropy (best-effort); the SW clears the unlock window.
-- **unlock window (TTL).** A NON-SECRET expiry timestamp is stored in `chrome.storage.session`
-  (`wallet.unlockExpiry`) — never key material. Default TTL 10 minutes, clamped to 1–60, from
-  `wallet.settings.unlockTtlMinutes`.
-- **auto-lock triggers (all lock the vault + clear the window):** explicit lock; a `chrome.alarms`
-  minute sweep once the TTL lapses; `chrome.idle` reporting `idle`/`locked`; all-windows-close (the
-  offscreen document tears down, dropping the in-memory key).
+- **unlock window (idle TTL, #155).** A NON-SECRET expiry timestamp is stored in
+  `chrome.storage.session` (`wallet.unlockExpiry`) — never key material. Default TTL 15 minutes
+  (a MetaMask-style idle default), clamped to 1–60, from `wallet.settings.unlockTtlMinutes`
+  (user-configurable in Settings → the wallet's "advanced" section, alongside the chain-node
+  override). "Unlocked for the session" means unlocked for as long as the wallet is ACTIVELY used,
+  not merely for a fixed span from the original unlock: `isSessionRenewingAction` (pure,
+  `src/lib/custody-session.ts`) classifies every custody action except the passive `getLockState`
+  read and the explicit `lockWallet` as activity, and `handleCustodyAction` (the SW dispatcher, one
+  layer above the action switch) re-arms the window (`startUnlockWindow()`) after any such action
+  IF the wallet was already unlocked when the request arrived. Reopening the popup or fullscreen
+  page — which reads state via `getLockState` — therefore never itself extends a session, but any
+  real interaction (viewing balances/activity, sending, switching wallets, …) does. Opening the
+  popup/fullscreen while a window is still fresh never re-prompts (§18.5's `getLockState`-driven
+  gate resolves straight to the wallet); only a genuinely idle wallet or an explicit Lock re-prompts.
+  The renewal is a compare-and-swap (`shouldApplyRenewal`, pure), not an unconditional write: the
+  expiry observed when the action STARTED is captured, and the window is re-armed only if that SAME
+  value is still current once the action finishes. This closes a real race — a slower renewing call
+  (e.g. a balance scan) that began while unlocked must NOT resurrect the session if an explicit
+  `lockWallet` (or the TTL sweep) completed while it was still in flight; an explicit lock always
+  wins over an in-flight activity call.
+- **auto-lock triggers (all lock the vault + clear the window):** explicit lock (the wallet
+  switcher's Lock control, `wallet-lock`, reachable from both popup and fullscreen); a
+  `chrome.alarms` minute sweep once the TTL lapses with no renewing activity; `chrome.idle`
+  reporting `idle`/`locked`; all-windows-close (the offscreen document tears down, dropping the
+  in-memory key).
 - **lock state.** `getLockState` derives the snapshot PURELY from persisted storage — `none` (no
   keystore blob) / `locked` (blob present but the unlock window is absent or lapsed) / `unlocked`
   (blob + a fresh unlock window) — with NO round-trip to the offscreen vault, so it ALWAYS resolves

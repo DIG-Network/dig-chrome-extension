@@ -87,6 +87,10 @@ export const ja: Record<string, string> = {
   'custody.chain.hint': '空欄のままにするとデフォルト（coinset.org）が使用されます。プライバシーを高めたい場合は、coinset互換の独自ノードを入力してください。',
   'custody.chain.save': 'チェーンノードを保存',
   'custody.chain.saved': '保存しました',
+  'custody.autolock.label': '自動ロックまでの時間（分）',
+  'custody.autolock.hint': '指定した分数、操作がない場合にウォレットをロックします。ウォレットの操作があるとタイマーはリセットされます。指定可能な範囲：{min}～{max}分。',
+  'custody.autolock.save': '自動ロック設定を保存',
+  'custody.autolock.saved': '保存しました',
   'custody.soon.activity': 'アクティビティ履歴は、自己管理型の送金機能とあわせて追加予定です。',
   'custody.soon.trade': '取引機能は、自己管理型の署名機能とあわせて追加予定です。',
 

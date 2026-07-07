@@ -87,6 +87,10 @@ export const zhTW: Record<string, string> = {
   'custody.chain.hint': '留空則使用預設節點（coinset.org）。若需更高的隱私性，可填寫您自己的 coinset 相容節點。',
   'custody.chain.save': '儲存鏈節點',
   'custody.chain.saved': '已儲存',
+  'custody.autolock.label': '閒置多久後自動鎖定（分鐘）',
+  'custody.autolock.hint': '錢包在閒置這麼多分鐘後將被鎖定。任何錢包操作都會重設計時器。允許範圍：{min}–{max} 分鐘。',
+  'custody.autolock.save': '儲存自動鎖定設定',
+  'custody.autolock.saved': '已儲存',
   'custody.soon.activity': '活動記錄功能將隨自託管轉帳功能一同推出。',
   'custody.soon.trade': '交易功能將隨自託管簽署功能一同推出。',
 
