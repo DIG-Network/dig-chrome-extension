@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.59.0] - 2026-07-07
+
+### Features
+- **collectibles:** Multi-select NFTs for bulk transfer or burn (#82)
+
 ## [1.58.0] - 2026-07-07
 
 ### Features
