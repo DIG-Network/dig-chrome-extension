@@ -214,4 +214,137 @@ describe('custodyApi endpoints', () => {
     const res = await store.dispatch(custodyApi.endpoints.setActiveIndex.initiate({ index: 1 }));
     expect(res.error).toMatchObject({ code: 'NO_WALLET' });
   });
+
+  // ── #162: switching the active wallet/index must clear stale wallet-scoped cache, not just
+  // invalidate it. `invalidatesTags` alone schedules a background refetch but keeps SERVING the
+  // previous identity's cached value (`isLoading` stays false) until the refetch resolves — the exact
+  // bug reported (the previous wallet's balances/activity/etc. linger on screen after a switch). A
+  // CONFIRMED identity change must wipe the whole cache so every wallet-scoped view falls back to its
+  // loading state instead. A FAILED attempt (e.g. NEEDS_UNLOCK) must leave the cache untouched — the
+  // active identity never changed.
+  describe('#162 active-identity change resets the whole wallet-scoped cache', () => {
+    function seedBalancesCache(store: ReturnType<typeof createStore>) {
+      return store.dispatch(custodyApi.endpoints.getCustodyBalances.initiate());
+    }
+    function balancesCacheStatus(store: ReturnType<typeof createStore>) {
+      return custodyApi.endpoints.getCustodyBalances.select()(store.getState());
+    }
+
+    it('a successful switchWallet wipes the cache — the old wallet balances entry goes uninitialized', async () => {
+      mockSw((m) => {
+        if (m.action === 'getCustodyBalances') return { balances: { xch: 111, cats: {} } };
+        if (m.action === 'switchWallet') return { lockState: 'unlocked', activeWalletId: m.walletId };
+        return { success: false };
+      });
+      const store = createStore();
+      await seedBalancesCache(store);
+      expect(balancesCacheStatus(store).data).toMatchObject({ balances: { xch: 111 } });
+
+      await store.dispatch(custodyApi.endpoints.switchWallet.initiate({ walletId: 'b' }));
+
+      const after = balancesCacheStatus(store);
+      expect(after.status).toBe('uninitialized');
+      expect(after.data).toBeUndefined();
+    });
+
+    it('a switchWallet that needs unlock (fails) leaves the cache untouched', async () => {
+      mockSw((m) => {
+        if (m.action === 'getCustodyBalances') return { balances: { xch: 222, cats: {} } };
+        if (m.action === 'switchWallet') return { success: false, code: 'NEEDS_UNLOCK' };
+        return { success: false };
+      });
+      const store = createStore();
+      await seedBalancesCache(store);
+
+      await store.dispatch(custodyApi.endpoints.switchWallet.initiate({ walletId: 'locked-wallet' }));
+
+      expect(balancesCacheStatus(store).data).toMatchObject({ balances: { xch: 222 } });
+    });
+
+    it('a successful setActiveIndex also wipes the cache (#165 coordination)', async () => {
+      mockSw((m) => {
+        if (m.action === 'getCustodyBalances') return { balances: { xch: 333, cats: {} } };
+        if (m.action === 'setActiveIndex') return { success: true, activeIndex: m.index };
+        return { success: false };
+      });
+      const store = createStore();
+      await seedBalancesCache(store);
+
+      await store.dispatch(custodyApi.endpoints.setActiveIndex.initiate({ index: 2 }));
+
+      expect(balancesCacheStatus(store).status).toBe('uninitialized');
+    });
+
+    it('a setActiveIndex failure (NO_WALLET) leaves the cache untouched', async () => {
+      mockSw((m) => {
+        if (m.action === 'getCustodyBalances') return { balances: { xch: 444, cats: {} } };
+        if (m.action === 'setActiveIndex') return { success: false, code: 'NO_WALLET' };
+        return { success: false };
+      });
+      const store = createStore();
+      await seedBalancesCache(store);
+
+      await store.dispatch(custodyApi.endpoints.setActiveIndex.initiate({ index: 9 }));
+
+      expect(balancesCacheStatus(store).data).toMatchObject({ balances: { xch: 444 } });
+    });
+
+    it('removeWallet re-homing the active wallet also wipes the cache', async () => {
+      mockSw((m) => {
+        if (m.action === 'getCustodyBalances') return { balances: { xch: 555, cats: {} } };
+        if (m.action === 'removeWallet') {
+          return { success: true, wallets: [{ id: 'a', label: 'Wallet 1', createdAt: 1, active: true }], activeWalletId: 'a', lockState: 'unlocked' };
+        }
+        return { success: false };
+      });
+      const store = createStore();
+      await seedBalancesCache(store);
+
+      await store.dispatch(custodyApi.endpoints.removeWallet.initiate({ walletId: 'b' }));
+
+      expect(balancesCacheStatus(store).status).toBe('uninitialized');
+    });
+
+    it('removeWallet refused (LAST_WALLET) leaves the cache untouched', async () => {
+      mockSw((m) => {
+        if (m.action === 'getCustodyBalances') return { balances: { xch: 666, cats: {} } };
+        if (m.action === 'removeWallet') return { success: false, code: 'LAST_WALLET' };
+        return { success: false };
+      });
+      const store = createStore();
+      await seedBalancesCache(store);
+
+      await store.dispatch(custodyApi.endpoints.removeWallet.initiate({ walletId: 'only' }));
+
+      expect(balancesCacheStatus(store).data).toMatchObject({ balances: { xch: 666 } });
+    });
+
+    it('createWallet (adding a wallet while one is already active) wipes the cache', async () => {
+      mockSw((m) => {
+        if (m.action === 'getCustodyBalances') return { balances: { xch: 777, cats: {} } };
+        if (m.action === 'createWallet') return { lockState: 'unlocked', mnemonic: 'word '.repeat(24).trim() };
+        return { success: false };
+      });
+      const store = createStore();
+      await seedBalancesCache(store);
+
+      await store.dispatch(custodyApi.endpoints.createWallet.initiate({ password: 'pw' }));
+
+      expect(balancesCacheStatus(store).status).toBe('uninitialized');
+    });
+
+    it('importWallet (adding a wallet while one is already active) wipes the cache', async () => {
+      mockSw((m) => {
+        if (m.action === 'getCustodyBalances') return { balances: { xch: 888, cats: {} } };
+        if (m.action === 'importWallet') return { lockState: 'unlocked' };
+        return { success: false };
+      });
+      const store = createStore();
+      await seedBalancesCache(store);
+
+      await store.dispatch(custodyApi.endpoints.importWallet.initiate({ mnemonic: 'abandon art', password: 'pw' }));
+
+      expect(balancesCacheStatus(store).status).toBe('uninitialized');
+    });
+  });
 });

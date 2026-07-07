@@ -1,3 +1,4 @@
+import type { ThunkDispatch, UnknownAction } from '@reduxjs/toolkit';
 import { api } from '@/api/api';
 import { ACTIONS } from '@/lib/messages';
 import type { LockState } from '@/features/wallet/walletSlice';
@@ -85,6 +86,39 @@ const ACTIVE_WALLET_INVALIDATION = ['Wallets', 'LockState', 'Balances', 'Activit
  */
 const ACTIVE_INDEX_INVALIDATION = ['LockState', 'Balances', 'Activity', 'Address', 'Collectibles', 'Coins'] as const;
 
+/**
+ * Shared `onQueryStarted` for every mutation that can change the ACTIVE wallet identity or its
+ * active HD derivation index (create / import / switch / remove-re-homing a wallet; navigate the
+ * index — #162, #165): once the SW CONFIRMS the change, wipe the WHOLE `api` cache
+ * (`resetApiState`) so every wallet-scoped view (Balances/Activity/Collectibles/Identity/Coins/
+ * Address/Wallets/LockState) drops the PREVIOUS identity's cached entry and re-renders its LOADING
+ * state — never the old identity's data, never "unavailable" (#158).
+ *
+ * `invalidatesTags` alone is NOT enough here: RTK Query's tag invalidation only schedules a
+ * background refetch — a subscribed query keeps serving its last-known (stale, wrong-identity)
+ * `data` with `isLoading: false` for the whole refetch window (`isFetching` is the only signal that
+ * changes), which is exactly the bug reported (the previous wallet's balances/activity linger on
+ * screen after a switch). `resetApiState()` drops the cached data immediately AND causes every
+ * still-subscribed hook to re-`initiate` from scratch (RTK Query's own subscription-recovery path),
+ * landing back in the uninitialized/pending state instead.
+ *
+ * A FAILED mutation (e.g. `NEEDS_UNLOCK`, `LAST_WALLET`, `NO_WALLET`) leaves the active identity
+ * unchanged, so `queryFulfilled` rejects and nothing is reset — the current wallet's data must stay
+ * on screen untouched when a switch attempt merely prompts for a password.
+ */
+async function resetCacheOnIdentityChange(
+  queryFulfilled: PromiseLike<unknown>,
+  dispatch: ThunkDispatch<unknown, unknown, UnknownAction>,
+): Promise<void> {
+  try {
+    await queryFulfilled;
+    dispatch(api.util.resetApiState());
+  } catch {
+    // The mutation failed (NEEDS_UNLOCK / LAST_WALLET / NO_WALLET / wrong password, …) — the active
+    // wallet/index never changed, so the existing cache is still correct. Nothing to reset.
+  }
+}
+
 export const custodyApi = api.injectEndpoints({
   endpoints: (build) => ({
     getLockState: build.query<LockStateResult, void>({
@@ -95,6 +129,7 @@ export const custodyApi = api.injectEndpoints({
     createWallet: build.mutation<CreateWalletResult, { password: string; label?: string; strong?: boolean }>({
       query: (arg) => ({ action: ACTIONS.createWallet, ...arg }),
       invalidatesTags: ACTIVE_WALLET_INVALIDATION,
+      onQueryStarted: (_arg, { dispatch, queryFulfilled }) => resetCacheOnIdentityChange(queryFulfilled, dispatch),
     }),
 
     importWallet: build.mutation<
@@ -103,6 +138,7 @@ export const custodyApi = api.injectEndpoints({
     >({
       query: (arg) => ({ action: ACTIONS.importWallet, ...arg }),
       invalidatesTags: ACTIVE_WALLET_INVALIDATION,
+      onQueryStarted: (_arg, { dispatch, queryFulfilled }) => resetCacheOnIdentityChange(queryFulfilled, dispatch),
     }),
 
     // ── Multi-wallet switcher (#90) ──
@@ -117,6 +153,7 @@ export const custodyApi = api.injectEndpoints({
     switchWallet: build.mutation<{ lockState: LockState; activeWalletId: string }, { walletId: string; password?: string }>({
       query: (arg) => ({ action: ACTIONS.switchWallet, ...arg }),
       invalidatesTags: ACTIVE_WALLET_INVALIDATION,
+      onQueryStarted: (_arg, { dispatch, queryFulfilled }) => resetCacheOnIdentityChange(queryFulfilled, dispatch),
     }),
     // Rename one wallet (metadata only — no key, no password). Only the registry list changes.
     renameWallet: build.mutation<WalletsMutationResult, { walletId: string; label: string }>({
@@ -124,10 +161,12 @@ export const custodyApi = api.injectEndpoints({
       invalidatesTags: ['Wallets'],
     }),
     // Remove one wallet (zeroizes its cached key); refuses the last (LAST_WALLET). Removing the active
-    // one re-homes active, so invalidate the full wallet-derived set alongside the registry list.
+    // one re-homes active, so invalidate the full wallet-derived set alongside the registry list, and
+    // reset the whole cache (#162) since re-homing switches identity exactly like switchWallet does.
     removeWallet: build.mutation<WalletsMutationResult, { walletId: string }>({
       query: (arg) => ({ action: ACTIONS.removeWallet, ...arg }),
       invalidatesTags: ACTIVE_WALLET_INVALIDATION,
+      onQueryStarted: (_arg, { dispatch, queryFulfilled }) => resetCacheOnIdentityChange(queryFulfilled, dispatch),
     }),
 
     // ── Single active derivation index (#165) ──
@@ -136,6 +175,7 @@ export const custodyApi = api.injectEndpoints({
     setActiveIndex: build.mutation<{ activeIndex: number }, { index: number }>({
       query: (arg) => ({ action: ACTIONS.setActiveIndex, ...arg }),
       invalidatesTags: ACTIVE_INDEX_INVALIDATION,
+      onQueryStarted: (_arg, { dispatch, queryFulfilled }) => resetCacheOnIdentityChange(queryFulfilled, dispatch),
     }),
 
     unlockWallet: build.mutation<UnlockResult, { password: string }>({
