@@ -34,6 +34,10 @@ export const ja: Record<string, string> = {
   'home.status.node.local': 'ローカルノード',
   'home.status.node.gateway': '公開ゲートウェイ',
   'home.activity.empty': '最近のアクティビティはありません',
+  'home.open.label': 'chia:// アドレスまたは DIG URN を開く',
+  'home.open.placeholder': 'chia://… または urn:dig:…',
+  'home.open.go': '開く',
+  'home.open.error.invalid': '有効な chia:// アドレスまたは URN ではありません。',
 
   // ── generic four-state ──
   'state.loading': '読み込んでいます…',

@@ -34,6 +34,10 @@ export const ru: Record<string, string> = {
   'home.status.node.local': 'Локальный узел',
   'home.status.node.gateway': 'Публичный шлюз',
   'home.activity.empty': 'Нет недавней активности',
+  'home.open.label': 'Открыть адрес chia:// или DIG URN',
+  'home.open.placeholder': 'chia://… или urn:dig:…',
+  'home.open.go': 'Открыть',
+  'home.open.error.invalid': 'Недействительный адрес chia:// или URN.',
 
   // ── generic four-state ──
   'state.loading': 'Загрузка…',

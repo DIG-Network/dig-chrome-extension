@@ -9,6 +9,7 @@ import { useGetCustodyBalancesQuery, useGetLockStateQuery, useGetCustodyActivity
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetNodeStatusQuery } from '@/features/resolver/resolverApi';
+import { OpenByUrnInput } from '@/features/home/OpenByUrnInput';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance } from '@/features/wallet/portfolio';
 import { assetUsdValue } from '@/features/wallet/portfolioValue';
@@ -56,6 +57,7 @@ export function HomeScreen() {
         <StatusWidget />
         <ActivityPeek />
       </div>
+      <OpenByUrnInput />
       <LauncherWidget />
     </div>
   );

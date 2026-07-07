@@ -34,6 +34,10 @@ export const fr: Record<string, string> = {
   'home.status.node.local': 'Nœud local',
   'home.status.node.gateway': 'Passerelle publique',
   'home.activity.empty': 'Aucune activité récente',
+  'home.open.label': 'Ouvrir une adresse chia:// ou un URN DIG',
+  'home.open.placeholder': 'chia://… ou urn:dig:…',
+  'home.open.go': 'Ouvrir',
+  'home.open.error.invalid': "Ce n'est pas une adresse chia:// ou un URN valide.",
 
   // ── generic four-state ──
   'state.loading': 'Chargement…',
