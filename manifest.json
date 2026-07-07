@@ -46,9 +46,10 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "src/favicon.png",
-      "48": "src/favicon.png",
-      "128": "src/favicon.png"
+      "16": "src/icons/icon-16.png",
+      "32": "src/icons/icon-32.png",
+      "48": "src/icons/icon-48.png",
+      "128": "src/icons/icon-128.png"
     }
   },
   "chrome_url_overrides": {
@@ -59,9 +60,10 @@
     "open_in_tab": true
   },
   "icons": {
-    "16": "src/favicon.png",
-    "48": "src/favicon.png",
-    "128": "src/favicon.png"
+    "16": "src/icons/icon-16.png",
+    "32": "src/icons/icon-32.png",
+    "48": "src/icons/icon-48.png",
+    "128": "src/icons/icon-128.png"
   },
   "web_accessible_resources": [
     {

@@ -52,7 +52,8 @@ pinned digest before any crypto runs — a mismatch fails closed.
 | `page-script.js` | Injected into the page (main world) to intercept `chia://` before the browser fetches it |
 | `popup.html` + `app.html` (React shell, `src/entries/popup.tsx` / `app.tsx`) | Toolbar popup + full-page wallet — the React/TypeScript shell built by Vite (Wallet · Shield · Control Panel · Apps, mobile-OS layout). Owns the wallet, the DIG Shields proof-ledger, the Control Panel (via `dig-control.mjs` / `dig-ledger.mjs`), open-`chia://`, the resolution toggle, and ecosystem funnels. (The old hand-written vanilla popup `popup.js` / `popup-wallet.js` / `popup.css` was superseded by this React shell and removed.) |
 | `dig-viewer.html` / `dig-viewer.js` | Standalone viewer iframe that fetches + embeds DIG content via the SW |
-| `src/favicon.png`, `src/logo.png` | Extension icon + popup logo |
+| `src/icons/icon-{16,32,48,128}.png` | The DIG Mark manifest icon set (#153) — one crisp file per size (toolbar `action.default_icon` + extension-management/store-listing `icons`), sourced from the canonical DIG icon set (dig-browser's `dig/branding/product_logo_*.png`). Every shipped extension page also links `src/icons/icon-32.png` as its `<link rel="icon">` tab favicon. |
+| `src/favicon.png`, `src/logo.png` | Notification/omnibox icon (regenerated crisp from the same DIG Mark, #153) + popup logo |
 
 The Node test server in `server/` and the root `stub-server.js` / `test-server.js`
 are **development-only** and are not part of the shipped extension. The dev server

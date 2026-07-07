@@ -61,10 +61,14 @@ const OPTIONAL_FILES = [
   'test.html' // Test page for development
 ];
 
-const ICON_SIZES = [16, 48, 128];
+// The DIG Mark raster set (#153) — sourced from the canonical DIG icon set (dig-browser's
+// dig/branding/product_logo_*.png, itself generated from the DIG logo) at the sizes the
+// manifest's action.default_icon + icons blocks need (MV3's documented ladder). Each size is its
+// OWN crisp file — never one image stretched across every size.
+const ICON_SIZES = [16, 32, 48, 128];
 const DIST_DIR = path.join(__dirname, 'dist');
-const ICONS_DIR = path.join(__dirname, 'icons');
 const SRC_DIR = path.join(__dirname, 'src');
+const ICONS_DIR = path.join(SRC_DIR, 'icons');
 const FAVICON_PATH = path.join(SRC_DIR, 'favicon.png');
 
 // Colors for console output
@@ -115,12 +119,22 @@ function validateExtension() {
   // Check favicon (required for extension icon)
   log('\n📦 Checking extension icon...', 'blue');
   const faviconExists = checkFile(FAVICON_PATH, false);
-  
+
   if (!faviconExists) {
     log('\n⚠️  Extension icon (src/favicon.png) is missing.', 'yellow');
     log('   Note: Extension will work without icon, but Chrome will use a default icon.', 'yellow');
   }
-  
+
+  // Check the DIG Mark manifest icon set (#153) — one crisp file per size, referenced by
+  // manifest.json's action.default_icon + icons blocks.
+  log('\n🎨 Checking DIG Mark icon set (src/icons/)...', 'blue');
+  for (const size of ICON_SIZES) {
+    const iconPath = path.join(ICONS_DIR, `icon-${size}.png`);
+    if (!checkFile(iconPath, false)) {
+      log(`\n⚠️  Manifest icon (src/icons/icon-${size}.png) is missing.`, 'yellow');
+    }
+  }
+
   return allValid; // Icons are optional, don't fail build if missing
 }
 
@@ -200,7 +214,29 @@ function copyFiles() {
     } else {
       log(`⚠️  Favicon not found: ${faviconSrc}`, 'yellow');
     }
-    
+
+    // Copy the DIG Mark manifest icon set (#153) — src/icons/icon-{16,32,48,128}.png, referenced
+    // by manifest.json's action.default_icon + icons blocks AND by every extension page's
+    // <link rel="icon"> (this dist/src/icons copy is the direct-URL path; Vite separately
+    // fingerprints its own copy for the pages it builds — see buildWebApp()).
+    if (fs.existsSync(ICONS_DIR)) {
+      const distIconsDir = path.join(distSrcDir, 'icons');
+      fs.mkdirSync(distIconsDir, { recursive: true });
+      for (const size of ICON_SIZES) {
+        const name = `icon-${size}.png`;
+        const iconSrc = path.join(ICONS_DIR, name);
+        if (fs.existsSync(iconSrc)) {
+          fs.copyFileSync(iconSrc, path.join(distIconsDir, name));
+          log(`✓ Copied: src/icons/${name} (manifest icon)`, 'green');
+        } else {
+          log(`⚠️  Manifest icon not found: ${iconSrc}`, 'yellow');
+        }
+      }
+    } else {
+      log(`⚠️  Icon set directory not found: ${ICONS_DIR}`, 'yellow');
+    }
+
+
     // Copy logo.png
     const logoSrc = path.join(srcDir, 'logo.png');
     const logoDest = path.join(distSrcDir, 'logo.png');
