@@ -401,7 +401,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `17`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `18`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -1008,8 +1008,9 @@ vault (`getActivity`):
 Offers are assembled from `chia-wallet-sdk-wasm` primitives to match the canonical `chia-sdk-driver`
 offer construction byte-for-byte, so they interoperate with Sage / dexie. All money paths are proven
 consensus-valid by a two-party simulator settlement test. v1 supports a SINGLE offered asset and a
-SINGLE requested asset, each XCH or a CAT (covering every XCH↔token trade); the offered and requested
-assets MUST differ.
+SINGLE requested asset, each XCH or a CAT (covering every XCH↔token trade); v2 (#94) additionally
+supports offering an NFT (selling a self-custody NFT for XCH/CAT), with CHIP-0011 royalty. The offered
+and requested assets MUST differ.
 
 - **Nonce.** `nonce = tree_hash(coin_ids sorted ascending)` over the maker's offered coin ids.
   Make and take derive the same notarized-payment tree hash, so the announcements match.
@@ -1023,7 +1024,9 @@ assets MUST differ.
   keeps full change). The bundle is `encodeOffer`-encoded to an `offer1…` string.
 - **INSPECT** (`inspectOffer`, read-only): `decodeOffer`, split real coin spends (`parent != 0`) from
   phantom carriers (`parent == 0`), parse the requested payments from the carriers, and reconstruct the
-  offered legs (XCH from the real spends' CREATE_COINs to settlement; CATs via `offerSettlementCats`).
+  offered legs (XCH from the real spends' CREATE_COINs to settlement; CATs via `offerSettlementCats`;
+  an offered NFT via `parseChildNft` on each real spend, checking the child's p2 puzzle hash equals the
+  settlement puzzle hash).
 - **TAKE** (`prepareTrade` `take` → `confirmTrade`): add the offered settlement coins (the taker
   receives them) + the wallet's coins to fund the requested payments, apply the requested settle
   actions (`RequestedPayments::actions()` = `Action.settle(id, notarized_payment)` — which create the
@@ -1031,10 +1034,44 @@ assets MUST differ.
   spends (phantoms dropped) with the taker's spends into one aggregated `SpendBundle`. The taker pays
   the network fee.
 - **CANCEL** (`prepareTrade` `cancel` → `confirmTrade`): re-spend the maker's original offered coins
-  back to self, invalidating the offer (its settlement coins can no longer be created).
+  back to self, invalidating the offer (its settlement coins can no longer be created). An offered NFT
+  is re-fetched fresh (hint-scan) rather than reused from the never-broadcast offer spend.
 - `prepareTrade` builds + signs but does NOT broadcast; the signed bundle is held under a pending id;
   `confirmTrade` is the ONLY place a trade is pushed (the user-approved step). Offers are mainnet-only
   (signed with the mainnet AGG_SIG_ME genesis).
+
+**NFT offers + CHIP-0011 royalty (#94).** Offering an NFT (`{ kind: 'nft', launcherId }`, OFFERED side
+only) works like offering XCH/CAT — the NFT is added to the `Spends` driver and sent to the settlement
+puzzle — plus, when the NFT's on-chain `royaltyBasisPoints > 0`, the maker's spend ALSO carries
+`Action.updateNft(nftId, [], TransferNftById(undefined, [TradePrice(requestedAmount,
+requestedAssetSettlementPuzzleHash)]))` inserted BEFORE the claim `Action.send` — this is the CHIP-0011
+"sale" signal; the NFT's ownership-layer transfer program (curried in at mint time) reacts to it by
+emitting the royalty `AssertPuzzleAnnouncement` automatically (no hand-rolled puzzle logic). The taker
+satisfies that assert with an EXTRA `Action.settle(requestedAssetId, royaltyNotarizedPayment)` where
+`royaltyNotarizedPayment = NotarizedPayment(nftLauncherId, [Payment(royaltyPuzzleHash,
+floor(tradePrice × royaltyBasisPoints ÷ 10000), memos:[royaltyPuzzleHash])])` — note the royalty
+NotarizedPayment's nonce is the NFT's OWN launcher id, NOT the offer's `Offer::nonce`. Proven against
+the wasm Simulator: taking an offer without the royalty payment is REJECTED with
+`AssertPuzzleAnnouncementFailed` (offers.test.ts asserts this negative case explicitly, so the royalty
+enforcement is proven real, not a test artifact).
+
+**Scope limits (documented, not silent gaps).** (1) **DID is NOT an offer asset** — verified against
+both the reference `chia-wallet-sdk` driver (`OfferCoins`/`RequestedPayments` in `offers/*.rs`) and
+Sage wallet's offer builder: neither models a `dids` leg, a DID has no CHIP-0011-style royalty or
+settlement-puzzle-hash convention any wallet's offer parser recognizes, and a hand-rolled "DID offer"
+would produce an offer string NO OTHER WALLET could take — a capability-parity / interop dead end, so
+it is not built. (2) **Requesting a SPECIFIC NFT** (buying, rather than selling) needs the maker to
+know that NFT's full on-chain state up front (metadata/owner/royalty) to build its phantom carrier's
+3-layer puzzle reveal — this needs a "read any NFT by launcher id" chain capability this wallet
+doesn't have yet (only owned-NFT hint-scan); `makeOffer`/`takeOffer` reject a requested/fulfilled NFT
+leg with `UNSUPPORTED_REQUEST` rather than mis-handling it silently. Both are tracked follow-ups.
+
+**Accepting an offer — two input methods (§18.10, fullscreen only).** The Take flow accepts an
+`offer1…` string via EITHER (a) pasting it into the text field, or (b) dragging-and-dropping an
+`.offer`/text file containing it onto the dropzone (read via `FileReader.readAsText`, trimmed, then
+fed into the SAME `inspectOffer` → review → `prepareTrade` → `confirmTrade` path as paste). Both are
+proven end-to-end in Playwright against the built extension pages (a real `DragEvent` carrying a
+`DataTransfer` + `File`, and a filled textarea).
 
 ### 18.11 NFTs / Collectibles
 

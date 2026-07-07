@@ -66,8 +66,11 @@ export interface WireSpendableCoin {
   locked: boolean;
 }
 
-/** Wire-safe (JSON, no bigint) asset descriptor crossing the SW boundary. */
-export type WireOfferAsset = { kind: 'xch' } | { kind: 'cat'; assetId: string };
+/**
+ * Wire-safe (JSON, no bigint) asset descriptor crossing the SW boundary. `nft` is OFFERED-side only
+ * (§94) — see `offers.ts`'s module doc for why a REQUESTED nft leg and a `did` leg are not supported.
+ */
+export type WireOfferAsset = { kind: 'xch' } | { kind: 'cat'; assetId: string } | { kind: 'nft'; launcherId: string };
 /** Wire-safe trade leg: asset + amount as a decimal string (base units). */
 export interface WireOfferLeg {
   asset: WireOfferAsset;
