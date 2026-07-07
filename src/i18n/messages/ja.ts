@@ -250,6 +250,12 @@ export const ja: Record<string, string> = {
   'resolver.node.label': 'カスタムノード',
   'resolver.node.placeholder': 'dig.local または host:port',
   'resolver.node.save': '保存',
+  'resolver.digdns.label': 'ローカル .dig 解決',
+  'resolver.digdns.loading': '確認中…',
+  'resolver.digdns.status.unknown': '確認中…',
+  'resolver.digdns.status.direct': '直接',
+  'resolver.digdns.status.proxy': 'プロキシフォールバック使用中',
+  'resolver.digdns.status.unavailable': '検出されません',
 
   // ── shield ──
   'shield.title': 'DIGシールド',

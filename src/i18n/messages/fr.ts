@@ -250,6 +250,12 @@ export const fr: Record<string, string> = {
   'resolver.node.label': 'Nœud personnalisé',
   'resolver.node.placeholder': 'dig.local ou hôte:port',
   'resolver.node.save': 'Enregistrer',
+  'resolver.digdns.label': 'Résolution .dig locale',
+  'resolver.digdns.loading': 'Vérification…',
+  'resolver.digdns.status.unknown': 'Vérification…',
+  'resolver.digdns.status.direct': 'Direct',
+  'resolver.digdns.status.proxy': 'Repli proxy actif',
+  'resolver.digdns.status.unavailable': 'Non détecté',
 
   // ── shield ──
   'shield.title': 'Boucliers DIG',

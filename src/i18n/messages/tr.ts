@@ -250,6 +250,12 @@ export const tr: Record<string, string> = {
   'resolver.node.label': 'Özel düğüm',
   'resolver.node.placeholder': 'dig.local veya host:port',
   'resolver.node.save': 'Kaydet',
+  'resolver.digdns.label': 'Yerel .dig çözümleme',
+  'resolver.digdns.loading': 'Kontrol ediliyor…',
+  'resolver.digdns.status.unknown': 'Kontrol ediliyor…',
+  'resolver.digdns.status.direct': 'Doğrudan',
+  'resolver.digdns.status.proxy': 'Proxy yedeği kullanılıyor',
+  'resolver.digdns.status.unavailable': 'Algılanmadı',
 
   // ── shield ──
   'shield.title': 'DIG Kalkanları',

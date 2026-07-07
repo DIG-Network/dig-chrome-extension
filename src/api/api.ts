@@ -6,6 +6,8 @@ export const TAGS = [
   'Balances',
   'Activity',
   'NodeStatus',
+  // dig-dns Path-B proxy fallback (#175): the shared `.dig`-resolution availability signal.
+  'DigDnsStatus',
   'Shield',
   'Control',
   // Self-custody (#56): lock state + derived receive addresses.

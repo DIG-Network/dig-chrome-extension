@@ -250,6 +250,12 @@ export const es: Record<string, string> = {
   'resolver.node.label': 'Nodo personalizado',
   'resolver.node.placeholder': 'dig.local o host:puerto',
   'resolver.node.save': 'Guardar',
+  'resolver.digdns.label': 'Resolución .dig local',
+  'resolver.digdns.loading': 'Comprobando…',
+  'resolver.digdns.status.unknown': 'Comprobando…',
+  'resolver.digdns.status.direct': 'Directo',
+  'resolver.digdns.status.proxy': 'Usando respaldo de proxy',
+  'resolver.digdns.status.unavailable': 'No detectado',
 
   // ── shield ──
   'shield.title': 'Escudos DIG',

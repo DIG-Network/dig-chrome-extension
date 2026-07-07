@@ -250,6 +250,12 @@ export const hi: Record<string, string> = {
   'resolver.node.label': 'कस्टम नोड',
   'resolver.node.placeholder': 'dig.local या host:port',
   'resolver.node.save': 'सेव करें',
+  'resolver.digdns.label': 'स्थानीय .dig समाधान',
+  'resolver.digdns.loading': 'जांच हो रही है…',
+  'resolver.digdns.status.unknown': 'जांच हो रही है…',
+  'resolver.digdns.status.direct': 'प्रत्यक्ष',
+  'resolver.digdns.status.proxy': 'प्रॉक्सी फ़ॉलबैक उपयोग में',
+  'resolver.digdns.status.unavailable': 'पता नहीं चला',
 
   // ── shield ──
   'shield.title': 'DIG शील्ड्स',

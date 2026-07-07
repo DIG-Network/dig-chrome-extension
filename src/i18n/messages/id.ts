@@ -250,6 +250,12 @@ export const id: Record<string, string> = {
   'resolver.node.label': 'Node kustom',
   'resolver.node.placeholder': 'dig.local atau host:port',
   'resolver.node.save': 'Simpan',
+  'resolver.digdns.label': 'Resolusi .dig lokal',
+  'resolver.digdns.loading': 'Memeriksa…',
+  'resolver.digdns.status.unknown': 'Memeriksa…',
+  'resolver.digdns.status.direct': 'Langsung',
+  'resolver.digdns.status.proxy': 'Menggunakan proxy cadangan',
+  'resolver.digdns.status.unavailable': 'Tidak terdeteksi',
 
   // ── shield ──
   'shield.title': 'Perisai DIG',
