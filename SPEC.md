@@ -1172,6 +1172,56 @@ script, or any other part of the wallet UI cannot scrape it via `document.queryS
 still traverse the subtree). The same DOM-isolation primitive applies to any future private-key
 export.
 
+### 18.5a Background prefetch on unlock / index-switch (#168)
+
+As soon as the wallet is UNLOCKED — and again whenever the active wallet or active derivation index
+changes while unlocked (#90, §18.1a, §18.16) — the app shell proactively warms the RTK Query cache
+for the views a user is most likely to open next, instead of waiting for each view to mount and fetch
+lazily. This is a PERFORMANCE prefetch only; it changes when a read fires, never what is read or how
+many indexes it covers.
+
+- **Where it runs.** There is no persistent background page that can hold React/RTK Query state
+  (§2.1) — the client-side authority for "should I warm the cache" is the app shell (`Shell` in
+  `App.tsx`), mounted once per page (`popup.html` and `app.html` alike) for the lifetime of that page,
+  regardless of which tab/segmented-view is currently showing. This matters because the mobile-OS Home
+  tab (§2.1) never mounts the wallet body at all, and Collectibles (§18.11) isn't mounted until its
+  segmented tab is picked — a per-view fetch alone cannot get ahead of navigation to either.
+- **Trigger.** A prefetch round starts when `getLockState` (§7) reports `lockState:'unlocked'` for a
+  (walletId, activeIndex) pair the shell has not already warmed. Locking (or the wallet never having
+  been unlocked) resets that memory, so the NEXT unlock — even of the exact same wallet+index — runs a
+  fresh round (the caches were just invalidated by the lock).
+- **Order.** Four calls fire strictly IN SEQUENCE, each awaited before the next starts (never a burst):
+  `getCustodyBalances` (§18.6) → `getCatRegistry` (the CAT/token-metadata registry, §18.6) →
+  `listNfts` (§18.11) → `getActivity` (the LOCAL activity log, §18.9) — likely-first-viewed first.
+  Every RTK Query view that later mounts (`useGetCustodyBalancesQuery`, `useListCollectiblesQuery`,
+  `useGetCustodyActivityQuery`, …) shares the SAME cache entry (same endpoint + same, argument-less
+  query key) as the prefetch call, so it renders the already-fulfilled result immediately instead of
+  issuing a second SW round-trip.
+- **Single-index scope is structural (#165), not a runtime check.** None of the four calls above takes
+  an index argument — the SW resolves the ACTIVE wallet's active derivation index itself (§18.1a) from
+  the registry — so there is no parameter a prefetch round could vary to sweep multiple indexes even by
+  accident. One context change is exactly one round of four calls, never a range.
+- **Cancellable; no stale writes.** A wallet switch or index navigation (§18.1a, §18.16) starts a NEW
+  round for the new context and must not let a slow, now-stale round from the PREVIOUS context land its
+  result under the new identity. Two mechanisms combine to guarantee this (the same compare-and-swap
+  discipline §18.3's auto-lock renewal window uses):
+  1. A generation counter is bumped on every new context; the sequence re-checks it before EVERY one of
+     the four steps and stops issuing further steps the instant it is stale — a switch mid-round means
+     the remaining, not-yet-started steps for the old context never fire (no needless coinset calls for
+     a context the user already left).
+  2. A step ALREADY in flight when the switch happens can still resolve afterward — this cannot be
+     aborted over the `chrome.runtime.sendMessage` transport (no abort signal). That is safe because
+     every wallet/index-switch mutation already resets the WHOLE RTK Query cache on success
+     (`resetCacheOnIdentityChange`, §18.16/§18.1a) before the new round is even computed, and RTK Query
+     only ever applies a fulfilled result to a cache entry that still exists — so the late write becomes
+     a no-op instead of corrupting the new identity's view.
+- **Loading ≠ unavailable (#158) still holds.** A view opened BEFORE its prefetch round lands still
+  renders its normal loading state (the query is genuinely pending, not yet fulfilled) — this section
+  only changes WHEN the fetch is kicked off, never the view's own four-state rendering contract (§2.2).
+- **A step's own failure never blocks the others.** A failed/offline balance scan does not prevent the
+  collectibles or activity steps from running — each step is independent best-effort priming, not a
+  pipeline with hard dependencies.
+
 ### 18.6 Balance scan, CAT auto-discovery & token metadata
 
 Read-only balances come from an HD scan run in the offscreen vault (it has the key + the wasm):
