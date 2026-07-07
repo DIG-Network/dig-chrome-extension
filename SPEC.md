@@ -444,7 +444,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `20`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `21`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -495,6 +495,10 @@ of a block height) and its request no longer takes `watchedCats`/`sinceHeight` (
 `chrome.storage.local` read needs neither). `confirmSend` and `confirmTrade` additively gained an
 optional `activityHint: { asset, amount, counterparty }` (the #154 hint captured at prepare time, so
 the SW can log the action without any coinset round-trip).
+
+`MESSAGE_PROTOCOL_VERSION` `21` (#175) added `getDigDnsStatus` — the shared dig-dns Path-B
+availability signal (§8.5): reachability, the bound gateway port, the PAC URL, and whether the PAC
+proxy is currently engaged. Purely additive — no existing action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
