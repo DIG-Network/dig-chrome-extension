@@ -90,3 +90,26 @@ NFT's ownership-layer puzzle automatically creates the matching announcement the
 into consensus), and automatically asserts the announcement the DID creates. Verified against
 `xch-dev/chia-wallet-sdk` `crates/chia-sdk-driver/src/primitives/nft.rs` (`assign_owner`) +
 `actions/update_nft.rs`. See `src/offscreen/didAssign.ts`.
+
+## `connect-src` CSP blocks `fetch()` to arbitrary hosts even when `img-src` allows them — cache via `<img>`+canvas, not `fetch()`
+
+The manifest's `img-src` is `'self' data: https:` (any HTTPS host, #150 — NFT art can live anywhere),
+but `connect-src` is a small explicit allowlist (rpc.dig.net, coinset, dexie, coingecko, bugreport).
+Reaching for `fetch(url)` to read an arbitrary NFT-art host's bytes (to cache them, #159) is CSP-
+blocked for virtually every real host, REGARDLESS of the host's CORS headers — the request never
+leaves the renderer. Confirmed via Playwright e2e: switching the loader from `fetch()` to an
+off-screen `<img crossOrigin="anonymous">` + `canvas.drawImage`/`toBlob()` fixed it immediately,
+because that request is an "image" CSP destination (`img-src`), not a "fetch" destination
+(`connect-src`). Widening `connect-src` to `https:` would also fix it, but is a bigger security-surface
+change (lets a compromised script READ arbitrary cross-origin responses, not just send data via a URL
+like `img-src` already allows) — prefer the `<img>`+canvas route for any future "read bytes from an
+arbitrary NFT-art host" need. Caveat: the canvas read needs the host to send
+`Access-Control-Allow-Origin` (`crossOrigin="anonymous"` fails the load entirely otherwise) — fall back
+to embedding the raw URL directly (uncached) rather than failing closed, since a PLAIN `<img src>` (no
+`crossOrigin`) was never CORS-gated for display. See `src/features/collectibles/nftImageCache.ts`.
+
+**Playwright quirk found while debugging this:** `context.route().fulfill()` does NOT enforce real
+browser CORS checks on `crossOrigin="anonymous"` image loads — a mocked response with NO
+`Access-Control-Allow-Origin` header still loads successfully under Playwright's CDP-based
+interception (verified with an isolated probe). A CORS-rejection code path can't be e2e-proven through
+route mocking; test it at the unit level (mock the loader function itself) instead.

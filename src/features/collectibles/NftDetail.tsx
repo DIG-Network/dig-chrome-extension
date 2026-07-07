@@ -17,6 +17,7 @@ import {
   nftMonogram,
   shortHex,
 } from '@/features/collectibles/nftDisplay';
+import { getSharedNftImageCache } from '@/features/collectibles/nftImageCache';
 
 const XCH_DECIMALS = 12;
 
@@ -348,21 +349,67 @@ export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft:
 }
 
 /**
- * The NFT preview: the resolved image (`data:` inline, or a remote `http(s)`/gateway-rewritten
- * `ipfs://` URL — #150) when one is known AND has not failed to load, else a deterministic monogram
- * tile. A remote image that 404s / times out / errors falls back to the monogram via `onerror`
- * (`erroredSrc`) rather than showing a broken-image icon.
+ * Resolve an NFT image source (`nftImageSrc` — `data:` inline or a remote `http(s)`/gateway-rewritten
+ * `ipfs://` URL, #150) to what `<img src>` should actually render: a `data:` URI passes through
+ * unchanged (already inline, no network cost); a remote URL is served through the local NFT image
+ * cache (#159) — a cache hit resolves immediately with NO re-fetch, a miss fetches once, caches the
+ * bytes, and resolves to an object URL.
+ *
+ * A cache/fetch failure falls back to the RAW remote URL (uncached, exactly the pre-#159 behavior) —
+ * NOT to the monogram — because `fetch()` (unlike an `<img>` load) is subject to CORS, and plenty of
+ * real NFT-art hosts (marketplace CDNs, some IPFS gateways) render fine as an `<img src>` without ever
+ * sending `Access-Control-Allow-Origin`. Failing closed to the monogram here would regress #150 for
+ * every such host. `NftMedia`'s existing `<img onerror>` handling still catches a genuinely dead host
+ * (a real 404/timeout fails identically whether requested via `fetch()` or `<img src>`).
+ *
+ * Returns null only while still resolving (NftMedia shows the monogram placeholder meanwhile, same
+ * as "no image yet").
+ */
+function useCachedNftImageSrc(imageSrc: string | null): string | null {
+  const [resolved, setResolved] = useState<string | null>(null);
+  useEffect(() => {
+    if (!imageSrc) {
+      setResolved(null);
+      return;
+    }
+    if (imageSrc.startsWith('data:')) {
+      setResolved(imageSrc);
+      return;
+    }
+    let cancelled = false;
+    setResolved(null);
+    getSharedNftImageCache()
+      .getOrFetchObjectUrl(imageSrc)
+      .then((src) => {
+        if (!cancelled) setResolved(src);
+      })
+      .catch(() => {
+        if (!cancelled) setResolved(imageSrc); // graceful, uncached fallback — see doc comment above
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [imageSrc]);
+  return resolved;
+}
+
+/**
+ * The NFT preview: the resolved + locally-cached image (§ `useCachedNftImageSrc`, #150/#159) when one
+ * is known AND has not failed to load, else a deterministic monogram tile. An image that 404s / times
+ * out / errors (at fetch time, or an `<img onerror>` for a cached-but-corrupt blob) falls back to the
+ * monogram (`erroredSrc`) rather than showing a broken-image icon.
  */
 export function NftMedia({ nft, imageSrc, big = false }: { nft: WalletNft; imageSrc: string | null; big?: boolean }) {
+  const cachedSrc = useCachedNftImageSrc(imageSrc);
   const [erroredSrc, setErroredSrc] = useState<string | null>(null);
   const side = big ? 96 : '100%';
-  if (imageSrc && imageSrc !== erroredSrc) {
+  if (cachedSrc && cachedSrc !== erroredSrc) {
     return (
       <img
-        src={imageSrc}
+        src={cachedSrc}
         alt=""
         data-testid="nft-image"
-        onError={() => setErroredSrc(imageSrc)}
+        onError={() => setErroredSrc(cachedSrc)}
         style={{ width: side, height: big ? 96 : 'auto', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 10, background: 'var(--dig-surface, #f2f2f7)' }}
       />
     );

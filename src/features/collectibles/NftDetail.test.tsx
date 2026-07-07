@@ -5,6 +5,7 @@ import { renderWithProviders } from '@/test/harness';
 import { NftDetail } from '@/features/collectibles/NftDetail';
 import type { WalletNft } from '@/offscreen/nfts';
 import golden from '@/lib/keystore/derive.golden.json';
+import { NftImageCache, setSharedNftImageCacheForTests, resetSharedNftImageCacheForTests, type CacheIndex } from '@/features/collectibles/nftImageCache';
 
 const RECIPIENT = golden.unhardened[0].address;
 
@@ -40,7 +41,43 @@ function mockSw(router: (m: { action: string; [k: string]: unknown }) => unknown
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+  resetSharedNftImageCacheForTests();
 });
+
+/**
+ * Installs a fully in-memory `NftImageCache` (fake blob/index stores, no real browser Cache API or
+ * canvas needed) as the shared instance `NftMedia`'s `useCachedNftImageSrc` hook reads, with a
+ * controllable `loadImageBlob` standing in for the real `<img>`+canvas loader. Returns the load spy
+ * so tests can assert load-count (cache-hit-skips-load) behavior.
+ */
+function installFakeNftImageCache(loadImpl: (url: string) => Promise<Blob> = async () => new Blob(['x'], { type: 'image/png' })) {
+  const blobData = new Map<string, Blob>();
+  const indexData: CacheIndex = {};
+  let n = 0;
+  const loadImageBlob = vi.fn(loadImpl);
+  const cache = new NftImageCache({
+    blobStore: {
+      get: async (k) => blobData.get(k),
+      set: async (k, b) => {
+        blobData.set(k, b);
+      },
+      delete: async (k) => {
+        blobData.delete(k);
+      },
+    },
+    indexStore: {
+      load: async () => ({ ...indexData }),
+      save: async (idx) => {
+        for (const k of Object.keys(indexData)) delete indexData[k];
+        Object.assign(indexData, idx);
+      },
+    },
+    loadImageBlob,
+    createObjectUrl: () => `blob:mock-${++n}`,
+  });
+  setSharedNftImageCacheForTests(cache);
+  return loadImageBlob;
+}
 
 describe('NftDetail', () => {
   it('shows on-chain data: launcher id, royalty, edition, monogram placeholder', () => {
@@ -61,28 +98,66 @@ describe('NftDetail', () => {
     expect(screen.getByTestId('nft-view-metadata')).toHaveAttribute('href', 'https://ex.test/m.json');
   });
 
-  it('embeds a remote https image (#150) and also offers it as an external link', () => {
+  it('embeds a remote https image (#150) served through the local NFT image cache (#159), and also offers it as an external link', async () => {
     mockSw(() => ({ success: true }));
+    const loadSpy = installFakeNftImageCache();
     renderWithProviders(<NftDetail nft={nft({ dataUris: ['https://ipfs.test/i.png'] })} onBack={() => {}} />);
-    expect(screen.getByTestId('nft-image')).toHaveAttribute('src', 'https://ipfs.test/i.png');
+    const img = await screen.findByTestId('nft-image');
+    expect(img).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    expect(loadSpy).toHaveBeenCalledWith('https://ipfs.test/i.png');
     expect(screen.getByTestId('nft-view-image')).toHaveAttribute('href', 'https://ipfs.test/i.png');
   });
 
-  it('gateway-rewrites an ipfs:// image so it embeds + links via a fetchable https URL', () => {
+  it('gateway-rewrites an ipfs:// image so it caches + embeds via the fetchable https URL, and links out to it', async () => {
     mockSw(() => ({ success: true }));
+    const loadSpy = installFakeNftImageCache();
     renderWithProviders(<NftDetail nft={nft({ dataUris: ['ipfs://cid/i.png'] })} onBack={() => {}} />);
-    expect(screen.getByTestId('nft-image')).toHaveAttribute('src', 'https://ipfs.io/ipfs/cid/i.png');
+    const img = await screen.findByTestId('nft-image');
+    expect(img).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    expect(loadSpy).toHaveBeenCalledWith('https://ipfs.io/ipfs/cid/i.png');
     expect(screen.getByTestId('nft-view-image')).toHaveAttribute('href', 'https://ipfs.io/ipfs/cid/i.png');
   });
 
-  it('falls back to the monogram when a remote image fails to load', () => {
+  it('falls back to embedding the raw remote URL (uncached) when the cache/load fails — a genuinely dead host still falls back to the monogram via onerror', async () => {
     mockSw(() => ({ success: true }));
+    installFakeNftImageCache(async () => {
+      throw new Error('image load failed (dead host or no CORS)');
+    });
     renderWithProviders(<NftDetail nft={nft({ dataUris: ['https://dead.test/i.png'] })} onBack={() => {}} />);
-    const img = screen.getByTestId('nft-image');
-    expect(screen.queryByTestId('nft-monogram')).not.toBeInTheDocument();
+    // A CORS-restricted or failed cache load does NOT fail closed to the monogram — the cache loads
+    // via <img>+canvas (CORS-gated), so failing closed here would regress #150 for any host that
+    // renders fine as a plain <img src> without ever sending Access-Control-Allow-Origin.
+    const img = await screen.findByTestId('nft-image');
+    expect(img).toHaveAttribute('src', 'https://dead.test/i.png');
+    // A genuinely dead host still fails the browser's own <img> load, caught by the existing onerror
+    // fallback (unaffected by CORS semantics — a real 404 fails identically either way).
     fireEvent.error(img);
     expect(screen.queryByTestId('nft-image')).not.toBeInTheDocument();
     expect(screen.getByTestId('nft-monogram')).toBeInTheDocument();
+  });
+
+  it('falls back to the monogram if a cached image blob still fails to render (onerror)', async () => {
+    mockSw(() => ({ success: true }));
+    installFakeNftImageCache();
+    renderWithProviders(<NftDetail nft={nft({ dataUris: ['https://flaky.test/i.png'] })} onBack={() => {}} />);
+    const img = await screen.findByTestId('nft-image');
+    fireEvent.error(img);
+    expect(screen.queryByTestId('nft-image')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nft-monogram')).toBeInTheDocument();
+  });
+
+  it('serves the 2nd render of the same NFT from the local cache with no re-load (#159)', async () => {
+    mockSw(() => ({ success: true }));
+    const loadSpy = installFakeNftImageCache();
+    const first = renderWithProviders(<NftDetail nft={nft({ dataUris: ['https://ipfs.test/repeat.png'] })} onBack={() => {}} />);
+    await screen.findByTestId('nft-image');
+    expect(loadSpy).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    renderWithProviders(<NftDetail nft={nft({ dataUris: ['https://ipfs.test/repeat.png'] })} onBack={() => {}} />);
+    const img2 = await screen.findByTestId('nft-image');
+    expect(img2).toHaveAttribute('src', expect.stringMatching(/^blob:/));
+    expect(loadSpy).toHaveBeenCalledTimes(1); // still 1 — the 2nd render is a cache hit
   });
 
   it('rejects an invalid recipient before building', async () => {

@@ -21,21 +21,33 @@ interface MockNft {
 }
 
 /**
- * END-USER e2e for #150 (Collectibles showed a monogram placeholder instead of real NFT art) — proves,
- * against the BUILT unpacked extension in a real (headless) browser, that:
+ * END-USER e2e for #150 (Collectibles showed a monogram placeholder instead of real NFT art) + #159
+ * (local NFT image cache) — proves, against the BUILT unpacked extension in a real (headless)
+ * browser, that:
  *   - an NFT with a remote `https://` image renders its thumbnail (the `img-src 'self' data: https:`
- *     CSP, manifest.json, now allows it — it used to be CSP-blocked and fall back to the monogram);
+ *     CSP, manifest.json, now allows it — it used to be CSP-blocked and fall back to the monogram),
+ *     served through the local NFT image cache as a `blob:` object URL (#159) — never the raw remote
+ *     URL directly, so a render never re-hits the network once cached;
  *   - an NFT with a raw `ipfs://` image is gateway-rewritten (`toGatewayUrl`, `nftDisplay.ts`) to a
- *     fetchable `https://ipfs.io/ipfs/...` URL and renders too;
- *   - an NFT whose image URL fails to load (dead host) falls back to the monogram via `onerror`
- *     (`NftMedia`, `NftDetail.tsx`) — the grid never shows a broken-image icon.
+ *     fetchable `https://ipfs.io/ipfs/...` URL, cached, and renders too;
+ *   - an NFT whose image URL fails to load (dead host) falls back to the monogram via the cache/fetch
+ *     failure path (`useCachedNftImageSrc`, `NftDetail.tsx`) — the grid never shows a broken-image icon;
+ *   - a cached image is served from the LOCAL cache (no re-fetch) on a later, independent view (a
+ *     fresh popup/app document — the real-world "close and reopen the popup" case).
  *
  * `listNfts` is intercepted at the `chrome.runtime.sendMessage` seam (real chain discovery needs a
  * live coinset scan of a wallet that may or may not hold any NFTs — non-deterministic in CI, the same
  * split as the #92/#94 vault e2e) so the grid renders a fixed, known set of NFTs. The actual IMAGE
- * requests are NOT mocked at the message layer — they are real `<img>` loads intercepted at the
- * network layer (`context.route`) so the browser's own CSP + `<img onerror>` behavior is exercised
- * end-to-end, not simulated.
+ * requests are NOT mocked at the message layer — they are real `<img>`-driven fetches intercepted at
+ * the network layer (`context.route`, counted per URL) so the browser's own CSP + the real Cache API
+ * + `<img onerror>` behavior is exercised end-to-end, not simulated.
+ *
+ * NOT covered here: a CORS-restricted host (no `Access-Control-Allow-Origin`) gracefully falling back
+ * to the raw, uncached URL (`nftImageCache.ts`'s `loadImageBlobViaCanvas` doc comment). Playwright's
+ * `context.route().fulfill()` interception does not enforce real browser CORS checks on
+ * `crossOrigin="anonymous"` image loads (verified: a route responding with NO
+ * `Access-Control-Allow-Origin` header still loads successfully under this harness), so that fallback
+ * path is unit-tested instead (`NftDetail.test.tsx`, "falls back to embedding the raw remote URL").
  *
  * Run: `npm run build && npm run test:sw`.
  */
@@ -53,7 +65,13 @@ const HTTPS_GOOD = 'https://picsum-e2e-150.example.test/good.png';
 const IPFS_CID_PATH = 'bafy-e2e-150/good.png';
 const IPFS_GATEWAY_GOOD = `https://ipfs.io/ipfs/${IPFS_CID_PATH}`;
 const HTTPS_DEAD = 'https://dead-e2e-150.example.test/broken.png';
+const HTTPS_CACHE_TEST = 'https://cache-e2e-159.example.test/cached.png';
 const PASSWORD = 'e2e-150-not-a-real-secret';
+
+/** Per-URL network hit counts (populated by the `context.route` handlers in `beforeAll`) — proves
+ * the local NFT image cache (#159) really does skip the network on a cache hit, not just that the
+ * rendered `<img>` LOOKS right. */
+const fetchCounts: Record<string, number> = {};
 
 function nft(over: Partial<MockNft> & { launcherId: string; dataUris: string[] }): MockNft {
   return {
@@ -75,7 +93,8 @@ function nft(over: Partial<MockNft> & { launcherId: string; dataUris: string[] }
 const REMOTE_NFT = nft({ launcherId: 'aa'.repeat(32), dataUris: [HTTPS_GOOD] });
 const IPFS_NFT = nft({ launcherId: 'bb'.repeat(32), dataUris: [`ipfs://${IPFS_CID_PATH}`] });
 const BROKEN_NFT = nft({ launcherId: 'cc'.repeat(32), dataUris: [HTTPS_DEAD] });
-const MOCK_NFTS = [REMOTE_NFT, IPFS_NFT, BROKEN_NFT];
+const CACHE_TEST_NFT = nft({ launcherId: 'dd'.repeat(32), dataUris: [HTTPS_CACHE_TEST] });
+const MOCK_NFTS = [REMOTE_NFT, IPFS_NFT, BROKEN_NFT, CACHE_TEST_NFT];
 
 test.describe.configure({ mode: 'serial' });
 
@@ -98,11 +117,21 @@ test.beforeAll(async () => {
     args: ['--headless=new', `--disable-extensions-except=${EXT_PATH}`, `--load-extension=${EXT_PATH}`],
   });
 
-  // Network-layer fixtures (not message mocks): a real image response for the two "good" NFT
-  // images (one https-native, one only reachable AFTER the ipfs:// -> gateway rewrite), and a
-  // real failure for the "broken" one, so <img onerror> actually fires.
-  await context.route(`${HTTPS_GOOD}`, (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }));
-  await context.route(IPFS_GATEWAY_GOOD, (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }));
+  // Network-layer fixtures (not message mocks): a real image response for the "good" NFT images
+  // (one https-native, one only reachable AFTER the ipfs:// -> gateway rewrite, one dedicated to the
+  // cache-hit test), and a real failure for the "broken" one, so <img onerror> / the cache's load
+  // failure path actually fires. Each route counts its own hits so the cache-hit test can assert a
+  // 2nd view makes NO additional request. `Access-Control-Allow-Origin: *` mirrors real permissive
+  // gateways (ipfs.io sends this for public content), which is what lets the local NFT image cache's
+  // `<img crossOrigin="anonymous">` + canvas loader (#159, `nftImageCache.ts`) read the pixels to
+  // cache them — a plain `<img src>` (#150) never needed it.
+  const countedFulfill = (url: string) => (route: import('@playwright/test').Route) => {
+    fetchCounts[url] = (fetchCounts[url] ?? 0) + 1;
+    return route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: PNG_1PX });
+  };
+  await context.route(HTTPS_GOOD, countedFulfill(HTTPS_GOOD));
+  await context.route(IPFS_GATEWAY_GOOD, countedFulfill(IPFS_GATEWAY_GOOD));
+  await context.route(HTTPS_CACHE_TEST, countedFulfill(HTTPS_CACHE_TEST));
   await context.route(HTTPS_DEAD, (route) => route.fulfill({ status: 404, body: 'not found' }));
 
   // Intercept ONLY the `listNfts` SW action, context-wide (every page/tab opened in this context —
@@ -172,16 +201,18 @@ test.describe('Collectibles renders remote NFT art (#150)', () => {
     await expect(ipfsTile).toBeVisible();
     await expect(brokenTile).toBeVisible();
 
-    // The remote https:// image embeds directly.
+    // The remote https:// image is fetched, cached locally, and embedded as a `blob:` object URL
+    // (#159) — never the raw remote URL directly.
     const remoteImg = remoteTile.getByTestId('nft-image');
     await expect(remoteImg).toBeVisible();
-    await expect(remoteImg).toHaveAttribute('src', HTTPS_GOOD);
+    await expect(remoteImg).toHaveAttribute('src', /^blob:/);
     expect(await remoteImg.evaluate((img: HTMLImageElement) => img.naturalWidth > 0)).toBe(true);
 
-    // The ipfs:// image is gateway-rewritten and embeds via the public https gateway.
+    // The ipfs:// image is gateway-rewritten, fetched via the public https gateway, and served the
+    // same cached way.
     const ipfsImg = ipfsTile.getByTestId('nft-image');
     await expect(ipfsImg).toBeVisible();
-    await expect(ipfsImg).toHaveAttribute('src', IPFS_GATEWAY_GOOD);
+    await expect(ipfsImg).toHaveAttribute('src', /^blob:/);
     expect(await ipfsImg.evaluate((img: HTMLImageElement) => img.naturalWidth > 0)).toBe(true);
 
     // The dead-host image fails to load and falls back to the monogram (never a broken-image icon).
@@ -211,10 +242,34 @@ test.describe('Collectibles renders remote NFT art (#150)', () => {
     await expect(ipfsTile).toBeVisible();
     await expect(brokenTile).toBeVisible();
 
-    await expect(remoteTile.getByTestId('nft-image')).toHaveAttribute('src', HTTPS_GOOD);
-    await expect(ipfsTile.getByTestId('nft-image')).toHaveAttribute('src', IPFS_GATEWAY_GOOD);
+    await expect(remoteTile.getByTestId('nft-image')).toHaveAttribute('src', /^blob:/);
+    await expect(ipfsTile.getByTestId('nft-image')).toHaveAttribute('src', /^blob:/);
     await expect(brokenTile.getByTestId('nft-monogram')).toBeVisible();
 
     await page.screenshot({ path: 'test-results/nft-image-display-fullpage.png' });
+  });
+
+  test('a cached NFT image is served from the local cache on a later view — no re-fetch (#159)', async () => {
+    await ensureUnlocked();
+    const page1 = await context.newPage();
+    await page1.goto(`chrome-extension://${extensionId}/popup.html#wallet/collectibles`);
+    const img1 = page1.getByTestId(`nft-tile-${CACHE_TEST_NFT.launcherId}`).getByTestId('nft-image');
+    await expect(img1).toBeVisible();
+    await expect(img1).toHaveAttribute('src', /^blob:/);
+    await page1.close();
+
+    const countAfterFirstView = fetchCounts[HTTPS_CACHE_TEST] ?? 0;
+    expect(countAfterFirstView).toBeGreaterThan(0); // it really did hit the network at least once
+
+    // A brand-new page/document — the real-world "close and reopen the popup" case. The local NFT
+    // image cache (Cache API, keyed by the resolved URL) must serve the same bytes with NO
+    // additional network request.
+    const page2 = await context.newPage();
+    await page2.goto(`chrome-extension://${extensionId}/app.html#wallet/collectibles`);
+    const img2 = page2.getByTestId(`nft-tile-${CACHE_TEST_NFT.launcherId}`).getByTestId('nft-image');
+    await expect(img2).toBeVisible();
+    await expect(img2).toHaveAttribute('src', /^blob:/);
+
+    expect(fetchCounts[HTTPS_CACHE_TEST]).toBe(countAfterFirstView); // no new fetch on the 2nd view
   });
 });
