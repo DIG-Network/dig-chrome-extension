@@ -601,6 +601,11 @@ export const fr: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Supprimer',
   'wallet.switcher.active.badge': 'Actif',
   'wallet.switcher.lock': 'Verrouiller le portefeuille',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': 'Portefeuille actuel',
+  'wallet.switcher.copyAddress': 'Copier l’adresse',
+  'wallet.switcher.addressCopied': 'Adresse copiée',
+  'wallet.switcher.address.unknown': 'Changez vers ce portefeuille pour afficher son adresse',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Index {index}',
   'wallet.index.prev': 'Index précédent',

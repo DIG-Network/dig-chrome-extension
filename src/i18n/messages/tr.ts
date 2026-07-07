@@ -601,6 +601,11 @@ export const tr: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Kaldır',
   'wallet.switcher.active.badge': 'Etkin',
   'wallet.switcher.lock': 'Cüzdanı kilitle',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': 'Geçerli cüzdan',
+  'wallet.switcher.copyAddress': 'Adresi kopyala',
+  'wallet.switcher.addressCopied': 'Adres kopyalandı',
+  'wallet.switcher.address.unknown': 'Adresini görmek için bu cüzdana geçin',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Dizin {index}',
   'wallet.index.prev': 'Önceki dizin',

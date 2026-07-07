@@ -1,0 +1,161 @@
+/*
+ * Wallet switcher (#176) — component-scoped styles, co-located + imported directly by
+ * `WalletSwitcher.tsx` (NOT added to the shared `src/styles/theme.css`, which the popup
+ * layout-shell work owns concurrently — #163). Every class here is exclusive to this component
+ * tree (`WalletSwitcher.tsx` + `WalletManagerList.tsx`); nothing here is reused elsewhere. Uses the
+ * same `--dig-*` theme variables as the rest of the shell so it matches the ambient design without
+ * touching the shared stylesheet.
+ *
+ * Popup-width safety (#163 alignment): every row uses flex with `min-width: 0` on the text column
+ * and `text-overflow: ellipsis` on the label/address spans, so a long label or address truncates
+ * instead of forcing the popup's fixed-width root to scroll horizontally.
+ */
+
+.dig-switcher {
+  position: relative;
+}
+
+/* ── collapsed toggle pill ── */
+.dig-switcher-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 7px 12px 7px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--dig-border);
+  background: var(--dig-bg);
+  color: var(--dig-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dig-switcher-pill:hover {
+  border-color: var(--dig-border-strong);
+  color: var(--dig-accent-ink);
+}
+.dig-switcher-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+.dig-switcher-caret {
+  color: var(--dig-text-faint);
+  font-size: 11px;
+}
+
+/* ── current-wallet card (prominent, at the top of the manager sheet) ── */
+.dig-current-wallet {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  margin-bottom: 14px;
+  border-radius: var(--dig-radius);
+  border: 1px solid var(--dig-border);
+  background: var(--dig-bg-raised);
+}
+.dig-current-wallet-info {
+  min-width: 0;
+  flex: 1;
+}
+.dig-current-wallet-label {
+  margin: 0;
+  font-weight: 700;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dig-current-wallet-address {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--dig-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── the "Active" pill badge (also used to mark the current row in the list below) ── */
+.dig-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--dig-accent-soft);
+  color: var(--dig-accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+/* ── the manageable wallet list ── */
+.dig-switcher-list {
+  display: flex;
+  flex-direction: column;
+}
+.dig-switcher-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dig-border);
+}
+.dig-switcher-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dig-switcher-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px;
+  border-radius: var(--dig-radius-sm);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.dig-switcher-select:hover:not(:disabled) {
+  background: var(--dig-bg-elev);
+}
+.dig-switcher-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.dig-switcher-row-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.dig-switcher-rowname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.dig-switcher-row-address {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+/* ── inline rename form / unlock+remove expansions within a row ── */
+.dig-switcher-row-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.dig-switcher-row-form .dig-input {
+  min-width: 0;
+  flex: 1;
+}
+.dig-switcher-row-expand {
+  margin-top: 8px;
+}
