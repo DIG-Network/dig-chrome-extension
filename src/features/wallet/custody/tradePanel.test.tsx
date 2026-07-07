@@ -26,7 +26,7 @@ const SUMMARY = {
   requested: [{ asset: { kind: 'cat' as const, assetId: DIG_ASSET_ID }, amount: '250', toPuzzleHashHex: 'ab' }],
 };
 
-/** A wallet-owned NFT fixture for the "offer an NFT" give-picker (#94). */
+/** A wallet-owned NFT fixture for the "offer an NFT" give-picker (#94, fullscreen-only per #169). */
 function nftFixture() {
   return {
     launcherId: 'ab'.repeat(32),
@@ -50,55 +50,119 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('TradePanel — surface tiering (#145)', () => {
-  it('shows only an "open full screen" affordance on the popup surface — never the make/take forms', async () => {
+describe('TradePanel — surface tiering (#169 refines #145: basic maker/taker now lives in the popup)', () => {
+  it('the popup surface shows a WORKING basic make/take surface — mode tabs + forms, not a redirect card', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+    expect(await screen.findByTestId('trade-mode-make')).toBeInTheDocument();
+    expect(screen.getByTestId('trade-mode-take')).toBeInTheDocument();
+    expect(screen.getByTestId('trade-make-form')).toBeInTheDocument();
+  });
+
+  it('the popup surface still offers an explicit "open full screen" link for advanced options', async () => {
     mockSw(() => ({ success: true }));
     renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
     expect(await screen.findByTestId('trade-open-fullscreen')).toBeInTheDocument();
-    expect(screen.queryByTestId('trade-make-form')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('trade-mode-make')).not.toBeInTheDocument();
   });
 
-  it('shows the full make/take UI on the fullscreen surface', async () => {
+  it('the fullscreen surface has no "open full screen" link (already full)', async () => {
     mockSw(() => ({ success: true }));
     renderWithProviders(<TradePanel assets={twoAssets()} full />);
     expect(await screen.findByTestId('trade-mode-make')).toBeInTheDocument();
     expect(screen.queryByTestId('trade-open-fullscreen')).not.toBeInTheDocument();
   });
+
+  it('the popup Make form hides the NFT give-kind toggle (advanced, #169) — currency only', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+    await screen.findByTestId('trade-make-form');
+    expect(screen.queryByTestId('trade-give-kind-currency')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trade-give-kind-nft')).not.toBeInTheDocument();
+    // The currency give picker itself is still there — basic make works.
+    expect(screen.getByTestId('trade-give-asset')).toBeInTheDocument();
+  });
+
+  it('the fullscreen Make form shows the NFT give-kind toggle', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    expect(await screen.findByTestId('trade-give-kind-currency')).toBeInTheDocument();
+    expect(screen.getByTestId('trade-give-kind-nft')).toBeInTheDocument();
+  });
 });
 
-describe('TradePanel — make', () => {
-  it('builds an offer and shows the shareable deal card', async () => {
-    mockSw((m) => {
-      if (m.action === 'makeOffer') return { offer: OFFER, offerSummary: SUMMARY };
-      return { success: true };
-    });
+describe('TradePanel — make (guided steps: choose → review → create, #169 clarity redesign)', () => {
+  it('choosing give/get advances to a "You give / You get" review before building the offer', async () => {
+    mockSw((m) => (m.action === 'makeOffer' ? { offer: OFFER, offerSummary: SUMMARY } : { success: true }));
     renderWithProviders(<TradePanel assets={twoAssets()} full />);
 
     fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
     fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
-    fireEvent.click(screen.getByTestId('trade-make-submit'));
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
 
+    expect(await screen.findByTestId('trade-make-review')).toBeInTheDocument();
+    expect(screen.getByTestId('trade-make-review-give')).toHaveTextContent('0.1');
+    expect(screen.getByTestId('trade-make-review-get')).toHaveTextContent('250');
+
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
     expect(await screen.findByTestId('trade-deal-card')).toBeInTheDocument();
     expect(screen.getByTestId('trade-offer-string')).toHaveValue(OFFER);
-    // A QR renders for a short offer string.
     expect(screen.getByTestId('trade-qr')).toBeInTheDocument();
   });
 
-  it('rejects trading an asset for itself', async () => {
+  it('the review step can go back to the form to change the picks', async () => {
     mockSw(() => ({ success: true }));
     renderWithProviders(<TradePanel assets={twoAssets()} full />);
-    // Force both pickers to the same asset (index 0).
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    await screen.findByTestId('trade-make-review');
+
+    fireEvent.click(screen.getByTestId('trade-make-review-back'));
+    expect(await screen.findByTestId('trade-make-form')).toBeInTheDocument();
+  });
+
+  it('rejects trading an asset for itself before reaching review', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
     fireEvent.change(screen.getByTestId('trade-get-asset'), { target: { value: '0' } });
     fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '1' } });
     fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '1' } });
-    fireEvent.click(screen.getByTestId('trade-make-submit'));
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
     expect(await screen.findByTestId('trade-make-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('trade-make-review')).not.toBeInTheDocument();
+  });
+
+  it('a build failure at the review step surfaces an inline error and stays reviewable', async () => {
+    mockSw((m) => (m.action === 'makeOffer' ? { success: false, code: 'BUILD_FAILED' } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    await screen.findByTestId('trade-make-review');
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+    expect(await screen.findByTestId('trade-make-error')).toBeInTheDocument();
+    expect(screen.getByTestId('trade-make-review')).toBeInTheDocument();
   });
 });
 
-describe('TradePanel — take', () => {
-  it('paste → review → accept → confirm → sending → confirmed (with polling)', async () => {
+describe('TradePanel — popup basic make (#169: a simple currency-for-currency offer, in the compact surface)', () => {
+  it('builds an offer end-to-end from the compact popup surface', async () => {
+    mockSw((m) => (m.action === 'makeOffer' ? { offer: OFFER, offerSummary: SUMMARY } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    expect(await screen.findByTestId('trade-make-review')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+
+    expect(await screen.findByTestId('trade-deal-card')).toBeInTheDocument();
+    expect(screen.getByTestId('trade-offer-string')).toHaveValue(OFFER);
+  });
+});
+
+describe('TradePanel — popup basic take (#169: paste/drag → give/get → take, in the compact surface)', () => {
+  it('paste → review → accept → confirm → sending → confirmed (with polling) from the compact popup', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockSw((m) => {
       if (m.action === 'inspectOffer') return { offerSummary: SUMMARY };
@@ -107,7 +171,7 @@ describe('TradePanel — take', () => {
       if (m.action === 'sendStatus') return { confirmed: true };
       return { success: true };
     });
-    renderWithProviders(<TradePanel assets={twoAssets()} full pollMs={50} />);
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} pollMs={50} />);
 
     fireEvent.click(screen.getByTestId('trade-mode-take'));
     fireEvent.change(screen.getByTestId('trade-take-input'), { target: { value: OFFER } });
@@ -125,9 +189,20 @@ describe('TradePanel — take', () => {
     expect(await screen.findByTestId('trade-confirmed')).toBeInTheDocument();
   });
 
+  it('drops an .offer file onto the dropzone from the compact popup (#94 accept path, reused)', async () => {
+    mockSw((m) => (m.action === 'inspectOffer' ? { offerSummary: SUMMARY } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    const dropzone = screen.getByTestId('trade-take-dropzone');
+    const file = new File([OFFER], 'my-trade.offer', { type: 'text/plain' });
+    fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
+    expect(await screen.findByTestId('trade-take-review')).toBeInTheDocument();
+    expect(screen.getByTestId('trade-summary-get')).toHaveTextContent('XCH');
+  });
+
   it('rejects a non-offer string', async () => {
     mockSw(() => ({ success: true }));
-    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
     fireEvent.click(screen.getByTestId('trade-mode-take'));
     fireEvent.change(screen.getByTestId('trade-take-input'), { target: { value: 'not-an-offer' } });
     fireEvent.click(screen.getByTestId('trade-take-review-btn'));
@@ -141,7 +216,7 @@ describe('TradePanel — take', () => {
       if (m.action === 'confirmTrade') return { success: false, code: 'PUSH_FAILED' };
       return { success: true };
     });
-    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
     fireEvent.click(screen.getByTestId('trade-mode-take'));
     fireEvent.change(screen.getByTestId('trade-take-input'), { target: { value: OFFER } });
     fireEvent.click(screen.getByTestId('trade-take-review-btn'));
@@ -149,30 +224,9 @@ describe('TradePanel — take', () => {
     fireEvent.click(await screen.findByTestId('trade-take-confirm'));
     expect(await screen.findByTestId('trade-failed')).toBeInTheDocument();
   });
-
-  it('drops an .offer file onto the dropzone and inspects it (#94)', async () => {
-    mockSw((m) => (m.action === 'inspectOffer' ? { offerSummary: SUMMARY } : { success: true }));
-    renderWithProviders(<TradePanel assets={twoAssets()} full />);
-    fireEvent.click(screen.getByTestId('trade-mode-take'));
-    const dropzone = screen.getByTestId('trade-take-dropzone');
-    const file = new File([OFFER], 'my-trade.offer', { type: 'text/plain' });
-    fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
-    expect(await screen.findByTestId('trade-take-review')).toBeInTheDocument();
-    expect(screen.getByTestId('trade-summary-get')).toHaveTextContent('XCH');
-  });
-
-  it('shows an error for a dropped file that is not an offer', async () => {
-    mockSw(() => ({ success: true }));
-    renderWithProviders(<TradePanel assets={twoAssets()} full />);
-    fireEvent.click(screen.getByTestId('trade-mode-take'));
-    const dropzone = screen.getByTestId('trade-take-dropzone');
-    const file = new File(['not an offer'], 'notes.txt', { type: 'text/plain' });
-    fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
-    expect(await screen.findByTestId('trade-take-error')).toBeInTheDocument();
-  });
 });
 
-describe('TradePanel — make an NFT (offering a self-custody singleton, #94)', () => {
+describe('TradePanel — make an NFT (offering a self-custody singleton, #94 — fullscreen-only advanced path, #169)', () => {
   it('offers an owned NFT for XCH and shows the shareable deal card', async () => {
     let capturedOffered: unknown;
     mockSw((m) => {
@@ -188,7 +242,9 @@ describe('TradePanel — make an NFT (offering a self-custody singleton, #94)', 
     fireEvent.click(screen.getByTestId('trade-give-kind-nft'));
     await screen.findByTestId('trade-give-nft');
     fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
-    fireEvent.click(screen.getByTestId('trade-make-submit'));
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    await screen.findByTestId('trade-make-review');
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
 
     expect(await screen.findByTestId('trade-deal-card')).toBeInTheDocument();
     expect(capturedOffered).toEqual({ asset: { kind: 'nft', launcherId: nftFixture().launcherId }, amount: '1' });

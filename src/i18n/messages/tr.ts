@@ -213,6 +213,8 @@ export const tr: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Oluştur',
   'trade.mode.take': 'Kabul et',
+  'trade.make.continue': 'Devam et',
+  'trade.make.review.intro': 'Teklifi oluşturmadan önce takasınızı gözden geçirin.',
   'trade.make.submit': 'Teklif oluştur',
   'trade.error.sameAsset': 'Takas için iki farklı varlık seçin',
   'trade.error.build': 'Bu takas oluşturulamadı — bakiyelerinizi kontrol edip tekrar deneyin',

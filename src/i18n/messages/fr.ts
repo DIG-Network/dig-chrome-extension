@@ -213,6 +213,8 @@ export const fr: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Créer',
   'trade.mode.take': 'Accepter',
+  'trade.make.continue': 'Continuer',
+  'trade.make.review.intro': "Vérifiez votre échange avant de créer l'offre.",
   'trade.make.submit': "Créer l'offre",
   'trade.error.sameAsset': 'Choisissez deux actifs différents à échanger',
   'trade.error.build': 'Impossible de créer cet échange — vérifiez vos soldes et réessayez',

@@ -213,6 +213,8 @@ export const id: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Buat',
   'trade.mode.take': 'Terima',
+  'trade.make.continue': 'Lanjutkan',
+  'trade.make.review.intro': 'Tinjau perdagangan Anda sebelum membuat penawaran.',
   'trade.make.submit': 'Buat penawaran',
   'trade.error.sameAsset': 'Pilih dua aset yang berbeda untuk ditukar',
   'trade.error.build': 'Penawaran tukar ini tidak dapat dibuat — periksa saldo Anda dan coba lagi',

@@ -326,15 +326,39 @@ test('fullscreen assign DID owner (NFT ↔ DID picker)', async ({ page }) => {
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-nft-assign.png' });
 });
 
-// Trade offers (#94): advanced → fullscreen only (§145). The popup shows a view-only "open full
-// screen" affordance; the fullscreen Trade view exposes the make/take forms, incl. offering an
-// owned NFT (give-kind picker) and taking via paste OR drag-and-drop of an offer file.
-test('popup trade (view-only, make/take moved to full screen)', async ({ page }) => {
+// Trade offers (#94, redesigned for clarity + basic maker/taker by #169): a BASIC currency-for-
+// currency maker/taker now renders on the popup (mode tabs + the make/take forms); only the
+// ADVANCED NFT give-kind toggle stays fullscreen-only (#94/#145), reached via the persistent "open
+// full screen" link.
+test('popup trade (basic maker/taker — mode tabs + make form, "open full screen" for advanced)', async ({ page }) => {
   await page.setViewportSize(PHONE);
   await open(page, 'popup.html', 'wallet/trade');
+  await page.getByTestId('trade-make-form').waitFor();
   await page.getByTestId('trade-open-fullscreen').waitFor();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'e2e/__screenshots__/popup-trade.png' });
+});
+
+test('popup trade — basic Make reaches the "You give / You get" review (#169 guided steps)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet/trade');
+  await page.getByTestId('trade-give-amount').fill('0.1');
+  await page.getByTestId('trade-get-amount').fill('250');
+  await page.getByTestId('trade-make-continue').click();
+  await page.getByTestId('trade-make-review').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-trade-make-review.png' });
+});
+
+test('popup trade — basic Take reaches the two-sided review from a pasted offer (#169)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-take').click();
+  await page.getByTestId('trade-take-input').fill('offer1qqqexampleofferstringqqq');
+  await page.getByTestId('trade-take-review-btn').click();
+  await page.getByTestId('trade-take-review').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-trade-take-review.png' });
 });
 
 test('fullscreen trade (make form)', async ({ page }) => {
@@ -343,6 +367,17 @@ test('fullscreen trade (make form)', async ({ page }) => {
   await page.getByTestId('trade-make-form').waitFor();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-trade-make.png' });
+});
+
+test('fullscreen trade — Make reaches the "You give / You get" review (#169 guided steps)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-give-amount').fill('0.1');
+  await page.getByTestId('trade-get-amount').fill('250');
+  await page.getByTestId('trade-make-continue').click();
+  await page.getByTestId('trade-make-review').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-trade-make-review.png' });
 });
 
 test('fullscreen trade — give an NFT (offering a self-custody singleton)', async ({ page }) => {
