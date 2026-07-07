@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.43.1] - 2026-07-07
+
+### Bug Fixes
+- **collectibles:** Render remote/ipfs NFT art instead of a monogram placeholder (#63)
+
 ## [1.43.0] - 2026-07-07
 
 ### Features
