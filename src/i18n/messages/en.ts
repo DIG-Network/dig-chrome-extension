@@ -136,13 +136,18 @@ export const en: Record<string, string> = {
   'activity.status.confirmed': 'Confirmed',
   'activity.status.pending': 'Pending',
   'activity.viewOnSpaceScan': 'View on SpaceScan',
-  // custody activity indexer (#56)
+  // custody activity — the local activity log (#154): what the wallet itself did, not an on-chain scan
   'activity.line.sent': 'Sent {amount} {ticker}',
   'activity.line.received': 'Received {amount} {ticker}',
   'activity.line.traded': 'Traded {amount} {ticker}',
+  'activity.line.mint': 'Minted {amount} {ticker}',
+  'activity.line.did': 'Identity update',
+  'activity.line.offer': 'Made an offer',
+  'activity.line.clawback': 'Clawed back {amount} {ticker}',
+  'activity.line.melt': 'Melted {amount} {ticker}',
   'activity.line.to': 'to {who}',
   'activity.receipt.to': 'To',
-  'activity.receipt.height': 'Block',
+  'activity.receipt.status': 'Status',
   'activity.receipt.coin': 'Coin ID',
 
   // ── wallet: send ──

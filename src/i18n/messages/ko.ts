@@ -137,9 +137,14 @@ export const ko: Record<string, string> = {
   'activity.line.sent': '{amount} {ticker} 보냄',
   'activity.line.received': '{amount} {ticker} 받음',
   'activity.line.traded': '{amount} {ticker} 거래함',
+  'activity.line.mint': '{amount} {ticker} 민팅함',
+  'activity.line.did': '신원 업데이트',
+  'activity.line.offer': '오퍼 생성함',
+  'activity.line.clawback': '{amount} {ticker} 회수함',
+  'activity.line.melt': '{amount} {ticker} 소각함',
   'activity.line.to': '{who}에게',
   'activity.receipt.to': '받는 사람',
-  'activity.receipt.height': '블록',
+  'activity.receipt.status': '상태',
   'activity.receipt.coin': '코인 ID',
 
   // ── wallet: send ──

@@ -137,9 +137,14 @@ export const vi: Record<string, string> = {
   'activity.line.sent': 'Đã gửi {amount} {ticker}',
   'activity.line.received': 'Đã nhận {amount} {ticker}',
   'activity.line.traded': 'Đã giao dịch {amount} {ticker}',
+  'activity.line.mint': 'Đã đúc {amount} {ticker}',
+  'activity.line.did': 'Cập nhật danh tính',
+  'activity.line.offer': 'Đã tạo đề nghị',
+  'activity.line.clawback': 'Đã thu hồi {amount} {ticker}',
+  'activity.line.melt': 'Đã nung chảy {amount} {ticker}',
   'activity.line.to': 'đến {who}',
   'activity.receipt.to': 'Đến',
-  'activity.receipt.height': 'Khối',
+  'activity.receipt.status': 'Trạng thái',
   'activity.receipt.coin': 'Mã coin',
 
   // ── wallet: send ──

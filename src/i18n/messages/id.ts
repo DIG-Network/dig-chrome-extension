@@ -137,9 +137,14 @@ export const id: Record<string, string> = {
   'activity.line.sent': 'Mengirim {amount} {ticker}',
   'activity.line.received': 'Menerima {amount} {ticker}',
   'activity.line.traded': 'Menukar {amount} {ticker}',
+  'activity.line.mint': 'Mencetak {amount} {ticker}',
+  'activity.line.did': 'Pembaruan identitas',
+  'activity.line.offer': 'Membuat penawaran',
+  'activity.line.clawback': 'Menarik kembali {amount} {ticker}',
+  'activity.line.melt': 'Melebur {amount} {ticker}',
   'activity.line.to': 'ke {who}',
   'activity.receipt.to': 'Kepada',
-  'activity.receipt.height': 'Blok',
+  'activity.receipt.status': 'Status',
   'activity.receipt.coin': 'ID Koin',
 
   // ── wallet: send ──

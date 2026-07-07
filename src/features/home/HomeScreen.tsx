@@ -12,7 +12,7 @@ import { useGetNodeStatusQuery } from '@/features/resolver/resolverApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance } from '@/features/wallet/portfolio';
 import { assetUsdValue } from '@/features/wallet/portfolioValue';
-import { activityRows } from '@/features/wallet/custody/activityRows';
+import { activityRows, type ActivityRow } from '@/features/wallet/custody/activityRows';
 import {
   BALANCE_UNIT_STORAGE_KEY,
   DEFAULT_BALANCE_UNIT,
@@ -26,8 +26,18 @@ import {
 /** How many dApp icons the Home launcher widget shows before "see all". */
 const HOME_LAUNCHER_LIMIT = 8;
 
-/** Glyph per activity kind for the recent-activity peek. */
-const KIND_GLYPH: Record<'sent' | 'received' | 'trade', string> = { sent: '↑', received: '⇩', trade: '⇄' };
+/** Glyph per activity kind for the recent-activity peek (#154 — mirrors `CustodyActivity.tsx`'s
+ * `ICON`; all eight schema kinds so a future mint/DID/offer/clawback/melt entry never crashes). */
+const KIND_GLYPH: Record<ActivityRow['kind'], string> = {
+  sent: '↑',
+  received: '⇩',
+  trade: '⇄',
+  mint: '✦',
+  did: '◈',
+  offer: '⇗',
+  clawback: '↩',
+  melt: '⟲',
+};
 
 /**
  * The mobile-OS Home screen (#65) — the launcher above the bottom nav. Arranged like a phone home:

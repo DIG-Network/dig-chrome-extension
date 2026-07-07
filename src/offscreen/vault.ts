@@ -40,7 +40,6 @@ import { listDids, prepareDidCreate, prepareDidTransfer, prepareDidProfileUpdate
 import { prepareNftDidAssign, type AssignWasm, type NftDidAssignSummary } from '@/offscreen/didAssign';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
 import { decodeDappSpend, reconstructCoinSpends, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
-import { indexActivity, type ActivityWasm, type ActivityEvent } from '@/offscreen/activity';
 import { makeOffer, inspectOffer, takeOffer, cancelOffer, type OfferWasm, type OfferAsset, type OfferLeg, type OfferSummary } from '@/offscreen/offers';
 import type { ChainSpendBundle } from '@/offscreen/chain';
 
@@ -87,6 +86,26 @@ const toWireSummary = (s: OfferSummary): WireOfferSummary => ({
   offered: s.offered.map((l) => ({ asset: l.asset, amount: l.amount.toString() })),
   requested: s.requested.map((r) => ({ asset: r.asset, amount: r.amount.toString(), toPuzzleHashHex: r.toPuzzleHashHex })),
 });
+/** #154 — the activity-log `asset` label for one side of an offer: `'XCH'`, the CAT TAIL hex, or a
+ * synthetic `'NFT'` label (an offered NFT leg carries a launcher id, not a fungible asset id). */
+const offerAssetLabel = (asset: OfferAsset): string => (asset.kind === 'xch' ? 'XCH' : asset.kind === 'cat' ? asset.assetId : 'NFT');
+
+/**
+ * Minimal, uniform activity-log hint (#154) captured at PREPARE time and carried on the pending
+ * entry so the shared `confirmSend`/`confirmTrade` broadcast step can hand it back regardless of
+ * which action kind (send / NFT transfer / NFT mint / DID create-transfer-profile-assign / trade)
+ * reused that generic path. `src/background/index.ts` uses it to log a LOCAL activity entry the
+ * moment the spend broadcasts (see `src/lib/activity-log.ts`) — never an on-chain reconstruction.
+ * `counterparty` is the address the spend actually pays, already known at prepare time (the user's
+ * own `recipient` input for a send/transfer) — no address re-derivation needed; `null` for a
+ * self-only spend (mint / DID create / profile update / DID assignment / split / combine), which
+ * the SW does not log as a "sent" entry (nothing was sent to anyone).
+ */
+export interface ActivityHint {
+  asset: string;
+  amount: string;
+  counterparty: string | null;
+}
 
 /** The keystore operations the vault handles (mirrors the SW custody actions). */
 export type VaultOp =
@@ -104,7 +123,6 @@ export type VaultOp =
   | 'prepareSend'
   | 'confirmSend'
   | 'sendStatus'
-  | 'getActivity'
   | 'makeOffer'
   | 'inspectOffer'
   | 'prepareTrade'
@@ -188,8 +206,6 @@ export interface VaultRequest {
   coinIds?: string[];
   /** prepareSplit: how many self coins to split into (≥2). */
   outputs?: number;
-  /** getActivity: resume the incremental scan from this block height. */
-  sinceHeight?: number;
   /** makeOffer: the leg the wallet gives / the leg it wants (wire-safe, string amounts). */
   offered?: WireOfferLeg;
   requested?: WireOfferLeg;
@@ -241,9 +257,10 @@ export interface VaultResponse {
   spentCoinId?: string;
   /** sendStatus: whether the spend has confirmed on-chain. */
   confirmed?: boolean;
-  /** getActivity: the reconstructed ledger events + the height cursor for the next incremental scan. */
-  events?: ActivityEvent[];
-  cursorHeight?: number;
+  /** confirmSend/confirmTrade (#154): the activity-log hint captured at prepare time — see
+   * {@link ActivityHint}. Absent for a self-only spend (mint / DID / split / combine) the caller
+   * should not log as a "sent" entry. */
+  activityHint?: ActivityHint;
   /** makeOffer: the shareable `offer1…` string. */
   offer?: string;
   /** makeOffer / inspectOffer / prepareTrade: the decoded two-sided summary. */
@@ -296,6 +313,8 @@ interface PendingSend {
   coinSpends: SigCoinSpend[];
   secretKeys: SigSecretKey[];
   inputCoinIds: string[];
+  /** #154 — the activity-log hint `confirmSend` hands back on broadcast; see {@link ActivityHint}. */
+  activityHint?: ActivityHint;
 }
 
 /** The vault slot a legacy (pre-#90) single-wallet caller uses when it supplies no wallet id. */
@@ -317,7 +336,7 @@ export class Vault {
   private pending = new Map<string, PendingSend>();
 
   /** Prepared trades (take/cancel) — a signed bundle held between approval and broadcast. */
-  private pendingTrades = new Map<string, { bundle: ChainSpendBundle; inputCoinId: string }>();
+  private pendingTrades = new Map<string, { bundle: ChainSpendBundle; inputCoinId: string; activityHint?: ActivityHint }>();
 
   /** True iff the ACTIVE wallet's decrypted key is currently held in memory. */
   hasKey(): boolean {
@@ -375,8 +394,6 @@ export class Vault {
           return await this.confirmSend(req, deps);
         case 'sendStatus':
           return await this.sendStatus(req, deps);
-        case 'getActivity':
-          return await this.getActivity(req, deps);
         case 'makeOffer':
           return await this.makeOffer(req, deps);
         case 'inspectOffer':
@@ -576,13 +593,18 @@ export class Vault {
         });
     const pendingId = crypto.randomUUID();
     const inputCoinIds = prepared.coinSpends.map((cs) => chia.toHex(cs.coin.coinId()).replace(/^0x/i, '').toLowerCase());
-    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    // #154 — the counterparty is already the user's own `recipient` input, no re-derivation needed.
+    const activityHint: ActivityHint = { asset: prepared.summary.asset, amount: prepared.summary.sent, counterparty: req.recipient };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, summary: prepared.summary };
   }
 
   /**
    * Sign + broadcast a previously-prepared send (the APPROVED step — the only place a real spend is
-   * pushed). Consumes the pending entry; returns an input coin id to poll for confirmation.
+   * pushed). Consumes the pending entry; returns an input coin id to poll for confirmation, plus the
+   * #154 {@link ActivityHint} captured at prepare time — every action that reuses this shared path
+   * (NFT transfer/mint, DID create/transfer/profile-update/assign) gets it back for free, so the SW
+   * can log a local activity entry without re-deriving anything.
    */
   private async confirmSend(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
@@ -593,7 +615,7 @@ export class Vault {
     const push = await deps.chain.pushSpendBundle(bundle);
     this.pending.delete(req.pendingId!);
     if (!push.success) return { success: false, code: 'PUSH_FAILED', message: push.error ?? 'broadcast failed' };
-    return { success: true, spentCoinId: held.inputCoinIds[0] };
+    return { success: true, spentCoinId: held.inputCoinIds[0], ...(held.activityHint ? { activityHint: held.activityHint } : {}) };
   }
 
   /** Poll whether a broadcast send has confirmed (an input coin is now recorded spent). */
@@ -601,20 +623,6 @@ export class Vault {
     if (!deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
     if (!req.coinId) return { success: false, code: 'BAD_REQUEST', message: 'coinId required' };
     return { success: true, confirmed: await deps.chain.coinConfirmed(req.coinId) };
-  }
-
-  /** Reconstruct the transaction ledger (read-only) from `sinceHeight` for an incremental scan. */
-  private async getActivity(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
-    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
-    const seed = await this.heldSeed();
-    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
-    const idx = await indexActivity(deps.chia as unknown as ActivityWasm, deps.chain, {
-      seed,
-      ...(req.watchedCats ? { watchedCats: req.watchedCats } : {}),
-      activeIndex: req.activeIndex ?? 0,
-      ...(req.sinceHeight ? { sinceHeight: req.sinceHeight } : {}),
-    });
-    return { success: true, events: idx.events, cursorHeight: idx.cursorHeight };
   }
 
   /** MAKE a trade offer (build + encode; does NOT broadcast). Returns the shareable string + summary. */
@@ -658,11 +666,23 @@ export class Vault {
       activeIndex: req.activeIndex ?? 0,
     });
     const pendingId = crypto.randomUUID();
-    this.pendingTrades.set(pendingId, { bundle: prepared.bundle, inputCoinId: prepared.inputCoinId });
+    // #154 — log the OFFERED side's first leg as the trade's headline asset/amount; a trade has no
+    // single "counterparty" (a public offer may be taken by anyone), so counterparty stays null. A
+    // TAKE's summary carries both legs; a CANCEL's is currently always empty (offers.ts reclaims the
+    // maker's coins without reconstructing a summary) — fall back to a generic XCH/0 placeholder so a
+    // cancelled trade still logs a real (if unlabelled) entry rather than none at all.
+    const firstLeg = prepared.summary.offered[0] ?? prepared.summary.requested[0];
+    const activityHint: ActivityHint = firstLeg
+      ? { asset: offerAssetLabel(firstLeg.asset), amount: firstLeg.amount.toString(), counterparty: null }
+      : { asset: 'XCH', amount: '0', counterparty: null };
+    this.pendingTrades.set(pendingId, { bundle: prepared.bundle, inputCoinId: prepared.inputCoinId, activityHint });
     return { success: true, pendingId, offerSummary: toWireSummary(prepared.summary) };
   }
 
-  /** BROADCAST a previously-prepared trade (the approved step). Consumes the pending entry. */
+  /**
+   * BROADCAST a previously-prepared trade (the approved step). Consumes the pending entry; returns
+   * the #154 {@link ActivityHint} captured at prepare time so the SW can log a local 'trade' entry.
+   */
   private async confirmTrade(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
     const held = req.pendingId ? this.pendingTrades.get(req.pendingId) : undefined;
@@ -670,7 +690,7 @@ export class Vault {
     const push = await deps.chain.pushSpendBundle(held.bundle);
     this.pendingTrades.delete(req.pendingId!);
     if (!push.success) return { success: false, code: 'PUSH_FAILED', message: push.error ?? 'broadcast failed' };
-    return { success: true, spentCoinId: held.inputCoinId };
+    return { success: true, spentCoinId: held.inputCoinId, ...(held.activityHint ? { activityHint: held.activityHint } : {}) };
   }
 
   /** LIST the wallet's NFTs (§18 Collectibles) — both HD schemes, discovered by hint. Read-only. */
@@ -706,7 +726,9 @@ export class Vault {
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => (deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b).replace(/^0x/i, '').toLowerCase();
     const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
-    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    // #154 — an NFT transfer is a "sent" activity entry to the recipient the user already typed.
+    const activityHint: ActivityHint = { asset: 'NFT', amount: '1', counterparty: req.recipient };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, nftSummary: prepared.summary };
   }
 
@@ -741,7 +763,10 @@ export class Vault {
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
     const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
-    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    // #154 — a mint is a self-only spend (no external counterparty); the SW logs it as kind 'mint'
+    // regardless (it knows the action name), so counterparty stays null on purpose.
+    const activityHint: ActivityHint = { asset: 'NFT', amount: '1', counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, nftMintSummary: prepared.summary, launcherId: prepared.launcherId };
   }
 
@@ -775,7 +800,9 @@ export class Vault {
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
     const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
-    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    // #154 — a DID create is a self-only spend; the SW logs it as kind 'did'.
+    const activityHint: ActivityHint = { asset: 'DID', amount: '1', counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, didCreateSummary: prepared.summary, launcherId: prepared.launcherId };
   }
 
@@ -800,7 +827,9 @@ export class Vault {
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
     const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
-    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    // #154 — a DID transfer is a "did" activity entry to the recipient the user already typed.
+    const activityHint: ActivityHint = { asset: 'DID', amount: '1', counterparty: req.recipient };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, didSummary: prepared.summary };
   }
 
@@ -824,7 +853,9 @@ export class Vault {
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
     const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
-    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    // #154 — a self-only spend (updates the wallet's own DID); logged as kind 'did'.
+    const activityHint: ActivityHint = { asset: 'DID', amount: '0', counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, didProfileSummary: prepared.summary };
   }
 
@@ -848,7 +879,9 @@ export class Vault {
     const pendingId = crypto.randomUUID();
     const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
     const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
-    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
+    // #154 — assigning DID ownership of an NFT is a self-only spend; logged as kind 'did'.
+    const activityHint: ActivityHint = { asset: 'NFT', amount: '0', counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, nftDidAssignSummary: prepared.summary };
   }
 

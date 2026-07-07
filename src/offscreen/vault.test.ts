@@ -429,19 +429,15 @@ describe('Vault send ops', () => {
     expect(res.code).toBe('BAD_REQUEST');
   });
 
-  it('getActivity returns events (empty for an unused wallet) via the indexer', async () => {
+  // #154 — confirmSend hands back the activity-log hint captured at prepare time (asset/amount/
+  // counterparty) so the SW can log a LOCAL 'sent' entry without any on-chain reconstruction.
+  it('confirmSend returns the #154 activityHint captured at prepareSend time', async () => {
     const v = await unlockedZerosWallet();
-    const { chain } = sendChain(); // coinRecords → [] → no events
-    const res = await v.handle({ op: 'getActivity' }, { ...deps, chia, chain });
-    expect(res.success).toBe(true);
-    expect(res.events).toEqual([]);
-    expect(typeof res.cursorHeight).toBe('number');
-  });
-
-  it('getActivity is LOCKED without a held key', async () => {
-    const { chain } = sendChain();
-    const res = await new Vault().handle({ op: 'getActivity' }, { ...deps, chia, chain });
-    expect(res.code).toBe('LOCKED');
+    const { chain, recipient } = sendChain();
+    const prep = await v.handle({ op: 'prepareSend', recipient, amount: '250000000000', fee: '1000000' }, { ...deps, chia, chain });
+    const conf = await v.handle({ op: 'confirmSend', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(conf.success).toBe(true);
+    expect(conf.activityHint).toEqual({ asset: 'XCH', amount: '250000000000', counterparty: recipient });
   });
 });
 
@@ -503,6 +499,18 @@ describe('Vault trade ops', () => {
     expect(conf.spentCoinId).toBeTruthy();
     const again = await v.handle({ op: 'confirmTrade', pendingId: prep.pendingId }, { ...deps, chia, chain });
     expect(again.code).toBe('NO_PENDING');
+  });
+
+  // #154 — confirmTrade ALWAYS hands back an activity-log hint (never undefined), even for a CANCEL,
+  // whose offers.ts summary is currently always empty (it reclaims the maker's coins without
+  // reconstructing a two-sided summary) — the generic XCH/0 placeholder still logs a real entry.
+  it('confirmTrade returns a #154 activityHint even for a cancel (empty offers.ts summary)', async () => {
+    const v = await unlockedZerosWallet();
+    const chain = tradeChain();
+    const made = await v.handle({ op: 'makeOffer', ...offerXchForCat, activeIndex: 0 }, { ...deps, chia, chain });
+    const prep = await v.handle({ op: 'prepareTrade', offerStr: made.offer!, tradeKind: 'cancel', activeIndex: 0 }, { ...deps, chia, chain });
+    const conf = await v.handle({ op: 'confirmTrade', pendingId: prep.pendingId }, { ...deps, chia, chain });
+    expect(conf.activityHint).toEqual({ asset: 'XCH', amount: '0', counterparty: null });
   });
 
   it('lock clears pending trades', async () => {

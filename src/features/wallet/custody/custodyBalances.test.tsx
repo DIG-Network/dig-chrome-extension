@@ -86,7 +86,7 @@ describe('CustodyWallet', () => {
   it('renders the activity ledger on the activity sub-view, "coming soon" for trade', async () => {
     mockSw((m) => {
       if (m.action === 'getReceiveAddress') return { address: 'xch1receive' };
-      if (m.action === 'getActivity') return { events: [], cursorHeight: 0 };
+      if (m.action === 'getActivity') return { events: [] };
       return { balances: { xch: 0, cats: {} } };
     });
     const store = createStore();
