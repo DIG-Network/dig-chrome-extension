@@ -7,10 +7,21 @@ import { AppLauncherGrid, AppLauncherSkeleton } from '@/features/apps/AppLaunche
 import { useGetStoreCatalogQuery } from '@/features/apps/appsApi';
 import { useGetCustodyBalancesQuery, useGetLockStateQuery, useGetCustodyActivityQuery } from '@/features/wallet/custodyApi';
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
+import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetNodeStatusQuery } from '@/features/resolver/resolverApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance } from '@/features/wallet/portfolio';
+import { assetUsdValue } from '@/features/wallet/portfolioValue';
 import { activityRows } from '@/features/wallet/custody/activityRows';
+import {
+  BALANCE_UNIT_STORAGE_KEY,
+  DEFAULT_BALANCE_UNIT,
+  isBalanceUnit,
+  toggleBalanceUnit,
+  heroBalanceDisplay,
+  type BalanceUnit,
+  type SlotDisplay,
+} from '@/features/wallet/balanceUnit';
 
 /** How many dApp icons the Home launcher widget shows before "see all". */
 const HOME_LAUNCHER_LIMIT = 8;
@@ -40,31 +51,100 @@ export function HomeScreen() {
   );
 }
 
-/** Glanceable portfolio value → tap opens the Wallet. Prompts to open/unlock when locked or absent. */
+/**
+ * Glanceable portfolio value → tap opens the Wallet. Prompts to open/unlock when locked or absent.
+ * A swap control beside the value flips which unit is PROMINENT — $ (USD) or XCH (#156) — with the
+ * other shown small underneath; the choice persists to `chrome.storage.local` (same
+ * `useStorageValue` idiom as the watched/hidden-CAT prefs already used on this screen) so it
+ * survives popup reopen. The price-dependent slot renders one of three honest states — a shimmer
+ * skeleton while the price fetch is in flight, the real value once it resolves, or a subtle
+ * "price unavailable" note on genuine failure — NEVER a fabricated `$—`, and never "unavailable"
+ * during the loading window (`heroBalanceDisplay` resolves which).
+ */
 function BalanceWidget() {
   const dispatch = useAppDispatch();
+  const intl = useIntl();
   const lock = useGetLockStateQuery();
   const [watchedCats] = useStorageValue<unknown>('wallet.watchedCats', []);
   const [hiddenCats] = useStorageValue<unknown>('wallet.hiddenCats', []);
+  const [storedUnit, setStoredUnit] = useStorageValue<BalanceUnit>(BALANCE_UNIT_STORAGE_KEY, DEFAULT_BALANCE_UNIT);
+  const unit = isBalanceUnit(storedUnit) ? storedUnit : DEFAULT_BALANCE_UNIT;
   const unlocked = lock.data?.lockState === 'unlocked';
   const balances = useGetCustodyBalancesQuery(undefined, { skip: !unlocked });
   const registry = useGetCatRegistryQuery(undefined, { skip: !unlocked });
+  const prices = useGetPricesQuery(undefined, { skip: !unlocked });
   const assets = custodyAssetBalances(balances.data?.balances, watchedCats, { registry: registry.data, hidden: hiddenCats });
   const hero = pickHeroBalance(assets);
+  const usd = hero.asset ? assetUsdValue(hero.asset, prices.data ?? {}) : null;
+  const display = heroBalanceDisplay({
+    unit,
+    amountLabel: hero.amountLabel,
+    ticker: hero.ticker,
+    usd,
+    hasAsset: hero.asset != null,
+    pricesLoading: prices.isLoading,
+    formatUsd: (n) => intl.formatNumber(n, { style: 'currency', currency: 'USD' }),
+  });
 
   return (
-    <button type="button" className="dig-widget dig-widget--balance" data-testid="home-balance" onClick={() => dispatch(setTab('wallet'))}>
-      <span className="dig-widget-label"><FormattedMessage id="wallet.portfolio.total" /></span>
-      {unlocked ? (
-        <span className="dig-widget-value" data-testid="home-balance-value">
-          {hero.amountLabel} <span className="dig-muted">{hero.ticker}</span>
-        </span>
-      ) : (
-        <span className="dig-widget-value dig-widget-value--muted" data-testid="home-balance-locked">
-          <FormattedMessage id="home.wallet.open" />
-        </span>
+    <div className="dig-widget dig-widget--balance" data-testid="home-balance-card">
+      <button type="button" className="dig-balance-tap" data-testid="home-balance" onClick={() => dispatch(setTab('wallet'))}>
+        <span className="dig-widget-label"><FormattedMessage id="wallet.portfolio.total" /></span>
+        {unlocked ? (
+          <>
+            <BalanceSlot testid="home-balance-value" className="dig-widget-value" skeletonClassName="dig-balance-skeleton--lg" slot={display.prominent} />
+            <BalanceSlot testid="home-balance-secondary" className="dig-muted dig-balance-secondary" skeletonClassName="dig-balance-skeleton--sm" slot={display.secondary} />
+          </>
+        ) : (
+          <span className="dig-widget-value dig-widget-value--muted" data-testid="home-balance-locked">
+            <FormattedMessage id="home.wallet.open" />
+          </span>
+        )}
+      </button>
+      {unlocked && (
+        <button
+          type="button"
+          className="dig-balance-swap"
+          data-testid="home-balance-swap"
+          aria-label={intl.formatMessage({ id: 'wallet.balance.swapUnit' })}
+          onClick={() => setStoredUnit(toggleBalanceUnit(unit))}
+        >
+          <span aria-hidden="true">⇄</span>
+        </button>
       )}
-    </button>
+    </div>
+  );
+}
+
+/**
+ * Render one `heroBalanceDisplay` slot (#156): a real value, a shimmer skeleton while its price
+ * fetch is in flight, or a translated status note (e.g. "price unavailable") on genuine failure.
+ * `data-testid="${testid}-loading"` marks the skeleton state distinctly so tests can assert the
+ * transient loading UI, not just the settled value.
+ */
+function BalanceSlot({
+  slot,
+  testid,
+  className,
+  skeletonClassName,
+}: {
+  slot: SlotDisplay;
+  testid: string;
+  className: string;
+  skeletonClassName: string;
+}) {
+  if (slot.kind === 'loading') {
+    return (
+      <span className={className} data-testid={testid}>
+        <span className={`dig-skeleton ${skeletonClassName}`} data-testid={`${testid}-loading`} aria-hidden="true" />
+        <span className="dig-visually-hidden"><FormattedMessage id="state.loading" /></span>
+      </span>
+    );
+  }
+  return (
+    <span className={className} data-testid={testid}>
+      {slot.kind === 'status' ? <FormattedMessage id={slot.text ?? 'wallet.portfolio.unavailable'} /> : slot.text}
+    </span>
   );
 }
 

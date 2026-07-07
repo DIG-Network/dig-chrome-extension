@@ -98,6 +98,7 @@ export const en: Record<string, string> = {
   'wallet.view.collectibles': 'Collectibles',
   'wallet.view.did': 'Identity',
   'wallet.portfolio.total': 'Total balance',
+  'wallet.balance.swapUnit': 'Switch balance unit',
   'wallet.fiat.unavailable': 'Fiat value unavailable',
   'wallet.fiat.loading': 'Loading price',
   'wallet.portfolio.unavailable': 'Value unavailable',

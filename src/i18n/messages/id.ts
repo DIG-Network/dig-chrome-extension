@@ -95,6 +95,7 @@ export const id: Record<string, string> = {
   'wallet.view.activity': 'Aktivitas',
   'wallet.view.trade': 'Tukar',
   'wallet.portfolio.total': 'Total saldo',
+  'wallet.balance.swapUnit': 'Ganti satuan saldo',
   'wallet.fiat.unavailable': 'Nilai fiat tidak tersedia',
   'wallet.fiat.loading': 'Memuat harga',
   'wallet.portfolio.unavailable': 'Nilai tidak tersedia',
