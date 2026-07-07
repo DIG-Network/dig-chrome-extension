@@ -16,7 +16,7 @@ function mockSw(unlocked = true) {
     let reply: unknown = { success: true };
     if (msg?.action === 'getLockState') reply = { lockState: unlocked ? 'unlocked' : 'locked' };
     else if (msg?.action === 'getCustodyBalances') reply = { balances: { xch: 2_510_000_000_000, cats: {} } };
-    else if (msg?.action === 'getActivity') reply = { events: [], cursorHeight: 0 };
+    else if (msg?.action === 'getActivity') reply = { events: [] };
     else if (msg?.action === 'getDigNodeStatus') reply = { reachable: false, base: null };
     if (cb) cb(reply);
     return Promise.resolve(reply);
@@ -109,7 +109,7 @@ describe('HomeScreen (mobile-OS home)', () => {
         if (msg?.action === 'getLockState') reply = { lockState: 'unlocked' };
         else if (msg?.action === 'getCustodyBalances') reply = { balances: { xch: 0, cats: {} } };
         else if (msg?.action === 'getActivity') {
-          reply = { events: [{ id: 'r:cat', kind: 'received', asset: tail, amount: '2500', counterparty: null, height: 7, timestamp: 300, coinId: 'c'.repeat(64) }], cursorHeight: 0 };
+          reply = { events: [{ id: 'r:cat', kind: 'received', asset: tail, amount: '2500', counterparty: null, timestamp: 300, coinId: 'c'.repeat(64), status: 'confirmed' }] };
         } else if (msg?.action === 'getDigNodeStatus') reply = { reachable: false, base: null };
         if (cb) cb(reply);
         return Promise.resolve(reply);

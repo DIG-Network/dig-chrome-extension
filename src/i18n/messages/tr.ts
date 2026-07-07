@@ -137,9 +137,14 @@ export const tr: Record<string, string> = {
   'activity.line.sent': '{amount} {ticker} gönderildi',
   'activity.line.received': '{amount} {ticker} alındı',
   'activity.line.traded': '{amount} {ticker} takas edildi',
+  'activity.line.mint': '{amount} {ticker} basıldı',
+  'activity.line.did': 'Kimlik güncellemesi',
+  'activity.line.offer': 'Teklif oluşturuldu',
+  'activity.line.clawback': '{amount} {ticker} geri alındı',
+  'activity.line.melt': '{amount} {ticker} eritildi',
   'activity.line.to': '{who} adresine',
   'activity.receipt.to': 'Alıcı',
-  'activity.receipt.height': 'Blok',
+  'activity.receipt.status': 'Durum',
   'activity.receipt.coin': 'Coin Kimliği',
 
   // ── wallet: send ──

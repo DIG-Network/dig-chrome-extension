@@ -18,10 +18,19 @@ export const SETTINGS_KEY = 'wallet.settings';
 export const ACTIVE_WALLET_KEY = 'wallet.activeId';
 /** `chrome.storage.session` key: the NON-SECRET unlock-expiry timestamp (ms). Never key material. */
 export const UNLOCK_EXPIRY_KEY = 'wallet.unlockExpiry';
-/** `chrome.storage.local` key: cached last balance scan (non-secret) for cached-first paint. */
+/** `chrome.storage.local` key: cached last balance scan (non-secret) for cached-first paint. ALSO
+ * the receive-delta baseline (#154): a fresh `getCustodyBalances` scan diffs against this snapshot
+ * to detect an incoming coin, so it is intentionally dropped on wallet/index switch
+ * (`clearActiveWalletCaches`) — the first scan after a switch has no baseline and skips detection,
+ * which is exactly what prevents a wallet's pre-existing balance misreporting as a fresh "receive". */
 export const BALANCES_CACHE_KEY = 'walletCache.balances';
-/** `chrome.storage.local` key: cached activity ledger + height cursor (non-secret). */
-export const ACTIVITY_CACHE_KEY = 'walletCache.activity';
+/** `chrome.storage.local` key: the LOCAL activity log (#154) — see `src/lib/activity-log.ts`. A flat
+ * map keyed by wallet+active-index (`logKey`), holding each scope's own ring-buffered entries. This
+ * is DURABLE history, not a re-fetchable cache — UNLIKE {@link BALANCES_CACHE_KEY} it is NEVER
+ * cleared on wallet switch or index navigation; per-wallet/index isolation comes from the composite
+ * key alone. Supersedes the old `walletCache.activity` (a cache of an on-chain scan's result, retired
+ * with the heavy `includeSpent: true` coinset reconstruction it cached). */
+export const ACTIVITY_LOG_KEY = 'wallet.activityLog';
 
 /** The default public coinset chain source (extensions bypass its CORS). */
 export const DEFAULT_COINSET_URL = 'https://api.coinset.org';

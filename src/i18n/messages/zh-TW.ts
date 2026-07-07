@@ -137,9 +137,14 @@ export const zhTW: Record<string, string> = {
   'activity.line.sent': '已發送 {amount} {ticker}',
   'activity.line.received': '已接收 {amount} {ticker}',
   'activity.line.traded': '已交易 {amount} {ticker}',
+  'activity.line.mint': '已鑄造 {amount} {ticker}',
+  'activity.line.did': '身分更新',
+  'activity.line.offer': '已建立報價',
+  'activity.line.clawback': '已收回 {amount} {ticker}',
+  'activity.line.melt': '已熔毀 {amount} {ticker}',
   'activity.line.to': '至 {who}',
   'activity.receipt.to': '收款方',
-  'activity.receipt.height': '區塊',
+  'activity.receipt.status': '狀態',
   'activity.receipt.coin': '幣 ID',
 
   // ── wallet: send ──

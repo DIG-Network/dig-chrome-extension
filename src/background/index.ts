@@ -48,7 +48,7 @@ import {
   ACTIVE_WALLET_KEY,
   UNLOCK_EXPIRY_KEY,
   BALANCES_CACHE_KEY,
-  ACTIVITY_CACHE_KEY,
+  ACTIVITY_LOG_KEY,
   LOCK_STATE,
   isCustodyAction,
   isSessionRenewingAction,
@@ -78,6 +78,16 @@ import {
   setWalletPreviewAddress,
   shouldCachePreviewAddress,
 } from '@/lib/wallet-registry';
+// The LOCAL activity log (#154 — MetaMask-style transaction tracking, replacing the old heavy
+// on-chain `includeSpent: true` coinset scan): pure append/confirm/read + balance-delta receive
+// detection over the per-wallet+index `ACTIVITY_LOG_KEY` state.
+import {
+  appendActivityEntry,
+  appendActivityEntries,
+  markEntryConfirmed,
+  entriesFor,
+  detectReceivedEntries,
+} from '@/lib/activity-log';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from '@/lib/wallet-assets';
 import { DIG_ASSET_ID } from '@/lib/links';
@@ -851,9 +861,78 @@ async function loadRegistry() {
   return state;
 }
 
-/** Drop the active-wallet balance/activity caches — they are wallet-specific and stale after a switch. */
+/**
+ * Drop the active-wallet BALANCE cache — it is wallet/index-specific and stale after a switch, and
+ * doubles as the #154 receive-delta baseline: a fresh `getCustodyBalances` scan right after a switch
+ * has no prior snapshot to diff against, so it correctly SKIPS receive detection instead of
+ * misreporting the newly-active wallet/index's existing balance as a fresh "receive". The LOCAL
+ * activity LOG (`ACTIVITY_LOG_KEY`) is durable history, not a cache — it is never cleared here;
+ * per-wallet+index isolation comes from its own composite storage key (see `lib/activity-log.ts`).
+ */
 async function clearActiveWalletCaches() {
-  try { await chrome.storage.local.remove([BALANCES_CACHE_KEY, ACTIVITY_CACHE_KEY]); } catch { /* ignore */ }
+  try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+}
+
+// ─── Local activity log (#154) — SW-side storage glue over the pure lib/activity-log.ts ──────────
+
+/** Read the raw `ACTIVITY_LOG_KEY` state (an empty object when nothing has been logged yet). */
+async function readActivityLogState() {
+  const { [ACTIVITY_LOG_KEY]: raw } = await chrome.storage.local.get(ACTIVITY_LOG_KEY);
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
+/**
+ * Log one action-performed entry (#154) for the ACTIVE wallet + active derivation index, the moment
+ * the extension broadcasts it — `pending` until the confirm-poll (`sendStatus`) observes it on-chain.
+ * A no-op without an active wallet or a coin id (nothing to key the confirm-poll match on).
+ */
+async function logActivity(kind, hint, coinId) {
+  if (!coinId) return;
+  const state = await loadRegistry();
+  if (!state.activeId) return;
+  const index = await activeDerivationIndex();
+  const entry = {
+    id: `${kind}:${coinId}`,
+    kind,
+    asset: hint?.asset ?? 'XCH',
+    amount: hint?.amount ?? '0',
+    counterparty: hint?.counterparty ?? null,
+    coinId,
+    timestamp: Date.now(),
+    status: 'pending',
+  };
+  const next = appendActivityEntry(await readActivityLogState(), state.activeId, index, entry);
+  try { await chrome.storage.local.set({ [ACTIVITY_LOG_KEY]: next }); } catch { /* best-effort */ }
+}
+
+/** Flip a logged entry to `confirmed` once the confirm-poll (`sendStatus`) sees the coin spent. */
+async function confirmActivity(coinId) {
+  if (!coinId) return;
+  const state = await loadRegistry();
+  if (!state.activeId) return;
+  const index = await activeDerivationIndex();
+  const before = await readActivityLogState();
+  const next = markEntryConfirmed(before, state.activeId, index, coinId);
+  if (next !== before) {
+    try { await chrome.storage.local.set({ [ACTIVITY_LOG_KEY]: next }); } catch { /* best-effort */ }
+  }
+}
+
+/**
+ * Balance-delta receive detection (#154): compare `prevBalances` (the pre-scan snapshot) against the
+ * just-scanned `nextBalances` and append a `received` entry for every asset that increased. A no-op
+ * without a prior snapshot (right after a wallet/index switch — see {@link clearActiveWalletCaches})
+ * or an active wallet.
+ */
+async function logReceivedActivity(prevBalances, nextBalances) {
+  if (!prevBalances) return;
+  const received = detectReceivedEntries(prevBalances, nextBalances, Date.now());
+  if (received.length === 0) return;
+  const state = await loadRegistry();
+  if (!state.activeId) return;
+  const index = await activeDerivationIndex();
+  const next = appendActivityEntries(await readActivityLogState(), state.activeId, index, received);
+  try { await chrome.storage.local.set({ [ACTIVITY_LOG_KEY]: next }); } catch { /* best-effort */ }
 }
 
 /**
@@ -1091,14 +1170,16 @@ async function handleCustodyActionInner(message) {
       // Auto-discovery surfaces every held CAT; the watch list is the explicit override, and the
       // built-in $DIG is always queried directly so its balance resolves even if held as un-hinted change.
       const watchedCats = [...new Set([DIG_ASSET_ID.toLowerCase(), ...parseWatchedCats(watchedRaw).map((c) => c.assetId)])];
+      // #154 — the PRE-scan snapshot is the receive-delta baseline; read it before it's overwritten.
+      const { [BALANCES_CACHE_KEY]: prevCache } = await chrome.storage.local.get(BALANCES_CACHE_KEY);
       const res = await callVault({ op: 'scanBalances', watchedCats, activeIndex: await activeDerivationIndex(), coinsetUrl });
       if (res && res.success !== false && res.balances) {
+        await logReceivedActivity(prevCache?.balances, res.balances);
         await chrome.storage.local.set({ [BALANCES_CACHE_KEY]: { balances: res.balances, at: Date.now() } });
         return { balances: res.balances, cached: false };
       }
       // Scan failed (offline / locked) — fall back to the last cached snapshot (cached-first).
-      const { [BALANCES_CACHE_KEY]: cache } = await chrome.storage.local.get(BALANCES_CACHE_KEY);
-      if (cache && cache.balances) return { balances: cache.balances, cached: true };
+      if (prevCache && prevCache.balances) return { balances: prevCache.balances, cached: true };
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'balance scan failed' };
     }
     case ACTIONS.prepareSend: {
@@ -1112,27 +1193,28 @@ async function handleCustodyActionInner(message) {
       // The ONLY place a real spend is broadcast — reached only after the user approves in the UI.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
-      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        // #154 — only a REAL send has a counterparty; split/combine (self-only) reuse this exact same
+        // path and must NOT be logged as "sent" (nothing was sent to anyone).
+        if (res.activityHint?.counterparty) await logActivity('sent', res.activityHint, res.spentCoinId);
+      }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'send failed' };
     }
     case ACTIONS.sendStatus: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'sendStatus', coinId: message.coinId, coinsetUrl });
+      const res = await callVault({ op: 'sendStatus', coinId: message.coinId, coinsetUrl });
+      // #154 — the confirm-poll is the ONLY signal that flips a logged entry pending → confirmed.
+      if (res && res.confirmed === true) await confirmActivity(message.coinId);
+      return res;
     }
     case ACTIONS.getActivity: {
-      // Read-only ledger reconstruction. Full scan (v1: correct over incremental — a coin created
-      // before a cursor can be spent after it); cached to walletCache.activity for cached-first paint.
-      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      const { [WATCHED_CATS_KEY]: watchedRaw } = await chrome.storage.local.get(WATCHED_CATS_KEY);
-      const watchedCats = [...new Set([DIG_ASSET_ID.toLowerCase(), ...parseWatchedCats(watchedRaw).map((c) => c.assetId)])];
-      const res = await callVault({ op: 'getActivity', watchedCats, coinsetUrl });
-      if (res && res.success !== false && Array.isArray(res.events)) {
-        await chrome.storage.local.set({ [ACTIVITY_CACHE_KEY]: { events: res.events, cursorHeight: res.cursorHeight || 0, at: Date.now() } });
-        return { events: res.events, cursorHeight: res.cursorHeight || 0, cached: false };
-      }
-      const { [ACTIVITY_CACHE_KEY]: cache } = await chrome.storage.local.get(ACTIVITY_CACHE_KEY);
-      if (cache && Array.isArray(cache.events)) return { events: cache.events, cursorHeight: cache.cursorHeight || 0, cached: true };
-      return res || { success: false, code: 'CUSTODY_ERROR', message: 'activity scan failed' };
+      // #154 — the local activity log for the ACTIVE wallet + active index (#165): an instant
+      // storage read, NOT an on-chain scan. See src/lib/activity-log.ts.
+      const state = await loadRegistry();
+      if (!state.activeId) return { events: [] };
+      const index = await activeDerivationIndex();
+      return { events: entriesFor(await readActivityLogState(), state.activeId, index) };
     }
     case ACTIONS.makeOffer: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
@@ -1150,7 +1232,10 @@ async function handleCustodyActionInner(message) {
       // The ONLY place a prepared trade is broadcast — reached only after the user approves in the UI.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       const res = await callVault({ op: 'confirmTrade', pendingId: message.pendingId, coinsetUrl });
-      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('trade', res.activityHint, res.spentCoinId);
+      }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'trade failed' };
     }
     case ACTIONS.listNfts: {
@@ -1165,7 +1250,10 @@ async function handleCustodyActionInner(message) {
       // The ONLY place a prepared NFT transfer is broadcast — reuses the vault confirmSend path.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
-      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('sent', res.activityHint, res.spentCoinId);
+      }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft transfer failed' };
     }
     case ACTIONS.prepareNftMint: {
@@ -1177,7 +1265,10 @@ async function handleCustodyActionInner(message) {
       // The ONLY place a prepared NFT mint is broadcast — reuses the vault confirmSend path.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
-      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('mint', res.activityHint, res.spentCoinId);
+      }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft mint failed' };
     }
     case ACTIONS.listDids: {
@@ -1193,7 +1284,10 @@ async function handleCustodyActionInner(message) {
       // The ONLY place a prepared DID create is broadcast — reuses the vault confirmSend path.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
-      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('did', res.activityHint, res.spentCoinId);
+      }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'did create failed' };
     }
     case ACTIONS.prepareDidTransfer: {
@@ -1204,7 +1298,10 @@ async function handleCustodyActionInner(message) {
       // The ONLY place a prepared DID transfer is broadcast — reuses the vault confirmSend path.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
-      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('did', res.activityHint, res.spentCoinId);
+      }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'did transfer failed' };
     }
     case ACTIONS.prepareDidProfileUpdate: {
@@ -1215,7 +1312,10 @@ async function handleCustodyActionInner(message) {
       // The ONLY place a prepared DID profile update is broadcast — reuses the vault confirmSend path.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
-      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('did', res.activityHint, res.spentCoinId);
+      }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'did profile update failed' };
     }
     case ACTIONS.prepareNftDidAssign: {
@@ -1226,7 +1326,10 @@ async function handleCustodyActionInner(message) {
       // The ONLY place a prepared NFT↔DID assignment is broadcast — reuses the vault confirmSend path.
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
-      if (res && res.success !== false) { try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ } }
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('did', res.activityHint, res.spentCoinId);
+      }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft did assign failed' };
     }
     case ACTIONS.listCoins: {

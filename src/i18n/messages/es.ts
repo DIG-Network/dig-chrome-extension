@@ -137,9 +137,14 @@ export const es: Record<string, string> = {
   'activity.line.sent': 'Enviaste {amount} {ticker}',
   'activity.line.received': 'Recibiste {amount} {ticker}',
   'activity.line.traded': 'Intercambiaste {amount} {ticker}',
+  'activity.line.mint': 'Acuñaste {amount} {ticker}',
+  'activity.line.did': 'Actualización de identidad',
+  'activity.line.offer': 'Creaste una oferta',
+  'activity.line.clawback': 'Recuperaste {amount} {ticker}',
+  'activity.line.melt': 'Fundiste {amount} {ticker}',
   'activity.line.to': 'a {who}',
   'activity.receipt.to': 'Para',
-  'activity.receipt.height': 'Bloque',
+  'activity.receipt.status': 'Estado',
   'activity.receipt.coin': 'ID de la moneda',
 
   // ── wallet: send ──

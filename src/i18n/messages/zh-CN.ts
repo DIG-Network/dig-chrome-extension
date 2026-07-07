@@ -137,9 +137,14 @@ export const zhCN: Record<string, string> = {
   'activity.line.sent': '已发送 {amount} {ticker}',
   'activity.line.received': '已接收 {amount} {ticker}',
   'activity.line.traded': '已交易 {amount} {ticker}',
+  'activity.line.mint': '已铸造 {amount} {ticker}',
+  'activity.line.did': '身份更新',
+  'activity.line.offer': '已创建报价',
+  'activity.line.clawback': '已收回 {amount} {ticker}',
+  'activity.line.melt': '已熔毁 {amount} {ticker}',
   'activity.line.to': '至 {who}',
   'activity.receipt.to': '收款方',
-  'activity.receipt.height': '区块',
+  'activity.receipt.status': '状态',
   'activity.receipt.coin': '币 ID',
 
   // ── wallet: send ──

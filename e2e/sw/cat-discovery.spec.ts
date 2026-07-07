@@ -8,13 +8,15 @@ import { existsSync, readFileSync } from 'node:fs';
  *
  * Determinism note (mirrors window-chia-methods.spec.ts): a LIVE coinset is non-deterministic and the
  * offscreen document's wasm chain fetch cannot be locally routed, so a held CAT is supplied via the
- * SW's OWN cached-first path — `walletCache.balances` (two held CATs) + `walletCache.activity` (one
- * CAT transaction) snapshots are seeded, and the fresh scans are pointed at a dead endpoint so they
- * time out (§ the coinset per-request timeout) and the SW serves the seeded snapshots exactly as it
- * would a real cached scan. The token-metadata REGISTRY is genuinely MOCKED via Playwright routing
- * (page fetch to `api.dexie.space`, CSP-allowed), and the icon host (`icons.dexie.space`) is routed to
- * a real image. The discovery reconstruction itself (hinted lineage → TAIL) is proven exactly at the
- * vault layer against the wasm Simulator (catDiscovery.test).
+ * SW's OWN cached-first path — a `walletCache.balances` (two held CATs) snapshot is seeded, and the
+ * fresh scan is pointed at a dead endpoint so it times out (§ the coinset per-request timeout) and
+ * getCustodyBalances serves the seeded snapshot exactly as it would a real cached scan. The Activity
+ * ledger's CAT transaction (#151/#154) is seeded directly into the LOCAL activity log
+ * (`wallet.activityLog`) — it is no longer a coinset scan/cache at all (see src/lib/activity-log.ts).
+ * The token-metadata REGISTRY is genuinely MOCKED via Playwright routing (page fetch to
+ * `api.dexie.space`, CSP-allowed), and the icon host (`icons.dexie.space`) is routed to a real image.
+ * The discovery reconstruction itself (hinted lineage → TAIL) is proven exactly at the vault layer
+ * against the wasm Simulator (catDiscovery.test).
  *
  * It asserts the whole chain end-to-end: a held CAT AUTO-APPEARS in the popup's Assets list with its
  * registry name/ticker/icon, a held CAT ABSENT from the registry falls back to the short-form TAIL +
@@ -83,24 +85,26 @@ test.beforeAll(async () => {
 
   anchor = await context.newPage();
   await anchor.goto(`chrome-extension://${extensionId}/popup.html`);
-  const imported = await swSend<{ lockState?: string }>(anchor, { action: 'importWallet', mnemonic: GOLDEN.mnemonic, password: PASSWORD });
+  const imported = await swSend<{ lockState?: string; activeWalletId?: string }>(anchor, { action: 'importWallet', mnemonic: GOLDEN.mnemonic, password: PASSWORD });
   expect(imported.lockState).toBe('unlocked');
+  const walletId = imported.activeWalletId!;
 
-  // Seed a cached balance snapshot with two held CATs + a cached activity event for the registered
-  // CAT (#151), then point the chain at a dead endpoint so the fresh scans time out (per-request
-  // coinset timeout) and getCustodyBalances/getActivity serve these cached snapshots.
+  // Seed a cached balance snapshot with two held CATs, then point the chain at a dead endpoint so a
+  // fresh scan times out (per-request coinset timeout) and getCustodyBalances serves this cached
+  // snapshot. #154 — the Activity ledger is no longer a coinset scan/cache at all: it is the LOCAL
+  // activity log (`wallet.activityLog`, keyed per wallet+active-index — `${walletId}:0` here, the
+  // freshly-imported wallet's only index), seeded directly exactly as `logActivity`/
+  // `logReceivedActivity` (src/background/index.ts) would have written a real received entry.
   await anchor.evaluate(
-    ({ reg, unreg }) =>
+    ({ reg, unreg, walletId }) =>
       chrome.storage.local.set({
         'wallet.settings': { chainRpcUrl: 'http://127.0.0.1:1', chainPrivacyAck: true },
         'walletCache.balances': { balances: { xch: 5_000_000_000_000, cats: { [reg]: 123450, [unreg]: 67890 } }, at: Date.now() },
-        'walletCache.activity': {
-          events: [{ id: 'r:cat-e2e', kind: 'received', asset: reg, amount: '5000', counterparty: null, height: 10, timestamp: Math.floor(Date.now() / 1000), coinId: 'f'.repeat(64) }],
-          cursorHeight: 0,
-          at: Date.now(),
+        'wallet.activityLog': {
+          [`${walletId}:0`]: [{ id: 'r:cat-e2e', kind: 'received', asset: reg, amount: '5000', counterparty: null, coinId: 'f'.repeat(64), timestamp: Date.now(), status: 'confirmed' }],
         },
       }),
-    { reg: REGISTERED, unreg: UNREGISTERED },
+    { reg: REGISTERED, unreg: UNREGISTERED, walletId },
   );
 });
 

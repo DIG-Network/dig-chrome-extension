@@ -137,9 +137,14 @@ export const ja: Record<string, string> = {
   'activity.line.sent': '{amount} {ticker} を送信しました',
   'activity.line.received': '{amount} {ticker} を受信しました',
   'activity.line.traded': '{amount} {ticker} を取引しました',
+  'activity.line.mint': '{amount} {ticker} をミントしました',
+  'activity.line.did': 'アイデンティティの更新',
+  'activity.line.offer': 'オファーを作成しました',
+  'activity.line.clawback': '{amount} {ticker} を回収しました',
+  'activity.line.melt': '{amount} {ticker} を溶解しました',
   'activity.line.to': '{who} 宛て',
   'activity.receipt.to': '宛先',
-  'activity.receipt.height': 'ブロック',
+  'activity.receipt.status': 'ステータス',
   'activity.receipt.coin': 'コインID',
 
   // ── wallet: send ──

@@ -137,9 +137,14 @@ export const hi: Record<string, string> = {
   'activity.line.sent': '{amount} {ticker} भेजे गए',
   'activity.line.received': '{amount} {ticker} प्राप्त हुए',
   'activity.line.traded': '{amount} {ticker} ट्रेड किए गए',
+  'activity.line.mint': '{amount} {ticker} मिंट किए गए',
+  'activity.line.did': 'पहचान अपडेट',
+  'activity.line.offer': 'ऑफ़र बनाया गया',
+  'activity.line.clawback': '{amount} {ticker} वापस लिए गए',
+  'activity.line.melt': '{amount} {ticker} मेल्ट किए गए',
   'activity.line.to': '{who} को',
   'activity.receipt.to': 'प्राप्तकर्ता',
-  'activity.receipt.height': 'ब्लॉक',
+  'activity.receipt.status': 'स्थिति',
   'activity.receipt.coin': 'कॉइन ID',
 
   // ── wallet: send ──

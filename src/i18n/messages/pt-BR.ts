@@ -137,9 +137,14 @@ export const ptBR: Record<string, string> = {
   'activity.line.sent': 'Você enviou {amount} {ticker}',
   'activity.line.received': 'Você recebeu {amount} {ticker}',
   'activity.line.traded': 'Você negociou {amount} {ticker}',
+  'activity.line.mint': 'Você cunhou {amount} {ticker}',
+  'activity.line.did': 'Atualização de identidade',
+  'activity.line.offer': 'Você criou uma oferta',
+  'activity.line.clawback': 'Você recuperou {amount} {ticker}',
+  'activity.line.melt': 'Você derreteu {amount} {ticker}',
   'activity.line.to': 'para {who}',
   'activity.receipt.to': 'Para',
-  'activity.receipt.height': 'Bloco',
+  'activity.receipt.status': 'Status',
   'activity.receipt.coin': 'ID da moeda',
 
   // ── wallet: send ──

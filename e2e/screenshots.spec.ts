@@ -31,10 +31,15 @@ const STUB = `
       { coinId: 'b'.repeat(64), amount: '1000000000000', confirmedHeight: 5012300 },
       { coinId: 'c'.repeat(64), amount: '10000000000', confirmedHeight: 5011000 }
     ] };
+    // #154 — the LOCAL activity log: pending/confirmed status, no block height. A pending 'sent' row
+    // demonstrates the still-in-flight state (no SpaceScan link yet); 'mint'/'did' show the new kinds.
     if (a === 'getActivity') return { events: [
-      { id: 'r:1', kind: 'received', asset: 'XCH', amount: '500000000000', counterparty: null, height: 5, timestamp: 1751000000, coinId: 'ab' },
-      { id: 's:2', kind: 'sent', asset: 'XCH', amount: '120000000000', counterparty: 'xch1recipient', height: 4, timestamp: 1750900000, coinId: 'cd' }
-    ], cursorHeight: 5 };
+      { id: 'p:pending', kind: 'sent', asset: 'XCH', amount: '75000000000', counterparty: 'xch1qqqqpendingscreenshotaddressqqqqqqqqqqqqqqqqqqqqqqqqzzzz', timestamp: 1751100000, coinId: 'ef'.repeat(32), status: 'pending' },
+      { id: 'r:1', kind: 'received', asset: 'XCH', amount: '500000000000', counterparty: null, timestamp: 1751000000, coinId: 'ab'.repeat(32), status: 'confirmed' },
+      { id: 's:2', kind: 'sent', asset: 'XCH', amount: '120000000000', counterparty: 'xch1recipient', timestamp: 1750900000, coinId: 'cd'.repeat(32), status: 'confirmed' },
+      { id: 'mint:1', kind: 'mint', asset: 'NFT', amount: '1', counterparty: null, timestamp: 1750800000, coinId: 'aa'.repeat(32), status: 'confirmed' },
+      { id: 'did:1', kind: 'did', asset: 'DID', amount: '1', counterparty: null, timestamp: 1750700000, coinId: 'bb'.repeat(32), status: 'confirmed' },
+    ] };
     if (a === 'listNfts') return { nfts: [
       { launcherId: 'ab'.repeat(32), coinId: 'cd'.repeat(32), p2PuzzleHash: 'ef'.repeat(32), collectionId: null, editionNumber: '1', editionTotal: '1', royaltyBasisPoints: 250, royaltyPuzzleHash: '00'.repeat(32), dataUris: ['https://ipfs.example/1.png'], dataHash: null, metadataUris: [], metadataHash: null, licenseUris: [] },
     ] };
@@ -131,6 +136,26 @@ test('fullscreen wallet tab set includes Identity', async ({ page }) => {
   await page.setViewportSize(TABLET);
   await open(page, 'app.html', 'wallet');
   await expect(page.getByTestId('seg-did')).toBeVisible();
+});
+
+// #154 — the local activity log ledger: pending (no SpaceScan link yet) + confirmed rows, the new
+// mint/did kinds, each expandable to a receipt showing the Pending/Confirmed status.
+test('popup activity (local log — pending + confirmed rows)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet/activity');
+  await page.getByTestId('custody-activity').waitFor();
+  await page.getByTestId('activity-line-p:pending').click(); // expand the pending row's receipt
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-activity.png' });
+});
+
+test('fullscreen activity (local log — pending + confirmed rows)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/activity');
+  await page.getByTestId('custody-activity').waitFor();
+  await page.getByTestId('activity-line-p:pending').click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-activity.png' });
 });
 
 // Coin control (#91): the Coins panel — list of individual coins + split/combine actions.

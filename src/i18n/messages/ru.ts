@@ -137,9 +137,14 @@ export const ru: Record<string, string> = {
   'activity.line.sent': 'Отправлено {amount} {ticker}',
   'activity.line.received': 'Получено {amount} {ticker}',
   'activity.line.traded': 'Обменяно {amount} {ticker}',
+  'activity.line.mint': 'Отчеканено {amount} {ticker}',
+  'activity.line.did': 'Обновление личности',
+  'activity.line.offer': 'Предложение создано',
+  'activity.line.clawback': 'Возвращено {amount} {ticker}',
+  'activity.line.melt': 'Расплавлено {amount} {ticker}',
   'activity.line.to': 'получателю {who}',
   'activity.receipt.to': 'Кому',
-  'activity.receipt.height': 'Блок',
+  'activity.receipt.status': 'Статус',
   'activity.receipt.coin': 'ID монеты',
 
   // ── wallet: send ──

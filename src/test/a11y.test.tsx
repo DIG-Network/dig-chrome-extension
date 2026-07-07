@@ -56,7 +56,7 @@ describe('accessibility (axe)', () => {
         let reply: unknown = { success: true };
         if (msg?.action === 'getLockState') reply = { lockState: 'unlocked' };
         else if (msg?.action === 'getCustodyBalances') reply = { balances: { xch: 2_510_000_000_000, cats: {} } };
-        else if (msg?.action === 'getActivity') reply = { events: [], cursorHeight: 0 };
+        else if (msg?.action === 'getActivity') reply = { events: [] };
         if (cb) cb(reply);
         return Promise.resolve(reply);
       },
