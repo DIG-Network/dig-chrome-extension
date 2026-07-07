@@ -109,9 +109,14 @@ function catDisplayName(cat: { name?: string; assetId: string }): string {
 }
 
 /**
- * The ordered asset descriptors the Assets view shows (and queries a balance for): XCH, then
- * $DIG, then each tracked CAT. Each descriptor carries the ticker/name/decimals + the
- * `{type, assetId}` a `chip0002_getAssetBalance` call needs.
+ * XCH + $DIG + each TRACKED (watched) CAT as bare descriptors, with NO registry lookup — every CAT's
+ * `ticker` is the generic literal `'CAT'` and `name` a synthesized `Token abc…wxyz`. Live UI must NOT
+ * use this for display: the real Assets/Activity surfaces resolve the actual ticker/name/icon via
+ * `custodyAssetBalances`/`activityRows` + the dexie {@link CatMetaMap} registry (`catMetadataApi`),
+ * which is how a CAT gets its real symbol instead of the generic fallback (#151 — this function's
+ * hardcoded ticker was, until #151, wrongly reused by `activityRows`, making the Activity ledger show
+ * "CAT" for every CAT transaction regardless of the registry). Kept for the pure balance-agnostic
+ * shape it still provides to `portfolioValue`'s tests; do not wire a new display surface to it.
  */
 export function assetDescriptors(watchedCats: unknown): AssetDescriptor[] {
   const cats: AssetDescriptor[] = parseWatchedCats(watchedCats).map((c) => ({

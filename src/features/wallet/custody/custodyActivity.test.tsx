@@ -27,6 +27,23 @@ describe('CustodyActivity', () => {
     expect(screen.getByTestId('activity-r:1')).toHaveTextContent('Received 2.51 XCH');
   });
 
+  it('#151 resolves a CAT transaction to its REAL registry ticker, not the generic "CAT" fallback', async () => {
+    const tail = 'c'.repeat(64);
+    const catReceived: ActivityEvent = { id: 'r:cat', kind: 'received', asset: tail, amount: '2500', counterparty: null, height: 7, timestamp: 300, coinId: 'c'.repeat(64) };
+    mockSw([catReceived]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ success: true, tokens: [{ id: tail, name: 'Gamma Coin', code: 'GMA', denom: 1000 }] }),
+      })),
+    );
+    renderWithProviders(<CustodyActivity />);
+    const row = await screen.findByTestId('activity-r:cat');
+    expect(row).toHaveTextContent('Received 2.5 GMA'); // real ticker from the registry, not "CAT"
+    vi.unstubAllGlobals();
+  });
+
   it('expands a row to its receipt (coin id + SpaceScan)', async () => {
     mockSw([SENT]);
     renderWithProviders(<CustodyActivity />);
