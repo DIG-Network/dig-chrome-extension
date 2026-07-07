@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.48.0] - 2026-07-07
+
+### Features
+- **wallet:** Order Assets/CAT list by value + add a live filter with autocomplete (#69)
+
 ## [1.47.0] - 2026-07-07
 
 ### Features
