@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { validateSendForm, toBaseUnits, formatBaseUnits, shortenAddress } from '@/lib/wallet-view';
+import { ViewHeader } from '@/components/ViewHeader';
 import { popOutToFullpage } from '@/lib/popout';
 import type { WalletDid } from '@/offscreen/dids';
 import {
@@ -120,12 +121,10 @@ export function DidDetail({ did, isFull, onBack, pollMs = 8000 }: { did: WalletD
   const profileBusy = profilePrep.isLoading || profileConf.isLoading;
 
   return (
-    <section className="dig-card" data-testid="did-detail" aria-labelledby="did-detail-title">
-      <button type="button" className="dig-link" data-testid="did-detail-back" onClick={onBack}>
-        <FormattedMessage id="did.detail.back" />
-      </button>
-
-      <h2 className="dig-heading dig-mono" id="did-detail-title" style={{ margin: '8px 0 14px', wordBreak: 'break-all' }}>
+    <div data-testid="did-detail">
+      <ViewHeader onBack={onBack} backLabel={<FormattedMessage id="did.detail.back" />} backTestId="did-detail-back" />
+      <section className="dig-card" aria-labelledby="did-detail-title">
+      <h2 className="dig-heading dig-mono" id="did-detail-title" style={{ margin: '0 0 14px', wordBreak: 'break-all' }}>
         {shortenAddress(did.launcherId, 10, 8)}
       </h2>
 
@@ -302,7 +301,8 @@ export function DidDetail({ did, isFull, onBack, pollMs = 8000 }: { did: WalletD
           </button>
         </div>
       )}
-    </section>
+      </section>
+    </div>
   );
 }
 

@@ -170,6 +170,7 @@ export const tr: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': 'Al',
+  'receive.back': '← Varlıklara dön',
   'receive.your.address': 'Adresiniz',
   'receive.copy': 'Adresi kopyala',
   'receive.copied': 'Kopyalandı',

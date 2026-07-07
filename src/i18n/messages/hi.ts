@@ -170,6 +170,7 @@ export const hi: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': 'प्राप्त करें',
+  'receive.back': '← एसेट्स पर वापस जाएँ',
   'receive.your.address': 'आपका एड्रेस',
   'receive.copy': 'एड्रेस कॉपी करें',
   'receive.copied': 'कॉपी हो गया',

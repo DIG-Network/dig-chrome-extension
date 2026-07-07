@@ -5,6 +5,7 @@ import { addWatchedCat, addHiddenCat, removeHiddenCat, parseHiddenCats } from '@
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { resolveCatMeta } from '@/features/wallet/catMetadata';
 import { AssetRow } from '@/components/AssetRow';
+import { ViewHeader } from '@/components/ViewHeader';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 
 /**
@@ -54,10 +55,15 @@ export function ManageTokens({ assets, onClose }: { assets: AssetBalance[]; onCl
   }
 
   return (
-    <section className="dig-card" data-testid="manage-tokens" aria-labelledby="manage-tokens-title">
-      <h2 className="dig-heading" id="manage-tokens-title">
-        <FormattedMessage id="tokens.manage.title" />
-      </h2>
+    <div data-testid="manage-tokens">
+      <ViewHeader
+        onBack={onClose}
+        backLabel={<FormattedMessage id="tokens.manage.close" />}
+        backTestId="manage-tokens-close"
+        title={<FormattedMessage id="tokens.manage.title" />}
+        titleId="manage-tokens-title"
+      />
+      <section className="dig-card" aria-labelledby="manage-tokens-title">
       <p className="dig-muted" style={{ marginTop: 0 }}>
         <FormattedMessage id="tokens.manage.intro" />
       </p>
@@ -155,12 +161,7 @@ export function ManageTokens({ assets, onClose }: { assets: AssetBalance[]; onCl
           <FormattedMessage id="tokens.manage.add.button" />
         </button>
       </form>
-
-      {onClose && (
-        <button type="button" className="dig-link" data-testid="manage-tokens-close" onClick={onClose}>
-          <FormattedMessage id="tokens.manage.close" />
-        </button>
-      )}
-    </section>
+      </section>
+    </div>
   );
 }

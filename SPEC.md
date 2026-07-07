@@ -118,10 +118,13 @@ grouping; the **default landing is Home**. Every surface stays reachable:
    authoritative lock state — no wallet → onboarding (create / import a 24-word phrase), locked →
    unlock, unlocked → the custody wallet body, a segmented control over:
    - **Assets** — portfolio hero (the XCH balance + an honest "fiat unavailable" `≈ $—`; no
-     fabricated fiat/delta), a Send · Receive · Trade action bar, and the assets list (XCH + `$DIG` +
-     each tracked CAT) from the offscreen HD balance scan (`getCustodyBalances`, both HD schemes).
-     Send/Receive open shared modals; tracked CATs persist in `chrome.storage.local`
-     `wallet.watchedCats` (`wallet-assets.mjs`).
+     fabricated fiat/delta), a Send · Receive · Address-book action bar, and the assets list (XCH +
+     `$DIG` + each tracked CAT) from the offscreen HD balance scan (`getCustodyBalances`, both HD
+     schemes). Send/Receive/Contacts/Manage-tokens/Coins each open as their OWN screen (§2.1a
+     `ViewHeader`) reached from the action bar — **Receive is its own dedicated screen** (#166): its
+     sticky header + QR/address are the WHOLE body (no asset/CAT list shares it), so the QR/address
+     are reachable with zero scrolling regardless of how many CATs the wallet holds. Tracked CATs
+     persist in `chrome.storage.local` `wallet.watchedCats` (`wallet-assets.mjs`).
    - **Activity** — the transaction ledger reconstructed from chain by the offscreen indexer
      (`getActivity`; §18.9).
    - **Trade** — make / take / cancel a `offer1…` string, built + signed in the offscreen vault
@@ -159,6 +162,31 @@ grouping; the **default landing is Home**. Every surface stays reachable:
   all copy flows through **react-intl** (`src/i18n`, the 14-locale ecosystem set; Phase 0 ships a
   complete `en` catalog with the others falling back to English); a footer language selector
   persists the choice to `wallet.settings.locale`.
+
+### 2.1a `ViewHeader` — sticky top header for screen-style sub-views (#166)
+
+Every "screen"-style sub-view reached from a tab body (Send, Receive, the address book, Manage
+tokens, Coin control, NFT/DID detail, Trade offers) renders a shared `ViewHeader`
+(`src/components/ViewHeader.tsx`, class `.dig-view-header`) as the FIRST element of the view,
+`position: sticky; top: 0` relative to `.dig-main` (the extension's ONE scrollable region, §2.1).
+This keeps the back/close affordance reachable at ANY scroll position instead of it being pushed
+below the fold at the bottom of a growable body (a long form, a coin picker, an offer summary) — the
+#166 fix. Contract:
+
+- `ViewHeader` takes an optional `title` (rendered as an `<h2>`, with a `titleId` a wrapping
+  `<section aria-labelledby>` can reference) and an optional `onBack` + `backLabel` (the caller's own
+  translated copy/id — e.g. `nft.detail.back`, `send.cancel` — so it renders through the caller's own
+  `FormattedMessage`, not a new generic string). Omitting `onBack` renders a title-only bar.
+- **Placement contract:** `ViewHeader` renders OUTSIDE/ABOVE the view's own bordered `.dig-card`
+  content (never nested inside it) — nesting it inside a rounded/bordered card would visually clip
+  the sticky strip against the card's background once it pins mid-scroll.
+- **Back-target semantics for multi-phase flows** (Send, Coin control): the header's back action
+  steps UP one level — mid-review it returns to the form (mirrors the flow's own "back" link); it is
+  ABSENT while a spend is actively broadcasting (`'sending'` phase — no back mid-transaction); at
+  every other phase it closes the whole screen. A phase's own bottom "Done"/"Retry" CTA is a
+  separate, unrelated action (dismiss/retry), not a back affordance.
+- Adopted in: `SendPanel`, `ReceiveView`, `ContactsManager`, `ManageTokens`, `CoinControlPanel`,
+  `TradePanel` (both the compact and full-surface branches), `NftDetail`, `DidDetail`.
 
 ### 2.2 State & data architecture
 
@@ -1047,7 +1075,9 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
 - **Caching.** The last scan is cached (`walletCache.balances`, non-secret); a transient scan failure
   returns the cached snapshot flagged `cached` (cached-first paint).
 - **Receive.** The receive address is the ACTIVE index's unhardened address (§18.1a,
-  `getReceiveAddress`) — navigating the index changes which address Receive shows.
+  `getReceiveAddress`) — navigating the index changes which address Receive shows. Since one address
+  serves every asset (XCH, `$DIG`, every CAT), the Receive screen needs no per-asset selector (§2.1a)
+  — it shows that single QR/address, full stop.
 
 ### 18.6a Assets list — value ordering + live filter (#167)
 
