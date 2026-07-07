@@ -7,11 +7,14 @@
  *
  * Unlike NFTs/CATs, a DID has NO `Action`/`Spends` driver support in chia-wallet-sdk-wasm (no
  * `Action.mintDid`, no `Spends.addDid`) — it is built from the lower-level `Clvm.createEveDid` /
- * `Clvm.spendDid` primitives directly (mirrors the SDK's own napi test suite pattern), funded from a
- * SINGLE wallet-owned XCH coin (the launcher's parent coin id must be known before the spend is
- * built, so the driver's multi-coin auto-selection does not apply here). A wallet whose largest coin
- * cannot cover the DID amount + fee is a known v1 scope limit (`NO_SUITABLE_COIN`); multi-coin
- * funding for DID create/transfer-fee is a follow-up.
+ * `Clvm.spendDid` primitives directly (mirrors the SDK's own napi test suite pattern). `createEveDid`
+ * needs a SINGLE parent coin id up front (the launcher's parent coin id must be known before the
+ * spend is built, so the driver's multi-coin `Spends` auto-selection does not apply directly here) —
+ * `prepareDidCreate` designates the largest wallet-owned coin as that parent, then, when it alone
+ * doesn't cover the DID amount + fee, adds MORE wallet-owned coins (largest-first) spent alongside it
+ * with no conditions of their own (#179: fragmented-wallet funding works the same as an ordinary
+ * multi-coin Chia send — the bundle balances inputs vs outputs as a whole, not per coin). A wallet
+ * whose combined XCH still falls short throws `NO_SUITABLE_COIN`.
  *
  * DID discovery model (mirrors the NFT lineage reconstruction in `nfts.ts`):
  *   - A DID is a singleton whose OUTER coin puzzle hash is the full singleton/DID-layer puzzle — NOT
@@ -208,11 +211,15 @@ const DID_AMOUNT = 1n;
 /**
  * Prepare (build, don't sign/broadcast) the CREATION of one new "simple" DID owned by this wallet
  * (no recovery list, `numVerificationsRequired = 1`) — capability parity for identity creation; a
- * DID with a real recovery list is a follow-up if a use case needs it. Funded from a SINGLE
- * wallet-owned XCH coin large enough to cover the DID amount (1 mojo) plus the fee — `Clvm.
- * createEveDid` needs that coin's id up front, so the multi-coin `Spends` auto-selection used
- * elsewhere in this wallet does not apply. Throws `NO_XCH_COINS` when the wallet holds none, or
- * `NO_SUITABLE_COIN` when no single coin covers the amount + fee (a known v1 scope limit).
+ * DID with a real recovery list is a follow-up if a use case needs it. `Clvm.createEveDid` needs a
+ * SINGLE parent coin id up front (the launcher's id is derived from it), so exactly one selected
+ * coin — the largest, the "primary" — creates the launcher; when that alone doesn't cover the DID
+ * amount (1 mojo) plus the fee, ADDITIONAL wallet-owned coins are selected (largest-first) and
+ * spent alongside it with no conditions of their own (#179: fragmented-wallet funding). Chia
+ * balances inputs vs outputs across the WHOLE spend bundle, not per-coin, so the extra coins'
+ * value simply joins the primary's change/fee — the same pattern ordinary multi-coin Chia sends
+ * use. Throws `NO_XCH_COINS` when the wallet holds no XCH at all, or `NO_SUITABLE_COIN` when even
+ * every coin combined falls short of the amount + fee.
  */
 export async function prepareDidCreate(
   chia: DidWasm,
@@ -227,37 +234,56 @@ export async function prepareDidCreate(
   if (xchCoins.length === 0) throw new Error('NO_XCH_COINS: the wallet has no XCH to fund the DID');
 
   const needed = DID_AMOUNT + fee;
-  const funding = [...xchCoins].sort((a, b) => (a.amount < b.amount ? 1 : a.amount > b.amount ? -1 : 0)).find((c) => c.amount >= needed);
-  if (!funding) throw new Error('NO_SUITABLE_COIN: no single coin covers the DID amount plus fee');
-  const fundingPhHex = asHex(chia, funding.puzzleHash);
-  const key = keyByPuzzleHash.get(fundingPhHex);
-  if (!key) throw new Error('MISSING_KEY: the funding coin is not owned by this wallet');
+  // Greedy largest-first selection, spanning as many coins as it takes to reach `needed` (#179).
+  const sorted = [...xchCoins].sort((a, b) => (a.amount < b.amount ? 1 : a.amount > b.amount ? -1 : 0));
+  const selected: ChainCoin[] = [];
+  let total = 0n;
+  for (const c of sorted) {
+    if (total >= needed) break;
+    selected.push(c);
+    total += c.amount;
+  }
+  if (total < needed) throw new Error('NO_SUITABLE_COIN: even combining every coin at this address, the total XCH is less than the DID amount plus fee');
+
+  const [primary, ...extra] = selected;
+  const primaryPhHex = asHex(chia, primary.puzzleHash);
+  const primaryKey = keyByPuzzleHash.get(primaryPhHex);
+  if (!primaryKey) throw new Error('MISSING_KEY: the funding coin is not owned by this wallet');
 
   const clvm = new chia.Clvm();
-  const created = clvm.createEveDid(funding.coinId(), funding.puzzleHash);
+  const created = clvm.createEveDid(primary.coinId(), primary.puzzleHash);
 
-  const changeAmount = funding.amount - needed;
+  const changeAmount = total - needed;
   const parentConditions: unknown[] = [...created.parentConditions];
-  if (changeAmount > 0n) parentConditions.push(clvm.createCoin(funding.puzzleHash, changeAmount));
+  if (changeAmount > 0n) parentConditions.push(clvm.createCoin(primary.puzzleHash, changeAmount));
   if (fee > 0n) parentConditions.push(clvm.reserveFee(fee));
-  clvm.spendStandardCoin(funding, key.pk, clvm.delegatedSpend(parentConditions));
+  clvm.spendStandardCoin(primary, primaryKey.pk, clvm.delegatedSpend(parentConditions));
+
+  // Any coins beyond the primary are spent bare (no conditions) — their value folds into the
+  // primary's change/fee at the whole-bundle level; consensus checks totals, not per-coin balance.
+  for (const c of extra) {
+    const k = keyByPuzzleHash.get(asHex(chia, c.puzzleHash));
+    if (!k) throw new Error('MISSING_KEY: a funding coin is not owned by this wallet');
+    clvm.spendStandardCoin(c, k.pk, clvm.delegatedSpend([]));
+  }
 
   // Commit the eve DID's real (non-eve) lineage, re-committing to the same owner (hinted for discovery).
   clvm.spendDid(
     created.did,
     clvm.standardSpend(
-      key.pk,
-      clvm.delegatedSpend([clvm.createCoin(created.did.info.innerPuzzleHash(), DID_AMOUNT, clvm.alloc([funding.puzzleHash]))]),
+      primaryKey.pk,
+      clvm.delegatedSpend([clvm.createCoin(created.did.info.innerPuzzleHash(), DID_AMOUNT, clvm.alloc([primary.puzzleHash]))]),
     ),
   );
 
   const coinSpends = clvm.coinSpends();
   const launcherId = asHex(chia, created.did.info.launcherId);
+  const secretKeys = [primaryKey.sk, ...extra.map((c) => keyByPuzzleHash.get(asHex(chia, c.puzzleHash))!.sk)];
   return {
     coinSpends,
-    secretKeys: [key.sk],
+    secretKeys,
     launcherId,
-    summary: { launcherId, p2PuzzleHashHex: fundingPhHex, fee: fee.toString(), coinCount: coinSpends.length },
+    summary: { launcherId, p2PuzzleHashHex: primaryPhHex, fee: fee.toString(), coinCount: coinSpends.length },
   };
 }
 

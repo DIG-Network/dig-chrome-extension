@@ -512,8 +512,17 @@ export class Vault {
           return { success: false, code: 'BAD_REQUEST', message: `unknown vault op` };
       }
     } catch (e) {
-      // Never leak internals; map keystore errors to their code, everything else to a generic code.
+      // Never leak internals — BUT don't collapse a domain-specific throw to a generic code either
+      // (#179: this used to swallow dids.ts/nfts.ts's `NO_XCH_COINS`/`NO_SUITABLE_COIN` etc, so the
+      // UI could never tell a funding problem from any other failure). Domain code throughout this
+      // vault (dids.ts, nfts.ts, sendFlow.ts, …) follows a `CODE: message` convention on a plain
+      // `Error` — extract that leading code (same convention already used locally by
+      // `signDappSpend`/`signMessage`'s `msg.startsWith('MISSING_KEY')`) before falling back to a
+      // generic `VAULT_ERROR` for a throw that carries no such code.
       if (e instanceof KeystoreError) return { success: false, code: e.code, message: e.message };
+      const msg = e instanceof Error ? e.message : undefined;
+      const codeMatch = msg ? /^([A-Z][A-Z0-9_]*):/.exec(msg) : null;
+      if (codeMatch) return { success: false, code: codeMatch[1], message: msg };
       return { success: false, code: 'VAULT_ERROR', message: 'vault operation failed' };
     }
   }

@@ -641,7 +641,9 @@ describe('Vault clawback ops (#152)', () => {
     };
     const res = await v.handle({ op: 'prepareClawbackAction', activeIndex: 0, direction: 'reclaim', clawbackInfo: bogus }, { ...deps, chia, chain });
     expect(res.success).toBe(false);
-    expect(res.code).toBe('VAULT_ERROR');
+    // #179: `handle()` now surfaces the domain-specific code instead of collapsing every throw to
+    // the generic `VAULT_ERROR` — this test's own name always said `NO_CLAWBACK_COIN`.
+    expect(res.code).toBe('NO_CLAWBACK_COIN');
   });
 
   it('prepareClawbackAction (claim) fails when this wallet does not own the receiver address', async () => {
@@ -655,7 +657,8 @@ describe('Vault clawback ops (#152)', () => {
       { ...deps, chia, chain },
     );
     expect(res.success).toBe(false);
-    expect(res.code).toBe('VAULT_ERROR');
+    // #179: surfaces the real `MISSING_KEY` code rather than the generic `VAULT_ERROR`.
+    expect(res.code).toBe('MISSING_KEY');
   });
 });
 
