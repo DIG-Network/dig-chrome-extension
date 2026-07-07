@@ -289,3 +289,22 @@ and passing the result into a different one's `Action.send` would silently produ
 output. This is why `offscreen/clawback.ts`'s `clawbackDestination()` returns a `buildMemos(clvm)`
 CALLBACK rather than a pre-built memo Program — `send.ts`'s `buildXchSend` invokes it with its OWN
 internal `clvm`, right before finalizing.
+
+## `Vault.handle()`'s catch-all silently swallowed domain error codes (#179 root cause)
+
+`vault.ts`'s `handle()` wraps every op in one `try { switch(...) } catch (e) { ... }`. The catch ONLY
+special-cased `KeystoreError` (`return { code: e.code, ... }`); every OTHER thrown `Error` — including
+the `CODE: message` convention used throughout `dids.ts`/`nfts.ts`/`sendFlow.ts` (`NO_XCH_COINS`,
+`NO_SUITABLE_COIN`, `MISSING_KEY`, …) — fell through to a hardcoded generic `{ code: 'VAULT_ERROR',
+message: 'vault operation failed' }`, discarding the real cause before it ever reached the UI. The fix
+generalizes the catch to regex-extract a leading `CODE:` prefix from ANY thrown `Error.message` (the
+same convention two OTHER call sites — `signDappSpend`/`signMessage` — already handled locally with
+`msg.startsWith('MISSING_KEY')`), falling back to `VAULT_ERROR` only for a throw that carries no code
+at all. **The regression test that should have caught this originally asserted the WRONG thing** —
+`didVault.test.ts`'s `"prepareDidCreate fails NO_XCH_COINS..."` test only checked
+`expect(res.code).not.toBe('NO_PENDING')`, which the generic `VAULT_ERROR` also satisfies; a test
+whose name promises a specific code must assert that exact code, not merely "not some other code".
+Any future vault op that throws a new domain code gets it surfaced automatically — no per-op catch
+needed — but a caller-side UI still has to explicitly branch on the code to show a specific message
+(the generic surfacing alone does not localize/word it); mapping it to copy is done in the feature's
+own component (e.g. `CreateDid.tsx`'s `didCreateErrorMessage`).

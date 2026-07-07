@@ -1940,10 +1940,15 @@ mounts the create or transfer form.
 
 - **No `Action`/`Spends` driver support for DIDs.** Unlike NFTs/CATs, `chia-wallet-sdk-wasm` has no
   `Action.mintDid`/`Spends.addDid` — a DID is built from the lower-level `Clvm.createEveDid(
-  parentCoinId, p2PuzzleHash)` / `Clvm.spendDid(did, innerSpend)` primitives directly, funded from a
-  SINGLE wallet-owned XCH coin (the launcher's parent coin id must be known before the spend is built,
-  so the driver's multi-coin auto-selection does not apply). A wallet whose largest coin cannot cover
-  the DID amount (1 mojo) plus the fee fails `NO_SUITABLE_COIN`; multi-coin funding is a follow-up.
+  parentCoinId, p2PuzzleHash)` / `Clvm.spendDid(did, innerSpend)` primitives directly. `createEveDid`
+  needs a SINGLE parent coin id up front (the launcher's id is derived from it), so the wallet's
+  LARGEST owned coin is always the "primary" — the one that creates the launcher. **Multi-coin
+  funding (#179):** when the primary alone doesn't cover the DID amount (1 mojo) plus the fee,
+  `prepareDidCreate` selects ADDITIONAL wallet-owned coins (largest-first) and spends them alongside
+  the primary with no conditions of their own — their value folds into the primary's change/fee
+  because Chia balances a spend bundle's inputs vs outputs as a WHOLE, not per coin (the same pattern
+  an ordinary multi-coin Chia send uses). Only when every coin at the active index combined still
+  falls short does it fail `NO_SUITABLE_COIN`; a wallet with no XCH at all fails `NO_XCH_COINS`.
 - **Discovery model.** A DID is a singleton whose OUTER coin puzzle hash is the DID-layer puzzle — NOT
   the wallet's inner (p2/standard) puzzle hash — so it is NOT found by a puzzle-hash scan. Every DID
   spend (create or transfer) hints the owner's inner p2 puzzle hash via the create-coin memo, so the
@@ -1958,15 +1963,25 @@ mounts the create or transfer form.
   by launcher id. `profileName` decodes the DID's on-chain `metadata` atom as UTF-8; a nil/non-string
   metadata (a freshly created DID, or a foreign DID never profile-updated) decodes to `null`.
 - **CREATE** (`prepareDidCreate`, no broadcast): builds one new "simple" DID (no recovery list,
-  `numVerificationsRequired = 1`) owned by the wallet. `Clvm.createEveDid(fundingCoin.coinId(),
-  fundingCoin.puzzleHash)` returns the eve `Did` plus the `parentConditions` the funding coin's spend
-  must carry (the launcher creation + its binding announcement); the funding coin is spent directly via
+  `numVerificationsRequired = 1`) owned by the wallet. `Clvm.createEveDid(primaryCoin.coinId(),
+  primaryCoin.puzzleHash)` returns the eve `Did` plus the `parentConditions` the primary coin's spend
+  must carry (the launcher creation + its binding announcement); the primary coin is spent directly via
   `Clvm.spendStandardCoin` (bypassing the `Spends`/`FinishedSpends` driver, which has no DID action).
-  The eve DID is then spent once via `Clvm.spendDid` to commit its real (non-eve) lineage, re-committing
-  to the same owner. The unsigned coin spends are held under a pending id with the decoded,
-  tamper-resistant summary `{ launcherId, p2PuzzleHashHex, fee, coinCount }` and the new `launcherId`. A
-  wallet with no XCH is rejected `NO_XCH_COINS`; a wallet with no single coin covering the amount + fee
-  is rejected `NO_SUITABLE_COIN`. A DID with a real recovery list is a follow-up if a use case needs it.
+  When the primary alone doesn't cover the amount + fee, additional wallet-owned coins are spent
+  alongside it with an EMPTY delegated spend (see multi-coin funding, above). The eve DID is then spent
+  once via `Clvm.spendDid` to commit its real (non-eve) lineage, re-committing to the same owner. The
+  unsigned coin spends are held under a pending id with the decoded, tamper-resistant summary
+  `{ launcherId, p2PuzzleHashHex, fee, coinCount }` and the new `launcherId`. A wallet with no XCH is
+  rejected `NO_XCH_COINS`; a wallet whose combined XCH (every coin at the active index) still falls
+  short of the amount + fee is rejected `NO_SUITABLE_COIN`. A DID with a real recovery list is a
+  follow-up if a use case needs it.
+  - **Error surfacing (#179).** The vault's `handle()` dispatcher maps ANY domain throw following the
+    `CODE: message` convention (as `dids.ts`, `nfts.ts`, and sibling engines use) to `{ success: false,
+    code, message }` — not just `KeystoreError` instances — so a caller always gets the SPECIFIC code
+    a throw carries, never a generic `VAULT_ERROR` fallback. The Identity "Create DID" UI renders a
+    distinct, actionable message per code (`NO_XCH_COINS` names the active derivation index;
+    `NO_SUITABLE_COIN` says funds are insufficient even combined; any other/unexpected code shows the
+    real underlying message) — never a generic "try again".
 - **CONFIRM CREATE** (`confirmDidCreate`): signs + broadcasts the held create — reusing the vault's
   `confirmSend` broadcast path (the ONLY place a create is pushed); confirmation is polled via the
   shared `sendStatus`. Mainnet-only.
