@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.54.0] - 2026-07-07
+
+### Features
+- **home:** Open a chia:// address or DIG URN from the home screen (#172) (#77)
+
 ## [1.53.0] - 2026-07-07
 
 ### Features
