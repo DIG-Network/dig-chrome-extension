@@ -250,6 +250,12 @@ export const zhTW: Record<string, string> = {
   'resolver.node.label': '自訂節點',
   'resolver.node.placeholder': 'dig.local 或 host:port',
   'resolver.node.save': '儲存',
+  'resolver.digdns.label': '本機 .dig 解析',
+  'resolver.digdns.loading': '正在檢查…',
+  'resolver.digdns.status.unknown': '正在檢查…',
+  'resolver.digdns.status.direct': '直連',
+  'resolver.digdns.status.proxy': '正在使用代理備援',
+  'resolver.digdns.status.unavailable': '未偵測到',
 
   // ── shield ──
   'shield.title': 'DIG 護盾',

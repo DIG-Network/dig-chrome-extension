@@ -94,6 +94,11 @@ import { DIG_ASSET_ID } from '@/lib/links';
 // dig-node install prompt + "dig-node required" error mapping (universal installer link).
 import { digNodeInstallPrompt, isDigNodeRequiredError } from '@/lib/dig-node-status';
 
+// dig-dns Path-B proxy fallback (#175, Component C of #174): the shared `.dig`-resolution
+// availability signal + engage/disengage decision layer. Chrome-free (fetch/chrome.proxy/clock
+// injected below) so the whole state machine is unit-tested under vitest (src/lib/dig-dns.test.ts).
+import { createDigDnsAvailabilityController, isDotDigNavigationFailure, shouldRefreshDigDnsSnapshot } from '@/lib/dig-dns';
+
 // Shared dig-node host config (one parser/default for the server.host key) + the local-node
 // resolution order (dig.local preferred, localhost:port fallback) and reachability probe.
 import {
@@ -236,6 +241,33 @@ try {
     }
   });
 } catch { /* storage.onChanged unavailable in some contexts */ }
+
+// ─── dig-dns Path-B proxy fallback (#175, Component C of #174) ────────────────────────────────
+// dig-dns is a SEPARATE OS service (unrelated to the chia:// read path above) that resolves plain
+// `http://<label>.dig/` URLs a user types/clicks. It gives the machine two independent ways to
+// route `.dig` names: OS split-DNS (Path A) and a chrome.proxy PAC file (Path B). This controller
+// is the ONE shared availability signal (`getDigDnsStatus`, SPEC.md §8.5) — it probes dig-dns's
+// loopback control endpoints on startup + a periodic alarm, and engages the PAC proxy the moment a
+// real `.dig` navigation fails, self-healing once Path A appears to have recovered. Every feature
+// (the Resolver tab's indicator, #172's open-by-URN dig-dns-detect branch) reads THIS signal —
+// nothing per-feature re-probes dig-dns on its own.
+const digDnsController = createDigDnsAvailabilityController({
+  chromeProxy: {
+    set: (config) => chrome.proxy.settings.set(config),
+    clear: (config) => chrome.proxy.settings.clear(config),
+  },
+});
+
+const DIG_DNS_PROBE_ALARM = 'dig-dns-probe';
+try {
+  chrome.alarms.create(DIG_DNS_PROBE_ALARM, { periodInMinutes: 2 });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm && alarm.name === DIG_DNS_PROBE_ALARM) digDnsController.probe();
+  });
+} catch { /* alarms unavailable (e.g. under test) */ }
+// Best-effort startup probe. A failure just means the signal stays 'unavailable' until the next
+// alarm tick or navigation error — never throws, never blocks SW startup.
+digDnsController.probe().catch(() => {});
 
 // Build a data: URL for the branded, white-theme chia:// error page. Uses the shared
 // error-page builder so the message is mapped to a friendly, non-leaking cause (internal
@@ -1933,6 +1965,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // dig-dns Path-B proxy fallback (#175): the ONE shared `.dig`-resolution availability signal.
+  // Serves the cached snapshot unless it is stale (no reader should wait up to the full 2-minute
+  // alarm interval for a fresh read — e.g. right after the user just started dig-dns).
+  if (message.action === ACTIONS.getDigDnsStatus) {
+    (async () => {
+      const cached = digDnsController.getSnapshot();
+      const snap = shouldRefreshDigDnsSnapshot(cached, Date.now())
+        ? await digDnsController.probe().catch(() => cached)
+        : cached;
+      sendResponse(snap);
+    })();
+    return true;
+  }
+
   // DIG Shields (#134): the dig-viewer records each resolved resource's inclusion-proof
   // verdict into the active tab's proof ledger so the popup's Shield action can list the
   // per-resource proofs. The verdict is the loader's — this never re-verifies.
@@ -2762,6 +2808,13 @@ chrome.webNavigation.onErrorOccurred.addListener(
         console.log('DIG Extension: Caught DNS error for dig.local, redirecting to content server');
         await redirectDigLocalToExtension(details.tabId, details.url);
       }
+    }
+
+    // dig-dns Path-B proxy fallback (#175): a real `.dig` navigation could not reach its host —
+    // Path A (OS split-DNS) is not routing it right now. Engage the PAC proxy fallback if dig-dns
+    // itself is reachable (self-heals back to direct once dig-dns has stayed healthy for a while).
+    if (isDotDigNavigationFailure(details)) {
+      digDnsController.reportNavigationError().catch(() => {});
     }
     
     // Check if this is a protocol error for chia:// (Chrome redirecting to search)

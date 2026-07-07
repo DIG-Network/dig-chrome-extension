@@ -253,6 +253,12 @@ export const en: Record<string, string> = {
   'resolver.node.label': 'Custom node',
   'resolver.node.placeholder': 'dig.local or host:port',
   'resolver.node.save': 'Save',
+  'resolver.digdns.label': 'Local .dig resolution',
+  'resolver.digdns.loading': 'Checking…',
+  'resolver.digdns.status.unknown': 'Checking…',
+  'resolver.digdns.status.direct': 'Direct',
+  'resolver.digdns.status.proxy': 'Using proxy fallback',
+  'resolver.digdns.status.unavailable': 'Not detected',
 
   // ── shield ──
   'shield.title': 'DIG Shields',

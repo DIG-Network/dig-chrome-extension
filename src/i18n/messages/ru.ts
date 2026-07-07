@@ -250,6 +250,12 @@ export const ru: Record<string, string> = {
   'resolver.node.label': 'Собственный узел',
   'resolver.node.placeholder': 'dig.local или host:port',
   'resolver.node.save': 'Сохранить',
+  'resolver.digdns.label': 'Локальное разрешение .dig',
+  'resolver.digdns.loading': 'Проверка…',
+  'resolver.digdns.status.unknown': 'Проверка…',
+  'resolver.digdns.status.direct': 'Напрямую',
+  'resolver.digdns.status.proxy': 'Используется резервный прокси',
+  'resolver.digdns.status.unavailable': 'Не обнаружено',
 
   // ── shield ──
   'shield.title': 'Щиты DIG',

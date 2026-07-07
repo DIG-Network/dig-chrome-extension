@@ -250,6 +250,12 @@ export const vi: Record<string, string> = {
   'resolver.node.label': 'Node tùy chỉnh',
   'resolver.node.placeholder': 'dig.local hoặc host:port',
   'resolver.node.save': 'Lưu',
+  'resolver.digdns.label': 'Phân giải .dig cục bộ',
+  'resolver.digdns.loading': 'Đang kiểm tra…',
+  'resolver.digdns.status.unknown': 'Đang kiểm tra…',
+  'resolver.digdns.status.direct': 'Trực tiếp',
+  'resolver.digdns.status.proxy': 'Đang dùng proxy dự phòng',
+  'resolver.digdns.status.unavailable': 'Không phát hiện',
 
   // ── shield ──
   'shield.title': 'Lá chắn DIG',

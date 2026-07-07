@@ -250,6 +250,12 @@ export const de: Record<string, string> = {
   'resolver.node.label': 'Benutzerdefinierter Node',
   'resolver.node.placeholder': 'dig.local oder Host:Port',
   'resolver.node.save': 'Speichern',
+  'resolver.digdns.label': 'Lokale .dig-Auflösung',
+  'resolver.digdns.loading': 'Wird überprüft…',
+  'resolver.digdns.status.unknown': 'Wird überprüft…',
+  'resolver.digdns.status.direct': 'Direkt',
+  'resolver.digdns.status.proxy': 'Proxy-Fallback aktiv',
+  'resolver.digdns.status.unavailable': 'Nicht erkannt',
 
   // ── shield ──
   'shield.title': 'DIG-Schilde',

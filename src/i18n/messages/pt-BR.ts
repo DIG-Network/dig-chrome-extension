@@ -250,6 +250,12 @@ export const ptBR: Record<string, string> = {
   'resolver.node.label': 'Nó personalizado',
   'resolver.node.placeholder': 'dig.local ou host:porta',
   'resolver.node.save': 'Salvar',
+  'resolver.digdns.label': 'Resolução .dig local',
+  'resolver.digdns.loading': 'Verificando…',
+  'resolver.digdns.status.unknown': 'Verificando…',
+  'resolver.digdns.status.direct': 'Direto',
+  'resolver.digdns.status.proxy': 'Usando proxy alternativo',
+  'resolver.digdns.status.unavailable': 'Não detectado',
 
   // ── shield ──
   'shield.title': 'Escudos DIG',
