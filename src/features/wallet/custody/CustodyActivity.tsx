@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import { FourState } from '@/components/FourState';
 import { ExternalLink } from '@/components/ExternalLink';
-import { useStorageValue } from '@/lib/useStorageValue';
 import { useGetCustodyActivityQuery } from '@/features/wallet/custodyApi';
+import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { activityRows, type ActivityRow } from '@/features/wallet/custody/activityRows';
 
 const ICON: Record<ActivityRow['kind'], string> = { sent: '↑', received: '⇩', trade: '⇄' };
@@ -19,9 +19,11 @@ const SENTENCE_ID: Record<ActivityRow['kind'], string> = {
  * (counterparty, height, coin id, SpaceScan). Read-only; cached-first via the SW cache.
  */
 export function CustodyActivity() {
-  const [watchedCats] = useStorageValue<unknown>('wallet.watchedCats', []);
   const activity = useGetCustodyActivityQuery();
-  const rows = activityRows(activity.data?.events ?? [], watchedCats);
+  // Same dexie registry the Assets list resolves against (#151) — a held CAT's real ticker shows in
+  // the ledger instead of the generic 'CAT' fallback.
+  const registry = useGetCatRegistryQuery();
+  const rows = activityRows(activity.data?.events ?? [], registry.data);
   const [openId, setOpenId] = useState<string | null>(null);
 
   return (

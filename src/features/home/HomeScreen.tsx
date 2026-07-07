@@ -204,10 +204,12 @@ function StatusWidget() {
 function ActivityPeek() {
   const dispatch = useAppDispatch();
   const lock = useGetLockStateQuery();
-  const [watchedCats] = useStorageValue<unknown>('wallet.watchedCats', []);
   const unlocked = lock.data?.lockState === 'unlocked';
   const activity = useGetCustodyActivityQuery(undefined, { skip: !unlocked });
-  const rows = unlocked ? activityRows(activity.data?.events ?? [], watchedCats).slice(0, 2) : [];
+  // Same dexie registry the Assets list resolves against (#151), so a CAT peeked here shows its real
+  // ticker too, not a generic fallback — RTK Query dedupes this against BalanceWidget's own subscription.
+  const registry = useGetCatRegistryQuery(undefined, { skip: !unlocked });
+  const rows = unlocked ? activityRows(activity.data?.events ?? [], registry.data).slice(0, 2) : [];
 
   return (
     <button
