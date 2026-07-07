@@ -597,4 +597,10 @@ export const hi: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'हटाएँ',
   'wallet.switcher.active.badge': 'सक्रिय',
   'wallet.switcher.lock': 'वॉलेट लॉक करें',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': 'इंडेक्स {index}',
+  'wallet.index.prev': 'पिछला इंडेक्स',
+  'wallet.index.next': 'अगला इंडेक्स',
+  'wallet.index.jump': 'इंडेक्स पर जाएं',
+  'wallet.index.error': 'इंडेक्स नहीं बदला जा सका। कृपया फिर से प्रयास करें।',
 };

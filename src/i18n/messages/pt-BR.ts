@@ -597,4 +597,10 @@ export const ptBR: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Remover',
   'wallet.switcher.active.badge': 'Ativa',
   'wallet.switcher.lock': 'Bloquear carteira',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': 'Índice {index}',
+  'wallet.index.prev': 'Índice anterior',
+  'wallet.index.next': 'Próximo índice',
+  'wallet.index.jump': 'Ir para o índice',
+  'wallet.index.error': 'Não foi possível trocar de índice. Tente novamente.',
 };

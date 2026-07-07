@@ -597,4 +597,10 @@ export const zhTW: Record<string, string> = {
   'wallet.switcher.remove.confirm': '移除',
   'wallet.switcher.active.badge': '使用中',
   'wallet.switcher.lock': '鎖定錢包',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': '索引 {index}',
+  'wallet.index.prev': '上一個索引',
+  'wallet.index.next': '下一個索引',
+  'wallet.index.jump': '跳至索引',
+  'wallet.index.error': '無法切換索引，請重試。',
 };

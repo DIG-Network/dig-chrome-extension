@@ -71,25 +71,28 @@ function filterSelected<T extends { coin?: { coinId(): Uint8Array }; coinId?(): 
   return kept;
 }
 
-/** Derive the HD keyring (both schemes to `count`): standard puzzle hash → synthetic keys. */
+/**
+ * Derive the HD keyring for ONE derivation index (§165 — the single active-index model): its
+ * standard puzzle hash → synthetic key, for each scheme (both unhardened + hardened by default —
+ * funds may sit on either scheme at that index). This is the ONLY set of addresses any read/send
+ * op derives; there is no multi-index sweep here or anywhere downstream of it.
+ */
 export function buildKeyring(
   chia: SendFlowWasm,
   seed: Uint8Array,
-  opts: { schemes?: Scheme[]; count: number },
+  opts: { schemes?: Scheme[]; index: number },
 ): KeyringEntry[] {
   const schemes = opts.schemes ?? (['unhardened', 'hardened'] as Scheme[]);
   const master = chia.SecretKey.fromSeed(seed);
   try {
     const out: KeyringEntry[] = [];
     for (const scheme of schemes) {
-      for (let i = 0; i < opts.count; i++) {
-        const path = [...WALLET_PATH_PREFIX, i];
-        const account = scheme === 'hardened' ? master.deriveHardenedPath(path) : master.deriveUnhardenedPath(path);
-        const sk = account.deriveSynthetic();
-        account.free?.();
-        const pk = sk.publicKey();
-        out.push({ puzzleHashHex: strip0x(chia.toHex(chia.standardPuzzleHash(pk))), pk, sk });
-      }
+      const path = [...WALLET_PATH_PREFIX, opts.index];
+      const account = scheme === 'hardened' ? master.deriveHardenedPath(path) : master.deriveUnhardenedPath(path);
+      const sk = account.deriveSynthetic();
+      account.free?.();
+      const pk = sk.publicKey();
+      out.push({ puzzleHashHex: strip0x(chia.toHex(chia.standardPuzzleHash(pk))), pk, sk });
     }
     return out;
   } finally {
@@ -105,15 +108,16 @@ export interface PreparedSend {
 }
 
 /**
- * Prepare an XCH send: derive the keyring, fetch the wallet's unspent coins, decode the recipient,
- * and build the spend + summary. Does NOT sign or broadcast. Change returns to index-0 unhardened.
+ * Prepare an XCH send: derive the ACTIVE index's keyring, fetch the wallet's unspent coins at it,
+ * decode the recipient, and build the spend + summary. Does NOT sign or broadcast. Change returns
+ * to the active index's unhardened address.
  */
 export async function prepareXchSend(
   chia: SendFlowWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; recipient: string; amount: bigint; fee: bigint; gapLimit?: number; selectedCoinIds?: string[] },
+  opts: { seed: Uint8Array; recipient: string; amount: bigint; fee: bigint; activeIndex?: number; selectedCoinIds?: string[] },
 ): Promise<PreparedSend> {
-  const keyring = buildKeyring(chia, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map<string, KeyPair>(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
   const allCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
   const coins = filterSelected(chia, allCoins, opts.selectedCoinIds, (c) => c.coinId());
@@ -179,17 +183,17 @@ interface CatSpends {
 }
 
 /**
- * Prepare a CAT send: derive the keyring, reconstruct the wallet's CATs of `assetId`, add XCH coins
- * to cover the fee, and build via the driver (`Action.send(Id.existing(assetId), …)`). Change/coin
- * selection is the driver's; the summary echoes the requested transfer (the driver + simulator
- * guarantee the amounts). Does NOT sign or broadcast.
+ * Prepare a CAT send: derive the ACTIVE index's keyring, reconstruct the wallet's CATs of `assetId`
+ * at it, add XCH coins to cover the fee, and build via the driver (`Action.send(Id.existing(assetId),
+ * …)`). Change/coin selection is the driver's; the summary echoes the requested transfer (the driver
+ * + simulator guarantee the amounts). Does NOT sign or broadcast.
  */
 export async function prepareCatSend(
   chia: SendFlowWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; assetId: string; recipient: string; amount: bigint; fee: bigint; gapLimit?: number; selectedCoinIds?: string[] },
+  opts: { seed: Uint8Array; assetId: string; recipient: string; amount: bigint; fee: bigint; activeIndex?: number; selectedCoinIds?: string[] },
 ): Promise<PreparedSend> {
-  const keyring = buildKeyring(chia, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map<string, KeyPair>(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
   const allCats = await reconstructCats(chia, chain, keyring, opts.assetId);
   if (allCats.length === 0) throw new Error('NO_CAT_COINS: the wallet holds none of this token');

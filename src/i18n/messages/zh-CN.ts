@@ -597,4 +597,10 @@ export const zhCN: Record<string, string> = {
   'wallet.switcher.remove.confirm': '删除',
   'wallet.switcher.active.badge': '当前使用',
   'wallet.switcher.lock': '锁定钱包',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': '索引 {index}',
+  'wallet.index.prev': '上一个索引',
+  'wallet.index.next': '下一个索引',
+  'wallet.index.jump': '跳转到索引',
+  'wallet.index.error': '无法切换索引，请重试。',
 };

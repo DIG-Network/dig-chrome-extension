@@ -25,6 +25,13 @@ export const WALLETS_KEY = 'wallet.registry';
 /** Maximum label length (a friendly cap for a display name; longer is silently clamped). */
 export const MAX_LABEL_LEN = 40;
 
+/**
+ * Upper bound on a persisted active derivation index (#165) — a sanity clamp, not a scan gap limit
+ * (the single-active-index model derives exactly ONE index at a time, never a range). Generous
+ * enough for any realistic HD usage while rejecting nonsense input (e.g. `Number.MAX_SAFE_INTEGER`).
+ */
+export const MAX_DERIVATION_INDEX = 1_000_000;
+
 /** One wallet in the registry: identity + display label + its own encrypted record (SW-only). */
 export interface WalletEntry {
   /** Stable opaque id (a uuid) — the switch/rename/remove key and the vault's per-wallet key slot. */
@@ -35,6 +42,11 @@ export interface WalletEntry {
   record: Digwx1Record;
   /** Creation timestamp (ms). */
   createdAt: number;
+  /**
+   * The wallet's single ACTIVE HD derivation index (#165 — one index at a time, prev/next to
+   * switch). Default 0. Persisted per wallet so switching wallets restores each one's own place.
+   */
+  activeIndex: number;
 }
 
 /** Record-FREE wallet metadata for the UI switcher — the encrypted record is deliberately absent. */
@@ -44,6 +56,8 @@ export interface WalletMeta {
   createdAt: number;
   /** True for the currently-active wallet. */
   active: boolean;
+  /** This wallet's active HD derivation index (#165). */
+  activeIndex: number;
 }
 
 /** The normalized registry snapshot the SW persists: the entries, the active id, and the mirror. */
@@ -96,6 +110,18 @@ export function renameWallet(wallets: WalletEntry[], id: string, label: string):
   return wallets.map((w) => (w.id === id ? { ...w, label } : w));
 }
 
+/** Clamp a candidate derivation index into the valid non-negative bounded range (#165). */
+export function clampDerivationIndex(index: number): number {
+  if (!Number.isFinite(index)) return 0;
+  return Math.min(MAX_DERIVATION_INDEX, Math.max(0, Math.floor(index)));
+}
+
+/** Set one wallet's active HD derivation index immutably (#165 — clamped; other wallets untouched). */
+export function setWalletActiveIndex(wallets: WalletEntry[], id: string, index: number): WalletEntry[] {
+  const clamped = clampDerivationIndex(index);
+  return wallets.map((w) => (w.id === id ? { ...w, activeIndex: clamped } : w));
+}
+
 /** Remove one wallet immutably. */
 export function removeWallet(wallets: WalletEntry[], id: string): WalletEntry[] {
   return wallets.filter((w) => w.id !== id);
@@ -114,7 +140,13 @@ export function nextActiveId(wallets: WalletEntry[], preferred: string | null): 
 
 /** Project the registry to record-FREE metadata for the UI, flagging the active wallet. */
 export function toMeta(wallets: WalletEntry[], activeId: string | null): WalletMeta[] {
-  return wallets.map((w) => ({ id: w.id, label: w.label, createdAt: w.createdAt, active: w.id === activeId }));
+  return wallets.map((w) => ({
+    id: w.id,
+    label: w.label,
+    createdAt: w.createdAt,
+    active: w.id === activeId,
+    activeIndex: w.activeIndex ?? 0,
+  }));
 }
 
 /**
@@ -130,8 +162,10 @@ export function migrateRegistry(input: MigrateInput): RegistryState {
   const { legacyKeystore, wallets, activeId, now, genId } = input;
 
   if (Array.isArray(wallets) && wallets.length > 0) {
-    const active = nextActiveId(wallets, activeId);
-    return { wallets, activeId: active, keystore: activeRecord(wallets, active) };
+    // Normalize `activeIndex` on every entry — a registry persisted before #165 has none yet.
+    const normalized = wallets.map((w) => ({ ...w, activeIndex: clampDerivationIndex(w.activeIndex ?? 0) }));
+    const active = nextActiveId(normalized, activeId);
+    return { wallets: normalized, activeId: active, keystore: activeRecord(normalized, active) };
   }
 
   if (legacyKeystore) {
@@ -141,6 +175,7 @@ export function migrateRegistry(input: MigrateInput): RegistryState {
       label: normalizeLabel(legacyKeystore.label, defaultLabel(1)),
       record: legacyKeystore,
       createdAt: typeof legacyKeystore.createdAt === 'number' ? legacyKeystore.createdAt : now,
+      activeIndex: 0,
     };
     return { wallets: [entry], activeId: id, keystore: legacyKeystore };
   }

@@ -46,6 +46,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'createWallet', 'importWallet', 'unlockWallet', 'lockWallet', 'revealPhrase', 'getLockState',
     // Multi-wallet switcher (#90): registry list + switch/rename/remove routed via handleCustodyAction:
     'listWallets', 'switchWallet', 'renameWallet', 'removeWallet',
+    // Single active derivation index (#165): navigate the active wallet's active HD derivation index:
+    'setActiveIndex',
     'getReceiveAddress', 'getCustodyBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity',
     'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade',
     // NFTs / Collectibles (#56): list + transfer routed to the offscreen vault:

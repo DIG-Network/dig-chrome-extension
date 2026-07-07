@@ -63,7 +63,8 @@ export interface DiscoveredCat {
 /** Tuning for the coinset read fan-out (bounded concurrency + retry). */
 export interface DiscoverOpts {
   seed: Uint8Array;
-  gapLimit?: number;
+  /** The single active HD derivation index to discover at (§165). Default 0. */
+  activeIndex?: number;
   /** Max concurrent coinset reads (default 4 — coinset degrades above this). */
   concurrency?: number;
   /** Extra retry attempts per flaky read (default 2). */
@@ -99,10 +100,10 @@ async function reconstructOwnedCat(
 }
 
 /**
- * Discover every CAT the wallet holds. Derives the HD keyring (both schemes to `gapLimit`), finds the
- * coins hinted to those inner puzzle hashes (coinset `get_coin_records_by_hints`), reconstructs each
- * via its parent spend, keeps those actually owned, and aggregates the held amount per TAIL. The
- * coinset fan-out is bounded + retried. Read-only.
+ * Discover every CAT the wallet holds AT THE ACTIVE INDEX (§165). Derives the HD keyring (both
+ * schemes, one index), finds the coins hinted to those inner puzzle hashes (coinset
+ * `get_coin_records_by_hints`), reconstructs each via its parent spend, keeps those actually owned,
+ * and aggregates the held amount per TAIL. The coinset fan-out is bounded + retried. Read-only.
  */
 export async function discoverCats(
   chia: CatDiscoveryWasm,
@@ -111,7 +112,7 @@ export async function discoverCats(
 ): Promise<DiscoveredCat[]> {
   if (!chain.coinsByHints) throw new Error('HINT_LOOKUP_UNAVAILABLE: the chain client cannot resolve hints');
   const retry = { retries: opts.retries ?? 2, ...(opts.sleep ? { sleep: opts.sleep } : {}) };
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));
   const coins = await withRetry(() => chain.coinsByHints!([...ownedPhs]), retry);
 

@@ -3,6 +3,45 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## Single active derivation index (#165) — a same-address split output must still get pairwise-distinct amounts, or duplicate CREATE_COINs collide
+
+Migrating `prepareSplit` (coin control, `src/offscreen/coins.ts`) off the retired multi-index
+gap-limit sweep removed the pool of distinct wallet addresses it used to hand one to each split
+piece (`keyring[i]` for `i` in `0..outputs`). Under the single-active-index model there are only 2
+addresses (unhardened + hardened at one index), so every split output now returns to the SAME
+address. The naive "N equal pieces, remainder on the last" amount scheme then ties: when the split
+amount divides evenly, ALL pieces get the identical amount, and `CREATE_COIN(same_ph, same_amount)`
+twice in one spend collides on-chain (coin id = `hash(parent, ph, amount)` — identical inputs
+produce identical, indistinguishable coin ids). The fix (`distinctSplitAmounts`) assigns
+`base, base+1, …, base+outputs-2` plus a strictly-larger final piece absorbing the remainder —
+algebraically provable that the final piece always exceeds the largest of the others whenever
+`base > 0`, so amounts are pairwise distinct with NO per-output address diversity needed at all.
+This also removes the old `SPLIT_TOO_MANY` ceiling (`outputs > keyring.length`) entirely — the
+constraint was never really about "how many addresses do we have", it was "how do we keep coin ids
+from colliding", and that's solvable with amounts alone.
+
+## `buildKeyring`'s output order matters for every caller that reads `keyring[0]` as "the change/self address"
+
+`sendFlow.ts`'s `buildKeyring` derives `[unhardened, hardened]` in that fixed order for the
+requested index. A dozen call sites across `coins.ts`/`sendFlow.ts`/`offers.ts` treat `keyring[0]`
+as THE self/change/destination address (never `keyring[1]`) — that convention survived the
+multi-index → single-index migration (#165) unchanged only because the scheme order in the array
+didn't change, just the count (was `2 × gapLimit` entries, now exactly 2). Any future change to
+`buildKeyring`'s scheme ordering would silently redirect change to the wrong scheme everywhere.
+
+## RTK Query object literals with an excess field are NOT caught by `vitest` — only `tsc --noEmit` catches them
+
+Several existing test files (`catDiscovery.test.ts`, `coinControlVault.test.ts`, `didVault.test.ts`,
+`nftMintVault.test.ts`, `nfts.test.ts`, `prepareSendRouting.test.ts`) called `buildKeyring(..., {
+count: N })` / passed `gapLimit: N` in a `VaultRequest` object literal — a shape from BEFORE the
+#165 rename. They kept passing at runtime (`vitest run` — plain JS, no type erasure at the call
+site) even after the rename removed those fields from the real type, because the extra/renamed
+field was simply ignored by the callee (which reads `opts.index`/`opts.activeIndex`, defaulting to
+0 when absent) — the tests were silently exercising ONLY the default-index path regardless of what
+value they thought they were passing. `npx tsc --noEmit` is the only thing that flags an excess
+object-literal property (`TS2353`); a mechanical rename across many call sites is not verified
+complete until typecheck is clean, not just "tests are green."
+
 ## chia-wallet-sdk-wasm's `RpcClient` has NO public JS constructor — `new RpcClient(url)` silently builds an unusable phantom instance (#148, P0: took down every wallet read)
 
 `chia-wallet-sdk-wasm`'s wasm-bindgen-generated `RpcClient` class (`chia_wallet_sdk_wasm.d.ts`/`_bg.js`)

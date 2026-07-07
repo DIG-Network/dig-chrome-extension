@@ -16,6 +16,7 @@ import { PortfolioHero } from '@/features/wallet/PortfolioHero';
 import { assetUsdValue, portfolioValue } from '@/features/wallet/portfolioValue';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { WalletSwitcher } from '@/features/wallet/custody/WalletSwitcher';
+import { IndexNavigator } from '@/features/wallet/custody/IndexNavigator';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
@@ -70,8 +71,9 @@ export function CustodyWallet() {
 
   return (
     <div data-testid="custody-wallet">
-      <div className="dig-toggle-row" style={{ marginBottom: 12 }}>
+      <div className="dig-toggle-row" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <WalletSwitcher />
+        <IndexNavigator />
       </div>
       <PrivacyNote />
 

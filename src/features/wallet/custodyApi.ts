@@ -30,6 +30,8 @@ export interface LockStateResult {
   lockState: LockState;
   activeWalletId?: string | null;
   unlockExpiry?: number | null;
+  /** The active wallet's active HD derivation index (#165 — the single active-index model). */
+  activeIndex?: number;
 }
 export interface CreateWalletResult {
   lockState: LockState;
@@ -75,6 +77,14 @@ export interface PreparedCoinOp {
  */
 const ACTIVE_WALLET_INVALIDATION = ['Wallets', 'LockState', 'Balances', 'Activity', 'Address', 'Collectibles', 'Coins'] as const;
 
+/**
+ * The cache tags to invalidate when the active HD derivation index changes (#165 — prev/next/jump).
+ * Same set as a wallet switch minus `Wallets` (the wallet identity itself is unchanged) — every
+ * index-scoped view (balances, activity, receive address, collectibles, coins) must re-read for the
+ * newly-active index. `LockState` is included because it carries `activeIndex` (§165 hydration).
+ */
+const ACTIVE_INDEX_INVALIDATION = ['LockState', 'Balances', 'Activity', 'Address', 'Collectibles', 'Coins'] as const;
+
 export const custodyApi = api.injectEndpoints({
   endpoints: (build) => ({
     getLockState: build.query<LockStateResult, void>({
@@ -118,6 +128,14 @@ export const custodyApi = api.injectEndpoints({
     removeWallet: build.mutation<WalletsMutationResult, { walletId: string }>({
       query: (arg) => ({ action: ACTIONS.removeWallet, ...arg }),
       invalidatesTags: ACTIVE_WALLET_INVALIDATION,
+    }),
+
+    // ── Single active derivation index (#165) ──
+    // Navigate the active wallet's active HD derivation index (prev/next/jump — the caller computes
+    // the absolute target index). Every index-scoped view re-reads for the newly-active index.
+    setActiveIndex: build.mutation<{ activeIndex: number }, { index: number }>({
+      query: (arg) => ({ action: ACTIONS.setActiveIndex, ...arg }),
+      invalidatesTags: ACTIVE_INDEX_INVALIDATION,
     }),
 
     unlockWallet: build.mutation<UnlockResult, { password: string }>({
@@ -211,6 +229,7 @@ export const {
   useSwitchWalletMutation,
   useRenameWalletMutation,
   useRemoveWalletMutation,
+  useSetActiveIndexMutation,
   useUnlockWalletMutation,
   useLockWalletMutation,
   useRevealPhraseMutation,

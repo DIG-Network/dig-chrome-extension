@@ -597,4 +597,10 @@ export const tr: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Kaldır',
   'wallet.switcher.active.badge': 'Etkin',
   'wallet.switcher.lock': 'Cüzdanı kilitle',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': 'Dizin {index}',
+  'wallet.index.prev': 'Önceki dizin',
+  'wallet.index.next': 'Sonraki dizin',
+  'wallet.index.jump': 'Dizine git',
+  'wallet.index.error': 'Dizin değiştirilemedi. Lütfen tekrar deneyin.',
 };

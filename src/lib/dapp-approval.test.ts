@@ -48,7 +48,6 @@ function makeManager({
     summonWindow: async () => { calls.summon++; },
     ...(assessOrigin ? { assessOrigin } : {}),
     randomId: () => `id-${++n}`,
-    gapLimit: 5,
   };
   return { m: new DappApprovalManager(deps), calls, deps };
 }
