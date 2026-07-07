@@ -285,6 +285,43 @@ timing anti-spam + screenshot + console/network capture, filing to `api.bugrepor
 a floating overlay: the component's floating launcher FAB is hidden (`.digbr-launcher { display:none }`)
 and the inline item opens the same panel by programmatically clicking the (still-mounted) launcher.
 
+### 2.4c Apps-tab personalization — reorder + hide/show (#164)
+
+The Apps tab layers a LOCAL, per-device, non-authoritative view on top of the server-owned catalog
+(§2.4): a custom display order + a hidden-app set, both keyed by app `slug`. The catalog itself is
+never mutated or re-fetched differently because of this state — it is a pure view TRANSFORM applied
+only in the success state, after the four-state branches (loading/error/empty/success) resolve.
+
+- **Storage.** `chrome.storage.local` key `apps.personalization` → `{ order: string[], hidden:
+  string[] }` (both arrays of `slug`). Read/written via the shared `useStorageValue` idiom (§18.4's
+  pattern), so it converges across the popup and `app.html` via `storage.onChanged` exactly like every
+  other durable client setting. Default (key absent) is `{ order: [], hidden: [] }` — catalog order,
+  nothing hidden.
+- **Reconciliation (catalog-churn safe).** On every read, `order`/`hidden` are reconciled against the
+  LIVE catalog, never persisted-and-trusted blindly: an id in `order`/`hidden` no longer present in the
+  catalog is dropped silently (no ghost entries, no crash); a catalog id present but absent from
+  `order` (a brand-new app, or one that predates the user ever reordering) is appended at the END, in
+  the catalog's own order, and defaults VISIBLE (absent from `hidden`). No migration step is ever
+  needed when explore.dig.net adds or retires a dApp.
+- **Reorder.** An "Edit" toggle (an icon-only control, `dig-iconbtn`, so the header row never risks
+  popup horizontal overflow — §6.6/#163 — regardless of a locale's translated string length) puts the
+  grid into edit mode: each tile becomes a native HTML5 drag source/drop target (pointer reorder) AND
+  gains keyboard "move up" / "move down" controls (`aria-label`led per app, `disabled` at the
+  respective edge) — reordering is NEVER mouse/drag-only. A completed move recomputes the full VISIBLE
+  id sequence and persists it verbatim as `order` (so the next read's reconciliation is a no-op for
+  every id that was already positioned). Each move is announced via a visually-hidden
+  `role="status" aria-live="polite"` region (`"{name} moved to position {position} of {total}"`) for
+  screen-reader users.
+- **Hide / show.** In edit mode each tile also gets a "hide" control, which adds the app's `slug` to
+  `hidden` (idempotent) and removes it from the main grid immediately. A "Show hidden (N)" disclosure
+  appears whenever `hidden` is non-empty; expanding it lists the hidden apps with an "Unhide" action
+  each, which removes the id from `hidden` (idempotent) — the app reappears in the grid at its prior
+  `order` position if it had one, else appended at the end.
+- **Pure core.** All of the above (parsing, the order/hidden reconciliation, the drag/keyboard move
+  math, hide/show) is implemented as pure functions with no DOM/`chrome.*` dependency
+  (`src/features/apps/personalization.ts`); the `usePersonalizedApps` hook is the thin
+  `chrome.storage.local` seam over it (mirrors the `contacts.ts`/`useContacts` split, §18.14).
+
 ---
 
 ## 3. Identifiers & terminology
