@@ -68,10 +68,6 @@ export const COINSET_BATCH = 300;
  */
 export const COINSET_TIMEOUT_MS = 12_000;
 
-/* c8 ignore start — production wasm RpcClient adapter: instantiated only in the offscreen document
-   at runtime (it fetches coinset.org). The pure scan logic that consumes this is unit-tested with a
-   fake ChainClient; the wasm client itself is exercised end-to-end, not in the jsdom harness. */
-
 /** The wasm coinset RpcClient surface this adapter uses. */
 interface WasmRpcClient {
   getCoinRecordsByPuzzleHashes(
@@ -100,7 +96,19 @@ interface WasmRpcClient {
 }
 export interface RpcCapableWasm extends ChiaWasm {
   fromHex(value: string): Uint8Array;
-  RpcClient: { new (coinsetUrl: string): WasmRpcClient };
+  /**
+   * The wasm-bindgen `RpcClient` class has NO public instance constructor — only the static
+   * factory `RpcClient.new(coinsetUrl)` (confirmed against the generated
+   * `chia_wallet_sdk_wasm.d.ts` / `_bg.js`: the class body defines no `constructor`, only
+   * `static new(coinsetUrl)`/`static mainnet()`/`static testnet11()`). Calling `new
+   * RpcClient(coinsetUrl)` does NOT throw — a JS class with no explicit constructor silently
+   * accepts and discards extra arguments — but produces a phantom instance whose internal
+   * `__wbg_ptr` was never wired up, so every method call on it dispatches into wasm with a null
+   * self-pointer and crashes with "null pointer passed to rust" (#148 P0 — this took down every
+   * wallet read uniformly: balances, activity, NFTs, DIDs, send). MUST always go through
+   * `RpcClient.new(...)`, never the `new` operator directly.
+   */
+  RpcClient: { new: (coinsetUrl: string) => WasmRpcClient };
 }
 
 /**
@@ -109,7 +117,9 @@ export interface RpcCapableWasm extends ChiaWasm {
  * personal balances < ~9000 XCH; larger balances would exceed `Number` precision — a known v1 limit.)
  */
 export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = DEFAULT_COINSET_URL, timeoutMs: number = COINSET_TIMEOUT_MS): ChainClient {
-  const rpc = new chia.RpcClient(coinsetUrl);
+  // MUST use the static factory (see the RpcCapableWasm.RpcClient doc comment, #148) — `new
+  // chia.RpcClient(coinsetUrl)` silently builds an unusable phantom client.
+  const rpc = chia.RpcClient.new(coinsetUrl);
   // Every coinset read is bounded by a per-request timeout so a dead/blocked/slow endpoint fails
   // fast (→ the SW serves the cached snapshot) instead of hanging the wallet forever.
   const t = <T>(p: Promise<T>, label: string): Promise<T> => withTimeout(p, timeoutMs, label);
@@ -144,10 +154,15 @@ export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = D
       }
       return coins;
     },
+    /* c8 ignore start — needs a REAL wasm SpendBundle (signed coin spends), not a plain JS stub;
+       the broadcast wire-up itself is proven end-to-end by the send-flow Simulator tests
+       (sendFlow.test.ts) and the confirmSend vault path, both against the real wasm. Everything
+       else in this adapter (construction + every read method, #148) IS covered above. */
     async pushSpendBundle(bundle) {
       const res = await t(rpc.pushTx(bundle), 'pushTx');
       return { success: res.success, ...(res.error ? { error: res.error } : {}) };
     },
+    /* c8 ignore stop */
     async coinConfirmed(coinIdHex) {
       const res = await t(rpc.getCoinRecordByName(chia.fromHex(coinIdHex)), 'getCoinRecordByName');
       return !!(res.success && res.coinRecord && res.coinRecord.spent);
@@ -177,4 +192,3 @@ export function makeWasmChainClient(chia: RpcCapableWasm, coinsetUrl: string = D
     },
   };
 }
-/* c8 ignore stop */

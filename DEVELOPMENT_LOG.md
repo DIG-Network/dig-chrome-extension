@@ -3,6 +3,37 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## chia-wallet-sdk-wasm's `RpcClient` has NO public JS constructor — `new RpcClient(url)` silently builds an unusable phantom instance (#148, P0: took down every wallet read)
+
+`chia-wallet-sdk-wasm`'s wasm-bindgen-generated `RpcClient` class (`chia_wallet_sdk_wasm.d.ts`/`_bg.js`)
+defines no `constructor` at all — only static factories: `RpcClient.new(coinsetUrl)`, `.mainnet()`,
+`.testnet11()`. `src/offscreen/chain.ts`'s `makeWasmChainClient` called `new chia.RpcClient(coinsetUrl)`
+since the coinset adapter's very first commit (#12) — this is NOT a wasm-version regression (the
+resolved `chia-wallet-sdk-wasm` version + integrity hash were byte-identical across every release from
+v1.39.0 through the release this shipped broken in; the bug was simply never-before-exercised, since
+the whole adapter was `/* c8 ignore */`'d).
+
+**Why it doesn't throw.** A JS class with no explicit `constructor` gets an implicit no-arg one
+(`constructor(...args) {}` for a base class) — calling `new RpcClient(url)` with an argument does NOT
+throw (JS never enforces arity), it just silently discards `url` and returns `Object.create(RpcClient.prototype)`
+with `__wbg_ptr` never wired up (only `RpcClient.__wrap(ptr)`, called exclusively by the static
+factories, sets it). Every method call on this phantom instance then dispatches into wasm with a null
+self-pointer, which the Rust side rejects with `Error: null pointer passed to rust` — and that throw
+happens from INSIDE a wasm-bindgen-futures async adapter callback, OUTSIDE the awaited promise's own
+chain, so a `try/catch` around the call does NOT catch it in plain Node (confirmed empirically with
+`--experimental-wasm-modules`: it crashes the process). In the browser/offscreen-document context it
+behaves differently again — the production `withTimeout` wrapper (12s) eventually surfaces a GENERIC
+vault-level error (`{code:'VAULT_ERROR', message:'vault operation failed'}`), indistinguishable at
+that layer from an ordinary coinset outage, and it does NOT fire a `pageerror`/console event either.
+This means an e2e/Playwright test CANNOT reliably pinpoint this exact bug by response shape or console
+capture — only a real-wasm unit test (no live network, deterministic) catches it precisely; see
+`src/offscreen/chain.realWasm.test.ts` for the regression test and `e2e/sw/wallet-balances.spec.ts` for
+the complementary (but necessarily looser) end-user smoke test.
+
+**Rule of thumb:** before calling `new SomeWasmBindgenClass(...)`, check the `.d.ts` for an explicit
+`constructor` line — if there's only `static new(...)`/other named static factories, THAT is the real
+constructor; `new` on the class itself silently builds a broken object instead of throwing.
+
 ## chia-wallet-sdk-wasm has no `Spends.addDid` / high-level DID `Action` (as of 0.33.0, confirmed at xch-dev/chia-wallet-sdk HEAD too)
 
 The Rust driver's `Spends` struct (`crates/chia-sdk-driver`) internally tracks DIDs (`spends.dids`)
