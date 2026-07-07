@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.62.0] - 2026-07-07
+
+### Features
+- **wallet:** NFT-trade XL modal picker — multi-select NFT grid (#170) (#85)
+
 ## [1.61.0] - 2026-07-07
 
 ### Features
