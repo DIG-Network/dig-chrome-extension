@@ -3,11 +3,16 @@
  * royalty label, and CSP-safe image resolution. No wasm / no chrome.* / no React, so every branch is
  * unit-tested directly.
  *
- * Image/CSP note: the extension's `img-src` CSP allows only `'self' data: https://explore.dig.net`,
- * so an arbitrary remote NFT image URL (IPFS gateway, marketplace CDN) CANNOT be embedded — doing so
- * would require widening the CSP, a security regression. Therefore: an on-chain `data:` image is
- * rendered inline (inert, CSP-allowed); a remote `http(s)` image is NOT embedded — a deterministic
- * monogram placeholder is shown instead and the URL is offered as an external "view image" link.
+ * Image/CSP note (#150): the extension's `img-src` CSP is `'self' data: https:` — `<img>` tags cannot
+ * execute code, so embedding a remote host is not a script-injection risk; the real tradeoff is
+ * PRIVACY (loading a remote image reveals the user's IP address to that host, exactly like every other
+ * NFT wallet — Sage included — that renders art by default). Almost every real NFT stores its art on a
+ * remote host (an IPFS gateway, a marketplace CDN, arweave), so an on-chain `data:` image is rendered
+ * inline AND a remote `http(s)` image is now embedded too; a raw `ipfs://` URI is gateway-rewritten
+ * (see {@link toGatewayUrl}) to a fetchable `https://` URL first, since browsers cannot dereference the
+ * `ipfs://` scheme directly. The monogram placeholder is kept as an `onerror` FALLBACK in the `NftMedia`
+ * component (`NftDetail.tsx`) for images that fail to load (dead gateway, broken/missing URL, offline
+ * host) — the grid never shows a broken-image icon.
  */
 
 import type { WalletNft } from '@/offscreen/nfts';
@@ -41,20 +46,44 @@ export function royaltyPercentLabel(basisPoints: number): string {
 
 const isDataUri = (uri: string): boolean => /^data:/i.test(uri.trim());
 const isHttpUri = (uri: string): boolean => /^https?:\/\//i.test(uri.trim());
+const isIpfsUri = (uri: string): boolean => /^ipfs:\/\//i.test(uri.trim());
+/** A URI this module knows how to turn into a fetchable `https://` (or `data:`) image source. */
+const isEmbeddableRemoteUri = (uri: string): boolean => isHttpUri(uri) || isIpfsUri(uri);
 
 /**
- * The image src safe to embed in an `<img>` under the extension CSP: the first `data:` data URI, else
- * null (remote images are blocked — the caller shows a monogram placeholder + an external link).
+ * Rewrite an `ipfs://<cid>/<path>` URI to a fetchable public HTTPS gateway URL
+ * (`https://ipfs.io/ipfs/<cid>/<path>`); any other URI (already `http(s)`, `data:`, or an
+ * unrecognized scheme) passes through unchanged.
+ */
+export function toGatewayUrl(uri: string): string {
+  const trimmed = uri.trim();
+  const m = /^ipfs:\/\/(.+)$/i.exec(trimmed);
+  return m ? `https://ipfs.io/ipfs/${m[1]}` : trimmed;
+}
+
+/**
+ * The image src to embed in an `<img>` under the extension's `img-src 'self' data: https:` CSP
+ * (#150): the first `data:` URI embedded as-is, or the first remote `http(s)`/`ipfs://` URI
+ * (gateway-rewritten so `ipfs://` is fetchable) — else null (no usable image; the caller shows the
+ * monogram placeholder). Callers add an `onerror` fallback to the monogram for images that fail to
+ * load at render time.
  */
 export function nftImageSrc(nft: WalletNft): string | null {
   const uri = nft.dataUris[0];
-  return uri && isDataUri(uri) ? uri.trim() : null;
+  if (!uri) return null;
+  const trimmed = uri.trim();
+  if (isDataUri(trimmed)) return trimmed;
+  if (isEmbeddableRemoteUri(trimmed)) return toGatewayUrl(trimmed);
+  return null;
 }
 
-/** The first remote (`http(s)`) data URI, offered as an external "view image" link (never embedded). */
+/**
+ * The first remote (`http(s)`/`ipfs://`) image URI, gateway-rewritten, offered as an external
+ * "view image" link (opens the original in a normal browser tab, outside the extension's tile size).
+ */
 export function nftExternalImageUrl(nft: WalletNft): string | null {
-  const uri = nft.dataUris.find((u) => isHttpUri(u));
-  return uri ? uri.trim() : null;
+  const uri = nft.dataUris.find((u) => isEmbeddableRemoteUri(u));
+  return uri ? toGatewayUrl(uri) : null;
 }
 
 /** A deterministic 2-char monogram (from the launcher id) for the placeholder tile. */

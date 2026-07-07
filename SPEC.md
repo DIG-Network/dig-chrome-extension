@@ -62,8 +62,12 @@ re-decrypts (§15).
   `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT price + token-metadata host `api.dexie.space`, and
   `api.bugreport.dig.net`), `frame-src 'self' https:` (the in-window
   dApp app-view frames curated store `link`s over https, §2.4a), `font-src 'self'` (the vendored Space
-  Grotesk / Space Mono woff2), and `img-src 'self' data: https://explore.dig.net https://icons.dexie.space`
-  (the native dApp-launcher icons §2.4, and the auto-discovered CAT token icons §18.6).
+  Grotesk / Space Mono woff2), and `img-src 'self' data: https:` (any HTTPS host — the native
+  dApp-launcher icons §2.4, the auto-discovered CAT token icons §18.6, and remote NFT art §18.11).
+  An `<img>` load cannot execute script, so allowing arbitrary HTTPS image hosts is not a
+  script-injection risk; the tradeoff is PRIVACY (the image host observes the requester's IP), which
+  §18.11 documents and which every other NFT wallet (Sage included) accepts by rendering art by
+  default.
 - Content scripts (`middleware.js`, then `content.js`) run at `document_start`,
   `all_frames: true`, matching `<all_urls>`.
 - The injected provider (`dist/dig-provider.js`) and the page fetch bridge (`page-script.js`)
@@ -1093,6 +1097,22 @@ decrypted key never leaves the offscreen vault.
   (the current-owner DID hex, or null), editionNumber, editionTotal, royaltyBasisPoints,
   royaltyPuzzleHash, dataUris, dataHash, metadataUris, metadataHash, licenseUris }` — deduped by
   launcher id. `collectionId` groups NFTs minted under the same DID; the collectibles UI groups by it.
+- **Image display (#150).** `nftImageSrc` (`src/features/collectibles/nftDisplay.ts`) resolves
+  `dataUris[0]` to an `<img>`-embeddable source: an on-chain `data:` URI embeds as-is; a remote
+  `http(s)` URI embeds directly (the `img-src 'self' data: https:` CSP, §2, allows any HTTPS host); a
+  raw `ipfs://<cid>/<path>` URI is gateway-rewritten by `toGatewayUrl` to
+  `https://ipfs.io/ipfs/<cid>/<path>` first, since browsers cannot dereference the `ipfs://` scheme
+  directly. An unrecognized scheme (e.g. `ar://`) resolves to no image. `nftExternalImageUrl` offers
+  the same (gateway-rewritten) URL as a "view image" link that opens the original in a normal browser
+  tab. Both the Collectibles grid and the NFT detail view (`NftMedia`, `NftDetail.tsx`) render the
+  resolved image and fall back to a deterministic monogram tile on `onerror` (a dead gateway, a
+  broken/missing URL, or an offline host never shows a broken-image icon) — the monogram is ALSO the
+  only tile shown when no image is resolvable at all.
+  **Privacy note:** loading a remote (non-`data:`) NFT image reveals the requester's IP address to the
+  image host (an inherent property of fetching a URL — there is no way to preview remote art without
+  contacting its host). This is the same tradeoff every NFT wallet that renders art by default accepts
+  (Sage included); the extension does not currently gate it behind a settings toggle — a
+  privacy-conscious opt-out ("render on-chain `data:` art only") is a tracked follow-up.
 - **Same-allocator invariant (MUST).** The reconstructed `Nft` carries a `metadata` CLVM `Program`
   bound to the `Clvm` allocator that produced it. It MUST be reconstructed in the SAME `Clvm` that the
   `Spends` driver later consumes (`addNft`), else the wasm traps (`unreachable`) on a cross-arena handle.
