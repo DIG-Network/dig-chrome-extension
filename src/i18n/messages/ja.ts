@@ -170,6 +170,7 @@ export const ja: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': '受け取る',
+  'receive.back': '← 資産に戻る',
   'receive.your.address': 'ご自身のアドレス',
   'receive.copy': 'アドレスをコピー',
   'receive.copied': 'コピーしました',

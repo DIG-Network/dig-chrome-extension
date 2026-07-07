@@ -161,4 +161,36 @@ describe('SendPanel', () => {
     fireEvent.click(await screen.findByTestId('send-confirm'));
     expect(await screen.findByTestId('send-failed')).toBeInTheDocument();
   });
+
+  /**
+   * #166 — the cancel/back affordance lives in the sticky ViewHeader (the top of the screen), not
+   * scattered at the bottom of each phase's (possibly growable) form — so it's reachable at any
+   * scroll position instead of buried below a long coin picker.
+   */
+  describe('#166 — cancel/back lives in the sticky ViewHeader', () => {
+    it('form phase: Cancel is in the header and closes the panel', () => {
+      const onClose = vi.fn();
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} onClose={onClose} />);
+      const header = screen.getByTestId('view-header');
+      const cancel = screen.getByTestId('send-cancel');
+      expect(header).toContainElement(cancel);
+      fireEvent.click(cancel);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('review phase: Back is in the header and returns to the form', async () => {
+      mockSw((m) => (m.action === 'prepareSend' ? { pendingId: 'p1', summary: SUMMARY } : { success: true }));
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+      fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+      fireEvent.click(screen.getByTestId('send-review'));
+      await screen.findByTestId('send-review-panel');
+
+      const header = screen.getByTestId('view-header');
+      const back = screen.getByTestId('send-back');
+      expect(header).toContainElement(back);
+      fireEvent.click(back);
+      expect(await screen.findByTestId('send-recipient')).toBeInTheDocument();
+    });
+  });
 });

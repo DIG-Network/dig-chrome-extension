@@ -173,6 +173,7 @@ export const en: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': 'Receive',
+  'receive.back': '← Back to assets',
   'receive.your.address': 'Your address',
   'receive.copy': 'Copy address',
   'receive.copied': 'Copied',

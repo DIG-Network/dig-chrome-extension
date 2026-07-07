@@ -170,6 +170,7 @@ export const ptBR: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': 'Receber',
+  'receive.back': '← Voltar aos ativos',
   'receive.your.address': 'Seu endereço',
   'receive.copy': 'Copiar endereço',
   'receive.copied': 'Copiado',

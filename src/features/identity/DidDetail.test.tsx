@@ -205,4 +205,14 @@ describe('DidDetail', () => {
     fireEvent.click(await screen.findByTestId('did-profile-confirm'));
     expect(await screen.findByTestId('did-profile-failed')).toBeInTheDocument();
   });
+
+  it('#166: back lives in the sticky ViewHeader, not the bottom of the (growable) detail body', () => {
+    const onBack = vi.fn();
+    renderWithProviders(<DidDetail did={did()} isFull onBack={onBack} />);
+    const header = screen.getByTestId('view-header');
+    const back = screen.getByTestId('did-detail-back');
+    expect(header).toContainElement(back);
+    fireEvent.click(back);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
 });

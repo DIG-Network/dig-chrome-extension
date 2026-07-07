@@ -170,6 +170,7 @@ export const ko: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': '받기',
+  'receive.back': '← 자산으로 돌아가기',
   'receive.your.address': '내 주소',
   'receive.copy': '주소 복사',
   'receive.copied': '복사됨',

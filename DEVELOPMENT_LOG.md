@@ -176,3 +176,28 @@ default; the `overflow` change was necessary. Any future segmented-tab-style con
 mono/address row) added to a popup screen needs the same treatment, not a fixed-width guess. See
 `src/styles/theme.css` (`.dig-seg`) and the Playwright guard `e2e/screenshots.spec.ts` ("has no
 horizontal overflow").
+
+## `position: sticky` headers must sit OUTSIDE the bordered card, not nested inside it (#166)
+
+Building the shared `ViewHeader` sticky-top-bar primitive: putting it as the first child INSIDE a
+screen's `.dig-card` (border + radius + shadow + background) makes the sticky strip visually clip
+against the card once it pins mid-scroll — the card's rounded top edge and border scroll away
+underneath the still-pinned header, leaving a visible seam. Fix: `ViewHeader` renders as a sibling
+BEFORE the `.dig-card`, both wrapped in a plain (unstyled) `<div>` — so the sticky strip floats over
+plain background, and the card's own border/shadow/radius scroll normally beneath it. Applies to
+every future sticky in-page header, not just this one.
+
+**Vitest/RTL trap when asserting a `.click()` navigates then asserting the closed state's absence:**
+two `render()` calls of different props in the SAME `it()` (e.g. "onBack shown" then "onBack NOT
+shown") both stay mounted in the same jsdom `document.body` unless you `unmount()` the first — a
+`screen.queryByTestId` after the second render still finds the FIRST render's element and the
+"absent" assertion passes for the wrong reason (or fails misleadingly). Either split into two `it()`s
+(cleanup runs between tests automatically) or explicitly call the first render's returned `unmount()`
+before the second render.
+
+**Playwright e2e trap: `.click()` auto-scrolls the target into view before clicking**, which can leave
+a scroll container's `scrollTop` non-zero afterward even though a real user click on an
+already-visible element wouldn't have scrolled anything. This defeats a "reachable with ZERO
+scrolling" assertion taken right after a `.click()`. Use `.click({ force: true })` (skips Playwright's
+own actionability/scroll-into-view step) or explicitly reset `scrollTop = 0` before measuring — see
+`e2e/sw/view-header-receive.spec.ts`.

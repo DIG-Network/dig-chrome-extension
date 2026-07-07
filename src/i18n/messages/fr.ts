@@ -170,6 +170,7 @@ export const fr: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': 'Recevoir',
+  'receive.back': '← Retour aux actifs',
   'receive.your.address': 'Votre adresse',
   'receive.copy': "Copier l'adresse",
   'receive.copied': 'Copié',

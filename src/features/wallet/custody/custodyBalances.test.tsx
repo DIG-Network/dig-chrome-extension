@@ -35,7 +35,7 @@ describe('settings helper', () => {
 });
 
 describe('CustodyWallet', () => {
-  it('renders the scanned portfolio + assets and the receive address', async () => {
+  it('renders the scanned portfolio + assets', async () => {
     mockSw((m) => {
       if (m.action === 'getCustodyBalances') return { balances: { xch: 2_510_000_000_000, cats: {} } };
       if (m.action === 'getReceiveAddress') return { address: 'xch1receive' };
@@ -44,7 +44,33 @@ describe('CustodyWallet', () => {
     renderWithProviders(<CustodyWallet />);
     await waitFor(() => expect(screen.getByTestId('portfolio-value')).toHaveTextContent('2.51'));
     expect(await screen.findByTestId('asset-xch')).toBeInTheDocument();
+  });
+
+  /**
+   * #166 — Receive is its own screen (opened via the "Receive" action), not embedded below the
+   * asset list: the QR/address must never be pushed down by a growable CAT list. Clicking Receive
+   * replaces the whole Home body with the Receive screen (sticky header + QR/address only, no
+   * asset list beside it); the header's back action returns to Assets.
+   */
+  it('opens a dedicated Receive screen from the assets action bar, with a working back action', async () => {
+    mockSw((m) => {
+      if (m.action === 'getCustodyBalances') return { balances: { xch: 2_510_000_000_000, cats: {} } };
+      if (m.action === 'getReceiveAddress') return { address: 'xch1receive' };
+      return { success: true };
+    });
+    renderWithProviders(<CustodyWallet />);
+    expect(await screen.findByTestId('asset-xch')).toBeInTheDocument();
+    expect(screen.queryByTestId('wallet-receive-screen')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('action-receive'));
     expect((await screen.findByTestId('wallet-address')).getAttribute('value')).toBe('xch1receive');
+    // The Receive screen is the ENTIRE body — no asset list sits beside/above it, so it's reachable
+    // with zero scrolling no matter how many CATs the wallet holds.
+    expect(screen.queryByTestId('custody-assets')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('receive-close'));
+    expect(await screen.findByTestId('asset-xch')).toBeInTheDocument();
+    expect(screen.queryByTestId('wallet-receive-screen')).not.toBeInTheDocument();
   });
 
   it('flags a cached snapshot when the scan fell back', async () => {

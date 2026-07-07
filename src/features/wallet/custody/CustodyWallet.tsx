@@ -77,7 +77,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
   const priceMap = useMemo(() => prices.data ?? {}, [prices.data]);
   const total = portfolioValue(assets, priceMap);
   const cached = balances.data?.cached === true;
-  const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'contacts' | 'tokens' | 'coins'>('assets');
+  const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'receive' | 'contacts' | 'tokens' | 'coins'>('assets');
 
   // #167 — value-ordered, live-filterable Assets list. XCH is rendered separately (the pinned
   // hero row); every other row ($DIG + discovered/watched CATs) sorts by value beneath it, and the
@@ -112,6 +112,18 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
       testid={a.descriptor.key === 'cat' ? `asset-cat-${a.descriptor.assetId}` : `asset-${a.descriptor.key}`}
     />
   );
+
+  // #166 — Receive is a dedicated, full-replace screen (mirrors the NFT/DID-detail pattern): its
+  // sticky ViewHeader + QR/address are the WHOLE body, with none of the shared wallet chrome above
+  // it (switcher/portfolio/segmented tabs), so it's reachable with zero scrolling regardless of how
+  // many CATs the wallet holds — the fix for "Receive buried below the CAT list".
+  if (walletView === 'home' && homePanel === 'receive') {
+    return (
+      <div data-testid="custody-wallet">
+        <ReceiveView address={receive.data?.address} onBack={() => setHomePanel('assets')} />
+      </div>
+    );
+  }
 
   return (
     <div data-testid="custody-wallet">
@@ -171,6 +183,9 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
             <button type="button" className="dig-btn dig-btn--primary" data-testid="action-send" onClick={() => setHomePanel('send')}>
               <FormattedMessage id="wallet.action.send" />
             </button>
+            <button type="button" className="dig-btn" data-testid="action-receive" onClick={() => setHomePanel('receive')}>
+              <FormattedMessage id="wallet.action.receive" />
+            </button>
             <button type="button" className="dig-btn" data-testid="action-contacts" onClick={() => setHomePanel('contacts')}>
               <FormattedMessage id="wallet.action.contacts" />
             </button>
@@ -209,11 +224,6 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
               )}
             </div>
           </FourState>
-
-          <h2 className="dig-heading" style={{ marginTop: 18 }}>
-            <FormattedMessage id="receive.title" />
-          </h2>
-          <ReceiveView address={receive.data?.address} />
 
           {advanced && (
             <>

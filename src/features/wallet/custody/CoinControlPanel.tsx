@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { FourState } from '@/components/FourState';
+import { ViewHeader } from '@/components/ViewHeader';
 import { formatBaseUnits, shortenAddress } from '@/lib/wallet-view';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import {
@@ -118,12 +119,23 @@ export function CoinControlPanel({ assets, onClose, pollMs = 8000 }: { assets: A
     };
   }, [phase, spentCoinId, pollMs, pollStatus]);
 
-  return (
-    <section className="dig-card" data-testid="coin-control" aria-labelledby="coins-title">
-      <h2 className="dig-heading" id="coins-title">
-        <FormattedMessage id="coins.title" />
-      </h2>
+  // #166 — the header's back action steps UP one level (review → list), or closes the whole panel;
+  // no back while a spend is actively broadcasting ('sending'). Lives in the sticky ViewHeader now,
+  // reachable regardless of how long the coin list / review grows.
+  const headerBack = phase === 'sending' ? undefined : phase === 'review' ? () => setPhase('list') : onClose;
+  const headerBackLabel = phase === 'review' ? <FormattedMessage id="send.back" /> : <FormattedMessage id="send.cancel" />;
+  const headerBackTestId = phase === 'review' ? 'coins-back' : 'coins-close';
 
+  return (
+    <div data-testid="coin-control">
+      <ViewHeader
+        onBack={headerBack}
+        backLabel={headerBackLabel}
+        backTestId={headerBackTestId}
+        title={<FormattedMessage id="coins.title" />}
+        titleId="coins-title"
+      />
+      <section className="dig-card" aria-labelledby="coins-title">
       {phase === 'list' && (
         <>
           <p className="dig-muted" style={{ marginTop: 0 }}>
@@ -221,12 +233,6 @@ export function CoinControlPanel({ assets, onClose, pollMs = 8000 }: { assets: A
               {localError && <p className="dig-error-text" role="alert" data-testid="coins-error" style={{ marginTop: 8 }}>{localError}</p>}
             </div>
           )}
-
-          {onClose && (
-            <button type="button" className="dig-link" data-testid="coins-close" onClick={onClose} style={{ marginTop: 12 }}>
-              <FormattedMessage id="send.cancel" />
-            </button>
-          )}
         </>
       )}
 
@@ -249,9 +255,6 @@ export function CoinControlPanel({ assets, onClose, pollMs = 8000 }: { assets: A
           </dl>
           <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="coins-confirm" onClick={() => void doConfirm()} disabled={busy}>
             <FormattedMessage id="coins.confirm" />
-          </button>
-          <button type="button" className="dig-link" data-testid="coins-back" onClick={() => setPhase('list')}>
-            <FormattedMessage id="send.back" />
           </button>
         </div>
       )}
@@ -277,7 +280,8 @@ export function CoinControlPanel({ assets, onClose, pollMs = 8000 }: { assets: A
           </button>
         </div>
       )}
-    </section>
+      </section>
+    </div>
   );
 }
 

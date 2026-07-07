@@ -70,9 +70,11 @@ describe('App shell', () => {
     expect(await screen.findByTestId('asset-xch')).toBeInTheDocument();
   });
 
-  it('shows the custody receive address on Home', async () => {
+  it('shows the custody receive address on the dedicated Receive screen (#166)', async () => {
     renderApp('popup');
     await userEvent.click(screen.getByTestId('tab-wallet'));
+    await screen.findByTestId('custody-wallet');
+    await userEvent.click(screen.getByTestId('action-receive'));
     const addr = await screen.findByTestId('wallet-address');
     expect(addr).toHaveValue('xch1qqqqcustodyreceiveaddressqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzz');
   });
