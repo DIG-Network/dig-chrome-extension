@@ -295,6 +295,11 @@ h2.dig-heading {
 }
 
 /* ── segmented control (wallet Home/Activity/Trade) ── */
+/* #163: on the narrow popup, 4-5 segments (esp. longer i18n labels) can outgrow the 372px shell.
+   `max-width: 100%` + `overflow-x: auto` make the control ITSELF the scroll container (a genuinely
+   wide inner container, §6.6) instead of pushing `.dig-main` (data-testid="popup-root") wider —
+   the popup body must never scroll sideways. `overflow-x` != visible also zeroes the flex item's
+   automatic min-width, letting it shrink below its buttons' combined content width. */
 .dig-seg {
   display: inline-flex;
   padding: 3px;
@@ -302,6 +307,9 @@ h2.dig-heading {
   background: var(--dig-bg-elev);
   border: 1px solid var(--dig-border);
   border-radius: var(--dig-radius-sm);
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .dig-seg-btn {
   padding: 7px 15px;
@@ -312,6 +320,8 @@ h2.dig-heading {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  flex: none;
+  white-space: nowrap;
 }
 .dig-seg-btn[aria-selected='true'] {
   background: var(--dig-bg);

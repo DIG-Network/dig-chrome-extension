@@ -23,6 +23,25 @@ export type WalletView = (typeof WALLET_VIEWS)[number];
 /** The default wallet sub-view. */
 export const DEFAULT_WALLET_VIEW: WalletView = 'home';
 
+/**
+ * Wallet views that are ADVANCED functionality (§145 surface tiering) and therefore never render
+ * as a top-level segmented TAB on the compact (popup) surface — fullscreen only. Identity (DID
+ * management) is advanced (#163): creating/transferring a DID was already fullscreen-only (#93),
+ * but the "Identity" tab ENTRY itself still leaked into the compact segmented control. The DID
+ * list remains reachable view-only on the compact surface via a direct deep link (`DidPanel`
+ * handles that independently) — this constant only governs which segments render as tabs.
+ */
+const COMPACT_ADVANCED_WALLET_VIEWS: readonly WalletView[] = ['did'];
+
+/**
+ * The wallet-view segments to render as tabs for a given surface. Fullscreen (`isFull: true`)
+ * shows every {@link WALLET_VIEWS} entry; the compact popup drops {@link COMPACT_ADVANCED_WALLET_VIEWS}
+ * (#163). Pure (no DOM/chrome.*) so it is unit-testable.
+ */
+export function walletViewsForSurface(isFull: boolean): readonly WalletView[] {
+  return isFull ? WALLET_VIEWS : WALLET_VIEWS.filter((v) => !COMPACT_ADVANCED_WALLET_VIEWS.includes(v));
+}
+
 /** The Network screen's segmented sub-views (the resolver, the proof shield, the node control panel). */
 export const NETWORK_VIEWS = ['resolver', 'shield', 'control'] as const;
 export type NetworkView = (typeof NETWORK_VIEWS)[number];

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   TABS,
+  WALLET_VIEWS,
   DEFAULT_TAB,
   DEFAULT_WALLET_VIEW,
   DEFAULT_NETWORK_VIEW,
@@ -11,6 +12,7 @@ import {
   routeToHash,
   tabTestId,
   tabPanelId,
+  walletViewsForSurface,
 } from '@/app/tabs';
 
 describe('tab model (mobile-OS IA)', () => {
@@ -55,5 +57,17 @@ describe('tab model (mobile-OS IA)', () => {
   it('derives stable testids/panel ids', () => {
     expect(tabTestId('wallet')).toBe('tab-wallet');
     expect(tabPanelId('network')).toBe('network-panel');
+  });
+
+  // #163 — Identity (DID management) is ADVANCED functionality → the compact popup hides the
+  // top-level "Identity" segmented-tab entry entirely; the fullscreen (ExpandedLayout) surface
+  // shows every wallet view, Identity included. The DID list itself may still be reached
+  // view-only via a deep link on the compact surface (DidPanel handles that) — this only governs
+  // which segments render as TABS.
+  it('hides the "did" (Identity) wallet-view tab on the compact surface, shows it on fullscreen', () => {
+    expect(walletViewsForSurface(false)).toEqual(['home', 'activity', 'trade', 'collectibles']);
+    expect(walletViewsForSurface(false)).not.toContain('did');
+    expect(walletViewsForSurface(true)).toEqual(WALLET_VIEWS);
+    expect(walletViewsForSurface(true)).toContain('did');
   });
 });
