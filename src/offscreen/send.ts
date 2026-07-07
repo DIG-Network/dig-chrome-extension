@@ -53,7 +53,7 @@ interface WasmClvm {
 export interface SendWasm {
   Clvm: new () => WasmClvm;
   Spends: new (clvm: WasmClvm, changePuzzleHash: Uint8Array) => WasmSpends;
-  Action: { send(id: WasmId, puzzleHash: Uint8Array, amount: bigint, memos: undefined): unknown; fee(amount: bigint): unknown };
+  Action: { send(id: WasmId, puzzleHash: Uint8Array, amount: bigint, memos?: WasmProgram): unknown; fee(amount: bigint): unknown };
   Id: { xch(): WasmId };
   toHex(bytes: Uint8Array): string;
 }
@@ -78,6 +78,16 @@ export interface XchSendOpts {
   amount: bigint;
   fee: bigint;
   changePuzzleHash: Uint8Array;
+  /**
+   * Optional memos for the recipient's CREATE_COIN (e.g. a clawback hint, #152) — a `Program` bound
+   * to the SAME `Clvm` instance this function allocates internally (a wasm `Program` is tied to its
+   * originating `Clvm`'s allocator, so it cannot be built by the caller against a different one).
+   * Called with that internal `clvm` right before finalizing; omit for a plain send (no memos).
+   * Typed loosely (`unknown`, not the internal `WasmClvm`/`WasmProgram`) so callers outside this
+   * module (e.g. `offscreen/clawback.ts`) don't need those unexported structural types — this
+   * function casts internally, where the concrete shapes are known.
+   */
+  buildMemos?: (clvm: unknown) => unknown;
 }
 
 /** A decoded, tamper-resistant spend summary (base units) read back from the built coin spends. */
@@ -107,8 +117,9 @@ export function buildXchSend(chia: SendWasm, opts: XchSendOpts): BuiltSpend {
   const spends = new chia.Spends(clvm, opts.changePuzzleHash);
   for (const coin of opts.coins) spends.addXch(coin);
 
+  const memos = opts.buildMemos?.(clvm) as WasmProgram | undefined;
   const deltas = spends.apply([
-    chia.Action.send(chia.Id.xch(), opts.destPuzzleHash, opts.amount, undefined),
+    chia.Action.send(chia.Id.xch(), opts.destPuzzleHash, opts.amount, memos),
     chia.Action.fee(opts.fee),
   ]);
   const finished = spends.prepare(deltas);

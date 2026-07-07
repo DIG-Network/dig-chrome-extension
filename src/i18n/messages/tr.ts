@@ -176,6 +176,15 @@ export const tr: Record<string, string> = {
   'send.sending': 'Gönderiliyor… işleminiz ağa yayılıyor.',
   'send.confirmed': 'Onaylandı — işleminiz kesinleşti.',
   'send.failed': 'Onaylanmadı — işlem kabul edilmedi. Bakiyeniz değişmedi; tekrar deneyin.',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'Geri çağırma ile gönder (geri alınabilir)',
+  'send.clawback.hint': 'Alıcı yalnızca süre dolduktan sonra talep edebilir. Öncesinde yalnızca siz geri alabilirsiniz.',
+  'send.clawback.window': 'Geri çağırma süresi',
+  'send.clawback.window.1h': '1 saat',
+  'send.clawback.window.1d': '1 gün',
+  'send.clawback.window.3d': '3 gün',
+  'send.clawback.window.7d': '7 gün',
+  'send.clawback.review': 'Siz {when} tarihine kadar geri alabilirsiniz, sonrasında alıcı talep edebilir.',
 
   // ── wallet: receive ──
   'receive.title': 'Al',
@@ -598,6 +607,29 @@ export const tr: Record<string, string> = {
   'send.coins.selected': '{count} seçildi',
   'send.coins.loading': 'Coinler yükleniyor…',
   'send.coins.none': 'Kullanılabilir coin yok.',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'Geri çağırma',
+  'clawback.open': 'Bekleyen geri çağırmalar ({count})',
+  'clawback.popupHint': '{count} bekleyen geri çağırma.',
+  'clawback.intro': 'Geri alma süresiyle gönderilen veya alınan fonlar. Süre dolduktan sonra alıcı talep edebilir; öncesinde gönderen geri alabilir.',
+  'clawback.loading': 'Bekleyen geri çağırmalar yükleniyor…',
+  'clawback.error': 'Bekleyen geri çağırmalar yüklenemedi — yeniden dene',
+  'clawback.empty': 'Bekleyen geri çağırma yok.',
+  'clawback.direction.incoming': 'Size gönderildi',
+  'clawback.direction.outgoing': 'Sizin tarafınızdan gönderildi',
+  'clawback.status.claimableNow': 'Şimdi talep edilebilir',
+  'clawback.status.claimableAfter': '{when} sonrasında talep edilebilir',
+  'clawback.status.reclaimableUntil': 'Siz {when} tarihine kadar geri alabilirsiniz',
+  'clawback.status.windowElapsed': 'Süre doldu — alıcı artık talep edebilir',
+  'clawback.action.claim': 'Talep et',
+  'clawback.action.reclaim': 'Geri al',
+  'clawback.review.introClaim': 'Bu fonları cüzdanınıza talep edin. İmzalamak ve yayınlamak için onaylayın.',
+  'clawback.review.introReclaim': 'Bu fonları cüzdanınıza geri alın. İmzalamak ve yayınlamak için onaylayın.',
+  'clawback.sending': 'İşleniyor… işleminiz yayınlanıyor.',
+  'clawback.confirmed': 'Tamamlandı — bakiyeniz güncellendi.',
+  'clawback.failed': 'Onaylanmadı — hiçbir şey değişmedi. Tekrar deneyin.',
+  'clawback.error.build': 'Hazırlanamadı — tekrar deneyin.',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'Cüzdan',

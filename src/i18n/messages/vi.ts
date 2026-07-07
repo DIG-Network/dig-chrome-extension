@@ -176,6 +176,15 @@ export const vi: Record<string, string> = {
   'send.sending': 'Đang gửi… đang phát giao dịch của bạn lên mạng.',
   'send.confirmed': 'Đã xác nhận — giao dịch của bạn đã hoàn tất.',
   'send.failed': 'Không được xác nhận — giao dịch không được chấp nhận. Số dư của bạn không thay đổi; hãy thử lại.',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'Gửi kèm thu hồi (có thể lấy lại)',
+  'send.clawback.hint': 'Người nhận chỉ có thể nhận sau khi hết thời hạn. Trước đó, chỉ bạn mới có thể thu hồi.',
+  'send.clawback.window': 'Thời hạn thu hồi',
+  'send.clawback.window.1h': '1 giờ',
+  'send.clawback.window.1d': '1 ngày',
+  'send.clawback.window.3d': '3 ngày',
+  'send.clawback.window.7d': '7 ngày',
+  'send.clawback.review': 'Bạn có thể thu hồi đến {when}, sau đó người nhận có thể nhận.',
 
   // ── wallet: receive ──
   'receive.title': 'Nhận',
@@ -598,6 +607,29 @@ export const vi: Record<string, string> = {
   'send.coins.selected': 'Đã chọn {count}',
   'send.coins.loading': 'Đang tải coin…',
   'send.coins.none': 'Không có coin nào khả dụng.',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'Thu hồi',
+  'clawback.open': 'Khoản thu hồi đang chờ ({count})',
+  'clawback.popupHint': '{count} khoản thu hồi đang chờ.',
+  'clawback.intro': 'Số tiền gửi hoặc nhận có thời hạn thu hồi. Người nhận có thể nhận sau khi hết thời hạn; trước đó, người gửi có thể thu hồi lại.',
+  'clawback.loading': 'Đang tải các khoản thu hồi đang chờ…',
+  'clawback.error': 'Không thể tải các khoản thu hồi đang chờ — thử lại',
+  'clawback.empty': 'Không có khoản thu hồi nào đang chờ.',
+  'clawback.direction.incoming': 'Đã gửi cho bạn',
+  'clawback.direction.outgoing': 'Do bạn gửi',
+  'clawback.status.claimableNow': 'Có thể nhận ngay bây giờ',
+  'clawback.status.claimableAfter': 'Có thể nhận sau {when}',
+  'clawback.status.reclaimableUntil': 'Bạn có thể thu hồi đến {when}',
+  'clawback.status.windowElapsed': 'Đã hết thời hạn — người nhận giờ có thể nhận',
+  'clawback.action.claim': 'Nhận',
+  'clawback.action.reclaim': 'Thu hồi',
+  'clawback.review.introClaim': 'Nhận số tiền này vào ví của bạn. Xác nhận để ký và phát sóng.',
+  'clawback.review.introReclaim': 'Thu hồi số tiền này vào ví của bạn. Xác nhận để ký và phát sóng.',
+  'clawback.sending': 'Đang xử lý… đang phát sóng giao dịch của bạn.',
+  'clawback.confirmed': 'Xong — số dư của bạn đã được cập nhật.',
+  'clawback.failed': 'Chưa xác nhận — không có gì thay đổi. Thử lại.',
+  'clawback.error.build': 'Không thể chuẩn bị — thử lại.',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'Ví',

@@ -176,6 +176,15 @@ export const fr: Record<string, string> = {
   'send.sending': 'Envoi en cours… diffusion de votre transaction.',
   'send.confirmed': 'Confirmée — votre transaction est définitive.',
   'send.failed': "Non confirmée — la transaction n'a pas été acceptée. Votre solde reste inchangé ; réessayez.",
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'Envoyer avec clause de rétractation (récupérable)',
+  'send.clawback.hint': 'Le destinataire ne peut réclamer les fonds qu\'après l\'expiration du délai. Avant cela, vous seul pouvez les récupérer.',
+  'send.clawback.window': 'Délai de rétractation',
+  'send.clawback.window.1h': '1 heure',
+  'send.clawback.window.1d': '1 jour',
+  'send.clawback.window.3d': '3 jours',
+  'send.clawback.window.7d': '7 jours',
+  'send.clawback.review': 'Récupérable par vous jusqu\'au {when}, réclamable par le destinataire ensuite.',
 
   // ── wallet: receive ──
   'receive.title': 'Recevoir',
@@ -598,6 +607,29 @@ export const fr: Record<string, string> = {
   'send.coins.selected': '{count} sélectionnée(s)',
   'send.coins.loading': 'Chargement des pièces…',
   'send.coins.none': 'Aucune pièce disponible.',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'Rétractation',
+  'clawback.open': 'Rétractations en attente ({count})',
+  'clawback.popupHint': '{count} rétractation(s) en attente.',
+  'clawback.intro': 'Fonds envoyés ou reçus avec un délai de récupération. Le destinataire peut les réclamer une fois le délai écoulé ; avant cela, l\'expéditeur peut les récupérer.',
+  'clawback.loading': 'Chargement des rétractations en attente…',
+  'clawback.error': 'Impossible de charger vos rétractations en attente — réessayer',
+  'clawback.empty': 'Aucune rétractation en attente.',
+  'clawback.direction.incoming': 'Envoyé à vous',
+  'clawback.direction.outgoing': 'Envoyé par vous',
+  'clawback.status.claimableNow': 'Réclamable maintenant',
+  'clawback.status.claimableAfter': 'Réclamable après le {when}',
+  'clawback.status.reclaimableUntil': 'Récupérable par vous jusqu\'au {when}',
+  'clawback.status.windowElapsed': 'Délai expiré — le destinataire peut désormais le réclamer',
+  'clawback.action.claim': 'Réclamer',
+  'clawback.action.reclaim': 'Récupérer',
+  'clawback.review.introClaim': 'Réclamez ces fonds dans votre portefeuille. Confirmez pour signer et diffuser.',
+  'clawback.review.introReclaim': 'Récupérez ces fonds dans votre portefeuille. Confirmez pour signer et diffuser.',
+  'clawback.sending': 'Traitement… diffusion de votre transaction.',
+  'clawback.confirmed': 'Terminé — votre solde a été mis à jour.',
+  'clawback.failed': 'Non confirmé — rien n\'a changé. Réessayez.',
+  'clawback.error.build': 'Impossible de préparer cela — réessayez.',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'Portefeuille',

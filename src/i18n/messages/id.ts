@@ -176,6 +176,15 @@ export const id: Record<string, string> = {
   'send.sending': 'Mengirim… menyiarkan transaksi Anda ke jaringan.',
   'send.confirmed': 'Terkonfirmasi — transaksi Anda telah final.',
   'send.failed': 'Tidak terkonfirmasi — transaksi tidak diterima. Saldo Anda tidak berubah; coba lagi.',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'Kirim dengan penarikan kembali (dapat ditarik)',
+  'send.clawback.hint': 'Penerima hanya dapat mengklaim setelah jendela waktu berakhir. Sebelum itu, hanya Anda yang dapat menariknya kembali.',
+  'send.clawback.window': 'Jendela penarikan kembali',
+  'send.clawback.window.1h': '1 jam',
+  'send.clawback.window.1d': '1 hari',
+  'send.clawback.window.3d': '3 hari',
+  'send.clawback.window.7d': '7 hari',
+  'send.clawback.review': 'Dapat ditarik kembali oleh Anda hingga {when}, dapat diklaim oleh penerima setelahnya.',
 
   // ── wallet: receive ──
   'receive.title': 'Terima',
@@ -598,6 +607,29 @@ export const id: Record<string, string> = {
   'send.coins.selected': '{count} dipilih',
   'send.coins.loading': 'Memuat koin…',
   'send.coins.none': 'Tidak ada koin yang tersedia.',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'Penarikan kembali',
+  'clawback.open': 'Penarikan kembali tertunda ({count})',
+  'clawback.popupHint': '{count} penarikan kembali tertunda.',
+  'clawback.intro': 'Dana yang dikirim atau diterima dengan jendela penarikan kembali. Penerima dapat mengklaim setelah jendela berakhir; sebelum itu, pengirim dapat menarik dana kembali.',
+  'clawback.loading': 'Memuat penarikan kembali yang tertunda…',
+  'clawback.error': 'Tidak dapat memuat penarikan kembali yang tertunda — coba lagi',
+  'clawback.empty': 'Tidak ada penarikan kembali yang tertunda.',
+  'clawback.direction.incoming': 'Dikirim kepada Anda',
+  'clawback.direction.outgoing': 'Dikirim oleh Anda',
+  'clawback.status.claimableNow': 'Dapat diklaim sekarang',
+  'clawback.status.claimableAfter': 'Dapat diklaim setelah {when}',
+  'clawback.status.reclaimableUntil': 'Dapat ditarik kembali oleh Anda hingga {when}',
+  'clawback.status.windowElapsed': 'Jendela waktu berakhir — penerima kini dapat mengklaimnya',
+  'clawback.action.claim': 'Klaim',
+  'clawback.action.reclaim': 'Tarik kembali',
+  'clawback.review.introClaim': 'Klaim dana ini ke dompet Anda. Konfirmasi untuk menandatangani dan menyiarkan.',
+  'clawback.review.introReclaim': 'Tarik kembali dana ini ke dompet Anda. Konfirmasi untuk menandatangani dan menyiarkan.',
+  'clawback.sending': 'Memproses… menyiarkan transaksi Anda.',
+  'clawback.confirmed': 'Selesai — saldo Anda telah diperbarui.',
+  'clawback.failed': 'Tidak dikonfirmasi — tidak ada yang berubah. Coba lagi.',
+  'clawback.error.build': 'Tidak dapat menyiapkan itu — coba lagi.',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'Dompet',

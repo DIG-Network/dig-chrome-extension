@@ -176,6 +176,15 @@ export const zhTW: Record<string, string> = {
   'send.sending': '發送中……正在廣播您的交易。',
   'send.confirmed': '已確認——您的交易已最終完成。',
   'send.failed': '未確認——交易未被接受。您的餘額未發生變化，請再試一次。',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': '傳送並附加撤回條款（可撤回）',
+  'send.clawback.hint': '收款人只有在窗口期結束後才能領取。在此之前，只有您可以將其撤回。',
+  'send.clawback.window': '撤回窗口期',
+  'send.clawback.window.1h': '1 小時',
+  'send.clawback.window.1d': '1 天',
+  'send.clawback.window.3d': '3 天',
+  'send.clawback.window.7d': '7 天',
+  'send.clawback.review': '您可在 {when} 之前撤回，此後收款人可領取。',
 
   // ── wallet: receive ──
   'receive.title': '接收',
@@ -598,6 +607,29 @@ export const zhTW: Record<string, string> = {
   'send.coins.selected': '已選 {count} 個',
   'send.coins.loading': '正在載入幣…',
   'send.coins.none': '沒有可用的幣。',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': '撤回',
+  'clawback.open': '待處理的撤回（{count}）',
+  'clawback.popupHint': '{count} 項待處理的撤回。',
+  'clawback.intro': '帶撤回窗口傳送或收到的資金。窗口期結束後收款人可領取；在此之前，發送方可將其撤回。',
+  'clawback.loading': '正在載入待處理的撤回…',
+  'clawback.error': '無法載入待處理的撤回 — 重試',
+  'clawback.empty': '沒有待處理的撤回。',
+  'clawback.direction.incoming': '傳送給您',
+  'clawback.direction.outgoing': '由您傳送',
+  'clawback.status.claimableNow': '現在可領取',
+  'clawback.status.claimableAfter': '{when} 之後可領取',
+  'clawback.status.reclaimableUntil': '您可在 {when} 之前撤回',
+  'clawback.status.windowElapsed': '窗口期已過 — 收款人現在可以領取',
+  'clawback.action.claim': '領取',
+  'clawback.action.reclaim': '撤回',
+  'clawback.review.introClaim': '將這筆資金領取到您的錢包。確認以簽署並廣播。',
+  'clawback.review.introReclaim': '將這筆資金撤回到您的錢包。確認以簽署並廣播。',
+  'clawback.sending': '處理中…正在廣播您的交易。',
+  'clawback.confirmed': '完成 — 您的餘額已更新。',
+  'clawback.failed': '未確認 — 沒有任何變化。請重試。',
+  'clawback.error.build': '無法準備該操作 — 請重試。',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': '錢包',

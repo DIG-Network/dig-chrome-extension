@@ -176,6 +176,15 @@ export const ko: Record<string, string> = {
   'send.sending': '보내는 중… 거래를 네트워크에 전송하고 있습니다.',
   'send.confirmed': '확인됨 — 거래가 최종 확정되었습니다.',
   'send.failed': '확인되지 않음 — 거래가 승인되지 않았습니다. 잔액에는 변동이 없으니 다시 시도해 주십시오.',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': '클로백과 함께 보내기 (회수 가능)',
+  'send.clawback.hint': '수신자는 기간이 지난 후에만 청구할 수 있습니다. 그 전까지는 발신자만 회수할 수 있습니다.',
+  'send.clawback.window': '클로백 기간',
+  'send.clawback.window.1h': '1시간',
+  'send.clawback.window.1d': '1일',
+  'send.clawback.window.3d': '3일',
+  'send.clawback.window.7d': '7일',
+  'send.clawback.review': '{when}까지 회수 가능하며, 이후에는 수신자가 청구할 수 있습니다.',
 
   // ── wallet: receive ──
   'receive.title': '받기',
@@ -598,6 +607,29 @@ export const ko: Record<string, string> = {
   'send.coins.selected': '{count}개 선택됨',
   'send.coins.loading': '코인을 불러오는 중…',
   'send.coins.none': '사용 가능한 코인이 없습니다.',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': '클로백',
+  'clawback.open': '대기 중인 클로백 ({count}개)',
+  'clawback.popupHint': '대기 중인 클로백 {count}개.',
+  'clawback.intro': '회수 기간이 설정된 송수신 자금입니다. 기간이 지나면 수신자가 청구할 수 있으며, 그 전에는 발신자가 회수할 수 있습니다.',
+  'clawback.loading': '대기 중인 클로백 불러오는 중…',
+  'clawback.error': '대기 중인 클로백을 불러올 수 없습니다 — 다시 시도',
+  'clawback.empty': '대기 중인 클로백이 없습니다.',
+  'clawback.direction.incoming': '나에게 전송됨',
+  'clawback.direction.outgoing': '내가 전송함',
+  'clawback.status.claimableNow': '지금 청구 가능',
+  'clawback.status.claimableAfter': '{when} 이후 청구 가능',
+  'clawback.status.reclaimableUntil': '{when}까지 회수 가능',
+  'clawback.status.windowElapsed': '기간 만료 — 이제 수신자가 청구할 수 있습니다',
+  'clawback.action.claim': '청구',
+  'clawback.action.reclaim': '회수',
+  'clawback.review.introClaim': '이 자금을 지갑으로 청구합니다. 서명하고 전송하려면 확인하세요.',
+  'clawback.review.introReclaim': '이 자금을 지갑으로 회수합니다. 서명하고 전송하려면 확인하세요.',
+  'clawback.sending': '처리 중… 트랜잭션을 전송하고 있습니다.',
+  'clawback.confirmed': '완료 — 잔액이 업데이트되었습니다.',
+  'clawback.failed': '확인되지 않음 — 변경된 내용이 없습니다. 다시 시도하세요.',
+  'clawback.error.build': '준비할 수 없습니다 — 다시 시도하세요.',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': '지갑',
