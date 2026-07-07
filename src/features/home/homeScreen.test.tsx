@@ -100,6 +100,33 @@ describe('HomeScreen (mobile-OS home)', () => {
     fireEvent.click(screen.getByTestId('home-apps-seeall'));
     expect(store.getState().ui.tab).toBe('apps');
   });
+
+  it('#151 the activity peek resolves a CAT to its REAL registry ticker, not "CAT"', async () => {
+    const tail = 'c'.repeat(64);
+    (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = vi.fn(
+      (msg: { action?: string } | undefined, cb?: (r: unknown) => void) => {
+        let reply: unknown = { success: true };
+        if (msg?.action === 'getLockState') reply = { lockState: 'unlocked' };
+        else if (msg?.action === 'getCustodyBalances') reply = { balances: { xch: 0, cats: {} } };
+        else if (msg?.action === 'getActivity') {
+          reply = { events: [{ id: 'r:cat', kind: 'received', asset: tail, amount: '2500', counterparty: null, height: 7, timestamp: 300, coinId: 'c'.repeat(64) }], cursorHeight: 0 };
+        } else if (msg?.action === 'getDigNodeStatus') reply = { reachable: false, base: null };
+        if (cb) cb(reply);
+        return Promise.resolve(reply);
+      },
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = String(url);
+        if (u.includes('coingecko')) return { ok: true, json: async () => XCH_PRICE_JSON };
+        if (u.includes('dexie')) return { ok: true, json: async () => ({ success: true, tokens: [{ id: tail, name: 'Gamma Coin', code: 'GMA', denom: 1000 }] }) };
+        return { ok: true, json: async () => CATALOG };
+      }),
+    );
+    renderWithProviders(<HomeScreen />);
+    expect(await screen.findByTestId('home-activity-r:cat')).toHaveTextContent('GMA');
+  });
 });
 
 describe('HomeScreen balance-unit swap (#156)', () => {

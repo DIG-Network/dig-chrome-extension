@@ -938,11 +938,18 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
   (`wallet.hiddenCats`), form the token list; hiding suppresses a row only (never forgets coins).
 - **Token metadata.** Each discovered TAIL resolves to a human name/ticker/icon/decimals from a public
   CAT registry — dexie's swap-token list `GET https://api.dexie.space/v1/swap/tokens`
-  (`{ tokens:[{ id, name, code, denom, icon }] }`; `icon` on `icons.dexie.space`). The registry is
-  fetched DIRECTLY over HTTPS (not the SW seam) and cached with a LONG TTL (≈6 h — it changes slowly,
-  unlike the 120 s price feed). A TAIL absent from the registry (or a registry fetch failure) degrades
-  gracefully to a short-form TAIL name + generic ticker + monogram badge; the holding still lists.
-  $DIG keeps its canonical branding regardless of the registry (only its icon is borrowed).
+  (`{ tokens:[{ id, name, code, denom, icon }] }`; `icon` on `icons.dexie.space`). Matching is by TAIL:
+  the registry response and every discovered/watched asset id are both normalized (lowercased,
+  `0x`-stripped, validated 64-hex) before lookup, so case/prefix differences never cause a false miss.
+  The registry is fetched DIRECTLY over HTTPS (not the SW seam) and cached with a LONG TTL (≈6 h — it
+  changes slowly, unlike the 120 s price feed). A TAIL absent from the registry (or a registry fetch
+  failure, or the registry not yet loaded) degrades gracefully to a short-form TAIL name + generic
+  `CAT` ticker + monogram badge; the holding still lists — never a blank/broken row. $DIG keeps its
+  canonical `$DIG` branding regardless of the registry (only its icon is borrowed). This is the ONE
+  registry resolution every CAT-ticker display in the extension MUST consume — the Assets list
+  (`custodyAssetBalances`) and the Activity ledger (§18.9) both resolve through it, so a token's ticker
+  is consistent everywhere it appears (#151 fixed a regression where Activity bypassed this registry
+  entirely and showed a hardcoded generic ticker).
 - **Chain source.** The wasm coinset `RpcClient` fetches the configured chain endpoint from the
   offscreen document (extensions bypass CORS). Default `https://api.coinset.org`; an explicit
   `wallet.settings.chainRpcUrl` override wins (§5.3 — a user-facing custom node, settable +
@@ -1008,6 +1015,12 @@ vault (`getActivity`):
   human-sentence rows + SpaceScan links. Results are cached (`walletCache.activity`) for cached-first
   paint; the height cursor is persisted for a future incremental scan (v1 re-scans fully for
   correctness — a coin created before a cursor may be spent after it).
+- **Display ticker (MUST resolve through the registry, #151).** Each row's ticker/decimals resolve
+  from the event's raw asset id through the SAME §18.6 token-metadata path the Assets list uses: `XCH`
+  is fixed; the built-in $DIG TAIL keeps its canonical `$DIG` branding; every other TAIL resolves
+  against the dexie registry (real ticker + decimals on a hit), degrading to the generic short-form
+  fallback ONLY when the registry has no entry (or hasn't loaded) — never a hardcoded/generic ticker
+  for a token the registry actually knows.
 
 ### 18.10 Trade offers
 
