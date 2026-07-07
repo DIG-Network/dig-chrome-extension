@@ -94,7 +94,10 @@ points**, built by Vite into `dist-web/` and copied into `dist/` (§13), present
   scrolling content area, and a **STICKY phone bottom nav** pinned to the viewport bottom (only the
   content scrolls; the nav is always visible; the scroll area reserves bottom padding = nav height +
   `env(safe-area-inset-bottom)`). A soft DIG violet→magenta ambient wallpaper sits behind the chrome;
-  switching screens plays a mobile-OS app-open transition.
+  switching screens plays a mobile-OS app-open transition. **The popup body never scrolls
+  horizontally** (§6.6, #163): content fits the fixed 372px shell; a wide inner control (e.g. the
+  wallet's segmented view switcher) scrolls WITHIN itself (`overflow-x: auto` on that control alone)
+  instead of widening `.dig-main`/`[data-testid="popup-root"]`.
 - **`app.html`** → `App surface="fullpage"` — a **tablet/desktop-OS**: the SAME app + route tree in
   the expanded sidebar-rail layout at ≥960px (a wider multi-column widget board), degrading to the
   compact phone in a narrow window (`useLayoutMode`).
@@ -124,6 +127,12 @@ grouping; the **default landing is Home**. Every surface stays reachable:
    - **Trade** — make / take / cancel a `offer1…` string, built + signed in the offscreen vault
      (`makeOffer` / `inspectOffer` / `prepareTrade` / `confirmTrade`; §18.10).
    - **Collectibles** — the wallet's NFTs, discovered + transferred via the vault (§18.11).
+   - **Identity** — the wallet's DIDs (§18.17). **This segmented-tab ENTRY is fullscreen-only**
+     (`walletViewsForSurface`, `src/app/tabs.ts`, #163): Identity/DID management is ADVANCED (§145),
+     so the compact popup's segmented control renders `Assets | Activity | Trade | Collectibles`
+     only — it never shows an "Identity" tab. The DID list remains reachable view-only on the
+     popup via a direct `#wallet/did` deep-link (the panel itself is unaffected — only its tab
+     entry is gated); the fullscreen segmented control always shows all five views.
    Key custody, signing, and coin selection all happen in the offscreen vault — the decrypted key
    never leaves it (§18); a custom node/RPC endpoint is configured on the options page (§8.3).
 2. **Apps** (§2.4) — the curated DIG dApp store as a native in-extension launcher.
@@ -1680,8 +1689,10 @@ mounts the create or transfer form.
 - **CONFIRM NFT↔DID ASSIGNMENT** (`confirmNftDidAssign`): signs + broadcasts the held assignment —
   reusing the vault's `confirmSend` broadcast path; confirmation is polled via the shared `sendStatus`.
   Mainnet-only.
-- **UI.** An Identity panel (reached from the wallet's segmented views) lists the wallet's DIDs
-  (view-only in BOTH surfaces, showing the profile name when set); in the fullscreen layout it
+- **UI.** An Identity panel lists the wallet's DIDs (view-only in BOTH surfaces, showing the profile
+  name when set). **The "Identity" segmented-tab ENTRY is fullscreen-only** (§2.1, #163) — the
+  compact popup's wallet segmented control never renders it; the panel is still reachable view-only
+  on the popup via a direct `#wallet/did` deep-link. In the fullscreen layout the Identity tab
   additionally offers "Create DID" and, per DID, "Transfer" and "Edit profile" — the popup shows an
   "open full screen" link for these instead of embedding the forms. The Collectibles NFT detail view
   offers "Assign DID owner" (fullscreen only), picking from the wallet's listed DIDs. Four states +

@@ -30,8 +30,9 @@ import { ContactsManager } from '@/features/contacts/ContactsManager';
 import { CustodyActivity } from '@/features/wallet/custody/CustodyActivity';
 import { CollectiblesPanel } from '@/features/collectibles/CollectiblesPanel';
 import { DidPanel } from '@/features/identity/DidPanel';
+import { isFullpageSurface } from '@/features/collectibles/surface';
 import { useMemo, useState } from 'react';
-import type { WalletView } from '@/app/tabs';
+import { walletViewsForSurface, type WalletView } from '@/app/tabs';
 
 const SEG_OPTIONS: { value: WalletView; labelId: string }[] = [
   { value: 'home', labelId: 'wallet.view.home' },
@@ -46,10 +47,20 @@ const SEG_OPTIONS: { value: WalletView; labelId: string }[] = [
  * offscreen HD scan (XCH + watched CATs, both schemes, via coinset). Send/Trade/Activity are wired
  * once local signing lands (a follow-up); here Home shows balances + Receive, with the one-time
  * privacy note and the advanced chain-node override. Four states drive the assets query.
+ *
+ * **Surface tiering (#163): the "Identity" segmented tab is fullscreen-only.** The compact popup's
+ * SegmentedControl drops it ({@link walletViewsForSurface}) — Identity/DID management is ADVANCED
+ * (§145), mirroring the create/transfer-form gating `DidPanel` already applies. `full` is
+ * auto-detected from the surface (overridable in tests).
  */
-export function CustodyWallet() {
+export function CustodyWallet({ full }: { full?: boolean } = {}) {
   const dispatch = useAppDispatch();
   const intl = useIntl();
+  const isFull = full ?? isFullpageSurface();
+  const segOptions = useMemo(() => {
+    const visible = walletViewsForSurface(isFull);
+    return SEG_OPTIONS.filter((opt) => visible.includes(opt.value));
+  }, [isFull]);
   const walletView = useAppSelector((s) => s.ui.walletView);
   const advanced = useAppSelector((s) => s.ui.advanced);
   const [watchedCats] = useStorageValue<unknown>('wallet.watchedCats', []);
@@ -131,7 +142,7 @@ export function CustodyWallet() {
       <div className="dig-toggle-row" style={{ margin: '14px 0' }}>
         <SegmentedControl<WalletView>
           value={walletView}
-          options={SEG_OPTIONS}
+          options={segOptions}
           onChange={(v) => dispatch(setWalletView(v))}
           ariaLabel="Wallet views"
           idPrefix="wallet"
