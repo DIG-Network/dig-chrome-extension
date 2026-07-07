@@ -267,6 +267,7 @@ export const en: Record<string, string> = {
   'appview.back': 'Back',
   'appview.expand': 'Open in a full tab',
   'appview.loading': 'Opening {name}…',
+  'appview.loading.sub': 'Connecting securely · powered by DIG Network',
   'appview.blocked': "{name} can't run inside DIG — opening it in a new tab.",
   'appview.openTab': 'Open in a new tab',
   // Inline bug-report entry

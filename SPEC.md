@@ -267,7 +267,14 @@ launcher), the app name, and **⤢ expand** (promote the dApp to a full browser 
 allows `frame-src 'self' https:` (the app-view only ever frames curated store links). `Escape` closes it.
 
 It renders THREE states, and NEVER leaves a blank frame:
-- **loading** — a spinner over the frame until the frame's `load` fires or a timeout elapses;
+- **loading** (#157) — the shared `DigLoader` branded card (`src/components/DigLoader.tsx`) over the
+  frame until the frame's `load` fires or a timeout elapses. `DigLoader` matches the visual language
+  of the `*.on.dig.net` resolver loader shell (`services/on.dig.net/assets/loader.html`) — a dark
+  card on a contained radial-glow backdrop with the DIG Network wordmark, a purple spinner, and a
+  title/subtitle pair — so the SAME "DIG is loading your content" experience appears whether content
+  resolves via a subdomain or inside the extension. The spinner honors `prefers-reduced-motion:
+  reduce` (no rotation). `DigLoader` is presentational only (the caller supplies react-intl copy) and
+  is the loader the open-by-URN content view (#172) reuses;
 - **ready** — the framed dApp;
 - **blocked** — a refused/unreachable embed. Detection: an `error` event, a no-`load` timeout, or a
   `load` that resolves to a readable `about:blank` (a refused frame that never committed). On blocked,

@@ -1262,6 +1262,101 @@ button.dig-widget:focus-visible {
   }
 }
 
+/* ── DIG-branded loader (#157) — matches *.on.dig.net's resolver loader shell (dark card, DIG Mark,
+   purple spinner, contained radial glow) so the extension shows the SAME "DIG is loading your
+   content" experience. Deliberately dark (its own scoped tokens below), unlike the rest of this
+   light product theme — brand parity with on.dig.net wins for this one shared loading moment.
+   `.dig-loader` fills its positioned host (see DigLoader.tsx's contract); the in-window dApp
+   app-view mounts it inside `.dig-appview-body` (already `position: relative`). ── */
+.dig-loader {
+  --loader-bg: #0b0a12;
+  --loader-surface: #16131f;
+  --loader-border: #2a2440;
+  --loader-text: #ffffff;
+  --loader-muted: #a99fc4;
+  --loader-purple: #7a3dff;
+  --loader-magenta: #ff00de;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--loader-bg);
+  /* A single contained radial glow behind the card — it fades out well before the edges, so the
+     backdrop still reads as clean near-black (no color bleed onto the surrounding light shell). */
+  background-image:
+    radial-gradient(620px 420px at 50% 42%, rgba(122, 61, 255, 0.16), rgba(11, 10, 18, 0) 62%),
+    radial-gradient(420px 300px at 50% 42%, rgba(255, 0, 222, 0.06), rgba(11, 10, 18, 0) 60%);
+  background-repeat: no-repeat;
+}
+.dig-loader-card {
+  position: relative;
+  width: min(88%, 320px);
+  padding: 32px 26px 26px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0)), var(--loader-surface);
+  border: 1px solid var(--loader-border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  text-align: center;
+  overflow: hidden;
+}
+/* A whisper of the brand on the card's top edge — crisp, not a glow (matches on.dig.net). */
+.dig-loader-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--loader-purple) 35%, var(--loader-magenta) 65%, transparent);
+  opacity: 0.85;
+}
+.dig-loader-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  height: 40px;
+}
+.dig-loader-mark svg {
+  display: block;
+  height: 40px;
+  width: auto;
+}
+.dig-loader-spinner {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  /* A faint purple track with a single crisp purple arc — no bloom/halo, same treatment as on.dig.net. */
+  border: 3px solid rgba(122, 61, 255, 0.18);
+  border-top-color: var(--loader-purple);
+  animation: dig-loader-spin 0.85s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+}
+@keyframes dig-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.dig-loader-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--loader-text);
+  letter-spacing: 0.1px;
+  margin: 0 0 6px;
+  line-height: 1.5;
+}
+.dig-loader-subtitle {
+  font-size: 12px;
+  color: var(--loader-muted);
+  letter-spacing: 0.2px;
+  margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dig-loader-spinner {
+    animation: none;
+  }
+}
+
 /* ── in-window dApp app-view (#65 B.2 — open a dApp like a phone app) ── */
 .dig-appview {
   position: fixed;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { createStore } from '@/app/store';
 import { AppView } from '@/features/apps/AppView';
@@ -84,6 +84,28 @@ describe('AppView (in-window dApp app-view)', () => {
       expect.objectContaining({ action: 'appViewFraming' }),
       expect.any(Function),
     );
+  });
+
+  it('shows the on.dig.net-matching branded DIG loader while the dApp is loading (#157)', () => {
+    spySendMessage();
+    renderWithProviders(<AppView />, { store: openedStore(EXT_APP) });
+    const loading = screen.getByTestId('appview-loading');
+    expect(loading).toHaveAttribute('role', 'status');
+    expect(loading).toHaveAttribute('aria-live', 'polite');
+    expect(within(loading).getByRole('img', { name: 'DIG Network' })).toBeInTheDocument();
+    expect(loading).toHaveTextContent('Opening External…');
+  });
+
+  it('drops the branded DIG loader once the dApp is ready', async () => {
+    spySendMessage();
+    renderWithProviders(<AppView />, { store: openedStore(DIG_APP) });
+    const frame = await screen.findByTestId('appview-frame');
+    Object.defineProperty(frame, 'contentWindow', {
+      configurable: true,
+      get: () => ({ get location(): never { throw new Error('cross-origin'); } }),
+    });
+    fireEvent.load(frame);
+    expect(screen.queryByTestId('appview-loading')).not.toBeInTheDocument();
   });
 
   it('goes ready when a real cross-origin dApp loads (location read throws)', async () => {

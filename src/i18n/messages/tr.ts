@@ -262,6 +262,7 @@ export const tr: Record<string, string> = {
   'appview.back': 'Geri',
   'appview.expand': 'Tam sekmede aç',
   'appview.loading': '{name} açılıyor…',
+  'appview.loading.sub': 'Güvenli şekilde bağlanılıyor · DIG Network tarafından desteklenmektedir',
   'appview.blocked': '{name} DIG içinde çalışamıyor — yeni sekmede açılıyor.',
   'appview.openTab': 'Yeni sekmede aç',
   // Inline bug-report entry

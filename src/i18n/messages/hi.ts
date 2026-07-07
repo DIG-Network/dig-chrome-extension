@@ -262,6 +262,7 @@ export const hi: Record<string, string> = {
   'appview.back': 'वापस',
   'appview.expand': 'पूरे टैब में खोलें',
   'appview.loading': '{name} खोला जा रहा है…',
+  'appview.loading.sub': 'सुरक्षित रूप से कनेक्ट हो रहा है · DIG Network द्वारा संचालित',
   'appview.blocked': '{name} DIG के अंदर नहीं चल सकता — इसे नए टैब में खोला जा रहा है।',
   'appview.openTab': 'नए टैब में खोलें',
   // Inline bug-report entry

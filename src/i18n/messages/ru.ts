@@ -262,6 +262,7 @@ export const ru: Record<string, string> = {
   'appview.back': 'Назад',
   'appview.expand': 'Открыть в полноценной вкладке',
   'appview.loading': 'Открытие {name}…',
+  'appview.loading.sub': 'Безопасное подключение · работает на DIG Network',
   'appview.blocked': '{name} не может работать внутри DIG — открывается в новой вкладке.',
   'appview.openTab': 'Открыть в новой вкладке',
   // Inline bug-report entry
