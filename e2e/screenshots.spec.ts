@@ -46,6 +46,12 @@ const STUB = `
     if (a === 'listDids') return { dids: [
       { launcherId: 'aa'.repeat(32), coinId: 'bb'.repeat(32), p2PuzzleHash: 'cc'.repeat(32), recoveryListHash: null, numVerificationsRequired: '1', profileName: 'Screenshot DID' },
     ] };
+    // #152 — one incoming (claimable now) + one outgoing (still reclaimable) pending clawback.
+    if (a === 'listClawbacks') return { clawbacks: [
+      { direction: 'incoming', info: { senderPuzzleHashHex: 'aa'.repeat(32), receiverPuzzleHashHex: 'bb'.repeat(32), seconds: '1700000000', amount: '250000000000' }, coinIdHex: 'c1'.repeat(32) },
+      { direction: 'outgoing', info: { senderPuzzleHashHex: 'cc'.repeat(32), receiverPuzzleHashHex: 'dd'.repeat(32), seconds: '9999999999', amount: '500000000000' }, coinIdHex: 'c2'.repeat(32) },
+    ] };
+    if (a === 'prepareClawbackAction') return { pendingId: 'clawback-pending-1', clawbackAmountOut: '249999000000' };
     if (a === 'inspectOffer') return { offerSummary: {
       offered: [{ asset: { kind: 'xch' }, amount: '100000000000' }],
       requested: [{ asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: '250', toPuzzleHashHex: 'ab' }],
@@ -175,6 +181,50 @@ test('fullscreen coins (coin control)', async ({ page }) => {
   await page.getByTestId('coin-control').waitFor();
   await page.waitForTimeout(500);
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-coins.png' });
+});
+
+// Clawback (#152): advanced → fullscreen only (§145). The popup shows a lighter "open full screen"
+// hint when something is pending; the fullscreen Assets view links straight to the management panel.
+test('popup clawback hint (view-only, management moved to full screen)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet');
+  const hint = page.getByTestId('clawback-popup-hint');
+  await hint.waitFor();
+  await hint.scrollIntoViewIfNeeded(); // below the fold behind the one-time privacy note (§6.5)
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-clawback-hint.png' });
+});
+
+test('fullscreen clawback (pending incoming + outgoing list)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet');
+  await page.getByTestId('action-clawback').click();
+  await page.getByTestId('clawback-panel').waitFor();
+  await page.getByTestId('clawback-items').waitFor();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-clawback.png' });
+});
+
+// Clawback is an ADVANCED send option, fullscreen-only (#152, §145): the popup's basic Send never
+// shows it; the fullscreen Send form reveals the toggle + window picker.
+test('fullscreen send with clawback enabled', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet');
+  await page.getByTestId('action-send').click();
+  await page.getByTestId('custody-send').waitFor();
+  await page.getByTestId('send-clawback-toggle').click();
+  await page.getByTestId('send-clawback-options').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-send-clawback.png' });
+});
+
+test('popup send never shows the clawback option', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet');
+  await page.getByTestId('action-send').click();
+  await page.getByTestId('custody-send').waitFor();
+  await expect(page.getByTestId('send-clawback-toggle')).toHaveCount(0);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-send.png' });
 });
 
 // NFT minting (#92): advanced → fullscreen only. The fullscreen collectibles view exposes "Mint NFT";

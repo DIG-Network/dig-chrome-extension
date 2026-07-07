@@ -42,6 +42,13 @@ import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offs
 import { decodeDappSpend, reconstructCoinSpends, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
 import { makeOffer, inspectOffer, takeOffer, cancelOffer, type OfferWasm, type OfferAsset, type OfferLeg, type OfferSummary } from '@/offscreen/offers';
 import type { ChainSpendBundle } from '@/offscreen/chain';
+import {
+  discoverIncomingClawbacks,
+  findClawbackCoin,
+  prepareClawbackAction as buildClawbackAction,
+  type ClawbackInfo,
+  type ClawbackWasm,
+} from '@/offscreen/clawback';
 
 /**
  * A CHIP-0002 `getAssetBalance` result: the wallet-wide aggregate for one asset (XCH or a CAT), in
@@ -107,6 +114,40 @@ export interface ActivityHint {
   counterparty: string | null;
 }
 
+/** Wire-safe (JSON, no bigint) clawback params (#152) crossing the SW↔vault boundary. */
+export interface WireClawbackInfo {
+  senderPuzzleHashHex: string;
+  receiverPuzzleHashHex: string;
+  /** Absolute unix timestamp (decimal string) — NOT a duration. */
+  seconds: string;
+  amount: string;
+}
+const toWireClawbackInfo = (info: ClawbackInfo): WireClawbackInfo => ({
+  senderPuzzleHashHex: info.senderPuzzleHashHex,
+  receiverPuzzleHashHex: info.receiverPuzzleHashHex,
+  seconds: info.seconds.toString(),
+  amount: info.amount.toString(),
+});
+const fromWireClawbackInfo = (w: WireClawbackInfo): ClawbackInfo => ({
+  senderPuzzleHashHex: w.senderPuzzleHashHex,
+  receiverPuzzleHashHex: w.receiverPuzzleHashHex,
+  seconds: BigInt(w.seconds),
+  amount: BigInt(w.amount),
+});
+
+/**
+ * One entry in the #152 clawback management list — either an INCOMING pending claim (discovered on
+ * chain by hint, `listClawbacks` needs no candidate for these) or an OUTGOING pending reclaim (the
+ * vault has no on-chain way to enumerate a wallet's own past clawback sends, so the CALLER supplies
+ * candidates from its own local activity log, #154, and the vault reports back only the ones still
+ * actually pending — i.e. still unspent — on chain right now).
+ */
+export interface WireClawback {
+  direction: 'incoming' | 'outgoing';
+  info: WireClawbackInfo;
+  coinIdHex: string;
+}
+
 /** The keystore operations the vault handles (mirrors the SW custody actions). */
 export type VaultOp =
   | 'createWallet'
@@ -142,6 +183,11 @@ export type VaultOp =
   | 'listCoins'
   | 'prepareSplit'
   | 'prepareCombine'
+  // Clawback (#152): list pending incoming/outgoing clawbacks; build the CLAIM (receiver) / CLAW
+  // BACK (sender) spend — broadcast via the shared confirmSend path. Send-WITH-clawback is the
+  // ordinary 'prepareSend' plus its `clawbackSeconds` field (no separate op).
+  | 'listClawbacks'
+  | 'prepareClawbackAction'
   // dApp `window.chia` RPC (§5.5): identity read + approval-gated foreign-spend / message signing.
   | 'getPublicKeys'
   | 'getAssetBalance'
@@ -206,6 +252,16 @@ export interface VaultRequest {
   coinIds?: string[];
   /** prepareSplit: how many self coins to split into (≥2). */
   outputs?: number;
+  /** prepareSend (#152): send WITH a clawback window — an absolute unix timestamp (decimal string)
+   * after which the receiver may claim; before it, only the sender may claw back. XCH only (v1). */
+  clawbackSeconds?: string;
+  /** prepareClawbackAction: which side is acting — claim (receiver) or claw back (sender). */
+  direction?: 'claim' | 'reclaim';
+  /** prepareClawbackAction: the locked coin's params (from `listClawbacks`/the original send). */
+  clawbackInfo?: WireClawbackInfo;
+  /** listClawbacks (#152): the caller's own OUTGOING candidates (from its local activity log) to
+   * check against live chain state — the vault has no other way to enumerate a wallet's past sends. */
+  clawbackCandidates?: WireClawbackInfo[];
   /** makeOffer: the leg the wallet gives / the leg it wants (wire-safe, string amounts). */
   offered?: WireOfferLeg;
   requested?: WireOfferLeg;
@@ -253,6 +309,13 @@ export interface VaultResponse {
   /** prepareSend: the pending id + the decoded (tamper-resistant) summary to approve. */
   pendingId?: string;
   summary?: { asset: string; sent: string; change: string; fee: string; recipientPuzzleHashHex: string; coinCount: number };
+  /** prepareSend (#152): present iff `clawbackSeconds` was given — the params the caller needs to
+   * later list/claim/claw-back this send (persist alongside the activity-log entry, #154). */
+  clawbackInfo?: WireClawbackInfo;
+  /** listClawbacks (#152): the wallet's currently-pending incoming + outgoing clawbacks. */
+  clawbacks?: WireClawback[];
+  /** prepareClawbackAction (#152): the decoded amount actually delivered (== the coin's amount minus fee). */
+  clawbackAmountOut?: string;
   /** confirmSend: an input coin id (hex) to poll for confirmation. */
   spentCoinId?: string;
   /** sendStatus: whether the spend has confirmed on-chain. */
@@ -315,6 +378,9 @@ interface PendingSend {
   inputCoinIds: string[];
   /** #154 — the activity-log hint `confirmSend` hands back on broadcast; see {@link ActivityHint}. */
   activityHint?: ActivityHint;
+  /** #152 — present iff this was a send-WITH-clawback; `confirmSend` hands it back on broadcast so
+   * the caller can persist it alongside the activity-log entry (needed to later claim/claw it back). */
+  clawbackInfo?: ClawbackInfo;
 }
 
 /** The vault slot a legacy (pre-#90) single-wallet caller uses when it supplies no wallet id. */
@@ -424,6 +490,10 @@ export class Vault {
           return await this.prepareSplit(req, deps);
         case 'prepareCombine':
           return await this.prepareCombine(req, deps);
+        case 'listClawbacks':
+          return await this.listClawbacks(req, deps);
+        case 'prepareClawbackAction':
+          return await this.prepareClawbackAction(req, deps);
         case 'getPublicKeys':
           return await this.getPublicKeys(req, deps);
         case 'getAssetBalance':
@@ -563,6 +633,9 @@ export class Vault {
   /**
    * Prepare (build, don't sign/broadcast) an XCH send and HOLD it under a pending id. Returns the
    * decoded summary derived from the built spend for the user to approve. `chia` is the full wasm.
+   *
+   * `clawbackSeconds` (#152): send WITH a clawback window instead of a plain send — XCH only (v1);
+   * a CAT send with `clawbackSeconds` is rejected (`BAD_REQUEST`) rather than silently ignored.
    */
   private async prepareSend(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
@@ -571,6 +644,9 @@ export class Vault {
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const chia = deps.chia as unknown as SendFlowWasm;
     const isCat = !!req.assetId && req.assetId.toLowerCase() !== 'xch';
+    if (req.clawbackSeconds != null && isCat) {
+      return { success: false, code: 'BAD_REQUEST', message: 'clawback is supported for XCH sends only (v1)' };
+    }
     // Coin control (#91): a hand-picked coin selection overrides the driver's auto-selection.
     const selection = req.coinIds && req.coinIds.length ? { selectedCoinIds: req.coinIds } : {};
     const prepared = isCat
@@ -590,13 +666,15 @@ export class Vault {
           fee: BigInt(req.fee ?? '0'),
           activeIndex: req.activeIndex ?? 0,
           ...selection,
+          ...(req.clawbackSeconds != null ? { clawbackSeconds: BigInt(req.clawbackSeconds) } : {}),
         });
     const pendingId = crypto.randomUUID();
     const inputCoinIds = prepared.coinSpends.map((cs) => chia.toHex(cs.coin.coinId()).replace(/^0x/i, '').toLowerCase());
     // #154 — the counterparty is already the user's own `recipient` input, no re-derivation needed.
     const activityHint: ActivityHint = { asset: prepared.summary.asset, amount: prepared.summary.sent, counterparty: req.recipient };
-    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
-    return { success: true, pendingId, summary: prepared.summary };
+    const clawbackInfo = 'clawbackInfo' in prepared ? prepared.clawbackInfo : undefined;
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint, clawbackInfo });
+    return { success: true, pendingId, summary: prepared.summary, ...(clawbackInfo ? { clawbackInfo: toWireClawbackInfo(clawbackInfo) } : {}) };
   }
 
   /**
@@ -615,7 +693,12 @@ export class Vault {
     const push = await deps.chain.pushSpendBundle(bundle);
     this.pending.delete(req.pendingId!);
     if (!push.success) return { success: false, code: 'PUSH_FAILED', message: push.error ?? 'broadcast failed' };
-    return { success: true, spentCoinId: held.inputCoinIds[0], ...(held.activityHint ? { activityHint: held.activityHint } : {}) };
+    return {
+      success: true,
+      spentCoinId: held.inputCoinIds[0],
+      ...(held.activityHint ? { activityHint: held.activityHint } : {}),
+      ...(held.clawbackInfo ? { clawbackInfo: toWireClawbackInfo(held.clawbackInfo) } : {}),
+    };
   }
 
   /** Poll whether a broadcast send has confirmed (an input coin is now recorded spent). */
@@ -951,6 +1034,54 @@ export class Vault {
     const inputCoinIds = prepared.coinSpends.map((cs) => strip0x(chia.toHex(cs.coin.coinId())));
     this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds });
     return { success: true, pendingId, coinOpSummary: prepared.coinOpSummary };
+  }
+
+  /**
+   * LIST the wallet's currently-pending clawbacks (#152) — INCOMING (discovered on chain by hint at
+   * the ACTIVE index's own puzzle hashes) plus OUTGOING (the caller's `clawbackCandidates`, sourced
+   * from its own local activity log, each checked against LIVE chain state and included only if still
+   * actually pending — i.e. not yet claimed or reclaimed). Read-only.
+   */
+  private async listClawbacks(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const keyring = await this.heldKeyring(deps, req.activeIndex);
+    if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as ClawbackWasm;
+    const incoming = await discoverIncomingClawbacks(chia, deps.chain, keyring);
+    const clawbacks: WireClawback[] = incoming.map((p) => ({
+      direction: 'incoming',
+      info: toWireClawbackInfo(p.info),
+      coinIdHex: strip0x(chia.toHex(p.coin.coinId())),
+    }));
+    for (const wire of req.clawbackCandidates ?? []) {
+      const info = fromWireClawbackInfo(wire);
+      const coin = await findClawbackCoin(chia, deps.chain, info);
+      if (coin) clawbacks.push({ direction: 'outgoing', info: toWireClawbackInfo(info), coinIdHex: strip0x(chia.toHex(coin.coinId())) });
+    }
+    return { success: true, clawbacks };
+  }
+
+  /**
+   * Build the CLAIM (receiver) or CLAW BACK (sender) spend for one pending clawback (#152) and HOLD
+   * it under a pending id — the SAME pending map + `confirmSend` broadcast path as a coin send. The
+   * actor's own key must own the relevant side (`MISSING_KEY` otherwise); the coin must currently be
+   * pending on chain (`NO_CLAWBACK_COIN` otherwise — already resolved, or not yet confirmed).
+   */
+  private async prepareClawbackAction(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.clawbackInfo || !req.direction) return { success: false, code: 'BAD_REQUEST', message: 'clawbackInfo + direction required' };
+    const keyring = await this.heldKeyring(deps, req.activeIndex);
+    if (!keyring) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as ClawbackWasm;
+    const info = fromWireClawbackInfo(req.clawbackInfo);
+    const prepared = await buildClawbackAction(chia, deps.chain, { keyring, info, direction: req.direction, fee: BigInt(req.fee ?? '0') });
+    const pendingId = crypto.randomUUID();
+    const inputCoinIds = prepared.coinSpends.map((cs) => strip0x(chia.toHex(cs.coin.coinId())));
+    // #154 — a claim/reclaim moves funds to the actor's OWN address (self-only); logged as kind
+    // 'clawback' by the caller regardless of direction (see background/index.ts).
+    const activityHint: ActivityHint = { asset: 'XCH', amount: prepared.amountOut.toString(), counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
+    return { success: true, pendingId, clawbackAmountOut: prepared.amountOut.toString() };
   }
 
   /**

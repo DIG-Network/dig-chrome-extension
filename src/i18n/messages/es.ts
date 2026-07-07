@@ -176,6 +176,15 @@ export const es: Record<string, string> = {
   'send.sending': 'Enviando… transmitiendo tu transacción.',
   'send.confirmed': 'Confirmado — tu transacción es definitiva.',
   'send.failed': 'No confirmado — la transacción no fue aceptada. Tu saldo no cambió; inténtalo de nuevo.',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'Enviar con retiro (recuperable)',
+  'send.clawback.hint': 'El destinatario solo puede reclamarlo después de que pase el plazo. Antes de eso, solo tú puedes retirarlo.',
+  'send.clawback.window': 'Plazo de retiro',
+  'send.clawback.window.1h': '1 hora',
+  'send.clawback.window.1d': '1 día',
+  'send.clawback.window.3d': '3 días',
+  'send.clawback.window.7d': '7 días',
+  'send.clawback.review': 'Recuperable por ti hasta {when}, reclamable por el destinatario después.',
 
   // ── wallet: receive ──
   'receive.title': 'Recibir',
@@ -598,6 +607,29 @@ export const es: Record<string, string> = {
   'send.coins.selected': '{count} seleccionadas',
   'send.coins.loading': 'Cargando monedas…',
   'send.coins.none': 'No hay monedas disponibles.',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'Retiro',
+  'clawback.open': 'Retiros pendientes ({count})',
+  'clawback.popupHint': '{count} retiro(s) pendiente(s).',
+  'clawback.intro': 'Fondos enviados o recibidos con un plazo de recuperación. El destinatario puede reclamarlos una vez que pase el plazo; antes de eso, el remitente puede recuperarlos.',
+  'clawback.loading': 'Cargando retiros pendientes…',
+  'clawback.error': 'No se pudieron cargar tus retiros pendientes — reintentar',
+  'clawback.empty': 'No hay retiros pendientes.',
+  'clawback.direction.incoming': 'Enviado a ti',
+  'clawback.direction.outgoing': 'Enviado por ti',
+  'clawback.status.claimableNow': 'Reclamable ahora',
+  'clawback.status.claimableAfter': 'Reclamable después de {when}',
+  'clawback.status.reclaimableUntil': 'Recuperable por ti hasta {when}',
+  'clawback.status.windowElapsed': 'Plazo vencido — el destinatario ya puede reclamarlo',
+  'clawback.action.claim': 'Reclamar',
+  'clawback.action.reclaim': 'Retirar',
+  'clawback.review.introClaim': 'Reclama estos fondos en tu billetera. Confirma para firmar y transmitir.',
+  'clawback.review.introReclaim': 'Recupera estos fondos en tu billetera. Confirma para firmar y transmitir.',
+  'clawback.sending': 'Procesando… transmitiendo tu transacción.',
+  'clawback.confirmed': 'Listo — tu saldo se ha actualizado.',
+  'clawback.failed': 'No confirmado — nada cambió. Inténtalo de nuevo.',
+  'clawback.error.build': 'No se pudo preparar eso — inténtalo de nuevo.',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'Billetera',

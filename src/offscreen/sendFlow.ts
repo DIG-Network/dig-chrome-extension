@@ -10,6 +10,7 @@ import { buildXchSend, type SendWasm, type KeyPair, type SpendSummary } from '@/
 import { signCoinSpends, type SigningWasm, type SigSecretKey, type SigCoinSpend } from '@/offscreen/signing';
 import type { ChainClient, ChainSpendBundle } from '@/offscreen/chain';
 import { WALLET_PATH_PREFIX, type Scheme } from '@/lib/keystore/derive';
+import { clawbackDestination, type ClawbackInfo, type ClawbackWasm } from '@/offscreen/clawback';
 
 /** A wasm secret key with the derivation + signing surface the flow needs. */
 interface FullSecretKey extends SigSecretKey {
@@ -105,24 +106,50 @@ export interface PreparedSend {
   coinSpends: SigCoinSpend[];
   summary: SpendSummary;
   secretKeys: SigSecretKey[];
+  /** Present iff `clawbackSeconds` was given — the params the sender/UI needs to later CLAIM
+   * (receiver) or CLAW BACK (sender) this locked coin (#152); see `offscreen/clawback.ts`. */
+  clawbackInfo?: ClawbackInfo;
 }
 
 /**
  * Prepare an XCH send: derive the ACTIVE index's keyring, fetch the wallet's unspent coins at it,
  * decode the recipient, and build the spend + summary. Does NOT sign or broadcast. Change returns
  * to the active index's unhardened address.
+ *
+ * `clawbackSeconds` (#152, optional): send WITH a clawback window instead of a plain send — the
+ * built CREATE_COIN targets the `ClawbackV2` puzzle hash (not the recipient's own puzzle hash) with
+ * `[receiverPuzzleHash, clawback.memo()]` memos, so the recipient can only CLAIM after this absolute
+ * unix timestamp, and the sender can CLAW BACK any time before they do (`offscreen/clawback.ts`
+ * builds those two follow-up spends). The decoded summary still reports the full sent amount (the
+ * "sent" side of the ledger doesn't change — only where it settles does).
  */
 export async function prepareXchSend(
   chia: SendFlowWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; recipient: string; amount: bigint; fee: bigint; activeIndex?: number; selectedCoinIds?: string[] },
+  opts: { seed: Uint8Array; recipient: string; amount: bigint; fee: bigint; activeIndex?: number; selectedCoinIds?: string[]; clawbackSeconds?: bigint },
 ): Promise<PreparedSend> {
   const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map<string, KeyPair>(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
   const allCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
   const coins = filterSelected(chia, allCoins, opts.selectedCoinIds, (c) => c.coinId());
-  const destPuzzleHash = chia.Address.decode(opts.recipient).puzzleHash;
+  const receiverPuzzleHash = chia.Address.decode(opts.recipient).puzzleHash;
   const changePuzzleHash = chia.fromHex(keyring[0].puzzleHashHex);
+
+  let destPuzzleHash = receiverPuzzleHash;
+  let buildMemos: ((clvm: unknown) => unknown) | undefined;
+  let clawbackInfo: ClawbackInfo | undefined;
+  if (opts.clawbackSeconds != null) {
+    clawbackInfo = {
+      senderPuzzleHashHex: keyring[0].puzzleHashHex,
+      receiverPuzzleHashHex: strip0x(chia.toHex(receiverPuzzleHash)),
+      seconds: opts.clawbackSeconds,
+      amount: opts.amount,
+    };
+    const dest = clawbackDestination(chia as unknown as ClawbackWasm, clawbackInfo);
+    destPuzzleHash = dest.puzzleHash;
+    buildMemos = dest.buildMemos;
+  }
+
   const built = buildXchSend(chia, {
     coins,
     keyByPuzzleHash,
@@ -130,8 +157,9 @@ export async function prepareXchSend(
     amount: opts.amount,
     fee: opts.fee,
     changePuzzleHash,
+    ...(buildMemos ? { buildMemos } : {}),
   });
-  return { coinSpends: built.coinSpends, summary: built.summary, secretKeys: keyring.map((k) => k.sk) };
+  return { coinSpends: built.coinSpends, summary: built.summary, secretKeys: keyring.map((k) => k.sk), ...(clawbackInfo ? { clawbackInfo } : {}) };
 }
 
 /** Sign a prepared send and return the broadcastable SpendBundle (the approved, final step). */

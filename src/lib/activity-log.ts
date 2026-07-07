@@ -57,6 +57,13 @@ export interface LocalActivityEntry {
   /** When this entry was logged (ms epoch) — NOT a block time (the extension isn't scanning chain). */
   timestamp: number;
   status: ActivityStatus;
+  /**
+   * #152 — present ONLY on a 'sent' entry that used a clawback window: the locked coin's params, so
+   * the fullscreen Clawback panel can list this as a pending OUTGOING candidate (re-checked against
+   * live chain state via `listClawbacks` — the vault has no other way to enumerate a wallet's own
+   * past clawback sends). Absent on every other entry, including a plain (non-clawback) 'sent'.
+   */
+  clawback?: { senderPuzzleHashHex: string; receiverPuzzleHashHex: string; seconds: string; amount: string };
 }
 
 /** Ring-buffer cap per wallet+index scope — bounds `chrome.storage.local` growth indefinitely. */

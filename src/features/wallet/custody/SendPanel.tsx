@@ -6,8 +6,19 @@ import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery,
 import { ContactPicker } from '@/features/contacts/ContactPicker';
 import { useContacts } from '@/features/contacts/useContacts';
 import { ViewHeader } from '@/components/ViewHeader';
+import { isFullpageSurface } from '@/features/collectibles/surface';
 
 const XCH_DECIMALS = 12;
+
+/** Clawback (#152) preset windows — a fullscreen-only ADVANCED send option (§145): a duration the
+ * UI turns into an absolute unix timestamp at submit time (`now + seconds`), never a raw value the
+ * user types (the on-chain puzzle only understands an absolute deadline). */
+const CLAWBACK_PRESETS = [
+  { value: '1h', seconds: 3600, labelId: 'send.clawback.window.1h' },
+  { value: '1d', seconds: 86400, labelId: 'send.clawback.window.1d' },
+  { value: '3d', seconds: 3 * 86400, labelId: 'send.clawback.window.3d' },
+  { value: '7d', seconds: 7 * 86400, labelId: 'send.clawback.window.7d' },
+] as const;
 
 type Phase = 'form' | 'review' | 'sending' | 'confirmed' | 'failed';
 
@@ -22,14 +33,19 @@ export function SendPanel({
   onClose,
   onManageContacts,
   pollMs = 8000,
+  full,
 }: {
   assets: AssetBalance[];
   onClose?: () => void;
   /** Open the full address-book manager (from the recipient picker's "Manage" link). */
   onManageContacts?: () => void;
   pollMs?: number;
+  /** Fullscreen surface override for tests; auto-detected from the URL otherwise (#145/#152 — the
+   * clawback advanced option is fullscreen-only, mirroring `CustodyWallet`'s own `full` prop). */
+  full?: boolean;
 }) {
   const intl = useIntl();
+  const isFull = full ?? isFullpageSurface();
   const [phase, setPhase] = useState<Phase>('form');
   const [assetIdx, setAssetIdx] = useState(0);
   const [recipient, setRecipient] = useState('');
@@ -41,6 +57,9 @@ export function SendPanel({
   // Coin control (#91): optional hand-picked funding coins (empty set = automatic selection).
   const [pickCoins, setPickCoins] = useState(false);
   const [selectedCoins, setSelectedCoins] = useState<Set<string>>(new Set());
+  // Clawback (#152): fullscreen-only ADVANCED send option — send WITH a reclaimable timelock.
+  const [clawback, setClawback] = useState(false);
+  const [clawbackWindow, setClawbackWindow] = useState<(typeof CLAWBACK_PRESETS)[number]['value']>('1d');
 
   const [prepareSend, prep] = usePrepareSendMutation();
   const [confirmSend, conf] = useConfirmSendMutation();
@@ -90,12 +109,19 @@ export function SendPanel({
     }
     setLocalError(null);
     const coinIds = pickCoins && selectedCoins.size > 0 ? [...selectedCoins] : undefined;
+    // Clawback (#152): XCH only (v1) — computed as an ABSOLUTE unix timestamp at submit time, never
+    // a raw duration (the on-chain puzzle only understands a deadline, not "N seconds from now").
+    const clawbackSeconds =
+      isFull && isXch && clawback
+        ? String(Math.floor(Date.now() / 1000) + (CLAWBACK_PRESETS.find((p) => p.value === clawbackWindow)?.seconds ?? 86400))
+        : undefined;
     const res = await prepareSend({
       recipient,
       amount: String(amountBase),
       fee: String(feeMojos),
       ...(assetId ? { assetId } : {}),
       ...(coinIds ? { coinIds } : {}),
+      ...(clawbackSeconds ? { clawbackSeconds } : {}),
     });
     if ('data' in res && res.data?.pendingId) {
       setPrepared(res.data);
@@ -252,6 +278,45 @@ export function SendPanel({
             )}
           </div>
 
+          {/* Clawback (#152) — an ADVANCED send option, fullscreen-only (§145): the basic popup send
+              never shows this. XCH only (v1); a CAT selection hides it entirely. */}
+          {isFull && isXch && (
+            <div style={{ margin: '4px 0 12px' }}>
+              <label className="dig-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  className="dig-check"
+                  data-testid="send-clawback-toggle"
+                  checked={clawback}
+                  onChange={(e) => setClawback(e.target.checked)}
+                />
+                <span><FormattedMessage id="send.clawback.enable" /></span>
+              </label>
+              {clawback && (
+                <div data-testid="send-clawback-options" style={{ marginTop: 6 }}>
+                  <p className="dig-muted" style={{ margin: '0 0 6px' }}>
+                    <FormattedMessage id="send.clawback.hint" />
+                  </p>
+                  <label className="dig-field">
+                    <span><FormattedMessage id="send.clawback.window" /></span>
+                    <select
+                      data-testid="send-clawback-window"
+                      className="dig-input"
+                      value={clawbackWindow}
+                      onChange={(e) => setClawbackWindow(e.target.value as (typeof CLAWBACK_PRESETS)[number]['value'])}
+                    >
+                      {CLAWBACK_PRESETS.map((p) => (
+                        <option key={p.value} value={p.value}>
+                          {intl.formatMessage({ id: p.labelId })}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
           {localError && <p className="dig-error-text" role="alert" data-testid="send-error">{localError}</p>}
           <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-review" disabled={busy}>
             <FormattedMessage id={busy ? 'custody.working' : 'send.submit'} />
@@ -281,6 +346,14 @@ export function SendPanel({
               )}
             </dd>
           </dl>
+          {prepared.clawbackInfo && (
+            <p className="dig-muted" data-testid="review-clawback" style={{ margin: '0 0 8px' }}>
+              <FormattedMessage
+                id="send.clawback.review"
+                values={{ when: intl.formatDate(Number(prepared.clawbackInfo.seconds) * 1000, { dateStyle: 'medium', timeStyle: 'short' }) }}
+              />
+            </p>
+          )}
           {isChiaAddress(recipient) && (
             <SaveRecipientInline alreadySaved={!!recipientLabel} onSave={(label) => addContact({ label, address: recipient })} />
           )}

@@ -159,7 +159,7 @@ import { DIG_ERR } from './error-codes';
  * `.dig` navigation fails — self-healing `.dig` resolution when OS split-DNS (Path A) is defeated.
  * This is the SAME signal #172's open-by-URN dig-dns-detect branch reads — no per-feature probing.
  */
-export const MESSAGE_PROTOCOL_VERSION = 21;
+export const MESSAGE_PROTOCOL_VERSION = 22;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -246,6 +246,11 @@ export const ACTIONS = Object.freeze({
   listCoins: 'listCoins',
   prepareSplit: 'prepareSplit',
   prepareCombine: 'prepareCombine',
+  // ── clawback (#152): list pending incoming/outgoing + claim (receiver) / claw back (sender);
+  // confirmed via confirmSend. Send-WITH-clawback is prepareSend's own `clawbackSeconds` field. ──
+  listClawbacks: 'listClawbacks',
+  prepareClawbackAction: 'prepareClawbackAction',
+  confirmClawbackAction: 'confirmClawbackAction',
   // ── in-window app-view (#66): install/remove the on.dig.net framing bypass DNR rule ──
   appViewFraming: 'appViewFraming',
   // ── verification + node status ──
@@ -457,9 +462,9 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: "{ balances:{ xch:number, cats:{ [assetId]:number } }, cached?:boolean } | { success:false, code, message }",
   },
   [ACTIONS.prepareSend]: {
-    summary: 'Build (not sign/broadcast) an XCH or CAT send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve. A CAT send carries the token TAIL as assetId (omitted / "xch" = native XCH); the vault routes on assetId (#121). An optional coinIds hand-picks which coins fund the send, overriding auto-selection (#91).',
-    request: '{ action, recipient:string /* xch1… */, amount:string /* base units */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */, coinIds?:string[] /* hex; hand-picked funding coins */ }',
-    response: "{ pendingId:string, summary:{ asset:'XCH'|<assetId>, sent, change, fee, recipientPuzzleHashHex, coinCount } } | { success:false, code, message }",
+    summary: 'Build (not sign/broadcast) an XCH or CAT send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve. A CAT send carries the token TAIL as assetId (omitted / "xch" = native XCH); the vault routes on assetId (#121). An optional coinIds hand-picks which coins fund the send, overriding auto-selection (#91). An optional clawbackSeconds (#152, XCH only) sends WITH a reclaimable timelock instead of a plain send — an absolute unix timestamp after which the receiver may claim; strictly before it, only the sender may claw back.',
+    request: '{ action, recipient:string /* xch1… */, amount:string /* base units */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */, coinIds?:string[] /* hex; hand-picked funding coins */, clawbackSeconds?:string /* absolute unix timestamp; XCH only */ }',
+    response: "{ pendingId:string, summary:{ asset:'XCH'|<assetId>, sent, change, fee, recipientPuzzleHashHex, coinCount }, clawbackInfo?:{ senderPuzzleHashHex, receiverPuzzleHashHex, seconds, amount } } | { success:false, code, message }",
   },
   [ACTIONS.confirmSend]: {
     summary: 'Sign + BROADCAST a previously-prepared send (the approved step — the only place a real spend is pushed). Returns an input coin id to poll, plus a #154 activityHint (asset/amount/counterparty captured at prepare time) the SW logs to the local activity log as a `sent` entry — absent a counterparty (a self-only split/combine reusing this path), nothing is logged.',
@@ -580,6 +585,21 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Build (not sign/broadcast) a COMBINE of two or more of the wallet coins into a SINGLE self coin (coin control #91); hold it under a pending id and return the decoded summary to approve. Broadcast via confirmSend. Routed on assetId (#121).',
     request: '{ action, coinIds:string[] /* hex, ≥2 */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */ }',
     response: "{ pendingId:string, coinOpSummary:{ asset, kind:'combine', inputCoinCount, outputCoinCount, total, fee } } | { success:false, code, message }",
+  },
+  [ACTIONS.listClawbacks]: {
+    summary: "List the wallet's currently-pending clawbacks (#152): INCOMING (discovered on chain by hint at the active index's own addresses) plus OUTGOING (checked against LIVE chain state from the caller's own clawbackCandidates — sourced from the local activity log's 'clawback' entries, since the vault has no other way to enumerate a wallet's past clawback sends). Read-only.",
+    request: '{ action, clawbackCandidates?:[{ senderPuzzleHashHex, receiverPuzzleHashHex, seconds:string, amount:string }] }',
+    response: "{ clawbacks:[{ direction:'incoming'|'outgoing', info:{ senderPuzzleHashHex, receiverPuzzleHashHex, seconds, amount }, coinIdHex }] } | { success:false, code, message }",
+  },
+  [ACTIONS.prepareClawbackAction]: {
+    summary: "Build (not sign/broadcast) the CLAIM (receiver) or CLAW BACK (sender) spend for one pending clawback (#152); hold it under a pending id. The actor's own key must own the relevant side (MISSING_KEY otherwise); the locked coin must currently be pending on chain (NO_CLAWBACK_COIN otherwise). Broadcast via confirmClawbackAction.",
+    request: "{ action, direction:'claim'|'reclaim', clawbackInfo:{ senderPuzzleHashHex, receiverPuzzleHashHex, seconds:string, amount:string }, fee?:string /* mojos, reserved out of the coin itself */ }",
+    response: '{ pendingId:string, clawbackAmountOut:string /* == amount - fee, delivered to the actor\'s own address */ } | { success:false, code, message }',
+  },
+  [ACTIONS.confirmClawbackAction]: {
+    summary: 'Sign + BROADCAST a previously-prepared clawback claim/claw-back (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },
   [ACTIONS.appViewFraming]: {
     summary: "In-window app-view (#66): install (enable:true) or remove (enable:false) an ephemeral declarativeNetRequest session rule that strips *.on.dig.net's X-Frame-Options + CSP framing headers for the app-view iframe, so a DIG dApp renders in-window instead of a forced tab. Scoped to on.dig.net sub-frames (and the sender's tab in the expanded layout); removed when the app-view closes.",

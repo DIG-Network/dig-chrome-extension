@@ -176,6 +176,15 @@ export const ru: Record<string, string> = {
   'send.sending': 'Отправка… транзакция передаётся в сеть.',
   'send.confirmed': 'Подтверждено — ваша транзакция окончательна.',
   'send.failed': 'Не подтверждено — транзакция не была принята. Ваш баланс не изменился; попробуйте снова.',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'Отправить с возможностью отзыва (можно вернуть)',
+  'send.clawback.hint': 'Получатель может забрать средства только после истечения срока. До этого вернуть их можете только вы.',
+  'send.clawback.window': 'Срок отзыва',
+  'send.clawback.window.1h': '1 час',
+  'send.clawback.window.1d': '1 день',
+  'send.clawback.window.3d': '3 дня',
+  'send.clawback.window.7d': '7 дней',
+  'send.clawback.review': 'Вы можете вернуть средства до {when}, после этого их сможет забрать получатель.',
 
   // ── wallet: receive ──
   'receive.title': 'Получить',
@@ -598,6 +607,29 @@ export const ru: Record<string, string> = {
   'send.coins.selected': 'Выбрано: {count}',
   'send.coins.loading': 'Загрузка монет…',
   'send.coins.none': 'Нет доступных монет.',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'Отзыв средств',
+  'clawback.open': 'Ожидающие отзывы ({count})',
+  'clawback.popupHint': 'Ожидающих отзывов: {count}.',
+  'clawback.intro': 'Средства, отправленные или полученные с окном отзыва. Получатель может забрать их после истечения срока; до этого отправитель может вернуть их себе.',
+  'clawback.loading': 'Загрузка ожидающих отзывов…',
+  'clawback.error': 'Не удалось загрузить ожидающие отзывы — повторить',
+  'clawback.empty': 'Нет ожидающих отзывов.',
+  'clawback.direction.incoming': 'Отправлено вам',
+  'clawback.direction.outgoing': 'Отправлено вами',
+  'clawback.status.claimableNow': 'Можно забрать сейчас',
+  'clawback.status.claimableAfter': 'Можно забрать после {when}',
+  'clawback.status.reclaimableUntil': 'Можно вернуть до {when}',
+  'clawback.status.windowElapsed': 'Срок истёк — теперь получатель может забрать средства',
+  'clawback.action.claim': 'Забрать',
+  'clawback.action.reclaim': 'Вернуть',
+  'clawback.review.introClaim': 'Заберите эти средства в свой кошелёк. Подтвердите, чтобы подписать и отправить.',
+  'clawback.review.introReclaim': 'Верните эти средства в свой кошелёк. Подтвердите, чтобы подписать и отправить.',
+  'clawback.sending': 'Выполняется… транзакция отправляется.',
+  'clawback.confirmed': 'Готово — ваш баланс обновлён.',
+  'clawback.failed': 'Не подтверждено — ничего не изменилось. Повторите попытку.',
+  'clawback.error.build': 'Не удалось подготовить — повторите попытку.',
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'Кошелёк',

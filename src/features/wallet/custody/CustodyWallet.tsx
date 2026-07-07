@@ -6,7 +6,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { setWalletView } from '@/features/ui/uiSlice';
 import { useStorageValue } from '@/lib/useStorageValue';
-import { useGetCustodyBalancesQuery, useGetReceiveAddressQuery } from '@/features/wallet/custodyApi';
+import { useGetCustodyBalancesQuery, useGetReceiveAddressQuery, useGetClawbacksQuery } from '@/features/wallet/custodyApi';
 import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
@@ -25,6 +25,7 @@ import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
 import { CoinControlPanel } from '@/features/wallet/custody/CoinControlPanel';
+import { ClawbackPanel } from '@/features/wallet/custody/ClawbackPanel';
 import { TradePanel } from '@/features/wallet/custody/TradePanel';
 import { ContactsManager } from '@/features/contacts/ContactsManager';
 import { CustodyActivity } from '@/features/wallet/custody/CustodyActivity';
@@ -32,7 +33,8 @@ import { CollectiblesPanel } from '@/features/collectibles/CollectiblesPanel';
 import { DidPanel } from '@/features/identity/DidPanel';
 import { isFullpageSurface } from '@/features/collectibles/surface';
 import { useMemo, useState } from 'react';
-import { walletViewsForSurface, type WalletView } from '@/app/tabs';
+import { walletViewsForSurface, routeToHash, type WalletView } from '@/app/tabs';
+import { popOutToFullpage } from '@/lib/popout';
 
 const SEG_OPTIONS: { value: WalletView; labelId: string }[] = [
   { value: 'home', labelId: 'wallet.view.home' },
@@ -69,6 +71,10 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
   const receive = useGetReceiveAddressQuery();
   const prices = useGetPricesQuery();
   const registry = useGetCatRegistryQuery();
+  // #152 — pending clawbacks: the fullscreen-only management panel + the popup's "open full screen"
+  // hint (rendered whenever at least one is pending, regardless of surface).
+  const clawbacks = useGetClawbacksQuery();
+  const pendingClawbackCount = clawbacks.data?.clawbacks?.length ?? 0;
 
   const assets = custodyAssetBalances(balances.data?.balances, watchedCats, { registry: registry.data, hidden: hiddenCats });
   const hero = pickHeroBalance(assets);
@@ -77,7 +83,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
   const priceMap = useMemo(() => prices.data ?? {}, [prices.data]);
   const total = portfolioValue(assets, priceMap);
   const cached = balances.data?.cached === true;
-  const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'receive' | 'contacts' | 'tokens' | 'coins'>('assets');
+  const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'receive' | 'contacts' | 'tokens' | 'coins' | 'clawback'>('assets');
 
   // #167 — value-ordered, live-filterable Assets list. XCH is rendered separately (the pinned
   // hero row); every other row ($DIG + discovered/watched CATs) sorts by value beneath it, and the
@@ -162,7 +168,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
       </div>
 
       {walletView === 'home' && homePanel === 'send' && (
-        <SendPanel assets={assets} onClose={() => setHomePanel('assets')} onManageContacts={() => setHomePanel('contacts')} />
+        <SendPanel assets={assets} onClose={() => setHomePanel('assets')} onManageContacts={() => setHomePanel('contacts')} full={isFull} />
       )}
 
       {walletView === 'home' && homePanel === 'contacts' && (
@@ -175,6 +181,10 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
 
       {walletView === 'home' && homePanel === 'coins' && (
         <CoinControlPanel assets={assets} onClose={() => setHomePanel('assets')} />
+      )}
+
+      {walletView === 'home' && homePanel === 'clawback' && (
+        <ClawbackPanel onClose={() => setHomePanel('assets')} />
       )}
 
       {walletView === 'home' && homePanel === 'assets' && (
@@ -190,6 +200,28 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
               <FormattedMessage id="wallet.action.contacts" />
             </button>
           </div>
+          {/* Clawback (#152): fullscreen-only management link (§145); the popup shows a lighter
+              "open full screen" hint instead when something is pending (below). */}
+          {isFull && pendingClawbackCount > 0 && (
+            <div style={{ margin: '0 0 12px' }}>
+              <button type="button" className="dig-link" data-testid="action-clawback" onClick={() => setHomePanel('clawback')}>
+                <FormattedMessage id="clawback.open" values={{ count: pendingClawbackCount }} />
+              </button>
+            </div>
+          )}
+          {!isFull && pendingClawbackCount > 0 && (
+            <p className="dig-muted" data-testid="clawback-popup-hint" style={{ margin: '0 0 12px' }}>
+              <FormattedMessage id="clawback.popupHint" values={{ count: pendingClawbackCount }} />{' '}
+              <button
+                type="button"
+                className="dig-link"
+                data-testid="clawback-popup-hint-open"
+                onClick={() => void popOutToFullpage(routeToHash('wallet', walletView, undefined), true)}
+              >
+                <FormattedMessage id="shell.popout" />
+              </button>
+            </p>
+          )}
           <div className="dig-toggle-row">
             <h2 className="dig-heading" style={{ margin: 0 }}>
               <FormattedMessage id="wallet.assets.title" />

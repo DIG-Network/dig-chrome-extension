@@ -237,3 +237,55 @@ wallet) — the skip-on-first-scan policy lives entirely in the SW glue
 decision easy to accidentally omit when only unit-testing the pure function in isolation. Any future
 consumer of `detectReceivedEntries` MUST replicate this "no prior snapshot → don't call it" guard,
 not rely on the function to do it.
+
+## #152 — a new VaultOp MUST be added to `src/entries/offscreen.ts`'s `NEEDS_CHIA`/`NEEDS_CHAIN` allowlists, or it silently gets empty deps and returns CHAIN_UNAVAILABLE
+
+`Vault.handle(req, deps)` (the pure, unit-tested class in `src/offscreen/vault.ts`) is NOT what
+decides whether a given op receives `deps.chia`/`deps.chain` — that's a SEPARATE, hardcoded
+allowlist in the thin entry glue `src/entries/offscreen.ts` (`NEEDS_CHIA`/`NEEDS_CHAIN`, two
+`Set<VaultRequest['op']>`), which is coverage-excluded (`src/entries/**`) and therefore invisible to
+`npm run test:web`. Adding `listClawbacks`/`prepareClawbackAction` as new vault ops without also
+adding them to BOTH sets compiled clean, passed every `vault.test.ts` unit test (those tests call
+`vault.handle` directly with hand-built `deps`, bypassing `depsFor()` entirely), and passed `npx tsc`
+— then failed deterministically in the real built extension with `CHAIN_UNAVAILABLE` on the very
+first e2e call, because `depsFor()` returned `{}` for an op absent from `NEEDS_CHIA`. This is
+precisely the class of bug e2e wiring tests exist to catch (mirroring #91/#93's own "prove it's not
+the unknown-action stub" e2e pattern) — a unit-test-only verification pass would have shipped it.
+**Any new `VaultOp` that reads derived keys/coinset MUST be added to both sets in
+`src/entries/offscreen.ts`, and its e2e coverage MUST actually run against the built `dist/`
+extension** (not just `vitest run`) before considering the op "wired."
+
+## Chia clawback (`ClawbackV2`) is a hard on-chain CUTOVER at the deadline, not a race window
+
+Read literally, "the recipient can only claim after the window, and the sender can reclaim before
+the recipient claims" sounds like an open-ended race that could go either way after the deadline.
+Verified against the real `chia-wallet-sdk-wasm` Simulator (not assumed): the underlying puzzle
+enforces a STRICT, non-overlapping split at `seconds` (an absolute unix timestamp) —
+`senderSpend`'s solution embeds `ASSERT_BEFORE_SECONDS_ABSOLUTE(seconds)` (valid ONLY strictly
+before the deadline) and `receiverSpend`'s embeds `ASSERT_SECONDS_ABSOLUTE(seconds)` (valid ONLY
+at/after it); there is no timestamp at which both are simultaneously spendable. A reclaim attempted
+at/after the deadline fails on-chain (`AssertBeforeSecondsAbsoluteFailed`) exactly as reliably as an
+early claim fails (`AssertSecondsAbsoluteFailed`) — confirmed empirically against a live Simulator,
+not inferred from the wasm's `.d.ts` alone (the signatures alone give no hint of this; `senderSpend`/
+`receiverSpend` take only a `Spend`, no explicit time parameter — the constraint is baked into the
+curried puzzle from the constructor's `seconds` field). Practical upshot for any clawback UI: the
+"claw back" affordance must disable/hide once the window elapses (not "race" against the receiver);
+`ClawbackV2`'s own `seconds` field is always an ABSOLUTE deadline the caller computes as
+`now + chosenDuration` once, never a raw duration threaded further down.
+
+## `ClawbackV2` has a REAL public wasm constructor (unlike `RpcClient.new(...)`-only, #148) — but its memo/discovery methods split by whether they need a `Clvm`
+
+`new chia.ClawbackV2(senderPuzzleHash, receiverPuzzleHash, seconds, amount, hinted)` is safe to call
+directly (confirmed against the generated `.d.ts`: a real `constructor(...)`, not a static-`new`-only
+factory) — it wraps a plain Rust data struct (`{sender_puzzle_hash, receiver_puzzle_hash, seconds,
+amount, hinted}`, mirrored exactly in `xch-dev/sage`'s `child_kind.rs`), so `puzzleHash()`,
+`senderSpend(spend)`, `receiverSpend(spend)`, and the static `fromMemo(...)` all take NO `Clvm`
+parameter — they build/consume fully-serialized `Spend`/`Program` values that work regardless of
+which `Clvm` instance's allocator produced their inputs. The ONE exception is `memo(clvm: Clvm)` —
+it DOES take a `Clvm`, because the resulting memo `Program` must be curried into the SAME allocator
+tree as the rest of the send driver's output (the `Spends`/`Action` machinery's `Action.send(...,
+memos)` argument) for the final serialized bundle to cohere; building it against a throwaway `Clvm`
+and passing the result into a different one's `Action.send` would silently produce inconsistent
+output. This is why `offscreen/clawback.ts`'s `clawbackDestination()` returns a `buildMemos(clvm)`
+CALLBACK rather than a pre-built memo Program — `send.ts`'s `buildXchSend` invokes it with its OWN
+internal `clvm`, right before finalizing.

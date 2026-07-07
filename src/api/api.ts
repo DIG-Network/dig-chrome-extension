@@ -25,6 +25,8 @@ export const TAGS = [
   'DappApprovals',
   // Connected sites / granular permissions (#67 P0-4): the origins the wallet is connected to.
   'ConnectedSites',
+  // Clawback (#152): the pending incoming/outgoing clawback list.
+  'Clawbacks',
 ] as const;
 
 /**

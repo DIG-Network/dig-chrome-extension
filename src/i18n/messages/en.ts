@@ -180,6 +180,15 @@ export const en: Record<string, string> = {
   'send.sending': 'Sending… broadcasting your transaction.',
   'send.confirmed': 'Confirmed — your transaction is final.',
   'send.failed': 'Not confirmed — the transaction was not accepted. Your balance is unchanged; try again.',
+  // clawback (#152) — an advanced, fullscreen-only send option
+  'send.clawback.enable': 'Send with clawback (reclaimable)',
+  'send.clawback.hint': "The recipient can only claim it after the window passes. Before then, only you can claw it back.",
+  'send.clawback.window': 'Clawback window',
+  'send.clawback.window.1h': '1 hour',
+  'send.clawback.window.1d': '1 day',
+  'send.clawback.window.3d': '3 days',
+  'send.clawback.window.7d': '7 days',
+  'send.clawback.review': 'Reclaimable by you until {when}, claimable by the recipient after.',
 
   // ── wallet: receive ──
   'receive.title': 'Receive',
@@ -604,6 +613,29 @@ export const en: Record<string, string> = {
   'send.coins.selected': '{count} selected',
   'send.coins.loading': 'Loading coins…',
   'send.coins.none': 'No coins available.',
+
+  // ── Clawback (#152) — fullscreen-only management: claim (receiver) / claw back (sender) ──
+  'clawback.title': 'Clawback',
+  'clawback.open': 'Clawback pending ({count})',
+  'clawback.popupHint': '{count} pending clawback(s).',
+  'clawback.intro': 'Funds sent or received with a reclaim window. The recipient can claim once the window passes; before then, the sender can claw the funds back.',
+  'clawback.loading': 'Loading pending clawbacks…',
+  'clawback.error': "Couldn't load your pending clawbacks — retry",
+  'clawback.empty': 'No pending clawbacks.',
+  'clawback.direction.incoming': 'Sent to you',
+  'clawback.direction.outgoing': 'Sent by you',
+  'clawback.status.claimableNow': 'Claimable now',
+  'clawback.status.claimableAfter': 'Claimable after {when}',
+  'clawback.status.reclaimableUntil': 'Reclaimable by you until {when}',
+  'clawback.status.windowElapsed': 'Window elapsed — the recipient can now claim it',
+  'clawback.action.claim': 'Claim',
+  'clawback.action.reclaim': 'Claw back',
+  'clawback.review.introClaim': 'Claim these funds into your wallet. Confirm to sign and broadcast.',
+  'clawback.review.introReclaim': 'Claw these funds back into your wallet. Confirm to sign and broadcast.',
+  'clawback.sending': 'Working… broadcasting your transaction.',
+  'clawback.confirmed': 'Done — your balance has been updated.',
+  'clawback.failed': 'Not confirmed — nothing changed. Try again.',
+  'clawback.error.build': "Couldn't prepare that — try again.",
 
   // ── Multi-wallet switcher (#90) ──
   'wallet.switcher.fallback': 'Wallet',
