@@ -75,6 +75,8 @@ import {
   normalizeLabel,
   defaultLabel,
   setWalletActiveIndex,
+  setWalletPreviewAddress,
+  shouldCachePreviewAddress,
 } from '@/lib/wallet-registry';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from '@/lib/wallet-assets';
@@ -870,6 +872,22 @@ async function activeDerivationIndex() {
   return entry?.activeIndex ?? 0;
 }
 
+/**
+ * Opportunistically cache the active wallet's canonical (index-0) receive address onto its
+ * registry entry (#176 — the wallet switcher's per-row address preview). Called after every
+ * `getReceiveAddress` read; a no-op unless {@link shouldCachePreviewAddress} says this read is the
+ * canonical one AND it actually changed, so a wallet's preview only ever reflects its own index-0
+ * address, never whichever index the user currently happens to be viewing.
+ */
+async function cachePreviewAddressIfNeeded(activeIndex: number, address: string | undefined) {
+  const state = await loadRegistry();
+  if (!state.activeId) return;
+  const active = findWallet(state.wallets, state.activeId);
+  if (!active || !shouldCachePreviewAddress(activeIndex, active.previewAddress, address)) return;
+  const wallets = setWalletPreviewAddress(state.wallets, state.activeId, address);
+  await persistRegistry({ wallets, activeId: state.activeId, keystore: activeRecord(wallets, state.activeId) });
+}
+
 /** Start (or extend) the unlock window: persist the non-secret expiry + arm the auto-lock alarm. */
 async function startUnlockWindow() {
   const ttl = resolveTtlMinutes(await readWalletSettings());
@@ -1060,8 +1078,12 @@ async function handleCustodyActionInner(message) {
       const entry = findWallet(wallets, state.activeId);
       return { success: true, activeIndex: entry ? entry.activeIndex : 0 };
     }
-    case ACTIONS.getReceiveAddress:
-      return callVault({ op: 'getReceiveAddress', activeIndex: await activeDerivationIndex() });
+    case ACTIONS.getReceiveAddress: {
+      const activeIndex = await activeDerivationIndex();
+      const res = await callVault({ op: 'getReceiveAddress', activeIndex });
+      if (res && typeof res.address === 'string') await cachePreviewAddressIfNeeded(activeIndex, res.address);
+      return res;
+    }
     case ACTIONS.getCustodyBalances: {
       const settings = await readWalletSettings();
       const coinsetUrl = resolveCoinsetUrl(settings);

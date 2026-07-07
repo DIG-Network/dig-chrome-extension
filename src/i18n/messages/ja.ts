@@ -601,6 +601,11 @@ export const ja: Record<string, string> = {
   'wallet.switcher.remove.confirm': '削除',
   'wallet.switcher.active.badge': '使用中',
   'wallet.switcher.lock': 'ウォレットをロック',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': '現在のウォレット',
+  'wallet.switcher.copyAddress': 'アドレスをコピー',
+  'wallet.switcher.addressCopied': 'アドレスをコピーしました',
+  'wallet.switcher.address.unknown': 'このウォレットに切り替えるとアドレスが表示されます',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'インデックス {index}',
   'wallet.index.prev': '前のインデックス',

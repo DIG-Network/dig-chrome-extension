@@ -601,6 +601,11 @@ export const ko: Record<string, string> = {
   'wallet.switcher.remove.confirm': '삭제',
   'wallet.switcher.active.badge': '사용 중',
   'wallet.switcher.lock': '지갑 잠금',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': '현재 지갑',
+  'wallet.switcher.copyAddress': '주소 복사',
+  'wallet.switcher.addressCopied': '주소가 복사되었습니다',
+  'wallet.switcher.address.unknown': '이 지갑으로 전환하면 주소가 표시됩니다',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': '인덱스 {index}',
   'wallet.index.prev': '이전 인덱스',

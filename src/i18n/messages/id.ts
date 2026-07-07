@@ -601,6 +601,11 @@ export const id: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Hapus',
   'wallet.switcher.active.badge': 'Aktif',
   'wallet.switcher.lock': 'Kunci dompet',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': 'Dompet saat ini',
+  'wallet.switcher.copyAddress': 'Salin alamat',
+  'wallet.switcher.addressCopied': 'Alamat disalin',
+  'wallet.switcher.address.unknown': 'Beralih ke dompet ini untuk menampilkan alamatnya',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Indeks {index}',
   'wallet.index.prev': 'Indeks sebelumnya',

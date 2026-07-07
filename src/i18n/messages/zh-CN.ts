@@ -601,6 +601,11 @@ export const zhCN: Record<string, string> = {
   'wallet.switcher.remove.confirm': '删除',
   'wallet.switcher.active.badge': '当前使用',
   'wallet.switcher.lock': '锁定钱包',
+  // Redesign (#176) — current-wallet card + per-row address preview.
+  'wallet.switcher.current': '当前钱包',
+  'wallet.switcher.copyAddress': '复制地址',
+  'wallet.switcher.addressCopied': '地址已复制',
+  'wallet.switcher.address.unknown': '切换到此钱包以显示其地址',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': '索引 {index}',
   'wallet.index.prev': '上一个索引',
