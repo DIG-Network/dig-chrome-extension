@@ -730,6 +730,33 @@ h2.dig-heading {
   justify-content: space-between;
   gap: 12px;
 }
+
+/* ── view header (#166) — the sticky top bar a screen-style sub-view (Send, Receive, NFT/DID
+   detail, offers, …) puts its back/close action + title in, so it pins to the top of `.dig-main`
+   (the one scroll container) instead of scrolling away with a growable body. Sits OUTSIDE/ABOVE
+   the view's own `.dig-card`, matching the translucent-blur treatment of the top `.dig-header`. */
+.dig-view-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--dig-gap-sm);
+  padding: 8px 0;
+  margin: -4px 0 12px;
+  background: color-mix(in srgb, var(--dig-bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--dig-border);
+}
+.dig-view-header__back {
+  flex: none;
+  white-space: nowrap;
+}
+.dig-view-header__title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
 .dig-footer {
   padding: 10px 18px 14px;
   color: var(--dig-text-faint);

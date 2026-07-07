@@ -4,6 +4,7 @@ import qrcode from 'qrcode-generator';
 import { toBaseUnits, formatBaseUnits } from '@/lib/wallet-view';
 import { popOutToFullpage } from '@/lib/popout';
 import { isFullpageSurface } from '@/features/collectibles/surface';
+import { ViewHeader } from '@/components/ViewHeader';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { WireOfferAsset, WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 import { useListCollectiblesQuery } from '@/features/collectibles/collectiblesApi';
@@ -60,52 +61,53 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
 
   if (!isFull) {
     return (
-      <section className="dig-card" data-testid="custody-trade" aria-labelledby="trade-title">
-        <h2 className="dig-heading" id="trade-title">
-          <FormattedMessage id="trade.title" />
-        </h2>
-        <p className="dig-muted">
-          <FormattedMessage id="trade.intro" />
-        </p>
-        <button
-          type="button"
-          className="dig-link"
-          data-testid="trade-open-fullscreen"
-          onClick={() => void popOutToFullpage('#wallet/trade', true)}
-        >
-          <FormattedMessage id="trade.openFullscreen" />
-        </button>
-        {onClose && (
-          <button type="button" className="dig-link" data-testid="trade-close" onClick={onClose} style={{ display: 'block', marginTop: 8 }}>
-            <FormattedMessage id="send.cancel" />
+      <div data-testid="custody-trade">
+        <ViewHeader
+          onBack={onClose}
+          backLabel={<FormattedMessage id="send.cancel" />}
+          backTestId="trade-close"
+          title={<FormattedMessage id="trade.title" />}
+          titleId="trade-title"
+        />
+        <section className="dig-card" aria-labelledby="trade-title">
+          <p className="dig-muted" style={{ marginTop: 0 }}>
+            <FormattedMessage id="trade.intro" />
+          </p>
+          <button
+            type="button"
+            className="dig-link"
+            data-testid="trade-open-fullscreen"
+            onClick={() => void popOutToFullpage('#wallet/trade', true)}
+          >
+            <FormattedMessage id="trade.openFullscreen" />
           </button>
-        )}
-      </section>
+        </section>
+      </div>
     );
   }
 
   return (
-    <section className="dig-card" data-testid="custody-trade" aria-labelledby="trade-title">
-      <h2 className="dig-heading" id="trade-title">
-        <FormattedMessage id="trade.title" />
-      </h2>
-      <div className="dig-toggle-row" role="tablist" aria-label={intl.formatMessage({ id: 'trade.title' })} style={{ display: 'flex', gap: 8, margin: '4px 0 12px' }}>
-        <button type="button" role="tab" aria-selected={mode === 'make'} className={`dig-btn ${mode === 'make' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-make" onClick={() => setMode('make')}>
-          <FormattedMessage id="trade.mode.make" />
-        </button>
-        <button type="button" role="tab" aria-selected={mode === 'take'} className={`dig-btn ${mode === 'take' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-take" onClick={() => setMode('take')}>
-          <FormattedMessage id="trade.mode.take" />
-        </button>
-      </div>
+    <div data-testid="custody-trade">
+      <ViewHeader
+        onBack={onClose}
+        backLabel={<FormattedMessage id="send.cancel" />}
+        backTestId="trade-close"
+        title={<FormattedMessage id="trade.title" />}
+        titleId="trade-title"
+      />
+      <section className="dig-card" aria-labelledby="trade-title">
+        <div className="dig-toggle-row" role="tablist" aria-label={intl.formatMessage({ id: 'trade.title' })} style={{ display: 'flex', gap: 8, margin: '4px 0 12px' }}>
+          <button type="button" role="tab" aria-selected={mode === 'make'} className={`dig-btn ${mode === 'make' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-make" onClick={() => setMode('make')}>
+            <FormattedMessage id="trade.mode.make" />
+          </button>
+          <button type="button" role="tab" aria-selected={mode === 'take'} className={`dig-btn ${mode === 'take' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-take" onClick={() => setMode('take')}>
+            <FormattedMessage id="trade.mode.take" />
+          </button>
+        </div>
 
-      {mode === 'make' ? <MakeTrade assets={assets} /> : <TakeTrade pollMs={pollMs} />}
-
-      {onClose && (
-        <button type="button" className="dig-link" data-testid="trade-close" onClick={onClose}>
-          <FormattedMessage id="send.cancel" />
-        </button>
-      )}
-    </section>
+        {mode === 'make' ? <MakeTrade assets={assets} /> : <TakeTrade pollMs={pollMs} />}
+      </section>
+    </div>
   );
 }
 

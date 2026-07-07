@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ExternalLink } from '@/components/ExternalLink';
 import { FourState } from '@/components/FourState';
+import { ViewHeader } from '@/components/ViewHeader';
 import { validateSendForm, toBaseUnits, formatBaseUnits, shortenAddress } from '@/lib/wallet-view';
 import { popOutToFullpage } from '@/lib/popout';
 import type { WalletNft } from '@/offscreen/nfts';
@@ -130,11 +131,9 @@ export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft:
   const busy = prep.isLoading || conf.isLoading;
 
   return (
-    <section className="dig-card" data-testid="nft-detail" aria-labelledby="nft-detail-title">
-      <button type="button" className="dig-link" data-testid="nft-detail-back" onClick={onBack}>
-        <FormattedMessage id="nft.detail.back" />
-      </button>
-
+    <div data-testid="nft-detail">
+      <ViewHeader onBack={onBack} backLabel={<FormattedMessage id="nft.detail.back" />} backTestId="nft-detail-back" />
+      <section className="dig-card" aria-labelledby="nft-detail-title">
       <div className="dig-nft-hero" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', margin: '8px 0 14px' }}>
         <NftMedia nft={nft} imageSrc={imageSrc} big />
         <div style={{ minWidth: 0 }}>
@@ -344,7 +343,8 @@ export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft:
           </button>
         </div>
       )}
-    </section>
+      </section>
+    </div>
   );
 }
 

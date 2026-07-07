@@ -170,6 +170,7 @@ export const ru: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': 'Получить',
+  'receive.back': '← Назад к активам',
   'receive.your.address': 'Ваш адрес',
   'receive.copy': 'Скопировать адрес',
   'receive.copied': 'Скопировано',

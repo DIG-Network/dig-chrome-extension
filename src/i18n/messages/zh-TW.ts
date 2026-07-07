@@ -170,6 +170,7 @@ export const zhTW: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': '接收',
+  'receive.back': '← 返回資產',
   'receive.your.address': '您的地址',
   'receive.copy': '複製地址',
   'receive.copied': '已複製',

@@ -5,6 +5,7 @@ import type { AssetBalance } from '@/features/wallet/assetTypes';
 import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery, useGetCoinsQuery, type PreparedSend } from '@/features/wallet/custodyApi';
 import { ContactPicker } from '@/features/contacts/ContactPicker';
 import { useContacts } from '@/features/contacts/useContacts';
+import { ViewHeader } from '@/components/ViewHeader';
 
 const XCH_DECIMALS = 12;
 
@@ -135,12 +136,25 @@ export function SendPanel({
 
   const busy = prep.isLoading || conf.isLoading;
 
-  return (
-    <section className="dig-card" data-testid="custody-send" aria-labelledby="send-title">
-      <h2 className="dig-heading" id="send-title">
-        <FormattedMessage id="send.title" />
-      </h2>
+  // #166 — the header's back action always steps UP one level: mid-review it returns to the form
+  // (same as the old `send-back` link); otherwise it closes the whole Send screen. No back is shown
+  // while a spend is actively broadcasting ('sending') — the (former) bottom-of-form placement
+  // is gone; both live in the sticky `ViewHeader` now, reachable regardless of how tall the form/
+  // coin-picker/review content grows.
+  const headerBack = phase === 'sending' ? undefined : phase === 'review' ? () => setPhase('form') : onClose;
+  const headerBackLabel = phase === 'review' ? <FormattedMessage id="send.back" /> : <FormattedMessage id="send.cancel" />;
+  const headerBackTestId = phase === 'review' ? 'send-back' : 'send-cancel';
 
+  return (
+    <div data-testid="custody-send">
+      <ViewHeader
+        onBack={headerBack}
+        backLabel={headerBackLabel}
+        backTestId={headerBackTestId}
+        title={<FormattedMessage id="send.title" />}
+        titleId="send-title"
+      />
+      <section className="dig-card" aria-labelledby="send-title">
       {phase === 'form' && (
         <form
           onSubmit={(e) => {
@@ -242,11 +256,6 @@ export function SendPanel({
           <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-review" disabled={busy}>
             <FormattedMessage id={busy ? 'custody.working' : 'send.submit'} />
           </button>
-          {onClose && (
-            <button type="button" className="dig-link" data-testid="send-cancel" onClick={onClose}>
-              <FormattedMessage id="send.cancel" />
-            </button>
-          )}
         </form>
       )}
 
@@ -278,9 +287,6 @@ export function SendPanel({
           <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-confirm" onClick={() => void doConfirm()} disabled={busy}>
             <FormattedMessage id="send.confirm" />
           </button>
-          <button type="button" className="dig-link" data-testid="send-back" onClick={() => setPhase('form')}>
-            <FormattedMessage id="send.back" />
-          </button>
         </div>
       )}
 
@@ -307,7 +313,8 @@ export function SendPanel({
           </button>
         </div>
       )}
-    </section>
+      </section>
+    </div>
   );
 }
 

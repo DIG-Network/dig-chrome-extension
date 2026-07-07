@@ -170,6 +170,7 @@ export const vi: Record<string, string> = {
 
   // ── wallet: receive ──
   'receive.title': 'Nhận',
+  'receive.back': '← Quay lại tài sản',
   'receive.your.address': 'Địa chỉ của bạn',
   'receive.copy': 'Sao chép địa chỉ',
   'receive.copied': 'Đã sao chép',

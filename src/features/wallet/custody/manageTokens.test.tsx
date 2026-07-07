@@ -52,4 +52,10 @@ describe('ManageTokens', () => {
     await waitFor(() => expect((screen.getByTestId('manage-add-id') as HTMLInputElement).value).toBe(''));
     expect(screen.queryByTestId('manage-add-error')).toBeNull();
   });
+
+  it('#166: Close lives in the sticky ViewHeader, not the bottom of the (growable) token list', () => {
+    renderWithProviders(<ManageTokens assets={heldAssets()} onClose={() => {}} />);
+    const header = screen.getByTestId('view-header');
+    expect(header).toContainElement(screen.getByTestId('manage-tokens-close'));
+  });
 });

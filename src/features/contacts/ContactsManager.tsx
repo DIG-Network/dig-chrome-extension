@@ -3,6 +3,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import { shortenAddress } from '@/lib/wallet-view';
 import { useContacts, type ContactOpResult } from '@/features/contacts/useContacts';
 import type { Contact, ContactErrors, ContactInput } from '@/features/contacts/contacts';
+import { ViewHeader } from '@/components/ViewHeader';
 
 /**
  * Address-book manager (#88) — the full CRUD screen: an add form at the top, then the saved
@@ -16,10 +17,15 @@ export function ContactsManager({ onClose }: { onClose?: () => void }) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   return (
-    <section className="dig-card" data-testid="contacts-manager" aria-labelledby="contacts-title">
-      <h2 className="dig-heading" id="contacts-title">
-        <FormattedMessage id="contacts.title" />
-      </h2>
+    <div data-testid="contacts-manager">
+      <ViewHeader
+        onBack={onClose}
+        backLabel={<FormattedMessage id="send.back" />}
+        backTestId="contacts-close"
+        title={<FormattedMessage id="contacts.title" />}
+        titleId="contacts-title"
+      />
+      <section className="dig-card" aria-labelledby="contacts-title">
       <p className="dig-muted" style={{ marginTop: 0 }}>
         <FormattedMessage id="contacts.subtitle" />
       </p>
@@ -59,13 +65,8 @@ export function ContactsManager({ onClose }: { onClose?: () => void }) {
           )}
         </ul>
       )}
-
-      {onClose && (
-        <button type="button" className="dig-link" data-testid="contacts-close" onClick={onClose} style={{ marginTop: 12 }}>
-          <FormattedMessage id="send.back" />
-        </button>
-      )}
-    </section>
+      </section>
+    </div>
   );
 }
 

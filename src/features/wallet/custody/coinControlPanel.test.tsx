@@ -117,4 +117,12 @@ describe('CoinControlPanel', () => {
     renderWithProviders(<CoinControlPanel assets={xchAssets()} />);
     expect(await screen.findByTestId('coins-empty')).toBeInTheDocument();
   });
+
+  it('#166: Close lives in the sticky ViewHeader, not the bottom of the (growable) coin list', async () => {
+    mockSw((m) => (m.action === 'listCoins' ? { coins: [] } : { success: true }));
+    renderWithProviders(<CoinControlPanel assets={xchAssets()} onClose={() => {}} />);
+    await screen.findByTestId('coins-empty');
+    const header = screen.getByTestId('view-header');
+    expect(header).toContainElement(screen.getByTestId('coins-close'));
+  });
 });

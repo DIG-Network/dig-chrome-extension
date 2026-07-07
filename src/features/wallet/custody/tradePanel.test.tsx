@@ -211,4 +211,13 @@ describe('TradePanel — make an NFT (offering a self-custody singleton, #94)', 
     expect(screen.getByTestId('trade-give-asset')).toBeInTheDocument();
     expect(screen.queryByTestId('trade-give-nft')).not.toBeInTheDocument();
   });
+
+  it('#166: Close lives in the sticky ViewHeader on both the compact and full surfaces', () => {
+    const { unmount } = renderWithProviders(<TradePanel assets={twoAssets()} full={false} onClose={() => {}} />);
+    expect(screen.getByTestId('view-header')).toContainElement(screen.getByTestId('trade-close'));
+    unmount();
+
+    renderWithProviders(<TradePanel assets={twoAssets()} full onClose={() => {}} />);
+    expect(screen.getByTestId('view-header')).toContainElement(screen.getByTestId('trade-close'));
+  });
 });

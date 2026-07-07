@@ -86,4 +86,10 @@ describe('ContactsManager', () => {
     await waitFor(() => expect(screen.queryByText('Alice')).not.toBeInTheDocument());
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
+
+  it('#166: the close action lives in the sticky ViewHeader, not the bottom of the (growable) list', () => {
+    renderWithProviders(<ContactsManager onClose={() => {}} />);
+    const header = screen.getByTestId('view-header');
+    expect(header).toContainElement(screen.getByTestId('contacts-close'));
+  });
 });
