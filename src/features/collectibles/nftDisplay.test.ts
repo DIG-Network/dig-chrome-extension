@@ -9,6 +9,7 @@ import {
   nftExternalImageUrl,
   nftMonogram,
   groupByCollection,
+  toGatewayUrl,
 } from './nftDisplay';
 
 function nft(over: Partial<WalletNft> = {}): WalletNft {
@@ -74,14 +75,45 @@ describe('nftImageSrc / nftExternalImageUrl', () => {
     expect(nftImageSrc(n)).toBe('data:image/png;base64,AAAA');
     expect(nftExternalImageUrl(n)).toBeNull();
   });
-  it('never embeds a remote URL, offers it as an external link', () => {
+  it('embeds a remote https:// image (the img-src CSP allows https:) and also offers it as an external link', () => {
     const n = nft({ dataUris: ['https://ipfs.example/img.png'] });
-    expect(nftImageSrc(n)).toBeNull();
+    expect(nftImageSrc(n)).toBe('https://ipfs.example/img.png');
     expect(nftExternalImageUrl(n)).toBe('https://ipfs.example/img.png');
+  });
+  it('embeds a remote http:// image too', () => {
+    const n = nft({ dataUris: ['http://example.test/img.png'] });
+    expect(nftImageSrc(n)).toBe('http://example.test/img.png');
+  });
+  it('gateway-rewrites an ipfs:// data URI to a public https gateway so it can be embedded and opened', () => {
+    const n = nft({ dataUris: ['ipfs://bafybeigdyrzt/image.png'] });
+    expect(nftImageSrc(n)).toBe('https://ipfs.io/ipfs/bafybeigdyrzt/image.png');
+    expect(nftExternalImageUrl(n)).toBe('https://ipfs.io/ipfs/bafybeigdyrzt/image.png');
+  });
+  it('trims whitespace before classifying the URI', () => {
+    const n = nft({ dataUris: ['  ipfs://cid123  '] });
+    expect(nftImageSrc(n)).toBe('https://ipfs.io/ipfs/cid123');
+  });
+  it('returns null for an unrecognized scheme (not embedded, not offered as a link)', () => {
+    const n = nft({ dataUris: ['ar://some-arweave-id'] });
+    expect(nftImageSrc(n)).toBeNull();
+    expect(nftExternalImageUrl(n)).toBeNull();
   });
   it('returns null for no URIs', () => {
     expect(nftImageSrc(nft())).toBeNull();
     expect(nftExternalImageUrl(nft())).toBeNull();
+  });
+});
+
+describe('toGatewayUrl', () => {
+  it('rewrites an ipfs:// URI to the https://ipfs.io/ipfs/ gateway', () => {
+    expect(toGatewayUrl('ipfs://bafybeigdyrzt/image.png')).toBe('https://ipfs.io/ipfs/bafybeigdyrzt/image.png');
+  });
+  it('is case-insensitive on the scheme', () => {
+    expect(toGatewayUrl('IPFS://CID')).toBe('https://ipfs.io/ipfs/CID');
+  });
+  it('passes non-ipfs URIs through unchanged', () => {
+    expect(toGatewayUrl('https://example.test/a.png')).toBe('https://example.test/a.png');
+    expect(toGatewayUrl('data:image/png;base64,AAAA')).toBe('data:image/png;base64,AAAA');
   });
 });
 

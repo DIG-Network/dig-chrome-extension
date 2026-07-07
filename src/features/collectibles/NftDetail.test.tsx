@@ -61,11 +61,28 @@ describe('NftDetail', () => {
     expect(screen.getByTestId('nft-view-metadata')).toHaveAttribute('href', 'https://ex.test/m.json');
   });
 
-  it('offers a remote image as an external link (never embedded — CSP)', () => {
+  it('embeds a remote https image (#150) and also offers it as an external link', () => {
     mockSw(() => ({ success: true }));
     renderWithProviders(<NftDetail nft={nft({ dataUris: ['https://ipfs.test/i.png'] })} onBack={() => {}} />);
-    expect(screen.queryByTestId('nft-image')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nft-image')).toHaveAttribute('src', 'https://ipfs.test/i.png');
     expect(screen.getByTestId('nft-view-image')).toHaveAttribute('href', 'https://ipfs.test/i.png');
+  });
+
+  it('gateway-rewrites an ipfs:// image so it embeds + links via a fetchable https URL', () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<NftDetail nft={nft({ dataUris: ['ipfs://cid/i.png'] })} onBack={() => {}} />);
+    expect(screen.getByTestId('nft-image')).toHaveAttribute('src', 'https://ipfs.io/ipfs/cid/i.png');
+    expect(screen.getByTestId('nft-view-image')).toHaveAttribute('href', 'https://ipfs.io/ipfs/cid/i.png');
+  });
+
+  it('falls back to the monogram when a remote image fails to load', () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<NftDetail nft={nft({ dataUris: ['https://dead.test/i.png'] })} onBack={() => {}} />);
+    const img = screen.getByTestId('nft-image');
+    expect(screen.queryByTestId('nft-monogram')).not.toBeInTheDocument();
+    fireEvent.error(img);
+    expect(screen.queryByTestId('nft-image')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nft-monogram')).toBeInTheDocument();
   });
 
   it('rejects an invalid recipient before building', async () => {
