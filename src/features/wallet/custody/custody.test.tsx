@@ -68,6 +68,17 @@ describe('CustodyGate', () => {
     renderWithProviders(<CustodyGate><div data-testid="wallet-body" /></CustodyGate>);
     expect(await screen.findByTestId('custody-onboarding')).toBeInTheDocument();
   });
+
+  // #162: the error placeholder is a FIRST-load-only state (`!everHydrated`) — once the slice mirror
+  // has hydrated, a later `getLockState` hiccup (e.g. right after an identity-changing mutation resets
+  // the whole cache) must NOT tear down the already-rendered wallet body / onboarding flow.
+  it('shows a recoverable error on the very first load when getLockState fails', async () => {
+    mockSw((m) =>
+      m.action === 'getLockState' ? { success: false, code: 'RUNTIME', message: 'boom' } : {},
+    );
+    renderWithProviders(<CustodyGate><div data-testid="wallet-body" /></CustodyGate>);
+    expect(await screen.findByTestId('custody-lockstate-error')).toBeInTheDocument();
+  });
 });
 
 describe('UnlockScreen', () => {
