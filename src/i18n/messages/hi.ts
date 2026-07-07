@@ -87,6 +87,10 @@ export const hi: Record<string, string> = {
   'custody.chain.hint': 'डिफ़ॉल्ट (coinset.org) इस्तेमाल करने के लिए इसे खाली छोड़ दें। ज़्यादा प्राइवेसी के लिए अपना खुद का coinset-संगत नोड डालें।',
   'custody.chain.save': 'चेन नोड सेव करें',
   'custody.chain.saved': 'सेव हो गया',
+  'custody.autolock.label': 'इतने मिनट बाद ऑटो-लॉक करें',
+  'custody.autolock.hint': 'इतने मिनट तक कोई गतिविधि न होने पर वॉलेट लॉक हो जाएगा। कोई भी वॉलेट गतिविधि टाइमर को रीसेट कर देती है। मान्य सीमा: {min}–{max} मिनट।',
+  'custody.autolock.save': 'ऑटो-लॉक सेव करें',
+  'custody.autolock.saved': 'सेव हो गया',
   'custody.soon.activity': 'सेल्फ-कस्टडी सेंडिंग के साथ एक्टिविटी हिस्ट्री जल्द आ रही है।',
   'custody.soon.trade': 'सेल्फ-कस्टडी साइनिंग के साथ ट्रेडिंग जल्द आ रही है।',
 

@@ -52,6 +52,8 @@ import {
   LOCK_STATE,
   SCAN_GAP_LIMIT,
   isCustodyAction,
+  isSessionRenewingAction,
+  shouldApplyRenewal,
   resolveTtlMinutes,
   resolveCoinsetUrl,
   computeUnlockExpiry,
@@ -890,8 +892,37 @@ async function getLockStateSnapshot() {
   });
 }
 
-/** Handle one custody action end-to-end (SW ↔ offscreen ↔ storage). Returns the reply payload. */
+/**
+ * Handle one custody action end-to-end (SW ↔ offscreen ↔ storage), then — if the action is real
+ * wallet activity (#155, {@link isSessionRenewingAction}) and the wallet was ALREADY unlocked when
+ * the request arrived — slide the idle auto-lock window forward. This is what makes "unlocked"
+ * mean "unlocked while actively used" (MetaMask-style) rather than a fixed span from the original
+ * unlock: an actively-used wallet never re-prompts mid-session, only genuine inactivity (or an
+ * explicit Lock) ends it. `unlockWallet`/`createWallet`/`importWallet`/`switchWallet` already start
+ * their own window on a locked→unlocked transition; renewing again here on top of that is a
+ * harmless no-op.
+ *
+ * The renewal is a compare-and-swap ({@link shouldApplyRenewal}), not a blind "was unlocked at the
+ * start ⇒ renew at the end": the unlock-expiry observed when the action STARTED is captured, and
+ * the window is re-armed only if that SAME value is still current once the action finishes. This
+ * closes a real race — a slower renewing call (e.g. a balance scan) that began while unlocked must
+ * NOT resurrect the session if an explicit `lockWallet` (or the TTL sweep) completed while it was
+ * still in flight; an explicit lock always wins over an in-flight activity call.
+ */
 async function handleCustodyAction(message) {
+  const renews = isSessionRenewingAction(message && message.action);
+  const before = renews ? await getLockStateSnapshot() : null;
+  const expiryAtStart = before && before.lockState === LOCK_STATE.UNLOCKED ? before.unlockExpiry : null;
+  const result = await handleCustodyActionInner(message);
+  if (expiryAtStart != null) {
+    const sess = await chrome.storage.session.get(UNLOCK_EXPIRY_KEY);
+    if (shouldApplyRenewal(expiryAtStart, sess[UNLOCK_EXPIRY_KEY])) await startUnlockWindow();
+  }
+  return result;
+}
+
+/** The action dispatch table for {@link handleCustodyAction} (SW ↔ offscreen ↔ storage). */
+async function handleCustodyActionInner(message) {
   switch (message.action) {
     case ACTIONS.getLockState:
       return getLockStateSnapshot();

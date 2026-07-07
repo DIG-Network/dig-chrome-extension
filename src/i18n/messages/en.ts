@@ -88,6 +88,10 @@ export const en: Record<string, string> = {
   'custody.chain.hint': 'Leave blank to use the default (coinset.org). Enter your own coinset-compatible node for more privacy.',
   'custody.chain.save': 'Save chain node',
   'custody.chain.saved': 'Saved',
+  'custody.autolock.label': 'Auto-lock after (minutes)',
+  'custody.autolock.hint': 'Lock the wallet after this many minutes of inactivity. Any wallet activity resets the timer. Allowed range: {min}–{max} minutes.',
+  'custody.autolock.save': 'Save auto-lock',
+  'custody.autolock.saved': 'Saved',
   'custody.soon.activity': 'Activity history is coming with self-custody sending.',
   'custody.soon.trade': 'Trading is coming with self-custody signing.',
 

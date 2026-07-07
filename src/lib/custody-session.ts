@@ -41,8 +41,13 @@ export function resolveCoinsetUrl(settings?: CustodySettings | null): string {
   return url || DEFAULT_COINSET_URL;
 }
 
-/** Default auto-lock TTL: 10 minutes (§5.5), user-configurable via `settings.unlockTtlMinutes`. */
-export const DEFAULT_UNLOCK_TTL_MINUTES = 10;
+/**
+ * Default auto-lock TTL: 15 minutes — a MetaMask-style idle window (#155), user-configurable via
+ * `settings.unlockTtlMinutes` (Settings → Auto-lock). Paired with {@link isSessionRenewingAction}:
+ * the window slides forward on real wallet activity, so an actively-used wallet never re-prompts
+ * mid-session — only genuine inactivity (or an explicit Lock) ends it.
+ */
+export const DEFAULT_UNLOCK_TTL_MINUTES = 15;
 /** Bounds so a bad/hostile settings value can't disable auto-lock or thrash it. */
 export const MIN_UNLOCK_TTL_MINUTES = 1;
 export const MAX_UNLOCK_TTL_MINUTES = 60;
@@ -106,6 +111,43 @@ export const CUSTODY_ACTIONS = Object.freeze([
 /** True if `action` is a custody action the SW routes to the offscreen vault. */
 export function isCustodyAction(action: unknown): boolean {
   return typeof action === 'string' && (CUSTODY_ACTIONS as readonly string[]).includes(action);
+}
+
+/**
+ * True if `action` represents real wallet activity that should slide the idle auto-lock window
+ * forward (#155 — a MetaMask-style renewing idle timer: "keep unlocked for the session" means
+ * unlocked for as long as the wallet is actively used, not merely for a fixed span from the
+ * original unlock). The SW calls `startUnlockWindow()` again whenever this is true AND the wallet
+ * was already unlocked, so a session in active use never lapses mid-task.
+ *
+ * Excludes two actions on purpose:
+ *  - `getLockState`  — a passive status read. If merely checking status renewed the window, a
+ *    background poll could keep a session "unlocked" forever without any real use.
+ *  - `lockWallet`    — the opposite of activity. It must end the session, never resurrect one.
+ *
+ * Every other custody action (including `unlockWallet`/`createWallet`/`importWallet`/
+ * `switchWallet`, which also start their own window on a locked→unlocked transition) counts as
+ * activity; renewing on top of their own `startUnlockWindow()` call is a harmless no-op.
+ */
+export function isSessionRenewingAction(action: unknown): boolean {
+  return isCustodyAction(action) && action !== 'getLockState' && action !== 'lockWallet';
+}
+
+/**
+ * Compare-and-renew guard (#155): decide whether a just-completed renewing action is allowed to
+ * re-arm the unlock window, given the unlock-expiry observed when the action STARTED
+ * (`expiryAtActionStart`) and whatever is CURRENTLY in `chrome.storage.session`
+ * (`currentExpiry`) once it finishes. Renewal is applied ONLY when nothing else changed the expiry
+ * in between — closes a real race: a long-running activity call (e.g. a balance scan) that began
+ * while the wallet was unlocked must NOT resurrect the session if an explicit `lockWallet` (or the
+ * TTL sweep) completed while it was still in flight. `null`/`undefined` on either side means "no
+ * fresh unlock to renew from" (never happened, or already cleared) — renewal is skipped.
+ */
+export function shouldApplyRenewal(
+  expiryAtActionStart: number | null | undefined,
+  currentExpiry: number | null | undefined,
+): boolean {
+  return expiryAtActionStart != null && currentExpiry === expiryAtActionStart;
 }
 
 /** A `prepareSend` custody message from the popup (the fields the SW forwards to the vault). */

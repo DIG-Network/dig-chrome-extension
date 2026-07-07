@@ -87,6 +87,10 @@ export const ptBR: Record<string, string> = {
   'custody.chain.hint': 'Deixe em branco para usar o padrão (coinset.org). Insira seu próprio nó compatível com o coinset para mais privacidade.',
   'custody.chain.save': 'Salvar nó de blockchain',
   'custody.chain.saved': 'Salvo',
+  'custody.autolock.label': 'Bloqueio automático após (minutos)',
+  'custody.autolock.hint': 'Bloqueia a carteira após esse número de minutos de inatividade. Qualquer atividade na carteira reinicia o cronômetro. Intervalo permitido: {min}–{max} minutos.',
+  'custody.autolock.save': 'Salvar bloqueio automático',
+  'custody.autolock.saved': 'Salvo',
   'custody.soon.activity': 'O histórico de atividade chegará junto com os envios autocustodiados.',
   'custody.soon.trade': 'As negociações chegarão junto com a assinatura autocustodiada.',
 

@@ -87,6 +87,10 @@ export const fr: Record<string, string> = {
   'custody.chain.hint': 'Laissez vide pour utiliser la valeur par défaut (coinset.org). Saisissez votre propre nœud compatible coinset pour plus de confidentialité.',
   'custody.chain.save': 'Enregistrer le nœud',
   'custody.chain.saved': 'Enregistré',
+  'custody.autolock.label': 'Verrouillage automatique après (minutes)',
+  'custody.autolock.hint': "Verrouille le portefeuille après ce nombre de minutes d'inactivité. Toute activité du portefeuille réinitialise le minuteur. Plage autorisée : {min}–{max} minutes.",
+  'custody.autolock.save': 'Enregistrer le verrouillage automatique',
+  'custody.autolock.saved': 'Enregistré',
   'custody.soon.activity': "L'historique des activités arrivera avec l'envoi en autoconservation.",
   'custody.soon.trade': "L'échange arrivera avec la signature en autoconservation.",
 
