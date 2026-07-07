@@ -262,6 +262,7 @@ export const zhTW: Record<string, string> = {
   'appview.back': '返回',
   'appview.expand': '在完整分頁中開啟',
   'appview.loading': '正在開啟 {name}…',
+  'appview.loading.sub': '正在安全連線 · 由 DIG Network 提供支援',
   'appview.blocked': '{name} 無法在 DIG 內執行 — 正在新分頁中開啟。',
   'appview.openTab': '在新分頁中開啟',
   // Inline bug-report entry

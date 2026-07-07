@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { closeApp } from '@/features/ui/uiSlice';
 import { hasRuntime } from '@/lib/messaging';
 import { isFramedDigHost, enableFramingBypass, disableFramingBypass } from '@/features/apps/framingBypass';
+import { DigLoader } from '@/components/DigLoader';
 
 /** How long to wait for the dApp frame to load before treating the embed as refused (ms). */
 const LOAD_TIMEOUT = 6000;
@@ -19,11 +20,11 @@ function openInTab(url: string): void {
 /**
  * The in-window dApp app-view (#65 §2.4a) — launching a dApp from the launcher opens it INSIDE the
  * extension frame like a phone app: a top bar (back → home, the app name, ⤢ expand to a full tab)
- * over an iframe of the dApp's `link`. Four states: loading (a spinner over the phone frame until the
- * frame's `load` fires or a timeout), ready (the frame), and BLOCKED — a refused embed
- * (X-Frame-Options / CSP `frame-ancestors` / load error / timeout) is detected and the dApp is
- * gracefully opened in a NEW TAB with a one-line note, so the user NEVER sees a blank frame. Rendered
- * as a full-surface overlay on both layouts; `Escape` closes it.
+ * over an iframe of the dApp's `link`. Four states: loading (the on.dig.net-matching branded `DigLoader`
+ * card over the phone frame until the frame's `load` fires or a timeout, #157), ready (the frame), and
+ * BLOCKED — a refused embed (X-Frame-Options / CSP `frame-ancestors` / load error / timeout) is detected
+ * and the dApp is gracefully opened in a NEW TAB with a one-line note, so the user NEVER sees a blank
+ * frame. Rendered as a full-surface overlay on both layouts; `Escape` closes it.
  *
  * DIG's own `*.on.dig.net` dApps serve `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'`, so
  * before loading such a link we ask the SW to install an ephemeral framing-bypass DNR rule (#66) and
@@ -142,10 +143,11 @@ export function AppView() {
 
       <div className="dig-appview-body">
         {phase === 'loading' && (
-          <div className="dig-state" role="status" aria-live="polite" data-state="loading" data-testid="appview-loading">
-            <div className="dig-skeleton" style={{ width: '100%' }} />
-            <span className="dig-muted"><FormattedMessage id="appview.loading" values={{ name: app.name }} /></span>
-          </div>
+          <DigLoader
+            testid="appview-loading"
+            title={<FormattedMessage id="appview.loading" values={{ name: app.name }} />}
+            subtitle={<FormattedMessage id="appview.loading.sub" />}
+          />
         )}
 
         {phase === 'blocked' && (

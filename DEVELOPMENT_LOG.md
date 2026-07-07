@@ -3,6 +3,19 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## `aria-hidden` on a wrapper swallows a child's `role="img"` + `aria-label` (#157)
+
+Wrapping an inline brand SVG in `<div aria-hidden="true"><svg role="img" aria-label="…">…</svg></div>`
+(the instinctive move for "this is decorative") removes the WHOLE subtree from the accessibility
+tree — including the SVG's own `role="img"`/`aria-label`, even though those exist specifically to
+make it accessible. `getByRole('img', { name: … })` (Testing Library) and a real screen reader both
+walk the accessibility tree, so both silently see nothing under an `aria-hidden` ancestor; the first
+symptom is usually a confusing "no accessible elements" test failure, not a lint/type error. Rule of
+thumb: if a child already carries its own accessible role + name, don't also mark an ancestor
+`aria-hidden` — hide only truly decorative leaves (bare `<span>`/`<div>` glyphs with no semantics of
+their own), and let a semantically-labelled child (the `DigLoader` DIG Network wordmark SVG,
+`src/components/DigLoader.tsx`) be the accessible unit.
+
 ## Single active derivation index (#165) — a same-address split output must still get pairwise-distinct amounts, or duplicate CREATE_COINs collide
 
 Migrating `prepareSplit` (coin control, `src/offscreen/coins.ts`) off the retired multi-index

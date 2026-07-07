@@ -262,6 +262,7 @@ export const ptBR: Record<string, string> = {
   'appview.back': 'Voltar',
   'appview.expand': 'Abrir em uma aba completa',
   'appview.loading': 'Abrindo {name}…',
+  'appview.loading.sub': 'Conectando com segurança · desenvolvido pela DIG Network',
   'appview.blocked': '{name} não pode ser executado dentro do DIG — abrindo em uma nova aba.',
   'appview.openTab': 'Abrir em uma nova aba',
   // Inline bug-report entry

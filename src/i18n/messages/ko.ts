@@ -262,6 +262,7 @@ export const ko: Record<string, string> = {
   'appview.back': '뒤로',
   'appview.expand': '전체 탭에서 열기',
   'appview.loading': '{name} 여는 중…',
+  'appview.loading.sub': '안전하게 연결하는 중 · DIG Network 제공',
   'appview.blocked': '{name}은(는) DIG 내에서 실행할 수 없습니다 — 새 탭에서 엽니다.',
   'appview.openTab': '새 탭에서 열기',
   // Inline bug-report entry

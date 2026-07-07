@@ -262,6 +262,7 @@ export const es: Record<string, string> = {
   'appview.back': 'Atrás',
   'appview.expand': 'Abrir en una pestaña completa',
   'appview.loading': 'Abriendo {name}…',
+  'appview.loading.sub': 'Conectando de forma segura · desarrollado por DIG Network',
   'appview.blocked': '{name} no puede ejecutarse dentro de DIG — se abrirá en una pestaña nueva.',
   'appview.openTab': 'Abrir en una pestaña nueva',
   // Inline bug-report entry
