@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.44.0] - 2026-07-07
+
+### Features
+- **wallet:** Keep the wallet unlocked for the session, not just per popup open (#65)
+
 ## [1.43.2] - 2026-07-07
 
 ### Bug Fixes
