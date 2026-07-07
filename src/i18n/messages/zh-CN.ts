@@ -34,6 +34,10 @@ export const zhCN: Record<string, string> = {
   'home.status.node.local': '本地节点',
   'home.status.node.gateway': '公共网关',
   'home.activity.empty': '暂无最近活动',
+  'home.open.label': '打开 chia:// 地址或 DIG URN',
+  'home.open.placeholder': 'chia://… 或 urn:dig:…',
+  'home.open.go': '打开',
+  'home.open.error.invalid': '不是有效的 chia:// 地址或 URN。',
 
   // ── generic four-state ──
   'state.loading': '加载中…',

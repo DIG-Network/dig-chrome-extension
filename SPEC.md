@@ -188,6 +188,31 @@ below the fold at the bottom of a growable body (a long form, a coin picker, an 
 - Adopted in: `SendPanel`, `ReceiveView`, `ContactsManager`, `ManageTokens`, `CoinControlPanel`,
   `TradePanel` (both the compact and full-surface branches), `NftDetail`, `DidDetail`.
 
+### 2.1b Home screen — open by URN or chia:// (#172)
+
+The mobile-OS Home screen (§2.1) carries a compact "open a chia:// address or DIG URN" input
+(`OpenByUrnInput`, `src/features/home/OpenByUrnInput.tsx`) — a labeled text field + a "Go"
+enter-to-submit action, rendered in both the popup and fullscreen surfaces.
+
+- **Validation (shape only, no fetch).** On submit the typed value is parsed by the single shared
+  `parseURN` (§4) — the SAME parser every other entry point uses, no second copy. Empty/whitespace
+  input is a silent no-op; a non-empty value that fails to parse shows an inline, translated error
+  (`home.open.error.invalid`) and does NOT navigate.
+- **Render-target decision.** A valid parse is handed to `resolveOpenTarget`
+  (`src/lib/open-urn.ts`), which reads the ONE shared dig-dns availability signal (§8.5's
+  `getDigDnsStatus` — this input NEVER probes dig-dns itself) and branches:
+  1. **dig-dns reachable** (`phase` is `direct` or `proxy` — the proxy self-heal fallback counts
+     too) → navigate the active tab to the native `.dig`-scheme URL (§4.5): a real, portable,
+     bookmarkable address the OS resolves machine-wide.
+  2. **dig-dns unreachable** (`phase: 'unavailable'`, or no signal read yet) → hand the canonical
+     `chia://` form (`buildDigUrl`, §5.3) to the background `navigateToDigUrl` action, which
+     redirects the SAME active tab to `dig-viewer.html` — the extension's own chrome-extension://
+     content view (the branded-loader page): the existing §8 node-ladder read (dig-node →
+     rpc.dig.net), verified + decrypted, rendered in-page. Never a new tab; never the resource's own
+     origin.
+- Both outcomes navigate the CURRENT active tab (mirrors the Resolver tab's own `openUrl`, §8);
+  from a real action popup this also closes the popup so the result is immediately visible.
+
 ### 2.2 State & data architecture
 
 - **Redux Toolkit + RTK Query**, one store per document (`src/app/store.ts`). The single `api`
@@ -329,6 +354,27 @@ capsule. `salt` is ALWAYS present in the result object (value `null` when absent
   - the bare base with a `/urn:dig:…` or `/<hex64>[/<resourceKey>]` path.
 - `urnToContentServerUrl(urn, {host, port})` is the inverse: it renders a base36 subdomain
   URL, omitting the port when it is 80.
+
+### 4.5 `.dig`-scheme host codec (`dig-dns-host.mjs`, #172)
+
+A SEPARATE codec from §4.4 — `.dig`-scheme hosts (§8.5, dig-dns) use **lowercase RFC 4648 base32,
+no padding**, not base36, matching `dig-dns`'s own Rust codec (`modules/apps/dig-dns/src/label.rs`)
+byte-for-byte (proven by shared golden fixtures — the all-zero 32-byte id encodes to 52 lowercase
+`a` characters on both sides). Base32 (not base36/base64) because a `.dig` host is a real DNS label:
+DNS labels are case-insensitive and restricted to letters/digits/hyphen (LDH), and base32's
+`a-z2-7` alphabet is all-LDH and survives case-folding, unlike base36 or base64.
+
+- `storeHexToDigLabel(hex64)` / `digLabelToStoreHex(label)` map a 64-hex store/root id to/from its
+  **52-character** base32 label (`DIG_LABEL_LENGTH`; `ceil(32*8/5) = 52`). Encoding rejects anything
+  not exactly 64 hex characters; decoding rejects a label of the wrong length, a character outside
+  `a-z2-7`, or a non-canonical encoding whose padding bits are non-zero (mirrors
+  `data_encoding::BASE32_NOPAD`'s strictness on the Rust side) — case-insensitive (DNS 0x20
+  tolerant).
+- `buildDigSchemeUrl(parsedUrn)` (`src/lib/open-urn.ts`) builds the browsable address from a parsed
+  URN (§4.3): `http://<storeLabel>.dig/<path>` for the store's latest capsule, or the pinned
+  `http://<rootLabel>.<storeLabel>.dig/<path>` when the URN carries a `rootHash` — the pinned root
+  label is LEFTMOST, matching dig-dns `host.rs`'s `HostTarget::Pinned` label order. An empty
+  `resourceKey` renders as the bare path `/`.
 
 ---
 

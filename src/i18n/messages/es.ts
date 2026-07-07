@@ -34,6 +34,10 @@ export const es: Record<string, string> = {
   'home.status.node.local': 'Nodo local',
   'home.status.node.gateway': 'Gateway público',
   'home.activity.empty': 'Sin actividad reciente',
+  'home.open.label': 'Abrir una dirección chia:// o URN de DIG',
+  'home.open.placeholder': 'chia://… o urn:dig:…',
+  'home.open.go': 'Abrir',
+  'home.open.error.invalid': 'No es una dirección chia:// ni un URN válidos.',
 
   // ── generic four-state ──
   'state.loading': 'Cargando…',

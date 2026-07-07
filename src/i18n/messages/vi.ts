@@ -34,6 +34,10 @@ export const vi: Record<string, string> = {
   'home.status.node.local': 'Node cục bộ',
   'home.status.node.gateway': 'Cổng công khai',
   'home.activity.empty': 'Chưa có hoạt động gần đây',
+  'home.open.label': 'Mở một địa chỉ chia:// hoặc DIG URN',
+  'home.open.placeholder': 'chia://… hoặc urn:dig:…',
+  'home.open.go': 'Mở',
+  'home.open.error.invalid': 'Không phải là địa chỉ chia:// hoặc URN hợp lệ.',
 
   // ── generic four-state ──
   'state.loading': 'Đang tải…',

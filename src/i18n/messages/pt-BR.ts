@@ -34,6 +34,10 @@ export const ptBR: Record<string, string> = {
   'home.status.node.local': 'Nó local',
   'home.status.node.gateway': 'Gateway público',
   'home.activity.empty': 'Nenhuma atividade recente',
+  'home.open.label': 'Abrir um endereço chia:// ou URN DIG',
+  'home.open.placeholder': 'chia://… ou urn:dig:…',
+  'home.open.go': 'Abrir',
+  'home.open.error.invalid': 'Não é um endereço chia:// ou URN válido.',
 
   // ── generic four-state ──
   'state.loading': 'Carregando…',

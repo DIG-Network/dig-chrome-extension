@@ -63,11 +63,12 @@ afterEach(() => {
 });
 
 describe('HomeScreen (mobile-OS home)', () => {
-  it('renders the balance widget, quick actions, status, and dApp launcher', async () => {
+  it('renders the balance widget, quick actions, status, open-by-URN input, and dApp launcher', async () => {
     renderWithProviders(<HomeScreen />);
     expect(screen.getByTestId('home-screen')).toBeInTheDocument();
     expect(screen.getByTestId('home-quickactions')).toBeInTheDocument();
     expect(screen.getByTestId('home-status')).toBeInTheDocument();
+    expect(screen.getByTestId('home-openurn')).toBeInTheDocument();
     expect(await screen.findByTestId('home-balance-value')).toBeInTheDocument();
     expect(await screen.findByTestId('home-apps-grid')).toBeInTheDocument();
     expect(screen.getByTestId('app-tile-chia-offer')).toBeInTheDocument();

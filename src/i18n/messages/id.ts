@@ -34,6 +34,10 @@ export const id: Record<string, string> = {
   'home.status.node.local': 'Node lokal',
   'home.status.node.gateway': 'Gateway publik',
   'home.activity.empty': 'Belum ada aktivitas terbaru',
+  'home.open.label': 'Buka alamat chia:// atau URN DIG',
+  'home.open.placeholder': 'chia://… atau urn:dig:…',
+  'home.open.go': 'Buka',
+  'home.open.error.invalid': 'Bukan alamat chia:// atau URN yang valid.',
 
   // ── generic four-state ──
   'state.loading': 'Memuat…',

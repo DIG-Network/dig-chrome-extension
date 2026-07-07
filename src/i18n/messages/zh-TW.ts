@@ -34,6 +34,10 @@ export const zhTW: Record<string, string> = {
   'home.status.node.local': '本機節點',
   'home.status.node.gateway': '公用閘道',
   'home.activity.empty': '尚無最近活動',
+  'home.open.label': '開啟 chia:// 地址或 DIG URN',
+  'home.open.placeholder': 'chia://… 或 urn:dig:…',
+  'home.open.go': '開啟',
+  'home.open.error.invalid': '不是有效的 chia:// 地址或 URN。',
 
   // ── generic four-state ──
   'state.loading': '載入中…',
