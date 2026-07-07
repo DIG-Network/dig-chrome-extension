@@ -152,3 +152,27 @@ browser CORS checks on `crossOrigin="anonymous"` image loads — a mocked respon
 `Access-Control-Allow-Origin` header still loads successfully under Playwright's CDP-based
 interception (verified with an isolated probe). A CORS-rejection code path can't be e2e-proven through
 route mocking; test it at the unit level (mock the loader function itself) instead.
+
+## An `inline-flex`/`flex` row with no `overflow`/`min-width:0` silently overflows the popup sideways (#163)
+
+`.dig-seg` (the shared wallet/network segmented control, `SegmentedControl.tsx`) was `display:
+inline-flex` with no `overflow`, no `flex-shrink` handling on its buttons, and no wrap. With 5 wallet
+segments (`Home | Activity | Trade | Collectibles | Identity`) it naturally sized to ~430px — wider
+than the 372px popup — and neither it nor its flex-row ancestor (`.dig-toggle-row`) clipped that
+overflow, so it bled into `.dig-main` (`[data-testid="popup-root"]`), which — because it already sets
+`overflow-y: auto` — silently became horizontally scrollable too (per the CSS overflow spec, setting
+one axis to a non-`visible` value forces the other to computed `auto`, not `visible`). Confirmed with
+`el.scrollWidth - el.clientWidth` (450 vs 372 before the fix; jsdom can't catch this — `scrollWidth`/
+`clientWidth` are always 0 there, so this class of bug needs a REAL layout engine: Playwright, not
+vitest).
+
+**Fix + the general pattern:** give the WIDE INNER element itself `max-width: 100%; overflow-x: auto`
+(make it the scroll container, never the popup body) plus `flex: none; white-space: nowrap` on its
+non-shrinking children. Bonus: setting `overflow-x` to anything but `visible` also zeroes that
+element's flexbox *automatic minimum size* (normally its min-content width), which is what let it
+shrink below its buttons' combined width in the first place — a plain `min-width: 0` alone would NOT
+have been enough here since the element wasn't itself the overflowing flex item hitting that specific
+default; the `overflow` change was necessary. Any future segmented-tab-style control (or long
+mono/address row) added to a popup screen needs the same treatment, not a fixed-width guess. See
+`src/styles/theme.css` (`.dig-seg`) and the Playwright guard `e2e/screenshots.spec.ts` ("has no
+horizontal overflow").

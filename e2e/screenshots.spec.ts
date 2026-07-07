@@ -1,4 +1,4 @@
-import { test, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Mobile-OS screenshot harness (#65 acceptance bar): render the real built popup.html / app.html
@@ -99,6 +99,39 @@ for (const screen of ['home', 'wallet', 'apps', 'network']) {
     await page.screenshot({ path: `e2e/__screenshots__/fullscreen-${screen}.png` });
   });
 }
+
+// #163 — the popup body (`[data-testid="popup-root"]`, `.dig-main`) must NEVER scroll
+// horizontally (§6.6): every popup screen's content fits the fixed 372px shell. A wide inner
+// control (the wallet segmented control) may scroll WITHIN itself, but must never push the popup
+// root wider than its own box.
+for (const screen of ['home', 'wallet', 'apps', 'network']) {
+  test(`popup ${screen} has no horizontal overflow`, async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await open(page, 'popup.html', screen);
+    const overflow = await page.getByTestId('popup-root').evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+}
+
+// #163 — Identity (DID management) is ADVANCED functionality (§145): the compact popup's wallet
+// segmented control hides the "Identity" tab entry entirely; the fullscreen (ExpandedLayout)
+// segmented control shows every wallet view, Identity included. (The DID list stays reachable
+// view-only on the popup via a direct deep link — see "popup identity" below — this only governs
+// which segments render as top-level TABS.)
+test('popup wallet tab set hides Identity (advanced → fullscreen-only)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet');
+  await expect(page.getByTestId('seg-home')).toBeVisible();
+  await expect(page.getByTestId('seg-collectibles')).toBeVisible();
+  await expect(page.getByTestId('seg-did')).toHaveCount(0);
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-wallet-tabset.png' });
+});
+
+test('fullscreen wallet tab set includes Identity', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet');
+  await expect(page.getByTestId('seg-did')).toBeVisible();
+});
 
 // Coin control (#91): the Coins panel — list of individual coins + split/combine actions.
 test('popup coins (coin control)', async ({ page }) => {
