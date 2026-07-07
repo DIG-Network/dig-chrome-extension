@@ -597,4 +597,10 @@ export const ja: Record<string, string> = {
   'wallet.switcher.remove.confirm': '削除',
   'wallet.switcher.active.badge': '使用中',
   'wallet.switcher.lock': 'ウォレットをロック',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': 'インデックス {index}',
+  'wallet.index.prev': '前のインデックス',
+  'wallet.index.next': '次のインデックス',
+  'wallet.index.jump': 'インデックスに移動',
+  'wallet.index.error': 'インデックスを切り替えられませんでした。もう一度お試しください。',
 };

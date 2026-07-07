@@ -25,8 +25,6 @@ export const ACTIVITY_CACHE_KEY = 'walletCache.activity';
 
 /** The default public coinset chain source (extensions bypass its CORS). */
 export const DEFAULT_COINSET_URL = 'https://api.coinset.org';
-/** HD scan gap limit per scheme for balance scans. */
-export const SCAN_GAP_LIMIT = 20;
 
 /** The persisted self-custody settings blob (all fields optional / user-configurable). */
 export interface CustodySettings {
@@ -76,6 +74,9 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'switchWallet',
   'renameWallet',
   'removeWallet',
+  // Single active derivation index (#165): prev/next/jump changes which index every wallet view
+  // reflects. A pure SW registry op (like renameWallet) — no vault round-trip, no key involved.
+  'setActiveIndex',
   'getReceiveAddress',
   'getCustodyBalances',
   'prepareSend',
@@ -243,6 +244,11 @@ export interface LockSnapshot {
   lockState: LockStateValue;
   activeWalletId: string | null;
   unlockExpiry: number | null;
+  /**
+   * The active wallet's active HD derivation index (#165 — single active index model). `0` when
+   * there is no keystore (nothing to derive from) or the active wallet has never set one.
+   */
+  activeIndex: number;
 }
 
 /**
@@ -261,16 +267,21 @@ export interface LockSnapshot {
  *   - no keystore blob          → `none`     (→ onboarding)
  *   - blob, expired/absent TTL  → `locked`   (→ unlock screen)
  *   - blob, fresh TTL           → `unlocked` (→ the wallet)
+ *
+ * `activeIndex` (#165) is likewise a persisted fact, not a vault read — the SW passes in the active
+ * wallet's stored index (from the registry) so the whole navigator UI hydrates from one poll.
  */
 export function computeLockSnapshot({
   hasKeystore,
   activeWalletId = null,
   unlockExpiry = null,
+  activeIndex = 0,
   now,
 }: {
   hasKeystore: boolean;
   activeWalletId?: string | null;
   unlockExpiry?: number | null;
+  activeIndex?: number;
   now: number;
 }): LockSnapshot {
   const lockState: LockStateValue = !hasKeystore
@@ -282,5 +293,6 @@ export function computeLockSnapshot({
     lockState,
     activeWalletId: hasKeystore ? activeWalletId || null : null,
     unlockExpiry: hasKeystore ? unlockExpiry || null : null,
+    activeIndex: hasKeystore ? activeIndex || 0 : 0,
   };
 }

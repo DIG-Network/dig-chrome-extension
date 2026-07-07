@@ -127,8 +127,8 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
   it('DIR 1: maker offers a CAT, requests XCH; a taker takes; both balances land', async () => {
     const makerSeed = await mnemonicToSeed(golden.mnemonic);
     const takerSeed = await mnemonicToSeed(TAKER_MNEMONIC);
-    const makerRing = buildKeyring(asFlow(), makerSeed, { count: 2 });
-    const takerRing = buildKeyring(asFlow(), takerSeed, { count: 2 });
+    const makerRing = buildKeyring(asFlow(), makerSeed, { index: 0 });
+    const takerRing = buildKeyring(asFlow(), takerSeed, { index: 0 });
     const makerPh0 = chia.fromHex(makerRing[0].puzzleHashHex);
     const takerPh0 = chia.fromHex(takerRing[0].puzzleHashHex);
 
@@ -144,7 +144,7 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
       seed: makerSeed,
       offered: { asset: { kind: 'cat', assetId }, amount: offeredCat },
       requested: { asset: { kind: 'xch' }, amount: requestedXch },
-      gapLimit: 2,
+      activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
     expect(made.offer.startsWith('offer1')).toBe(true);
@@ -154,7 +154,7 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
     expect(summary.requested[0].asset).toEqual({ kind: 'xch' });
     expect(summary.requested[0].amount).toBe(requestedXch);
 
-    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, gapLimit: 2, additionalDataHex: TESTNET11_AGG_SIG_ME });
+    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, activeIndex: 0, additionalDataHex: TESTNET11_AGG_SIG_ME });
     const res = await chain.pushSpendBundle(taken.bundle); // Simulator validates → no throw = atomic settlement valid
     expect(res.success).toBe(true);
 
@@ -168,8 +168,8 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
   it('DIR 2: maker offers XCH, requests a CAT; a taker takes; both balances land', async () => {
     const makerSeed = await mnemonicToSeed(golden.mnemonic);
     const takerSeed = await mnemonicToSeed(TAKER_MNEMONIC);
-    const makerRing = buildKeyring(asFlow(), makerSeed, { count: 2 });
-    const takerRing = buildKeyring(asFlow(), takerSeed, { count: 2 });
+    const makerRing = buildKeyring(asFlow(), makerSeed, { index: 0 });
+    const takerRing = buildKeyring(asFlow(), takerSeed, { index: 0 });
     const makerPh0 = chia.fromHex(makerRing[0].puzzleHashHex);
     const takerPh0 = chia.fromHex(takerRing[0].puzzleHashHex);
 
@@ -185,7 +185,7 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
       seed: makerSeed,
       offered: { asset: { kind: 'xch' }, amount: offeredXch },
       requested: { asset: { kind: 'cat', assetId }, amount: requestedCat },
-      gapLimit: 2,
+      activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
 
@@ -195,7 +195,7 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
     expect(summary.requested[0].amount).toBe(requestedCat);
 
     const takerXchBefore = sim.unspentCoins(takerPh0, false).reduce((a, c) => a + c.amount, 0n);
-    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, gapLimit: 2, additionalDataHex: TESTNET11_AGG_SIG_ME });
+    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, activeIndex: 0, additionalDataHex: TESTNET11_AGG_SIG_ME });
     const res = await chain.pushSpendBundle(taken.bundle);
     expect(res.success).toBe(true);
 
@@ -208,7 +208,7 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
 
   it('CANCEL: the maker re-spends the offered coins to self, invalidating the offer', async () => {
     const makerSeed = await mnemonicToSeed(golden.mnemonic);
-    const makerRing = buildKeyring(asFlow(), makerSeed, { count: 2 });
+    const makerRing = buildKeyring(asFlow(), makerSeed, { index: 0 });
     const makerPh0 = chia.fromHex(makerRing[0].puzzleHashHex);
 
     const sim = new chia.Simulator();
@@ -220,11 +220,11 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
       seed: makerSeed,
       offered: { asset: { kind: 'cat', assetId }, amount: 300n },
       requested: { asset: { kind: 'xch' }, amount: 50_000_000_000n },
-      gapLimit: 2,
+      activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
 
-    const cancelled = await cancelOffer(asOffer(), chain, { seed: makerSeed, offerStr: made.offer, gapLimit: 2, additionalDataHex: TESTNET11_AGG_SIG_ME });
+    const cancelled = await cancelOffer(asOffer(), chain, { seed: makerSeed, offerStr: made.offer, activeIndex: 0, additionalDataHex: TESTNET11_AGG_SIG_ME });
     const res = await chain.pushSpendBundle(cancelled.bundle); // valid self-spend of the offered coins
     expect(res.success).toBe(true);
     // The maker's full CAT balance is back at their address (nothing locked in settlement).
@@ -237,8 +237,8 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
   it('DIR 3: maker offers an NFT (no royalty), requests XCH; a taker takes; both sides land', async () => {
     const makerSeed = await mnemonicToSeed(golden.mnemonic);
     const takerSeed = await mnemonicToSeed(TAKER_MNEMONIC);
-    const makerRing = buildKeyring(asFlow(), makerSeed, { count: 2 });
-    const takerRing = buildKeyring(asFlow(), takerSeed, { count: 2 });
+    const makerRing = buildKeyring(asFlow(), makerSeed, { index: 0 });
+    const takerRing = buildKeyring(asFlow(), takerSeed, { index: 0 });
     const makerPh0 = chia.fromHex(makerRing[0].puzzleHashHex);
     const takerPh0 = chia.fromHex(takerRing[0].puzzleHashHex);
 
@@ -253,7 +253,7 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
       seed: makerSeed,
       offered: { asset: { kind: 'nft', launcherId }, amount: 1n },
       requested: { asset: { kind: 'xch' }, amount: requestedXch },
-      gapLimit: 2,
+      activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
     expect(made.offer.startsWith('offer1')).toBe(true);
@@ -263,7 +263,7 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
     expect(summary.offered).toEqual([{ asset: { kind: 'nft', launcherId }, amount: 1n }]);
     expect(summary.requested[0].amount).toBe(requestedXch);
 
-    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, gapLimit: 2, additionalDataHex: TESTNET11_AGG_SIG_ME });
+    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, activeIndex: 0, additionalDataHex: TESTNET11_AGG_SIG_ME });
     expect(taken.summary.offered).toEqual([{ asset: { kind: 'nft', launcherId }, amount: 1n }]);
     const res = await chain.pushSpendBundle(taken.bundle); // Simulator validates → no throw = atomic settlement valid
     expect(res.success).toBe(true);
@@ -278,8 +278,8 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
   it('DIR 4: maker offers an NFT WITH royalty; the taker pays price + royalty to the royalty address', async () => {
     const makerSeed = await mnemonicToSeed(golden.mnemonic);
     const takerSeed = await mnemonicToSeed(TAKER_MNEMONIC);
-    const makerRing = buildKeyring(asFlow(), makerSeed, { count: 2 });
-    const takerRing = buildKeyring(asFlow(), takerSeed, { count: 2 });
+    const makerRing = buildKeyring(asFlow(), makerSeed, { index: 0 });
+    const takerRing = buildKeyring(asFlow(), takerSeed, { index: 0 });
     const makerPh0 = chia.fromHex(makerRing[0].puzzleHashHex);
     const takerPh0 = chia.fromHex(takerRing[0].puzzleHashHex);
 
@@ -298,12 +298,12 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
       seed: makerSeed,
       offered: { asset: { kind: 'nft', launcherId }, amount: 1n },
       requested: { asset: { kind: 'xch' }, amount: requestedXch },
-      gapLimit: 2,
+      activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
 
     const makerXchBefore = sim.unspentCoins(makerPh0, false).reduce((a, c) => a + c.amount, 0n);
-    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, gapLimit: 2, additionalDataHex: TESTNET11_AGG_SIG_ME });
+    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, activeIndex: 0, additionalDataHex: TESTNET11_AGG_SIG_ME });
     const res = await chain.pushSpendBundle(taken.bundle);
     expect(res.success).toBe(true);
 
@@ -316,7 +316,7 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
 
   it('CANCEL: the maker re-spends the offered NFT to self, invalidating the offer', async () => {
     const makerSeed = await mnemonicToSeed(golden.mnemonic);
-    const makerRing = buildKeyring(asFlow(), makerSeed, { count: 2 });
+    const makerRing = buildKeyring(asFlow(), makerSeed, { index: 0 });
     const makerPh0 = chia.fromHex(makerRing[0].puzzleHashHex);
 
     const sim = new chia.Simulator();
@@ -328,11 +328,11 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
       seed: makerSeed,
       offered: { asset: { kind: 'nft', launcherId }, amount: 1n },
       requested: { asset: { kind: 'xch' }, amount: 50_000_000_000n },
-      gapLimit: 2,
+      activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
 
-    const cancelled = await cancelOffer(asOffer(), chain, { seed: makerSeed, offerStr: made.offer, gapLimit: 2, additionalDataHex: TESTNET11_AGG_SIG_ME });
+    const cancelled = await cancelOffer(asOffer(), chain, { seed: makerSeed, offerStr: made.offer, activeIndex: 0, additionalDataHex: TESTNET11_AGG_SIG_ME });
     const res = await chain.pushSpendBundle(cancelled.bundle);
     expect(res.success).toBe(true);
     // The NFT is still (re-)held by the maker, discoverable via hint.
@@ -380,7 +380,7 @@ describe('offers — validation + errors', () => {
 
   it('throws NO_CAT_COINS when offering a token the wallet does not hold', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const makerRing = buildKeyring(asFlow(), seed, { count: 2 });
+    const makerRing = buildKeyring(asFlow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(makerRing[0].puzzleHashHex), 1_000_000_000_000n);
     await expect(
@@ -388,7 +388,7 @@ describe('offers — validation + errors', () => {
         seed,
         offered: { asset: { kind: 'cat', assetId: 'bb'.repeat(32) }, amount: 1n },
         requested: { asset: { kind: 'xch' }, amount: 1n },
-        gapLimit: 2,
+        activeIndex: 0,
         additionalDataHex: TESTNET11_AGG_SIG_ME,
       }),
     ).rejects.toThrow(/NO_CAT_COINS/);

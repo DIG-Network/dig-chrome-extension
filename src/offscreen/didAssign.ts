@@ -116,10 +116,10 @@ export interface NftDidAssignSummary {
 export async function prepareNftDidAssign(
   chia: AssignWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; nftLauncherId: string; didLauncherId: string; fee?: bigint; gapLimit?: number },
+  opts: { seed: Uint8Array; nftLauncherId: string; didLauncherId: string; fee?: bigint; activeIndex?: number },
 ): Promise<PreparedNftDidAssign> {
   const fee = opts.fee ?? 0n;
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, k]));
   const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));
   // ONE shared Clvm allocator: the reconstructed NFT's metadata Program + the DID handle must live in

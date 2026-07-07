@@ -63,19 +63,19 @@ function simChain(sim: SimHandle): DidChain {
 describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
   it('creates a DID owned by the wallet and lists it with its on-chain state', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     const chain = simChain(sim);
 
-    const prepared = await prepareDidCreate(asDid(), chain, { seed, gapLimit: 2 });
+    const prepared = await prepareDidCreate(asDid(), chain, { seed, activeIndex: 0 });
     expect(prepared.launcherId).toMatch(/^[0-9a-f]{64}$/);
     expect(prepared.summary.p2PuzzleHashHex).toBe(ring[0].puzzleHashHex);
 
     const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
     expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
 
-    const dids = await listDids(asDid(), chain, { seed, gapLimit: 2 });
+    const dids = await listDids(asDid(), chain, { seed, activeIndex: 0 });
     expect(dids).toHaveLength(1);
     expect(dids[0].launcherId).toBe(prepared.launcherId);
     expect(dids[0].p2PuzzleHash).toBe(ring[0].puzzleHashHex);
@@ -85,56 +85,56 @@ describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
 
   it('pays a fee from the wallet when creating a DID', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     const chain = simChain(sim);
 
-    const prepared = await prepareDidCreate(asDid(), chain, { seed, fee: 1_000_000n, gapLimit: 2 });
+    const prepared = await prepareDidCreate(asDid(), chain, { seed, fee: 1_000_000n, activeIndex: 0 });
     expect(prepared.summary.fee).toBe('1000000');
     const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
     expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
-    const dids = await listDids(asDid(), chain, { seed, gapLimit: 2 });
+    const dids = await listDids(asDid(), chain, { seed, activeIndex: 0 });
     expect(dids.map((d) => d.launcherId)).toContain(prepared.launcherId);
   });
 
   it('rejects creating a DID when the wallet has no XCH to fund it', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
     const sim = new chia.Simulator(); // no coins funded
-    await expect(prepareDidCreate(asDid(), simChain(sim), { seed, gapLimit: 2 })).rejects.toThrow(/NO_XCH_COINS/);
+    await expect(prepareDidCreate(asDid(), simChain(sim), { seed, activeIndex: 0 })).rejects.toThrow(/NO_XCH_COINS/);
   });
 
   it('returns an empty list when the wallet holds no DIDs', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
-    expect(await listDids(asDid(), simChain(sim), { seed, gapLimit: 2 })).toEqual([]);
+    expect(await listDids(asDid(), simChain(sim), { seed, activeIndex: 0 })).toEqual([]);
   });
 
   it('transfers a DID to another wallet; it leaves the sender and lands at the recipient', async () => {
     const senderSeed = await mnemonicToSeed(golden.mnemonic);
     const recipientSeed = await mnemonicToSeed(RECIPIENT_MNEMONIC);
-    const senderRing = buildKeyring(asFlow(), senderSeed, { count: 2 });
-    const recipientRing = buildKeyring(asFlow(), recipientSeed, { count: 2 });
+    const senderRing = buildKeyring(asFlow(), senderSeed, { index: 0 });
+    const recipientRing = buildKeyring(asFlow(), recipientSeed, { index: 0 });
     const recipientAddr = addressOf(recipientRing[0].puzzleHashHex);
 
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(senderRing[0].puzzleHashHex), 1_000_000_000_000n);
     const chain = simChain(sim);
 
-    const created = await prepareDidCreate(asDid(), chain, { seed: senderSeed, gapLimit: 2 });
+    const created = await prepareDidCreate(asDid(), chain, { seed: senderSeed, activeIndex: 0 });
     const createBundle = signAndBundle(asFlow(), created.coinSpends, created.secretKeys, TESTNET11_AGG_SIG_ME);
     expect((await chain.pushSpendBundle(createBundle)).success).toBe(true);
 
     // Sender owns it before the transfer.
-    expect(await listDids(asDid(), chain, { seed: senderSeed, gapLimit: 2 })).toHaveLength(1);
+    expect(await listDids(asDid(), chain, { seed: senderSeed, activeIndex: 0 })).toHaveLength(1);
 
     const prepared = await prepareDidTransfer(asDid(), chain, {
       seed: senderSeed,
       launcherId: created.launcherId,
       recipient: recipientAddr,
-      gapLimit: 2,
+      activeIndex: 0,
     });
     expect(prepared.summary.launcherId).toBe(created.launcherId);
     expect(prepared.summary.recipientPuzzleHashHex).toBe(recipientRing[0].puzzleHashHex);
@@ -144,8 +144,8 @@ describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
     expect(res.success).toBe(true);
 
     // The DID moved: gone from the sender, discoverable by the recipient (proves the transfer + hint).
-    expect(await listDids(asDid(), chain, { seed: senderSeed, gapLimit: 2 })).toHaveLength(0);
-    const recipientDids = await listDids(asDid(), chain, { seed: recipientSeed, gapLimit: 2 });
+    expect(await listDids(asDid(), chain, { seed: senderSeed, activeIndex: 0 })).toHaveLength(0);
+    const recipientDids = await listDids(asDid(), chain, { seed: recipientSeed, activeIndex: 0 });
     expect(recipientDids).toHaveLength(1);
     expect(recipientDids[0].launcherId).toBe(created.launcherId);
     expect(recipientDids[0].p2PuzzleHash).toBe(recipientRing[0].puzzleHashHex);
@@ -154,14 +154,14 @@ describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
   it('pays a fee from the wallet when transferring a DID', async () => {
     const senderSeed = await mnemonicToSeed(golden.mnemonic);
     const recipientSeed = await mnemonicToSeed(RECIPIENT_MNEMONIC);
-    const senderRing = buildKeyring(asFlow(), senderSeed, { count: 2 });
-    const recipientRing = buildKeyring(asFlow(), recipientSeed, { count: 2 });
+    const senderRing = buildKeyring(asFlow(), senderSeed, { index: 0 });
+    const recipientRing = buildKeyring(asFlow(), recipientSeed, { index: 0 });
 
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(senderRing[0].puzzleHashHex), 1_000_000_000_000n);
     const chain = simChain(sim);
 
-    const created = await prepareDidCreate(asDid(), chain, { seed: senderSeed, gapLimit: 2 });
+    const created = await prepareDidCreate(asDid(), chain, { seed: senderSeed, activeIndex: 0 });
     const createBundle = signAndBundle(asFlow(), created.coinSpends, created.secretKeys, TESTNET11_AGG_SIG_ME);
     expect((await chain.pushSpendBundle(createBundle)).success).toBe(true);
 
@@ -170,54 +170,54 @@ describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
       launcherId: created.launcherId,
       recipient: addressOf(recipientRing[0].puzzleHashHex),
       fee: 1_000_000n,
-      gapLimit: 2,
+      activeIndex: 0,
     });
     expect(prepared.summary.fee).toBe('1000000');
     const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
     expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
-    const recipientDids = await listDids(asDid(), chain, { seed: recipientSeed, gapLimit: 2 });
+    const recipientDids = await listDids(asDid(), chain, { seed: recipientSeed, activeIndex: 0 });
     expect(recipientDids.map((d) => d.launcherId)).toContain(created.launcherId);
   });
 
   it('throws DID_NOT_FOUND when transferring a DID the wallet does not hold', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     await expect(
-      prepareDidTransfer(asDid(), simChain(sim), { seed, launcherId: 'ab'.repeat(32), recipient: addressOf(ring[0].puzzleHashHex), gapLimit: 2 }),
+      prepareDidTransfer(asDid(), simChain(sim), { seed, launcherId: 'ab'.repeat(32), recipient: addressOf(ring[0].puzzleHashHex), activeIndex: 0 }),
     ).rejects.toThrow(/DID_NOT_FOUND/);
   });
 
   it('throws HINT_LOOKUP_UNAVAILABLE when the chain cannot resolve hints', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
     const chain = { getCoinSpend: async () => null, unspentCoins: async () => [] } as unknown as DidChain;
-    await expect(listDids(asDid(), chain, { seed, gapLimit: 2 })).rejects.toThrow(/HINT_LOOKUP_UNAVAILABLE/);
+    await expect(listDids(asDid(), chain, { seed, activeIndex: 0 })).rejects.toThrow(/HINT_LOOKUP_UNAVAILABLE/);
   });
 
   it('a freshly created DID has no profile name (null) until one is set', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     const chain = simChain(sim);
 
-    const created = await prepareDidCreate(asDid(), chain, { seed, gapLimit: 2 });
+    const created = await prepareDidCreate(asDid(), chain, { seed, activeIndex: 0 });
     const bundle = signAndBundle(asFlow(), created.coinSpends, created.secretKeys, TESTNET11_AGG_SIG_ME);
     expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
 
-    const dids = await listDids(asDid(), chain, { seed, gapLimit: 2 });
+    const dids = await listDids(asDid(), chain, { seed, activeIndex: 0 });
     expect(dids[0].profileName).toBeNull();
   });
 
   it('sets a profile name (on-chain metadata) on an owned DID; listDids reflects it', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     const chain = simChain(sim);
 
-    const created = await prepareDidCreate(asDid(), chain, { seed, gapLimit: 2 });
+    const created = await prepareDidCreate(asDid(), chain, { seed, activeIndex: 0 });
     const createBundle = signAndBundle(asFlow(), created.coinSpends, created.secretKeys, TESTNET11_AGG_SIG_ME);
     expect((await chain.pushSpendBundle(createBundle)).success).toBe(true);
 
@@ -225,13 +225,13 @@ describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
       seed,
       launcherId: created.launcherId,
       profileName: 'Alice the Builder',
-      gapLimit: 2,
+      activeIndex: 0,
     });
     expect(prepared.summary.profileName).toBe('Alice the Builder');
     const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
     expect((await chain.pushSpendBundle(bundle)).success).toBe(true);
 
-    const dids = await listDids(asDid(), chain, { seed, gapLimit: 2 });
+    const dids = await listDids(asDid(), chain, { seed, activeIndex: 0 });
     expect(dids).toHaveLength(1);
     expect(dids[0].launcherId).toBe(created.launcherId);
     expect(dids[0].profileName).toBe('Alice the Builder');
@@ -241,12 +241,12 @@ describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
 
   it('pays a fee from the wallet when updating a DID profile', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     const chain = simChain(sim);
 
-    const created = await prepareDidCreate(asDid(), chain, { seed, gapLimit: 2 });
+    const created = await prepareDidCreate(asDid(), chain, { seed, activeIndex: 0 });
     const createBundle = signAndBundle(asFlow(), created.coinSpends, created.secretKeys, TESTNET11_AGG_SIG_ME);
     expect((await chain.pushSpendBundle(createBundle)).success).toBe(true);
 
@@ -255,7 +255,7 @@ describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
       launcherId: created.launcherId,
       profileName: 'Bob',
       fee: 1_000_000n,
-      gapLimit: 2,
+      activeIndex: 0,
     });
     expect(prepared.summary.fee).toBe('1000000');
     const bundle = signAndBundle(asFlow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
@@ -264,11 +264,11 @@ describe('dids — create, list, transfer (Simulator-validated, #93)', () => {
 
   it('throws DID_NOT_FOUND when updating the profile of a DID the wallet does not hold', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
-    const ring = buildKeyring(asFlow(), seed, { count: 2 });
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
     const sim = new chia.Simulator();
     sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
     await expect(
-      prepareDidProfileUpdate(asDid(), simChain(sim), { seed, launcherId: 'ab'.repeat(32), profileName: 'x', gapLimit: 2 }),
+      prepareDidProfileUpdate(asDid(), simChain(sim), { seed, launcherId: 'ab'.repeat(32), profileName: 'x', activeIndex: 0 }),
     ).rejects.toThrow(/DID_NOT_FOUND/);
   });
 });

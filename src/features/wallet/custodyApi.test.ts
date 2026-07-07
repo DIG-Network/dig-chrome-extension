@@ -191,4 +191,27 @@ describe('custodyApi endpoints', () => {
     const last = await store.dispatch(custodyApi.endpoints.removeWallet.initiate({ walletId: 'only' }));
     expect(last.error).toMatchObject({ code: 'LAST_WALLET' });
   });
+
+  // ── Single active derivation index (#165) ──
+  it('getLockState carries the active wallet\'s active derivation index', async () => {
+    mockSw((m) => (m.action === 'getLockState' ? { lockState: 'unlocked', activeWalletId: 'a', activeIndex: 3 } : { success: false }));
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.getLockState.initiate());
+    expect(res.data?.activeIndex).toBe(3);
+  });
+
+  it('setActiveIndex sends the target index and returns the persisted active index', async () => {
+    const sw = mockSw((m) => (m.action === 'setActiveIndex' ? { success: true, activeIndex: m.index } : { success: false }));
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.setActiveIndex.initiate({ index: 2 }));
+    expect(res.data).toMatchObject({ activeIndex: 2 });
+    expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'setActiveIndex', index: 2 }), expect.any(Function));
+  });
+
+  it('setActiveIndex surfaces NO_WALLET as an RTK Query error', async () => {
+    mockSw((m) => (m.action === 'setActiveIndex' ? { success: false, code: 'NO_WALLET', message: 'no wallet' } : {}));
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.setActiveIndex.initiate({ index: 1 }));
+    expect(res.error).toMatchObject({ code: 'NO_WALLET' });
+  });
 });

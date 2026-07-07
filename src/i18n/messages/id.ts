@@ -597,4 +597,10 @@ export const id: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Hapus',
   'wallet.switcher.active.badge': 'Aktif',
   'wallet.switcher.lock': 'Kunci dompet',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': 'Indeks {index}',
+  'wallet.index.prev': 'Indeks sebelumnya',
+  'wallet.index.next': 'Indeks berikutnya',
+  'wallet.index.jump': 'Lompat ke indeks',
+  'wallet.index.error': 'Tidak dapat beralih indeks. Silakan coba lagi.',
 };

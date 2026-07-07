@@ -15,10 +15,16 @@ export interface WalletState {
   activeWalletId: string | null;
   /** Non-secret unlock-expiry timestamp (ms) for a TTL countdown; never key material. */
   unlockExpiry: number | null;
+  /**
+   * The active wallet's active HD derivation index (#165 — the single active-index model: one
+   * index at a time, prev/next to switch). Default 0. Every wallet view (balance, assets, NFTs,
+   * DIDs, activity, receive address) reflects ONLY this index.
+   */
+  activeIndex: number;
 }
 
 function initialState(): WalletState {
-  return { lockState: 'none', activeWalletId: null, unlockExpiry: null };
+  return { lockState: 'none', activeWalletId: null, unlockExpiry: null, activeIndex: 0 };
 }
 
 const walletSlice = createSlice({
@@ -28,13 +34,14 @@ const walletSlice = createSlice({
     /** Merge an authoritative lock-state snapshot (from `getLockState` or a custody mutation). */
     custodyStateHydrated(
       state,
-      action: PayloadAction<{ lockState?: LockState; activeWalletId?: string | null; unlockExpiry?: number | null }>,
+      action: PayloadAction<{ lockState?: LockState; activeWalletId?: string | null; unlockExpiry?: number | null; activeIndex?: number }>,
     ) {
       const s = action.payload;
       if (!s) return;
       if (s.lockState) state.lockState = s.lockState;
       if ('activeWalletId' in s) state.activeWalletId = s.activeWalletId ?? null;
       if ('unlockExpiry' in s) state.unlockExpiry = s.unlockExpiry ?? null;
+      if ('activeIndex' in s && s.activeIndex != null) state.activeIndex = s.activeIndex;
     },
     setLockState(state, action: PayloadAction<LockState>) {
       state.lockState = action.payload;
@@ -42,10 +49,14 @@ const walletSlice = createSlice({
     setActiveWallet(state, action: PayloadAction<string | null>) {
       state.activeWalletId = action.payload;
     },
+    /** Optimistically set the active HD derivation index (#165) — reconciled by the next hydrate. */
+    setActiveDerivationIndex(state, action: PayloadAction<number>) {
+      state.activeIndex = action.payload;
+    },
   },
 });
 
-export const { custodyStateHydrated, setLockState, setActiveWallet } = walletSlice.actions;
+export const { custodyStateHydrated, setLockState, setActiveWallet, setActiveDerivationIndex } = walletSlice.actions;
 export const walletReducer = walletSlice.reducer;
 
 /** Selectors — a slice of `RootState.wallet`. Typed loosely to avoid a store import cycle. */
@@ -53,3 +64,4 @@ export const selectLockState = (s: { wallet: WalletState }): LockState => s.wall
 export const selectIsUnlocked = (s: { wallet: WalletState }): boolean => s.wallet.lockState === 'unlocked';
 export const selectHasWallet = (s: { wallet: WalletState }): boolean => s.wallet.lockState !== 'none';
 export const selectActiveWalletId = (s: { wallet: WalletState }): string | null => s.wallet.activeWalletId;
+export const selectActiveDerivationIndex = (s: { wallet: WalletState }): number => s.wallet.activeIndex;

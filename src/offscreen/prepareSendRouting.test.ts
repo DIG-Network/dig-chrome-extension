@@ -68,7 +68,7 @@ function simChain(sim: SimHandle): ChainClient {
 
 /** Issue a single-issuance CAT to the seed-derived index-0 address, funded by XCH there. Returns its TAIL hex. */
 async function mintCatToWallet(sim: SimHandle, seed: Uint8Array): Promise<string> {
-  const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { count: 2 });
+  const ring = buildKeyring(chia as unknown as SendFlowWasm, seed, { index: 0 });
   const ph0 = ring[0].puzzleHashHex;
   const key0 = ring[0];
   sim.newCoin(chia.fromHex(ph0), 5_000_000_000_000n);

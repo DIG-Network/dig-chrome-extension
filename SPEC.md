@@ -407,7 +407,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `18`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `19`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -441,7 +441,15 @@ actions — `prepareNftMint` (build a new NFT — CHIP-0007 metadata + royalty) 
 actions — `listDids`, `prepareDidCreate` + `confirmDidCreate`, `prepareDidTransfer` +
 `confirmDidTransfer`, `prepareDidProfileUpdate` + `confirmDidProfileUpdate`, and
 `prepareNftDidAssign` + `confirmNftDidAssign` (every confirm action reuses the `confirmSend` path)
-(§18.17).
+(§18.17). `19` (#165) replaced the multi-index gap-limit sweep with the single active-derivation-
+index model: added `setActiveIndex` (navigate the active wallet's active HD index — prev/next/jump,
+a pure SW registry op persisted per wallet) and an `activeIndex?: number` field (replacing the
+retired `gapLimit`) on every derivation-touching request — `getReceiveAddress`,
+`getCustodyBalances`, `getActivity`, `listNfts`, `listDids`, `listCoins`, `prepareSend`,
+`prepareSplit`, `prepareCombine`, `prepareNftTransfer`, `prepareNftMint`, `prepareDidCreate`,
+`prepareDidTransfer`, `prepareDidProfileUpdate`, `prepareNftDidAssign`, `makeOffer`,
+`prepareTrade` — each of which now derives ONLY the active index's puzzle hashes. `getLockState`'s
+response also gained `activeIndex` (§18.1a).
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -805,8 +813,8 @@ mnemonic → seed = mnemonic.to_seed("")            (BIP-39, EMPTY passphrase �
 - The BIP-39 passphrase is ALWAYS the empty string; it is NOT configurable.
 - Entropy is 256 bits → a 24-word English mnemonic. The extension persists the ENTROPY (not the
   seed/scalar), so "reveal recovery phrase" regenerates the exact 24 words byte-for-byte.
-- A wallet MUST derive and scan BOTH the unhardened and the hardened path forms, each to its own gap
-  limit. Scanning only one scheme would make funds on the other scheme's addresses invisible.
+- A wallet MUST derive and read BOTH the unhardened and the hardened path forms AT THE ACTIVE INDEX
+  (§18.1a) — never only one scheme, which would make funds on the other scheme's addresses invisible.
 - The extension MUST NOT use `dig-keystore`'s `L1WalletBls` sign path (it double-derives — a latent
   upstream inconsistency).
 - Conformance is pinned by a golden parity fixture (`src/lib/keystore/derive.golden.json`) of the
@@ -814,6 +822,47 @@ mnemonic → seed = mnemonic.to_seed("")            (BIP-39, EMPTY passphrase �
   `xch1…` address across the extension, `dig-l1-wallet`, and Sage, for BOTH schemes across MULTIPLE
   indexes. The fixture's BIP-39 seed equals the published all-zeros test vector (`408b285c…80840`),
   anchoring the chain to a public vector.
+
+### 18.1a Single active derivation index (#165 — normative wallet-scan model)
+
+The browser wallet operates on **ONE HD derivation index at a time** — the ACTIVE index (default 0)
+— with **prev/next** (+ jump-to-index) to switch it. This is the canonical scan model for every
+wallet view; the extension MUST NOT perform a multi-index gap-limit sweep anywhere.
+
+- **What "active index" means.** All derivation-touching reads/writes — balance scan, CAT/NFT/DID
+  discovery, activity indexing, the receive address, coin listing, and send/coin-control — derive
+  puzzle hashes for ONLY the active index, both HD schemes (§18.1): a fixed set of exactly 2 puzzle
+  hashes (unhardened + hardened at that one index), never a range of indexes. One cheap coinset query
+  replaces a `gap-limit × 2-scheme` sweep.
+- **Why (browser performance, #148/#154).** Full multi-index HD scanning (both schemes across a gap
+  limit, e.g. 20 × 2 = 40 candidate addresses) is too intensive for a browser wallet — it was the
+  root cause of the wallet's load/timeout problems. Scoping every op to a single, tiny, fixed
+  address set makes every wallet read a single fast coinset round-trip.
+- **Navigation.** `setActiveIndex` (§7) sets the ACTIVE wallet's active index to an absolute,
+  non-negative value (clamped; the UI computes prev = current−1, next = current+1, or an explicit
+  jump target). It is a PURE SW registry op — no vault round-trip, no key material involved — that
+  drops the balance/activity caches (scoped to the previous index) and returns the persisted value.
+  Every index-scoped RTK Query view (balances, activity, receive address, collectibles, coins)
+  re-reads for the newly-active index, mirroring exactly how a wallet switch (§18.16) invalidates.
+- **Persistence.** The active index is persisted PER WALLET (`WalletEntry.activeIndex` in the
+  registry, §18.16) — switching wallets restores each wallet's own place; a fresh wallet starts at 0.
+- **Send / receive.** A send spends from the active index's coins; change returns to the active
+  index's own (unhardened) address. The receive address shown is always the active index's
+  unhardened address — navigating the index changes which address Receive shows.
+- **Coin control (#91).** `prepareSplit` sends every output piece to the ACTIVE index's own address
+  (never to other indexes, which the single-active-index model could then not see) with
+  pairwise-DISTINCT amounts (consecutive integers plus a strictly-larger final piece absorbing the
+  remainder) so same-address, same-amount `CREATE_COIN` collisions never occur — this removes any
+  ceiling on split-piece count (previously bounded by how many addresses a gap-limit derivation
+  produced).
+- **This is EXTENSION-SPECIFIC.** The hub's full-HD-scan rule (hub backend, badge/DIG detection)
+  scans ALL HD addresses both ways — that rule is UNCHANGED and applies to a different client with a
+  different performance budget (a server, not a browser tab). The two models are not in conflict:
+  each client uses the scan depth appropriate to where it runs.
+- **Retired.** The prior multi-index `gapLimit`-sized sweep (`SCAN_GAP_LIMIT`, a fixed 20-per-scheme
+  window) is removed from every scan/prepare op (§7 `MESSAGE_PROTOCOL_VERSION` `19`); a configurable
+  scan-index-count setting (a superseded proposal) is INTENTIONALLY not built — there is no range to
+  size once the model derives exactly one index.
 
 ### 18.2 At-rest keystore — `DIGWX1` v1
 
@@ -940,9 +989,9 @@ export.
 
 Read-only balances come from an HD scan run in the offscreen vault (it has the key + the wasm):
 
-- **Derivation + scan.** Derive standard p2 puzzle hashes for BOTH schemes (§18.1) to a gap limit,
-  then sum UNSPENT coins from coinset: native XCH at those hashes. Balances are POOLED across all
-  derivations.
+- **Derivation + scan.** Derive standard p2 puzzle hashes for BOTH schemes (§18.1) AT THE ACTIVE
+  INDEX (§18.1a), then sum UNSPENT coins from coinset: native XCH at those hashes. Balances reflect
+  ONLY the active index.
 - **CAT auto-discovery (MUST).** The wallet surfaces EVERY CAT it holds WITHOUT a watch list, by
   hinted-coin lineage reconstruction (the same mechanism as NFT discovery §18.11): find the coins
   HINTED to the derived inner p2 hashes (`get_coin_records_by_hints`, both schemes), fetch each
@@ -985,7 +1034,8 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
   override so a privacy-minded user can point at their own node.
 - **Caching.** The last scan is cached (`walletCache.balances`, non-secret); a transient scan failure
   returns the cached snapshot flagged `cached` (cached-first paint).
-- **Receive.** The pooled receive address is index 0, unhardened (`getReceiveAddress`).
+- **Receive.** The receive address is the ACTIVE index's unhardened address (§18.1a,
+  `getReceiveAddress`) — navigating the index changes which address Receive shows.
 
 ### 18.7 Spend signing
 
@@ -1029,8 +1079,8 @@ An XCH send is built with the `Spends`/`Action` driver in the offscreen vault:
 There is no transaction-history endpoint, so the ledger is reconstructed (read-only) in the offscreen
 vault (`getActivity`):
 
-- Derive the HD puzzle hashes (both schemes) + the watched-CAT puzzle hashes; fetch their coin
-  records INCLUDING spent (`getCoinRecordsByPuzzleHashes`).
+- Derive the HD puzzle hashes (both schemes) AT THE ACTIVE INDEX (§18.1a) + the watched-CAT puzzle
+  hashes; fetch their coin records INCLUDING spent (`getCoinRecordsByPuzzleHashes`).
 - **RECEIVED** = a coin created to us whose parent is NOT one of our coins (our own change is skipped).
 - **SENT / TRADE** = a coin of ours that was spent → decode its spend's CREATE_COINs
   (`getPuzzleAndSolution`); outputs to others = sent (recipient resolved to an address), outputs to
@@ -1128,8 +1178,8 @@ decrypted key never leaves the offscreen vault.
 - **Discovery model.** An NFT is a singleton whose OUTER coin puzzle hash is the singleton/ownership
   puzzle — NOT the wallet's inner (p2/standard) puzzle hash — so it is NOT found by a puzzle-hash scan.
   The transfer that delivered it HINTS the recipient's inner p2 puzzle hash, so the wallet finds its NFT
-  coins via coinset `get_coin_records_by_hints` over its derived inner puzzle hashes (both HD schemes,
-  to the scan gap limit). For each hinted unspent coin, the PARENT spend is fetched and
+  coins via coinset `get_coin_records_by_hints` over its derived inner puzzle hashes (both HD schemes
+  AT THE ACTIVE INDEX, §18.1a). For each hinted unspent coin, the PARENT spend is fetched and
   `Puzzle.parseChildNft(parentCoin, parentSolution)` reconstructs the child `Nft` (parallel to
   `Puzzle.parseChildCats` for CATs). A coin is one of the wallet's NFTs iff the reconstructed child IS
   that coin and its `info.p2PuzzleHash` is one of the wallet's derived inner puzzle hashes.
@@ -1413,18 +1463,24 @@ consensus-valid against the wasm Simulator through the real driver path (never a
 
 - **List (`listCoins`, read-only).** The wallet's UNSPENT coins for one asset — native XCH at the
   derived inner (p2) puzzle hashes, or a CAT at its CAT puzzle hash (`catPuzzleHash(tail, innerPh)`)
-  over the same inner hashes — both HD schemes to the scan gap limit. Each coin carries its id
+  over the same inner hashes — both HD schemes AT THE ACTIVE INDEX (§18.1a). Each coin carries its id
   (hex), amount (base units), and confirmed height (`get_coin_records_by_puzzle_hashes`,
   `includeSpentCoins:false`).
 - **Coin selection in Send.** `prepareSend` accepts an optional `coinIds`: when present, ONLY those
   coins fund the spend (the driver's auto-selection is overridden by filtering the fetched coins to
   the selection). A selection that matches no owned coin fails loudly (`NO_SELECTED_COINS`) rather
   than silently auto-selecting.
-- **Split (`prepareSplit`).** One or more coins → `outputs` (≥2) DISTINCT self coins, each to a
-  distinct wallet address, amounts dividing as evenly as possible (the remainder on the last piece).
-  For XCH the fee comes out of the split amount; for a CAT the amount is conserved (a CAT cannot pay
-  an XCH fee) and XCH coins fund the fee. CAT outputs carry the recipient (self) inner p2 hash as the
-  create-coin hint, keeping them discoverable.
+- **Split (`prepareSplit`).** One or more coins → `outputs` (≥2) self coins, ALL returned to the
+  ACTIVE index's own address (§18.1a — never spread across other indexes, which the single-active-
+  index model would then be unable to see), with pairwise-DISTINCT amounts: consecutive integers
+  `base..base+outputs-2` plus a strictly-larger final piece absorbing the remainder — provably
+  distinct and positive whenever `base > 0` (else `SPLIT_TOO_SMALL`). Distinct amounts are REQUIRED
+  because every piece shares one destination puzzle hash: two `CREATE_COIN`s with the same
+  (puzzle hash, amount) pair would collide on-chain (identical coin id) — this constraint, not an
+  address-count ceiling, is why split has no cap on `outputs`. For XCH the fee comes out of the split
+  amount; for a CAT the amount is conserved (a CAT cannot pay an XCH fee) and XCH coins fund the fee.
+  CAT outputs carry the recipient (self) inner p2 hash as the create-coin hint, keeping them
+  discoverable.
 - **Combine (`prepareCombine`).** Two or more coins → a SINGLE self coin (consolidate dust). For XCH
   the fee comes out of the combined amount; for a CAT the amount is conserved and XCH coins fund the fee.
 - **Self-send invariant (MUST).** Split/combine summaries are decoded FROM THE BUILT SPEND (§5.5):
@@ -1448,11 +1504,13 @@ over the storage keys, driven by the actions in §7 (`listWallets`, `switchWalle
 `removeWallet`); the SW owns the `chrome.storage.*` I/O and the offscreen vault owns every decrypted
 key.
 
-- **Storage model.** `wallet.registry` holds `{ id, label, record, createdAt }` per wallet (`id` a
-  uuid); `wallet.activeId` names the active wallet; `wallet.keystore` MIRRORS the active wallet's
-  record so every pre-#90 single-wallet read path (unlock / reveal) works unchanged. The encrypted
-  records live only in the SW — the UI receives record-FREE metadata (`{ id, label, createdAt,
-  active }`) via `listWallets`.
+- **Storage model.** `wallet.registry` holds `{ id, label, record, createdAt, activeIndex }` per
+  wallet (`id` a uuid; `activeIndex` — #165, default 0 — that wallet's own single active HD
+  derivation index, §18.1a); `wallet.activeId` names the active wallet; `wallet.keystore` MIRRORS the
+  active wallet's record so every pre-#90 single-wallet read path (unlock / reveal) works unchanged.
+  The encrypted records live only in the SW — the UI receives record-FREE metadata (`{ id, label,
+  createdAt, active, activeIndex }`) via `listWallets`. A registry persisted before #165 has entries
+  with no `activeIndex` field; migration normalizes it to 0.
 - **Migration (once).** A pre-#90 single `wallet.keystore` is migrated ONCE into a one-entry registry
   with a fresh uuid (the legacy `wallet.activeId` held a label, not an id, and is discarded). An
   existing registry is never re-migrated.
@@ -1464,8 +1522,9 @@ key.
   once within the shared unlock window); with a password it unlocks-then-activates; without one for a
   not-yet-unlocked wallet it returns `NEEDS_UNLOCK` so the UI prompts. The active wallet drives every
   derived view — balances, receive address, send, activity, signing — and switching re-derives from
-  the newly-active key; the RTK Query `Wallets`/`LockState`/`Balances`/`Activity`/`Address`/
-  `Collectibles`/`Coins` tags are invalidated so the whole surface re-reads the new wallet.
+  the newly-active key AT THAT WALLET'S OWN active index (§18.1a — each wallet remembers its own
+  place); the RTK Query `Wallets`/`LockState`/`Balances`/`Activity`/`Address`/`Collectibles`/`Coins`
+  tags are invalidated so the whole surface re-reads the new wallet.
 - **Rename.** `renameWallet` changes a wallet's display label only (metadata; no key, no password).
 - **Remove.** `removeWallet` zeroizes that wallet's cached key (vault `forgetWallet`) and drops its
   record. It REFUSES the last wallet (`LAST_WALLET`) — there are never zero wallets. Removing the
@@ -1500,7 +1559,7 @@ mounts the create or transfer form.
   the wallet's inner (p2/standard) puzzle hash — so it is NOT found by a puzzle-hash scan. Every DID
   spend (create or transfer) hints the owner's inner p2 puzzle hash via the create-coin memo, so the
   wallet finds its DID coins via coinset `get_coin_records_by_hints` over its derived inner puzzle
-  hashes (both HD schemes, to the scan gap limit). For each hinted unspent coin, the PARENT spend is
+  hashes (both HD schemes AT THE ACTIVE INDEX, §18.1a). For each hinted unspent coin, the PARENT spend is
   fetched and `Puzzle.parseChildDid(parentCoin, parentSolution, coin)` reconstructs the child `Did`
   (parallel to `Puzzle.parseChildNft`, except the wasm binding also wants the target child coin to
   disambiguate DID recovery outputs). A coin is one of the wallet's DIDs iff the reconstructed child IS

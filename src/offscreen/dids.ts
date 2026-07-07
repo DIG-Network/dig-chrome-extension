@@ -160,7 +160,7 @@ function toWalletDid(chia: DidWasm, did: DidObj): WalletDid {
 }
 
 /**
- * List the wallet's DIDs. Derives the HD keyring (both schemes to `gapLimit`), finds the coins hinted
+ * List the wallet's DIDs. Derives the HD keyring (both schemes AT THE ACTIVE INDEX, §165), finds the coins hinted
  * to those inner puzzle hashes (coinset `get_coin_records_by_hints`), reconstructs each as a DID via
  * its parent spend, and keeps those actually owned by the wallet. Deduped by launcher id (the newest
  * coin wins per launcher). Read-only — never signs or broadcasts.
@@ -168,10 +168,10 @@ function toWalletDid(chia: DidWasm, did: DidObj): WalletDid {
 export async function listDids(
   chia: DidWasm,
   chain: DidChain,
-  opts: { seed: Uint8Array; gapLimit?: number },
+  opts: { seed: Uint8Array; activeIndex?: number },
 ): Promise<WalletDid[]> {
   if (!chain.coinsByHints) throw new Error('HINT_LOOKUP_UNAVAILABLE: the chain client cannot resolve hints');
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));
   const coins = await chain.coinsByHints([...ownedPhs]);
   const clvm = new chia.Clvm();
@@ -217,10 +217,10 @@ const DID_AMOUNT = 1n;
 export async function prepareDidCreate(
   chia: DidWasm,
   chain: DidChain,
-  opts: { seed: Uint8Array; fee?: bigint; gapLimit?: number },
+  opts: { seed: Uint8Array; fee?: bigint; activeIndex?: number },
 ): Promise<PreparedDidCreate> {
   const fee = opts.fee ?? 0n;
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, k]));
 
   const xchCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
@@ -323,10 +323,10 @@ export async function payFeeFromSeparateCoin(
 export async function prepareDidTransfer(
   chia: DidWasm,
   chain: DidChain,
-  opts: { seed: Uint8Array; launcherId: string; recipient: string; fee?: bigint; gapLimit?: number },
+  opts: { seed: Uint8Array; launcherId: string; recipient: string; fee?: bigint; activeIndex?: number },
 ): Promise<PreparedDidTransfer> {
   const fee = opts.fee ?? 0n;
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, k]));
   const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));
   const clvm = new chia.Clvm();
@@ -398,10 +398,10 @@ export interface DidProfileUpdateSummary {
 export async function prepareDidProfileUpdate(
   chia: DidWasm,
   chain: DidChain,
-  opts: { seed: Uint8Array; launcherId: string; profileName: string; fee?: bigint; gapLimit?: number },
+  opts: { seed: Uint8Array; launcherId: string; profileName: string; fee?: bigint; activeIndex?: number },
 ): Promise<PreparedDidProfileUpdate> {
   const fee = opts.fee ?? 0n;
-  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { count: opts.gapLimit ?? 20 });
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, k]));
   const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));
   const clvm = new chia.Clvm();

@@ -597,4 +597,10 @@ export const fr: Record<string, string> = {
   'wallet.switcher.remove.confirm': 'Supprimer',
   'wallet.switcher.active.badge': 'Actif',
   'wallet.switcher.lock': 'Verrouiller le portefeuille',
+  // Single active derivation index (#165) — prev/next/jump between HD indexes.
+  'wallet.index.label': 'Index {index}',
+  'wallet.index.prev': 'Index précédent',
+  'wallet.index.next': 'Index suivant',
+  'wallet.index.jump': 'Aller à l’index',
+  'wallet.index.error': 'Impossible de changer d’index. Veuillez réessayer.',
 };
