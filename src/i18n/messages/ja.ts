@@ -95,6 +95,7 @@ export const ja: Record<string, string> = {
   'wallet.view.activity': 'アクティビティ',
   'wallet.view.trade': '取引',
   'wallet.portfolio.total': '合計残高',
+  'wallet.balance.swapUnit': '残高の単位を切り替え',
   'wallet.fiat.unavailable': '法定通貨での価値は表示できません',
   'wallet.fiat.loading': '価格を読み込み中',
   'wallet.portfolio.unavailable': '価値を表示できません',

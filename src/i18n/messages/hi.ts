@@ -95,6 +95,7 @@ export const hi: Record<string, string> = {
   'wallet.view.activity': 'एक्टिविटी',
   'wallet.view.trade': 'ट्रेड',
   'wallet.portfolio.total': 'कुल बैलेंस',
+  'wallet.balance.swapUnit': 'बैलेंस इकाई बदलें',
   'wallet.fiat.unavailable': 'फ़िएट वैल्यू उपलब्ध नहीं है',
   'wallet.fiat.loading': 'कीमत लोड हो रही है',
   'wallet.portfolio.unavailable': 'मूल्य उपलब्ध नहीं है',

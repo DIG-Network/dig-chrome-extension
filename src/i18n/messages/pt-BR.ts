@@ -95,6 +95,7 @@ export const ptBR: Record<string, string> = {
   'wallet.view.activity': 'Atividade',
   'wallet.view.trade': 'Negociar',
   'wallet.portfolio.total': 'Saldo total',
+  'wallet.balance.swapUnit': 'Alternar unidade do saldo',
   'wallet.fiat.unavailable': 'Valor em fiat indisponível',
   'wallet.fiat.loading': 'Carregando preço',
   'wallet.portfolio.unavailable': 'Valor indisponível',
