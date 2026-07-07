@@ -536,6 +536,7 @@ fix is entirely extension-side — on.dig.net's headers are not modified.
 | `dappApprovalList` / `dappApprovalResolve` | Approval-window channel (§18.12): read the pending dApp signing-request queue (decoded summaries) / return the user's approve-reject decision. |
 | `reportVerification` / `getVerification` | Record/read the active tab's verification state. |
 | `getDigNodeStatus` | Probe whether a local dig-node is reachable; report the chosen base. |
+| `getDigDnsStatus` | The shared dig-dns Path-B availability signal (§8.5) — phase, bound port, PAC URL, whether the proxy is engaged. |
 | `recordLedgerEntry` / `getShieldLedger` | DIG Shields per-resource proof ledger (§10). |
 | `getControlStatus` | DIG Control Panel status (manage vs install) (§11). |
 | `reportError` / `reportSuccess` | Rolling resolution-strategy diagnostics buffer. |
@@ -646,6 +647,79 @@ State persists in `chrome.storage.local`. Canonical keys:
 | `digRpcEndpoint` | hosted fallback RPC endpoint (default `https://rpc.dig.net/`). |
 | `wallet.pendingOrigins` | origins awaiting per-origin wallet consent. |
 | `wallet.origins` | per-origin wallet consent / connected-sites permissions (§18.12). |
+
+### 8.5 dig-dns Path-B proxy fallback (#175, Component C of #174)
+
+`dig-dns` (a separate OS service, `modules/apps/dig-dns`, installed by dig-installer) gives the
+machine `*.dig` browser resolution — `http://<storeId-as-base32>.dig/<path>` — through two
+INDEPENDENT paths: **Path A** (OS split-DNS routes `.dig` → its loopback IP) and **Path B** (a PAC
+proxy file routes `*.dig` requests to its gateway as an HTTP proxy, no DNS involved). This is
+UNRELATED to the `chia://` read path (§4-§9 above) — dig-dns resolves plain `http://<label>.dig`
+URLs a user types or clicks, entirely outside the extension's own content-loader pipeline. The
+extension's ONLY role is making Path B self-healing so a `.dig` URL keeps loading even when Path A
+is defeated (DNS-over-HTTPS, Chrome's built-in resolver, a `:80` port conflict on the machine).
+
+**dig-dns's loopback control contract** (dig-dns SPEC.md §4.7 — the extension is a pure consumer,
+no wire change on either side):
+
+| Endpoint | Response | Purpose |
+|---|---|---|
+| `GET http://<loopbackIp>:<port>/.dig/resolve-probe` | `204 No Content` | Liveness — dig-dns's gateway is up and answering, on THIS port. |
+| `GET http://<loopbackIp>:<port>/.dig/health` | `200` JSON `{status, version, bound_port, loopback_ip, tld, node, paths}` | The authoritative bound port (`:80` can fall back to `:8053`) + full status. |
+| `GET http://<loopbackIp>:<port>/.dig/proxy.pac` | `200 application/x-ns-proxy-autoconfig` | The PAC file `chrome.proxy` is pointed at to engage Path B. |
+
+`loopbackIp` defaults to `127.0.0.5` (`DIG_DNS_LOOPBACK_IP`); candidate ports are tried `[80, 8053]`
+in order (`DIG_DNS_GATEWAY_PORTS`) — the exact fallback order dig-dns itself uses.
+
+**The state machine** (`src/lib/dig-dns.ts`, `createDigDnsAvailabilityController`) — pure, no
+`chrome.*`, every dependency (fetch, `chrome.proxy`, the clock) injected:
+
+- **`unknown`** — no probe has run yet (a fresh SW / fresh controller).
+- **`direct`** — dig-dns answered a probe; Path A is ASSUMED to be working; the PAC proxy is NOT
+  engaged (engaging it preemptively would show Chrome's "an extension is managing your proxy
+  settings" banner for no reason).
+- **`proxy`** — dig-dns is reachable but a REAL `.dig` navigation errored (`reportNavigationError`,
+  driven by the SW's `webNavigation.onErrorOccurred` for `.dig`-TLD hosts): the controller
+  immediately calls `chrome.proxy.settings.set({value:{mode:'pac_script',pacScript:{url}}, scope:
+  'regular'})` pointed at `/.dig/proxy.pac` on the confirmed bound port.
+- **`unavailable`** — dig-dns itself is unreachable on every candidate port (not installed / not
+  running). The proxy is NEVER engaged in this phase (a PAC pointed at a dead gateway would only
+  break `.dig` traffic harder); any previously-engaged proxy is cleared.
+
+**Self-healing recovery:** a single healthy probe only proves dig-dns's gateway process is alive —
+it does NOT prove the OS actually routes `.dig` there again. So while `proxy`, the controller counts
+consecutive healthy probes with no further navigation error; once that streak reaches
+`DIG_DNS_RECOVERY_PROBE_THRESHOLD` (3), it clears the proxy and returns to `direct`, letting Path A
+prove itself — re-engaging immediately (via the next `reportNavigationError`) if it is still
+actually broken. A navigation error observed while already `proxy` resets the streak (still broken).
+
+**On uninstall/disable:** Chrome itself reverts any `chrome.proxy.settings` an extension applied —
+an extension-controlled `ChromeSetting` is discarded the moment the controlling extension is
+unloaded — so the extension needs NO explicit uninstall hook; `dispose()` exists only for an
+explicit/graceful teardown (tests, a future manual "turn off" control).
+
+**The ONE shared availability signal.** The SW instantiates a SINGLE controller at module scope,
+probes it on startup + a `chrome.alarms` interval (2 min), and feeds it
+`webNavigation.onErrorOccurred` for `.dig` hosts. Every feature reads the SAME signal via
+`ACTIONS.getDigDnsStatus` (never a per-feature probe) — the Resolver tab's "using proxy fallback"
+indicator (§2's Resolver sub-view) AND #172's open-by-URN dig-dns-detect branch both consume this
+one message action. A read triggers a FRESH probe when the cached snapshot is older than
+`DIG_DNS_STATUS_REFRESH_MS` (5 s, `shouldRefreshDigDnsSnapshot`) instead of waiting out the full
+2-minute alarm interval — e.g. right after the user just started dig-dns.
+
+```
+request:  { action: 'getDigDnsStatus' }
+response: { phase: 'unknown'|'direct'|'proxy'|'unavailable', boundPort: number|null,
+            pacUrl: string|null, loopbackIp: string, proxyActive: boolean,
+            lastProbeAt: number|null, lastError: string|null }
+```
+
+**Manifest requirements:** the `proxy` permission (to call `chrome.proxy.settings`); `host_permissions`
+covering `http://127.0.0.5/*` + `http://127.0.0.5:*/*` (loopback, so the SW's probe/health fetches
+are not subject to CORS); and the `extension_pages` CSP `connect-src` includes `http://127.0.0.5:*`
+(regression #122 pattern — a host fetched by the extension MUST be in BOTH `host_permissions` and
+CSP `connect-src`, or the real browser silently blocks the request while unit tests, which mock
+fetch, do not catch it).
 
 ---
 

@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { resolveViaStatus } from '@/lib/resolve-status';
+import { digDnsIndicatorView } from '@/lib/dig-dns-status';
 import { ACTIONS } from '@/lib/messages';
 import { FourState } from '@/components/FourState';
 import { StatusPill } from '@/components/StatusPill';
 import { useStorageValue } from '@/lib/useStorageValue';
 import { hasRuntime, sendAction } from '@/lib/messaging';
-import { useGetNodeStatusQuery, useSaveNodeHostMutation } from '@/features/resolver/resolverApi';
+import { useGetNodeStatusQuery, useSaveNodeHostMutation, useGetDigDnsStatusQuery } from '@/features/resolver/resolverApi';
+
+/** Poll the SW's dig-dns signal often enough that the indicator tracks a live engage/recover. */
+const DIG_DNS_STATUS_POLL_MS = 15_000;
 
 const HOST_KEY = 'server.host';
 const ENABLED_KEY = 'extensionEnabled';
@@ -23,6 +27,8 @@ export function ResolverTab() {
   const [host, setHost] = useStorageValue<string>(HOST_KEY, '');
   const nodeStatus = useGetNodeStatusQuery();
   const [saveHost, saveState] = useSaveNodeHostMutation();
+  const digDnsStatus = useGetDigDnsStatusQuery(undefined, { pollingInterval: DIG_DNS_STATUS_POLL_MS });
+  const digDnsView = digDnsIndicatorView(digDnsStatus.data);
 
   const [url, setUrl] = useState('');
   const [hostDraft, setHostDraft] = useState<string | null>(null);
@@ -119,6 +125,23 @@ export function ResolverTab() {
           <div data-testid="resolve-status" data-tier={via.tier}>
             {via.label}
           </div>
+        </FourState>
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <div className="dig-section-title">
+          <FormattedMessage id="resolver.digdns.label" />
+        </div>
+        <FourState
+          isLoading={digDnsStatus.isLoading}
+          isError={false}
+          isEmpty={false}
+          loadingId="resolver.digdns.loading"
+          testid="digdns-status-state"
+        >
+          <StatusPill tone={digDnsView.tone} testid="digdns-status-pill">
+            <FormattedMessage id={digDnsView.labelId} />
+          </StatusPill>
         </FourState>
       </div>
 

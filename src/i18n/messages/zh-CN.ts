@@ -250,6 +250,12 @@ export const zhCN: Record<string, string> = {
   'resolver.node.label': '自定义节点',
   'resolver.node.placeholder': 'dig.local 或 host:port',
   'resolver.node.save': '保存',
+  'resolver.digdns.label': '本地 .dig 解析',
+  'resolver.digdns.loading': '正在检查…',
+  'resolver.digdns.status.unknown': '正在检查…',
+  'resolver.digdns.status.direct': '直连',
+  'resolver.digdns.status.proxy': '正在使用代理回退',
+  'resolver.digdns.status.unavailable': '未检测到',
 
   // ── shield ──
   'shield.title': 'DIG 护盾',

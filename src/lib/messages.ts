@@ -150,8 +150,16 @@ import { DIG_ERR } from './error-codes';
  * `status:'pending'|'confirmed'`, and its request no longer takes `watchedCats`/`sinceHeight` (a
  * synchronous storage read needs neither). `confirmSend`/`confirmTrade` additively gained an optional
  * `activityHint: { asset, amount, counterparty }` captured at prepare time.
+ *
+ * v21 (#175 dig-dns Path-B proxy fallback): added `getDigDnsStatus` — reports the ONE shared
+ * dig-dns availability signal (`unknown`/`direct`/`proxy`/`unavailable`, the bound gateway port,
+ * the PAC URL, and whether the PAC proxy is currently engaged). The SW probes dig-dns's loopback
+ * control endpoints (`/.dig/resolve-probe`, `/.dig/health`) on startup + a `chrome.alarms`
+ * interval, and engages `chrome.proxy` pointed at dig-dns's `/.dig/proxy.pac` the moment a real
+ * `.dig` navigation fails — self-healing `.dig` resolution when OS split-DNS (Path A) is defeated.
+ * This is the SAME signal #172's open-by-URN dig-dns-detect branch reads — no per-feature probing.
  */
-export const MESSAGE_PROTOCOL_VERSION = 20;
+export const MESSAGE_PROTOCOL_VERSION = 21;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -244,6 +252,8 @@ export const ACTIONS = Object.freeze({
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
   getDigNodeStatus: 'getDigNodeStatus',
+  // ── dig-dns Path-B proxy fallback (#175): the shared .dig-resolution availability signal ──
+  getDigDnsStatus: 'getDigDnsStatus',
   // ── DIG Shields (per-resource proof ledger) — mirrors the browser dig://shields #134 ──
   recordLedgerEntry: 'recordLedgerEntry',
   getShieldLedger: 'getShieldLedger',
@@ -590,6 +600,13 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Probe whether a local dig-node is reachable; report the chosen base.',
     request: '{ action }',
     response: '{ reachable:boolean, base:string|null }',
+  },
+  [ACTIONS.getDigDnsStatus]: {
+    summary:
+      'dig-dns Path-B proxy fallback (#175): the shared `.dig`-resolution availability signal — whether dig-dns is reachable, the bound gateway port + PAC URL, and whether the PAC proxy is currently engaged (Path A failed and Path B is covering). The SAME signal backs #172\'s open-by-URN dig-dns-detect branch; nothing re-probes dig-dns on its own.',
+    request: '{ action }',
+    response:
+      "{ phase:'unknown'|'direct'|'proxy'|'unavailable', boundPort:number|null, pacUrl:string|null, loopbackIp:string, proxyActive:boolean, lastProbeAt:number|null, lastError:string|null }",
   },
   [ACTIONS.recordLedgerEntry]: {
     summary: "Viewer records one resource's inclusion-proof verdict into the active tab's proof ledger (DIG Shields #134).",

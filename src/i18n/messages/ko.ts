@@ -250,6 +250,12 @@ export const ko: Record<string, string> = {
   'resolver.node.label': '사용자 지정 노드',
   'resolver.node.placeholder': 'dig.local 또는 host:port',
   'resolver.node.save': '저장',
+  'resolver.digdns.label': '로컬 .dig 확인',
+  'resolver.digdns.loading': '확인 중…',
+  'resolver.digdns.status.unknown': '확인 중…',
+  'resolver.digdns.status.direct': '직접',
+  'resolver.digdns.status.proxy': '프록시 대체 사용 중',
+  'resolver.digdns.status.unavailable': '감지되지 않음',
 
   // ── shield ──
   'shield.title': 'DIG 실드',
