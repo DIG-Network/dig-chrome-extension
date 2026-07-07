@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.45.0] - 2026-07-07
+
+### Features
+- **wallet:** Show the Chia leaf logo for XCH instead of a monogram
+
 ## [1.44.0] - 2026-07-07
 
 ### Features
