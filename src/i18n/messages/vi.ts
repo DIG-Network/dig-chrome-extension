@@ -87,6 +87,10 @@ export const vi: Record<string, string> = {
   'custody.chain.hint': 'Để trống để dùng mặc định (coinset.org). Nhập node tương thích coinset của riêng bạn để tăng tính riêng tư.',
   'custody.chain.save': 'Lưu node blockchain',
   'custody.chain.saved': 'Đã lưu',
+  'custody.autolock.label': 'Tự động khóa sau (phút)',
+  'custody.autolock.hint': 'Khóa ví sau số phút không hoạt động này. Bất kỳ hoạt động nào của ví sẽ đặt lại bộ đếm thời gian. Phạm vi cho phép: {min}–{max} phút.',
+  'custody.autolock.save': 'Lưu cài đặt tự động khóa',
+  'custody.autolock.saved': 'Đã lưu',
   'custody.soon.activity': 'Lịch sử hoạt động sẽ có cùng với tính năng gửi tự quản lý.',
   'custody.soon.trade': 'Tính năng giao dịch sẽ có cùng với việc ký tự quản lý.',
 

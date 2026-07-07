@@ -6,6 +6,7 @@ import { setWalletView, setAdvanced } from '@/features/ui/uiSlice';
 import { CustodyWallet } from '@/features/wallet/custody/CustodyWallet';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
+import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
 import { readWalletSettings, updateWalletSettings } from '@/features/wallet/custody/settings';
 
 function mockSw(router: (m: { action: string }) => unknown) {
@@ -73,19 +74,21 @@ describe('CustodyWallet', () => {
     expect(await screen.findByTestId('custody-trade')).toBeInTheDocument();
   });
 
-  it('hides the chain-node setting by default (everyday tier)', async () => {
+  it('hides the chain-node and auto-lock settings by default (everyday tier)', async () => {
     mockSw((m) => (m.action === 'getReceiveAddress' ? { address: 'xch1receive' } : { balances: { xch: 0, cats: {} } }));
     renderWithProviders(<CustodyWallet />);
     await screen.findByTestId('custody-wallet');
     expect(screen.queryByTestId('chain-node-setting')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('auto-lock-setting')).not.toBeInTheDocument();
   });
 
-  it('shows the chain-node setting in advanced mode', async () => {
+  it('shows the chain-node and auto-lock settings in advanced mode', async () => {
     mockSw((m) => (m.action === 'getReceiveAddress' ? { address: 'xch1receive' } : { balances: { xch: 0, cats: {} } }));
     const store = createStore();
     store.dispatch(setAdvanced(true));
     renderWithProviders(<CustodyWallet />, { store });
     expect(await screen.findByTestId('chain-node-setting')).toBeInTheDocument();
+    expect(await screen.findByTestId('auto-lock-setting')).toBeInTheDocument();
   });
 });
 
@@ -106,5 +109,24 @@ describe('ChainNodeSetting', () => {
     fireEvent.change(screen.getByTestId('chain-node-input'), { target: { value: 'https://my.node/rpc' } });
     fireEvent.click(screen.getByTestId('chain-node-save'));
     await waitFor(async () => expect((await readWalletSettings()).chainRpcUrl).toBe('https://my.node/rpc'));
+  });
+});
+
+describe('AutoLockSetting (#155)', () => {
+  it('loads the default TTL when unset, and saves a custom idle timeout', async () => {
+    renderWithProviders(<AutoLockSetting />);
+    expect(await screen.findByTestId('auto-lock-input')).toHaveValue(15);
+    fireEvent.change(screen.getByTestId('auto-lock-input'), { target: { value: '30' } });
+    fireEvent.click(screen.getByTestId('auto-lock-save'));
+    await waitFor(async () => expect((await readWalletSettings()).unlockTtlMinutes).toBe(30));
+  });
+
+  it('clamps an out-of-range value into [1,60] instead of persisting it verbatim', async () => {
+    renderWithProviders(<AutoLockSetting />);
+    await screen.findByTestId('auto-lock-input');
+    fireEvent.change(screen.getByTestId('auto-lock-input'), { target: { value: '9999' } });
+    fireEvent.click(screen.getByTestId('auto-lock-save'));
+    await waitFor(async () => expect((await readWalletSettings()).unlockTtlMinutes).toBe(60));
+    expect(screen.getByTestId('auto-lock-input')).toHaveValue(60);
   });
 });

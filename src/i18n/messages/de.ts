@@ -87,6 +87,10 @@ export const de: Record<string, string> = {
   'custody.chain.hint': 'Leer lassen, um die Standardeinstellung (coinset.org) zu verwenden. Geben Sie für mehr Privatsphäre einen eigenen coinset-kompatiblen Node ein.',
   'custody.chain.save': 'Chain-Node speichern',
   'custody.chain.saved': 'Gespeichert',
+  'custody.autolock.label': 'Automatische Sperre nach (Minuten)',
+  'custody.autolock.hint': 'Die Wallet wird nach dieser Anzahl an Minuten Inaktivität gesperrt. Jede Wallet-Aktivität setzt den Timer zurück. Zulässiger Bereich: {min}–{max} Minuten.',
+  'custody.autolock.save': 'Automatische Sperre speichern',
+  'custody.autolock.saved': 'Gespeichert',
   'custody.soon.activity': 'Der Aktivitätsverlauf wird mit dem Senden in Eigenverwahrung eingeführt.',
   'custody.soon.trade': 'Der Handel wird mit der Signatur in Eigenverwahrung eingeführt.',
 

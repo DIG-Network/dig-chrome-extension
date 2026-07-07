@@ -17,6 +17,7 @@ import { assetUsdValue, portfolioValue } from '@/features/wallet/portfolioValue'
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { WalletSwitcher } from '@/features/wallet/custody/WalletSwitcher';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
+import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
 import { CoinControlPanel } from '@/features/wallet/custody/CoinControlPanel';
@@ -174,6 +175,7 @@ export function CustodyWallet() {
           {advanced && (
             <>
               <ChainNodeSetting />
+              <AutoLockSetting />
               <ConnectedSites />
             </>
           )}

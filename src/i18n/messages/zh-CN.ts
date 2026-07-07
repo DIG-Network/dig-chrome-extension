@@ -87,6 +87,10 @@ export const zhCN: Record<string, string> = {
   'custody.chain.hint': '留空则使用默认节点（coinset.org）。如需更高的隐私性，可填写您自己的 coinset 兼容节点。',
   'custody.chain.save': '保存链节点',
   'custody.chain.saved': '已保存',
+  'custody.autolock.label': '闲置多久后自动锁定（分钟）',
+  'custody.autolock.hint': '钱包在闲置这么多分钟后将被锁定。任何钱包操作都会重置计时器。允许范围：{min}–{max} 分钟。',
+  'custody.autolock.save': '保存自动锁定设置',
+  'custody.autolock.saved': '已保存',
   'custody.soon.activity': '活动记录功能将随自托管转账功能一同推出。',
   'custody.soon.trade': '交易功能将随自托管签名功能一同推出。',
 

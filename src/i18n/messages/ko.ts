@@ -87,6 +87,10 @@ export const ko: Record<string, string> = {
   'custody.chain.hint': '기본값(coinset.org)을 사용하려면 비워 두십시오. 더 높은 개인정보 보호를 위해 coinset 호환 노드를 직접 입력할 수 있습니다.',
   'custody.chain.save': '체인 노드 저장',
   'custody.chain.saved': '저장됨',
+  'custody.autolock.label': '자동 잠금까지 대기 시간(분)',
+  'custody.autolock.hint': '이 분수만큼 활동이 없으면 지갑이 잠깁니다. 지갑 활동이 있으면 타이머가 초기화됩니다. 허용 범위: {min}~{max}분.',
+  'custody.autolock.save': '자동 잠금 저장',
+  'custody.autolock.saved': '저장됨',
   'custody.soon.activity': '활동 내역은 자가 보관 방식의 전송 기능과 함께 제공될 예정입니다.',
   'custody.soon.trade': '거래 기능은 자가 보관 방식의 서명 기능과 함께 제공될 예정입니다.',
 

@@ -87,6 +87,10 @@ export const es: Record<string, string> = {
   'custody.chain.hint': 'Déjalo en blanco para usar el predeterminado (coinset.org). Ingresa tu propio nodo compatible con coinset para mayor privacidad.',
   'custody.chain.save': 'Guardar nodo de blockchain',
   'custody.chain.saved': 'Guardado',
+  'custody.autolock.label': 'Bloqueo automático tras (minutos)',
+  'custody.autolock.hint': 'Bloquea la billetera después de esta cantidad de minutos de inactividad. Cualquier actividad de la billetera reinicia el temporizador. Rango permitido: {min}–{max} minutos.',
+  'custody.autolock.save': 'Guardar bloqueo automático',
+  'custody.autolock.saved': 'Guardado',
   'custody.soon.activity': 'El historial de actividad llegará junto con los envíos autocustodiados.',
   'custody.soon.trade': 'El intercambio llegará junto con la firma autocustodiada.',
 

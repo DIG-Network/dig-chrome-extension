@@ -8,6 +8,8 @@ import assert from 'node:assert/strict';
 import {
   CUSTODY_ACTIONS,
   isCustodyAction,
+  isSessionRenewingAction,
+  shouldApplyRenewal,
   resolveTtlMinutes,
   computeUnlockExpiry,
   isUnlockExpired,
@@ -112,6 +114,53 @@ test('isCustodyAction recognises custody actions and rejects others', () => {
   assert.ok(!isCustodyAction('walletRpc'));
   assert.ok(!isCustodyAction(undefined));
   assert.ok(!isCustodyAction(null));
+});
+
+test('DEFAULT_UNLOCK_TTL_MINUTES is a MetaMask-style idle default (#155)', () => {
+  // 15 minutes: long enough that active use never trips it (isSessionRenewingAction slides the
+  // window forward on every real wallet action, #155), short enough to matter if truly idle.
+  assert.equal(DEFAULT_UNLOCK_TTL_MINUTES, 15);
+});
+
+test('isSessionRenewingAction: real wallet activity renews; a status check or lock does not (#155)', () => {
+  // Merely asking "am I unlocked?" is not activity — polling it must never keep a session alive
+  // forever by itself.
+  assert.ok(!isSessionRenewingAction('getLockState'));
+  // Locking is the OPPOSITE of activity — it must never resurrect the session it just ended.
+  assert.ok(!isSessionRenewingAction('lockWallet'));
+  // Non-custody / garbage input never renews.
+  assert.ok(!isSessionRenewingAction('proxyRequest'));
+  assert.ok(!isSessionRenewingAction('walletRpc'));
+  assert.ok(!isSessionRenewingAction(undefined));
+  assert.ok(!isSessionRenewingAction(null));
+  // Every other custody action IS real wallet use and slides the idle window forward.
+  assert.ok(isSessionRenewingAction('unlockWallet'));
+  assert.ok(isSessionRenewingAction('createWallet'));
+  assert.ok(isSessionRenewingAction('importWallet'));
+  assert.ok(isSessionRenewingAction('switchWallet'));
+  assert.ok(isSessionRenewingAction('getReceiveAddress'));
+  assert.ok(isSessionRenewingAction('getCustodyBalances'));
+  assert.ok(isSessionRenewingAction('prepareSend'));
+  assert.ok(isSessionRenewingAction('confirmSend'));
+  assert.ok(isSessionRenewingAction('getActivity'));
+  assert.ok(isSessionRenewingAction('listWallets'));
+});
+
+test('shouldApplyRenewal: an explicit lock racing a still-in-flight activity call always wins (#155)', () => {
+  // The happy path: nothing else touched the expiry between the action's start and its finish.
+  assert.ok(shouldApplyRenewal(1_000, 1_000));
+  // The race this guards: the action started while unlocked (expiry 1000), but an explicit lock (or
+  // the TTL sweep) cleared it before the action finished — renewal MUST be skipped, or a lock could
+  // be silently undone by an activity call that was already in flight when it fired.
+  assert.ok(!shouldApplyRenewal(1_000, undefined));
+  assert.ok(!shouldApplyRenewal(1_000, null));
+  // Another concurrent renewal already bumped it to a different value — don't stomp back to a
+  // smaller/different expiry; the later renewal already stands.
+  assert.ok(!shouldApplyRenewal(1_000, 2_000));
+  // The action never observed a fresh unlock at all (started locked/none) — never renew.
+  assert.ok(!shouldApplyRenewal(null, 1_000));
+  assert.ok(!shouldApplyRenewal(undefined, 1_000));
+  assert.ok(!shouldApplyRenewal(null, null));
 });
 
 test('resolveTtlMinutes defaults, clamps, and floors', () => {

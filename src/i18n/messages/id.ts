@@ -87,6 +87,10 @@ export const id: Record<string, string> = {
   'custody.chain.hint': 'Biarkan kosong untuk menggunakan default (coinset.org). Masukkan node kompatibel-coinset milik Anda sendiri untuk privasi lebih baik.',
   'custody.chain.save': 'Simpan node blockchain',
   'custody.chain.saved': 'Tersimpan',
+  'custody.autolock.label': 'Kunci otomatis setelah (menit)',
+  'custody.autolock.hint': 'Kunci dompet setelah sekian menit tidak ada aktivitas. Aktivitas dompet apa pun akan mengatur ulang penghitung waktu. Rentang yang diizinkan: {min}–{max} menit.',
+  'custody.autolock.save': 'Simpan kunci otomatis',
+  'custody.autolock.saved': 'Tersimpan',
   'custody.soon.activity': 'Riwayat aktivitas akan hadir bersama fitur pengiriman swakelola.',
   'custody.soon.trade': 'Fitur trading akan hadir bersama fitur penandatanganan swakelola.',
 
