@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.52.0] - 2026-07-07
+
+### Features
+- **dig-dns:** Self-healing .dig proxy fallback via chrome.proxy PAC (#175) (#75)
+
 ## [1.51.0] - 2026-07-07
 
 ### Features
