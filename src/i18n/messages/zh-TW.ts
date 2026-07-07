@@ -95,6 +95,7 @@ export const zhTW: Record<string, string> = {
   'wallet.view.activity': '活動',
   'wallet.view.trade': '交易',
   'wallet.portfolio.total': '總餘額',
+  'wallet.balance.swapUnit': '切換餘額單位',
   'wallet.fiat.unavailable': '法幣價值無法取得',
   'wallet.fiat.loading': '正在載入價格',
   'wallet.portfolio.unavailable': '價值無法取得',

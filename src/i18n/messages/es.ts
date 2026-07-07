@@ -95,6 +95,7 @@ export const es: Record<string, string> = {
   'wallet.view.activity': 'Actividad',
   'wallet.view.trade': 'Intercambiar',
   'wallet.portfolio.total': 'Saldo total',
+  'wallet.balance.swapUnit': 'Cambiar unidad de saldo',
   'wallet.fiat.unavailable': 'Valor en fiat no disponible',
   'wallet.fiat.loading': 'Cargando precio',
   'wallet.portfolio.unavailable': 'Valor no disponible',

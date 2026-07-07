@@ -95,6 +95,7 @@ export const ru: Record<string, string> = {
   'wallet.view.activity': 'Активность',
   'wallet.view.trade': 'Обмен',
   'wallet.portfolio.total': 'Общий баланс',
+  'wallet.balance.swapUnit': 'Переключить единицу баланса',
   'wallet.fiat.unavailable': 'Стоимость в фиате недоступна',
   'wallet.fiat.loading': 'Загрузка цены',
   'wallet.portfolio.unavailable': 'Стоимость недоступна',

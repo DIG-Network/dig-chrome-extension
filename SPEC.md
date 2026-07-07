@@ -104,10 +104,12 @@ set, order, default, and hash deep-link) following the Fable **Home · Wallet ·
 grouping; the **default landing is Home**. Every surface stays reachable:
 
 0. **Home** (default landing) — the mobile-OS launcher above the nav: a glanceable wallet-balance
-   widget (→ Wallet), Send · Receive · Trade quick-action tiles (→ the wallet on the right sub-view),
-   the native dApp launcher grid (§2.4, first N + "see all" → Apps), and status widgets (lock state,
-   local-node/gateway status → Network, a recent-activity peek → the ledger). Four states drive the
-   launcher; the wallet widgets degrade gracefully when the wallet is locked/absent.
+   widget (→ Wallet) — a **$ ⇄ XCH swap button** beside it flips which unit is prominent, the other
+   shown small underneath (§18.13a) — Send · Receive · Trade quick-action tiles (→ the wallet on the
+   right sub-view), the native dApp launcher grid (§2.4, first N + "see all" → Apps), and status
+   widgets (lock state, local-node/gateway status → Network, a recent-activity peek → the ledger).
+   Four states drive the launcher; the wallet widgets degrade gracefully when the wallet is
+   locked/absent.
 1. **Wallet** — the **self-custody wallet** (§18) and the ONLY wallet path: the extension holds its
    own key, so there is no WalletConnect/Sage pairing. The `CustodyGate` lands first on the SW's
    authoritative lock state — no wallet → onboarding (create / import a 24-word phrase), locked →
@@ -1269,6 +1271,34 @@ while balances render unchanged.
   value" (per-row muted placeholder). Error/empty: the native amount + "value unavailable" + retry, and
   `≈ $—` per row. All copy is react-intl across the 14 locales. USD is the default currency (a currency
   preference is a follow-up, #112).
+
+### 18.13a Home balance display-unit swap (#156)
+
+The mobile-OS Home hero balance (§2.1 item 0) lets the user choose which unit is PROMINENT — `usd`
+(the $ conversion) or `xch` (the native amount) — via a swap button beside the value; the other unit
+renders small underneath. This is a per-device UI preference, distinct from the always-USD-when-known
+Wallet-tab portfolio hero (§18.13).
+
+- **Persistence.** `BalanceUnit = 'usd' | 'xch'`, default `'xch'` (the honest unit that never depends
+  on a price feed), stored at `chrome.storage.local` key `wallet.homeBalanceUnit` via the same
+  `useStorageValue` idiom as `wallet.watchedCats`/`wallet.hiddenCats` — read on mount, written on tap,
+  live-synced across the popup/`app.html` via `storage.onChanged` (§3.4). An unrecognized/missing
+  stored value falls back to the default rather than failing.
+- **Conversion scope.** The USD side is the HERO ASSET's own value (`pickHeroBalance`'s pick — XCH
+  when its balance is known, else the first asset with a known balance), not a multi-asset portfolio
+  total: the prominent/secondary pair is always an honest native ⇄ fiat conversion of ONE balance.
+- **Three states on the price-dependent slot** (the $ side — prominent in `usd` mode, secondary in
+  `xch` mode; the native side never depends on price and is shown immediately):
+  - **loading** (the price fetch has no cached data yet, and there IS a balance to price) — a
+    shimmer skeleton on that slot; NEVER the word "unavailable" during this window.
+  - **unavailable** (a price fetch error, a completed load with no usable price for the asset, or no
+    balance to price at all) — the honest `wallet.portfolio.unavailable` note; in `usd` mode the
+    prominent slot falls back to the native amount (never a broken `$—`).
+  - **ready** — the real converted value.
+- **Swap control.** A sibling icon button (`⇄`, `data-testid="home-balance-swap"`, aria-labelled via
+  `wallet.balance.swapUnit`) beside the balance — NOT nested inside the balance's own tap target
+  (which still opens the Wallet tab), so both remain independently keyboard/AT operable. Hidden when
+  the wallet is locked/absent (nothing to swap).
 
 ### 18.14 Address book / contacts (#88)
 

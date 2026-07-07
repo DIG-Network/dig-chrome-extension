@@ -95,6 +95,7 @@ export const vi: Record<string, string> = {
   'wallet.view.activity': 'Hoạt động',
   'wallet.view.trade': 'Giao dịch',
   'wallet.portfolio.total': 'Tổng số dư',
+  'wallet.balance.swapUnit': 'Chuyển đổi đơn vị số dư',
   'wallet.fiat.unavailable': 'Không có giá trị fiat',
   'wallet.fiat.loading': 'Đang tải giá',
   'wallet.portfolio.unavailable': 'Giá trị không khả dụng',

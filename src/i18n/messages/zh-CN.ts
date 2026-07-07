@@ -95,6 +95,7 @@ export const zhCN: Record<string, string> = {
   'wallet.view.activity': '活动',
   'wallet.view.trade': '交易',
   'wallet.portfolio.total': '总余额',
+  'wallet.balance.swapUnit': '切换余额单位',
   'wallet.fiat.unavailable': '法币价值不可用',
   'wallet.fiat.loading': '正在加载价格',
   'wallet.portfolio.unavailable': '价值不可用',
