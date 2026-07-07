@@ -116,8 +116,21 @@ import { DIG_ERR } from './error-codes';
  * (§145 tiering) — this message-protocol addition itself is surface-agnostic. Assigning a DID as an
  * NFT's owner AT MINT TIME (vs. on an already-minted NFT, which this version covers) remains a
  * follow-up seam with #92.
+ *
+ * v18 (#94 NFT offers + CHIP-0011 royalty): the `makeOffer`/`inspectOffer`/`prepareTrade` wire shape
+ * (`WireOfferAsset`) gained an `{ kind: 'nft', launcherId }` variant (OFFERED side only) alongside
+ * the existing `xch`/`cat` kinds — no new action names, only a shape extension, hence the version
+ * bump per this file's own contract. Offering an NFT with a nonzero on-chain royalty automatically
+ * funds the CHIP-0011 royalty payment on take (proven against the wasm Simulator: omitting it is
+ * REJECTED by chain validation, not merely by this wallet's own bookkeeping). Also fixed a surface-
+ * tiering gap (§145): Trade (make/take an offer) is ADVANCED functionality and now renders a
+ * view-only "open full screen" affordance on the popup, same as Collectibles/Identity — it
+ * previously rendered the full make/take forms in the popup too. `DID` is deliberately NOT an offer
+ * asset (verified against both the reference `chia-wallet-sdk` driver and Sage: neither models a
+ * `dids` offer leg — see `offers.ts`'s module doc). Requesting a SPECIFIC NFT (buying) is a tracked
+ * follow-up (needs a "read any NFT by launcher id" chain capability this wallet doesn't have yet).
  */
-export const MESSAGE_PROTOCOL_VERSION = 17;
+export const MESSAGE_PROTOCOL_VERSION = 18;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -426,12 +439,12 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: "{ events:[{ id, kind:'sent'|'received'|'trade', asset, amount, counterparty, height, timestamp, coinId }], cursorHeight:number } | { success:false, code, message }",
   },
   [ACTIONS.makeOffer]: {
-    summary: 'Build (not broadcast) a shareable trade offer in the offscreen vault: spend the offered asset into the settlement puzzle + assert the requested payment; returns the `offer1…` string + two-sided summary.',
-    request: "{ action, offered:{ asset:{kind:'xch'}|{kind:'cat',assetId}, amount:string }, requested:{ asset, amount:string }, fee?:string }",
-    response: "{ offer:string /* offer1… */, offerSummary:{ offered:[{asset,amount}], requested:[{asset,amount,toPuzzleHashHex}] } } | { success:false, code, message }",
+    summary: "Build (not broadcast) a shareable trade offer in the offscreen vault: spend the offered asset into the settlement puzzle + assert the requested payment; returns the `offer1…` string + two-sided summary. Offering an NFT (#94, OFFERED side only) with a nonzero on-chain royalty automatically declares the CHIP-0011 sale trade-price so the taker's royalty payment is chain-enforced. `requested.asset.kind:'nft'` is rejected with UNSUPPORTED_REQUEST (buying a specific NFT is a tracked follow-up); there is no `did` asset kind (DID is not an offer asset — see offers.ts).",
+    request: "{ action, offered:{ asset:{kind:'xch'}|{kind:'cat',assetId}|{kind:'nft',launcherId}, amount:string }, requested:{ asset:{kind:'xch'}|{kind:'cat',assetId}, amount:string }, fee?:string }",
+    response: "{ offer:string /* offer1… */, offerSummary:{ offered:[{asset,amount}], requested:[{asset,amount,toPuzzleHashHex}] } } | { success:false, code:'UNSUPPORTED_REQUEST'|..., message }",
   },
   [ACTIONS.inspectOffer]: {
-    summary: 'Decode an `offer1…` string to its two-sided (offered vs requested) summary in the offscreen vault. Read-only; no broadcast.',
+    summary: 'Decode an `offer1…` string to its two-sided (offered vs requested) summary in the offscreen vault. Read-only; no broadcast. An offered NFT leg (#94) decodes to `{kind:"nft",launcherId}` at amount 1.',
     request: '{ action, offerStr:string }',
     response: '{ offerSummary:{ offered:[{asset,amount}], requested:[{asset,amount,toPuzzleHashHex}] } } | { success:false, code, message }',
   },

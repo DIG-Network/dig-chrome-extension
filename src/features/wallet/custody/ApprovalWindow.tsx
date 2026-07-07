@@ -357,9 +357,11 @@ function MessageSummaryView({ summary }: { summary: DappMessageSummary | null })
   );
 }
 
-/** A trade leg (xch or a CAT) → a short display label with its amount. */
-function legLabel(leg: { asset: { kind: 'xch' } | { kind: 'cat'; assetId: string }; amount: string }): string {
-  return leg.asset.kind === 'xch' ? `${xch(leg.amount)} XCH` : `${leg.amount} ${short(leg.asset.assetId)}`;
+/** A trade leg (xch, a CAT, or an NFT — §94) → a short display label with its amount. */
+function legLabel(leg: { asset: DappOfferSummary['offered'][number]['asset']; amount: string }): string {
+  if (leg.asset.kind === 'xch') return `${xch(leg.amount)} XCH`;
+  if (leg.asset.kind === 'cat') return `${leg.amount} ${short(leg.asset.assetId)}`;
+  return `NFT ${short(leg.asset.launcherId)}`;
 }
 
 /** The decoded wallet-built send summary — recipient, amount, and fee, from the built spend. */
