@@ -308,3 +308,23 @@ Any future vault op that throws a new domain code gets it surfaced automatically
 needed — but a caller-side UI still has to explicitly branch on the code to show a specific message
 (the generic surfacing alone does not localize/word it); mapping it to copy is done in the feature's
 own component (e.g. `CreateDid.tsx`'s `didCreateErrorMessage`).
+
+## The Chia ecosystem's well-known "burn" address is `…dead`, not all-zero (#171)
+
+A provably-unspendable "burn" destination for permanently destroying an asset (CAT, NFT, or plain
+XCH) is NOT the all-zero puzzle hash — it is 30 zero bytes followed by `0xDE 0xAD`
+(`0x000…000dead`, 32 bytes total). The mainnet bech32m address is
+`xch1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqm6ks6e8mvy` (testnet:
+`txch1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqm6ksh7qddh`) — documented at
+docs.chia.net's Chia-burn-address FAQ entry. This is the SAME destination every Chia
+wallet/explorer (Sage, Spacescan, MintGarden's "burned NFTs" graveyard) recognizes as burned, so
+using it (rather than an all-zero or otherwise made-up puzzle hash) keeps a DIG-burned NFT
+consistent with how the rest of the ecosystem displays/labels burns. No known preimage produces
+this puzzle hash under any CLVM puzzle reveal, so a coin sent here is unspendable by anyone,
+including the sender — burning is achieved by an ordinary transfer to this puzzle hash, not a
+special on-chain "burn" opcode. Pinned as `NFT_BURN_PUZZLE_HASH` in
+`src/offscreen/nfts.ts` (issue #171, Collectibles bulk burn) and golden-tested by decoding the
+exact mainnet address string and asserting byte-identity (`nfts.test.ts`) — worth reusing verbatim
+(construct as `Uint8Array(32)` with `[30]=0xde, [31]=0xad`, avoiding any hex-string transcription
+risk) anywhere else in the ecosystem that needs a burn destination (CAT melt/burn, a future
+dig-sdk/hub burn action, etc.) rather than re-deriving it.

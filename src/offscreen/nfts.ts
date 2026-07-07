@@ -167,6 +167,22 @@ export interface WalletNft {
 export type NftChain = ChainClient;
 
 /**
+ * The Chia ecosystem's well-known "burn" puzzle hash (#171) — 30 zero bytes followed by `0xDE 0xAD`
+ * (`…dead`), the canonical destination every Chia wallet/explorer recognizes as permanently
+ * unspendable. No known preimage produces this puzzle hash under any CLVM puzzle reveal, so a coin
+ * created here can never be spent by anyone, including the sender — the standard mechanism for
+ * burning an asset (XCH, CATs, NFTs alike) rather than a DIG-specific invention. Encodes (bech32m,
+ * `xch` prefix) to the mainnet burn address `xch1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqm6ks6e8mvy`
+ * (pinned in `nfts.test.ts` by decoding that exact address and asserting byte-identity).
+ */
+export const NFT_BURN_PUZZLE_HASH: Uint8Array = (() => {
+  const h = new Uint8Array(32);
+  h[30] = 0xde;
+  h[31] = 0xad;
+  return h;
+})();
+
+/**
  * Reconstruct a wallet-owned {@link NftObj} handle from a hinted unspent coin, or null if not ours.
  * The caller supplies the `clvm` so the reconstructed NFT's `metadata` Program lives in the SAME CLVM
  * allocator that will later consume it (the `Spends` driver) — a cross-arena handle panics the wasm.
@@ -321,6 +337,113 @@ export async function prepareNftTransfer(
       coinCount: coinSpends.length,
     },
   };
+}
+
+/** A prepared (unsigned) BULK NFT transfer/burn (#171): coin spends for EVERY selected NFT, combined
+ * into ONE spend bundle, + the keys to sign + the decoded summary. */
+export interface PreparedNftBulkTransfer {
+  coinSpends: SigCoinSpend[];
+  secretKeys: SigSecretKey[];
+  summary: NftBulkTransferSummary;
+}
+/** The decoded, tamper-resistant summary of a bulk transfer/burn (#171) for the user to approve. */
+export interface NftBulkTransferSummary {
+  /** Launcher ids (hex, deduped) of every NFT this spend moves — in the order they were applied. */
+  launcherIds: string[];
+  /** The destination p2 puzzle hash (hex) — the recipient's for a transfer, {@link NFT_BURN_PUZZLE_HASH}
+   * for a burn. */
+  recipientPuzzleHashHex: string;
+  fee: string;
+  coinCount: number;
+  /** True iff this is a burn (destination is the well-known provably-unspendable puzzle hash). */
+  isBurn: boolean;
+}
+
+/**
+ * Build ONE spend bundle moving every NFT in `launcherIds` to `destPuzzleHash` — the shared engine
+ * behind both {@link prepareNftBulkTransfer} (a chosen recipient) and {@link prepareNftBulkBurn} (the
+ * fixed {@link NFT_BURN_PUZZLE_HASH}). Mirrors `prepareNftTransfer` but adds every selected NFT to the
+ * SAME `Spends` driver and emits one `Action.send` per NFT, so the whole set ships as a single
+ * broadcast (one aggregated signature) rather than N separate transactions.
+ */
+async function buildBulkNftSpend(
+  chia: NftWasm,
+  chain: NftChain,
+  opts: { seed: Uint8Array; launcherIds: string[]; destPuzzleHash: Uint8Array; fee?: bigint; activeIndex?: number; isBurn: boolean },
+): Promise<PreparedNftBulkTransfer> {
+  const uniqueIds = [...new Set(opts.launcherIds.map(strip0x))];
+  if (uniqueIds.length === 0) throw new Error('NO_NFTS_SELECTED: at least one NFT must be selected');
+  const fee = opts.fee ?? 0n;
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
+  const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
+  const clvm = new chia.Clvm();
+
+  const nfts: NftObj[] = [];
+  for (const id of uniqueIds) nfts.push(await findOwnedNft(chia, chain, clvm, keyring, id));
+
+  const changePuzzleHash = chia.fromHex(keyring[0].puzzleHashHex);
+  const spends = new chia.Spends(clvm, changePuzzleHash);
+  for (const nft of nfts) spends.addNft(nft);
+  if (fee > 0n) {
+    const xchCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
+    for (const c of xchCoins) spends.addXch(c);
+  }
+
+  // Every NFT ships to the SAME destination in this bulk op, so one hint memo covers all of them.
+  const hintMemo = clvm.alloc([opts.destPuzzleHash]);
+  const actions: unknown[] = nfts.map((nft) => chia.Action.send(chia.Id.existing(nft.info.launcherId), opts.destPuzzleHash, 1n, hintMemo));
+  if (fee > 0n) actions.push(chia.Action.fee(fee));
+
+  const finished = spends.prepare(spends.apply(actions));
+  for (const ps of finished.pendingSpends()) {
+    const key = keyByPuzzleHash.get(asHex(chia, ps.p2PuzzleHash()));
+    if (!key) throw new Error('MISSING_KEY: a selected coin is not owned by this wallet');
+    finished.insert(ps.coin().coinId(), clvm.standardSpend(key.pk, clvm.delegatedSpend(ps.conditions())));
+  }
+  finished.spend();
+
+  const coinSpends = clvm.coinSpends();
+  return {
+    coinSpends,
+    secretKeys: keyring.map((k) => k.sk),
+    summary: {
+      launcherIds: uniqueIds,
+      recipientPuzzleHashHex: asHex(chia, opts.destPuzzleHash),
+      fee: fee.toString(),
+      coinCount: coinSpends.length,
+      isBurn: opts.isBurn,
+    },
+  };
+}
+
+/**
+ * Prepare (build, don't sign/broadcast) a BULK transfer of every NFT in `launcherIds` to `recipient`
+ * in ONE spend bundle (#171 — Collectibles multi-select transfer). Throws `NO_NFTS_SELECTED` if
+ * `launcherIds` is empty, `NFT_NOT_FOUND` if any selected NFT is not held by this wallet.
+ */
+export async function prepareNftBulkTransfer(
+  chia: NftWasm,
+  chain: NftChain,
+  opts: { seed: Uint8Array; launcherIds: string[]; recipient: string; fee?: bigint; activeIndex?: number },
+): Promise<PreparedNftBulkTransfer> {
+  const destPuzzleHash = chia.Address.decode(opts.recipient).puzzleHash;
+  return buildBulkNftSpend(chia, chain, { ...opts, destPuzzleHash, isBurn: false });
+}
+
+/**
+ * Prepare (build, don't sign/broadcast) a BULK BURN of every NFT in `launcherIds` — a transfer to the
+ * well-known {@link NFT_BURN_PUZZLE_HASH} in ONE spend bundle (#171 — Collectibles multi-select
+ * destructive burn). Irreversible once broadcast: the destination has no known spending key. Throws
+ * `NO_NFTS_SELECTED` if `launcherIds` is empty, `NFT_NOT_FOUND` if any selected NFT is not held by
+ * this wallet. Does NOT sign or broadcast — the caller (the vault's confirm step) does that only on
+ * explicit, distinct user confirmation (never auto-executed).
+ */
+export async function prepareNftBulkBurn(
+  chia: NftWasm,
+  chain: NftChain,
+  opts: { seed: Uint8Array; launcherIds: string[]; fee?: bigint; activeIndex?: number },
+): Promise<PreparedNftBulkTransfer> {
+  return buildBulkNftSpend(chia, chain, { ...opts, destPuzzleHash: NFT_BURN_PUZZLE_HASH, isBurn: true });
 }
 
 /** The CHIP-0007 metadata + royalty inputs to a mint (URIs plain, hashes hex, amounts optional). */

@@ -6,6 +6,7 @@ import type { WalletNft } from '@/offscreen/nfts';
 import { useListCollectiblesQuery } from '@/features/collectibles/collectiblesApi';
 import { NftDetail, NftMedia } from '@/features/collectibles/NftDetail';
 import { MintNft } from '@/features/collectibles/MintNft';
+import { BulkNftActions } from '@/features/collectibles/BulkNftActions';
 import { isFullpageSurface } from '@/features/collectibles/surface';
 import {
   nftDisplayName,
@@ -24,6 +25,13 @@ const POPUP_LIMIT = 6;
  * surface the grid is capped to {@link POPUP_LIMIT} with a "See all ⤢" that pops out the full-page
  * grid; the full page shows every collection. `full` is auto-detected from the surface (overridable
  * in tests).
+ *
+ * Multi-select bulk transfer/burn (#171) is ADVANCED → fullscreen only, mirroring mint (#92): the
+ * popup never enters selection mode, offering an "open full screen" link instead. In selection mode
+ * each tile becomes a toggle (checkbox overlay); a selection bar shows the count + select-all/clear +
+ * Transfer/Burn, which hand the selected {@link WalletNft}s to {@link BulkNftActions}. #170 (an NFT
+ * picker) will layer its own selection UI on top of this same grid later — the toggle/selectedIds
+ * shape here is the seam it reuses, kept in `NftGrid`'s own props rather than baked into the tile.
  */
 export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
   const intl = useIntl();
@@ -31,13 +39,43 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
   const list = useListCollectiblesQuery();
   const [selected, setSelected] = useState<WalletNft | null>(null);
   const [minting, setMinting] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const [bulkMode, setBulkMode] = useState<'transfer' | 'burn' | null>(null);
 
   const nfts = list.data?.nfts ?? [];
+  const selectedNfts = nfts.filter((n) => selectedIds.has(n.launcherId));
+
+  function toggleSelected(launcherId: string): void {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(launcherId)) next.delete(launcherId);
+      else next.add(launcherId);
+      return next;
+    });
+  }
+
+  function exitSelection(): void {
+    setSelecting(false);
+    setSelectedIds(new Set());
+  }
 
   // Minting is ADVANCED functionality → fullscreen only. The compact popup stays streamlined (view-only,
   // with an "open full screen to mint" affordance); the mint form never renders in the popup.
   if (minting && isFull) {
     return <MintNft onDone={() => setMinting(false)} />;
+  }
+  if (bulkMode) {
+    return (
+      <BulkNftActions
+        nfts={selectedNfts}
+        mode={bulkMode}
+        onDone={() => {
+          setBulkMode(null);
+          exitSelection();
+        }}
+      />
+    );
   }
   if (selected) {
     return <NftDetail nft={selected} isFull={isFull} onBack={() => setSelected(null)} />;
@@ -45,25 +83,74 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
 
   return (
     <div data-testid="collectibles-panel">
-      <div className="dig-toggle-row">
+      <div className="dig-toggle-row" style={{ flexWrap: 'wrap', rowGap: 8 }}>
         <h2 className="dig-heading" style={{ margin: 0 }}>
           <FormattedMessage id="collectibles.title" />
         </h2>
-        {isFull ? (
-          <button type="button" className="dig-btn dig-btn--primary" data-testid="collectibles-mint" onClick={() => setMinting(true)}>
-            <FormattedMessage id="mint.button" />
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="dig-link"
-            data-testid="collectibles-mint-fullscreen"
-            onClick={() => void popOutToFullpage('#wallet/collectibles', true)}
-          >
-            <FormattedMessage id="mint.openFullscreen" />
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', rowGap: 6 }}>
+          {isFull ? (
+            <>
+              {!selecting && (
+                <button type="button" className="dig-link" data-testid="collectibles-select-enter" onClick={() => setSelecting(true)}>
+                  <FormattedMessage id="collectibles.select.enter" />
+                </button>
+              )}
+              <button type="button" className="dig-btn dig-btn--primary" data-testid="collectibles-mint" onClick={() => setMinting(true)}>
+                <FormattedMessage id="mint.button" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="dig-link"
+                data-testid="collectibles-bulk-fullscreen"
+                onClick={() => void popOutToFullpage('#wallet/collectibles', true)}
+              >
+                <FormattedMessage id="collectibles.bulk.openFullscreen" />
+              </button>
+              <button
+                type="button"
+                className="dig-link"
+                data-testid="collectibles-mint-fullscreen"
+                onClick={() => void popOutToFullpage('#wallet/collectibles', true)}
+              >
+                <FormattedMessage id="mint.openFullscreen" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {isFull && selecting && (
+        <div className="dig-toggle-row" data-testid="collectibles-selection-bar" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+          <span className="dig-muted" data-testid="collectibles-selection-count">
+            <FormattedMessage id="collectibles.select.count" values={{ count: selectedIds.size }} />
+          </span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" className="dig-link" data-testid="collectibles-select-all" onClick={() => setSelectedIds(new Set(nfts.map((n) => n.launcherId)))}>
+              <FormattedMessage id="collectibles.select.all" />
+            </button>
+            <button type="button" className="dig-link" data-testid="collectibles-select-clear" onClick={() => setSelectedIds(new Set())}>
+              <FormattedMessage id="collectibles.select.clear" />
+            </button>
+            {selectedIds.size > 0 && (
+              <>
+                <button type="button" className="dig-btn dig-btn--primary" data-testid="collectibles-selection-transfer" onClick={() => setBulkMode('transfer')}>
+                  <FormattedMessage id="collectibles.select.transfer" />
+                </button>
+                <button type="button" className="dig-btn dig-btn--danger" data-testid="collectibles-selection-burn" onClick={() => setBulkMode('burn')}>
+                  <FormattedMessage id="collectibles.select.burn" />
+                </button>
+              </>
+            )}
+            <button type="button" className="dig-link" data-testid="collectibles-select-cancel" onClick={exitSelection}>
+              <FormattedMessage id="collectibles.select.cancel" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <FourState
         isLoading={list.isLoading}
         isError={list.isError}
@@ -83,13 +170,13 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
                     ? intl.formatMessage({ id: 'collectibles.collection.label' }, { id: shortHex(group.collectionId, 8, 6) })
                     : intl.formatMessage({ id: 'collectibles.collection.ungrouped' })}
                 </h3>
-                <NftGrid nfts={group.nfts} onOpen={setSelected} />
+                <NftGrid nfts={group.nfts} onOpen={setSelected} selecting={selecting} selectedIds={selectedIds} onToggle={toggleSelected} />
               </section>
             ))}
           </div>
         ) : (
           <>
-            <NftGrid nfts={nfts.slice(0, POPUP_LIMIT)} onOpen={setSelected} />
+            <NftGrid nfts={nfts.slice(0, POPUP_LIMIT)} onOpen={setSelected} selecting={false} selectedIds={selectedIds} onToggle={toggleSelected} />
             {nfts.length > POPUP_LIMIT && (
               <button
                 type="button"
@@ -108,8 +195,27 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
   );
 }
 
-/** The responsive image grid of NFT tiles; each tile opens the detail view. */
-function NftGrid({ nfts, onOpen }: { nfts: WalletNft[]; onOpen: (nft: WalletNft) => void }) {
+/**
+ * The responsive image grid of NFT tiles. Normally each tile opens the detail view; in `selecting`
+ * mode (#171 — fullscreen-only bulk transfer/burn) a tile instead TOGGLES membership in
+ * `selectedIds`, rendering a decorative checkmark overlay while the accessible state/name moves onto
+ * the tile button itself (`aria-pressed` + a "Select {name}" label) — a screen reader announces the
+ * toggle correctly without relying on the (aria-hidden) visual glyph.
+ */
+function NftGrid({
+  nfts,
+  onOpen,
+  selecting,
+  selectedIds,
+  onToggle,
+}: {
+  nfts: WalletNft[];
+  onOpen: (nft: WalletNft) => void;
+  selecting: boolean;
+  selectedIds: ReadonlySet<string>;
+  onToggle: (launcherId: string) => void;
+}) {
+  const intl = useIntl();
   return (
     <ul
       className="dig-nft-grid"
@@ -118,15 +224,42 @@ function NftGrid({ nfts, onOpen }: { nfts: WalletNft[]; onOpen: (nft: WalletNft)
     >
       {nfts.map((nft) => {
         const edition = editionLabel(nft);
+        const isSelected = selectedIds.has(nft.launcherId);
         return (
           <li key={nft.launcherId}>
             <button
               type="button"
               className="dig-nft-tile"
               data-testid={`nft-tile-${nft.launcherId}`}
-              onClick={() => onOpen(nft)}
-              style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
+              onClick={() => (selecting ? onToggle(nft.launcherId) : onOpen(nft))}
+              aria-pressed={selecting ? isSelected : undefined}
+              aria-label={selecting ? intl.formatMessage({ id: 'collectibles.select.itemLabel' }, { name: nftDisplayName(nft) }) : undefined}
+              style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer', position: 'relative' }}
             >
+              {selecting && (
+                <span
+                  aria-hidden="true"
+                  data-testid={`nft-select-${nft.launcherId}`}
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    left: 4,
+                    zIndex: 1,
+                    width: 20,
+                    height: 20,
+                    borderRadius: 5,
+                    display: 'grid',
+                    placeItems: 'center',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: '#fff',
+                    border: '2px solid #fff',
+                    background: isSelected ? 'var(--dig-accent, #7a3dff)' : 'rgba(0, 0, 0, 0.35)',
+                  }}
+                >
+                  {isSelected ? '✓' : ''}
+                </span>
+              )}
               <NftMedia nft={nft} imageSrc={nftImageSrc(nft)} />
               <span className="dig-mono" style={{ display: 'block', fontSize: 11, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {nftDisplayName(nft)}
