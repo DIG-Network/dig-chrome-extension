@@ -157,6 +157,12 @@ export const vi: Record<string, string> = {
   'activity.receipt.to': 'Đến',
   'activity.receipt.status': 'Trạng thái',
   'activity.receipt.coin': 'Mã coin',
+  'activity.receipt.amount': 'Số tiền',
+  'activity.receipt.timestamp': 'Thời gian',
+  'activity.receipt.fee': 'Phí mạng',
+  'activity.receipt.memo': 'Ghi chú',
+  'activity.viewAddressOnSpaceScan': 'Xem địa chỉ trên SpaceScan',
+  'activity.viewTokenOnSpaceScan': 'Xem token trên SpaceScan',
 
   // ── wallet: send ──
   'send.title': 'Gửi',

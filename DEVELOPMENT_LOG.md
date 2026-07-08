@@ -430,3 +430,18 @@ exempt from the extension-pages CSP just because it isn't an HTML document. Veri
 the network at all) before designing around that assumption — the #122 regression test pattern
 (`manifest-coinset-hosts.test.ts`) already existed for exactly this class of "the client wants a host
 the manifest doesn't grant" bug, and this is the same failure mode one level more general.
+
+## SpaceScan.io block-explorer URL formats, per entity type (#114)
+
+SpaceScan has no published API-style spec for its human-facing page routes; the shapes below were
+confirmed against LIVE indexed pages (not docs), so treat them as observed convention rather than a
+guaranteed contract — re-verify before depending on a new entity type:
+
+- Coin/transaction: `spacescan.io/coin/0x<64-hex>` — REQUIRES the `0x` prefix.
+- Address: `spacescan.io/address/<xch1…>` — the bech32(m) address, unmodified.
+- CAT/token: `spacescan.io/token/<64-hex>` — the bare TAIL hash, NO `0x` prefix (opposite of the coin
+  route). `lib/links.ts`'s `spaceScanTokenUrl` strips a `0x` prefix if given one, so either input form
+  works from a caller's perspective.
+- NFT: `spacescan.io/nft/<nft1…>` — the bech32m NFT id (SpaceScan does NOT accept a raw launcher-id
+  hex here); encoding a launcher id to `nft1…` is the caller's job (the wasm bech32m encoder), which
+  is why `spaceScanNftUrl` only builds the URL from an already-encoded id and stays wasm-free.

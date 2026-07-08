@@ -26,6 +26,8 @@ import {
   SPACESCAN_URL,
   spaceScanCoinUrl,
   spaceScanAddressUrl,
+  spaceScanTokenUrl,
+  spaceScanNftUrl,
 } from '@/lib/links';
 
 test('hub URL points at hub.dig.net', () => {
@@ -40,6 +42,24 @@ test('SpaceScan explorer links use the canonical mainnet host + 0x-prefixed coin
   assert.equal(spaceScanCoinUrl(null), null);
   assert.equal(spaceScanAddressUrl('xch1abc'), 'https://www.spacescan.io/address/xch1abc');
   assert.equal(spaceScanAddressUrl(''), null);
+});
+
+// #114 — block-explorer link coverage: centralized builders for a CAT's token page and an NFT's
+// detail page, so every surface that needs one (Activity's CAT receipt, a future NFT detail view)
+// shares the SAME SpaceScan URL shape instead of hand-rolling it.
+test('spaceScanTokenUrl builds the CAT/token page from a bare-hex asset id (with or without 0x)', () => {
+  const tail = 'a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81';
+  assert.equal(spaceScanTokenUrl(tail), `https://www.spacescan.io/token/${tail}`);
+  assert.equal(spaceScanTokenUrl(`0x${tail}`), `https://www.spacescan.io/token/${tail}`);
+  assert.equal(spaceScanTokenUrl(''), null);
+  assert.equal(spaceScanTokenUrl(null), null);
+});
+
+test('spaceScanNftUrl builds the NFT page from a bech32m nft1… id', () => {
+  const nftId = 'nft1jm53uc7k4d5wmsnzxnkrsmn45z85l6vrnvuwe0k9tf727nj4feqq60mm3g';
+  assert.equal(spaceScanNftUrl(nftId), `https://www.spacescan.io/nft/${nftId}`);
+  assert.equal(spaceScanNftUrl(''), null);
+  assert.equal(spaceScanNftUrl(null), null);
 });
 
 test('DIG Network URL points at dig.net', () => {

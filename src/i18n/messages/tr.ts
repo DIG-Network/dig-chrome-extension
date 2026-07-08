@@ -157,6 +157,12 @@ export const tr: Record<string, string> = {
   'activity.receipt.to': 'Alıcı',
   'activity.receipt.status': 'Durum',
   'activity.receipt.coin': 'Coin Kimliği',
+  'activity.receipt.amount': 'Tutar',
+  'activity.receipt.timestamp': 'Zaman',
+  'activity.receipt.fee': 'Ağ ücreti',
+  'activity.receipt.memo': 'Not',
+  'activity.viewAddressOnSpaceScan': "SpaceScan'de adresi görüntüle",
+  'activity.viewTokenOnSpaceScan': "SpaceScan'de token'ı görüntüle",
 
   // ── wallet: send ──
   'send.title': 'Gönder',
