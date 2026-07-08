@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.64.0] - 2026-07-08
+
+### Features
+- **wallet:** Token order + Get-more $DIG menu + fiat currency preference (#87)
+
 ## [1.63.0] - 2026-07-07
 
 ### Features
