@@ -184,8 +184,17 @@ import { DIG_ERR } from './error-codes';
  * as the owner of MULTIPLE selected NFTs in ONE spend bundle — generalizing the single-NFT
  * `prepareNftDidAssign`) + `confirmNftBulkDidAssign` (reuses the shared `confirmSend` broadcast
  * path). Purely additive — no existing action/shape changed.
+ *
+ * v26 (#105/#106/#107 send/receive trio): `prepareSend` gained an optional `memo` — a plain-text
+ * note attached to the recipient's CREATE_COIN (PUBLIC on chain), decoded back from the built spend
+ * into `summary.memoText`; mutually exclusive with `clawbackSeconds` and capped at 512 UTF-8 bytes
+ * (both BAD_REQUEST). Added `listDerivedAddresses` — derive a page of the active wallet's addresses
+ * (both HD schemes, indexes `0..count-1`) for VIEWING/COPYING only, never a balance scan (#165 stays
+ * intact: no multi-index scan is introduced). #107 (QR camera scanner) is client-side only (no new
+ * message action) — it decodes a QR frame in the popup/fullscreen UI and fills the existing
+ * `send.recipient`/offer fields.
  */
-export const MESSAGE_PROTOCOL_VERSION = 25;
+export const MESSAGE_PROTOCOL_VERSION = 26;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -241,6 +250,8 @@ export const ACTIONS = Object.freeze({
   // ── single active derivation index (#165): navigate the active wallet's active index ──
   setActiveIndex: 'setActiveIndex',
   getReceiveAddress: 'getReceiveAddress',
+  // ── derived-address list (#106): a read-only page of BOTH-scheme addresses for viewing/copying ──
+  listDerivedAddresses: 'listDerivedAddresses',
   getCustodyBalances: 'getCustodyBalances',
   prepareSend: 'prepareSend',
   confirmSend: 'confirmSend',
@@ -492,15 +503,20 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     request: '{ action }',
     response: "{ address:string } | { success:false, code:'LOCKED'|..., message }",
   },
+  [ACTIONS.listDerivedAddresses]: {
+    summary: "Derive a read-only PAGE of the active wallet's addresses (#106) — BOTH HD schemes, indexes 0..count-1 — for VIEWING/COPYING in an Advanced list. Pure local derivation (no chain query, no balance scan); NOT a multi-index sweep (#165's single-active-index model is unaffected — this never drives a balance/activity view). `count` defaults to a small page and is clamped server-side.",
+    request: '{ action, count?:number /* per scheme; default a small page, clamped to a server max */ }',
+    response: "{ addresses:[{ index:number, scheme:'unhardened'|'hardened', address:string }] } | { success:false, code:'LOCKED'|..., message }",
+  },
   [ACTIONS.getCustodyBalances]: {
     summary: 'Scan self-custody balances (both HD schemes) AT THE ACTIVE INDEX (#165) from coinset for XCH + watched CATs. Cached to walletCache.balances; returns the cached snapshot on a transient scan failure.',
     request: '{ action }',
     response: "{ balances:{ xch:number, cats:{ [assetId]:number } }, cached?:boolean } | { success:false, code, message }",
   },
   [ACTIONS.prepareSend]: {
-    summary: 'Build (not sign/broadcast) an XCH or CAT send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve. A CAT send carries the token TAIL as assetId (omitted / "xch" = native XCH); the vault routes on assetId (#121). An optional coinIds hand-picks which coins fund the send, overriding auto-selection (#91). An optional clawbackSeconds (#152, XCH only) sends WITH a reclaimable timelock instead of a plain send — an absolute unix timestamp after which the receiver may claim; strictly before it, only the sender may claw back.',
-    request: '{ action, recipient:string /* xch1… */, amount:string /* base units */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */, coinIds?:string[] /* hex; hand-picked funding coins */, clawbackSeconds?:string /* absolute unix timestamp; XCH only */ }',
-    response: "{ pendingId:string, summary:{ asset:'XCH'|<assetId>, sent, change, fee, recipientPuzzleHashHex, coinCount }, clawbackInfo?:{ senderPuzzleHashHex, receiverPuzzleHashHex, seconds, amount } } | { success:false, code, message }",
+    summary: 'Build (not sign/broadcast) an XCH or CAT send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve. A CAT send carries the token TAIL as assetId (omitted / "xch" = native XCH); the vault routes on assetId (#121). An optional coinIds hand-picks which coins fund the send, overriding auto-selection (#91). An optional clawbackSeconds (#152, XCH only) sends WITH a reclaimable timelock instead of a plain send — an absolute unix timestamp after which the receiver may claim; strictly before it, only the sender may claw back. An optional memo (#105) attaches a plain-text note to the recipient\'s CREATE_COIN — PUBLIC on chain, capped at 512 UTF-8 bytes, and mutually exclusive with clawbackSeconds (both reject with BAD_REQUEST).',
+    request: '{ action, recipient:string /* xch1… */, amount:string /* base units */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */, coinIds?:string[] /* hex; hand-picked funding coins */, clawbackSeconds?:string /* absolute unix timestamp; XCH only */, memo?:string /* ≤512 UTF-8 bytes; public on chain */ }',
+    response: "{ pendingId:string, summary:{ asset:'XCH'|<assetId>, sent, change, fee, recipientPuzzleHashHex, coinCount, memoText?:string }, clawbackInfo?:{ senderPuzzleHashHex, receiverPuzzleHashHex, seconds, amount } } | { success:false, code, message }",
   },
   [ACTIONS.confirmSend]: {
     summary: 'Sign + BROADCAST a previously-prepared send (the approved step — the only place a real spend is pushed). Returns an input coin id to poll, plus a #154 activityHint (asset/amount/counterparty captured at prepare time) the SW logs to the local activity log as a `sent` entry — absent a counterparty (a self-only split/combine reusing this path), nothing is logged.',

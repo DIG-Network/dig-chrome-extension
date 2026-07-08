@@ -546,7 +546,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `25`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `26`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -621,6 +621,12 @@ extension-pages CSP `connect-src` allowlist. Purely additive — no existing act
 `prepareNftBulkDidAssign` + `confirmNftBulkDidAssign` (§18.11a) — assigning the wallet's DID as the
 owner of MULTIPLE selected NFTs in one spend bundle, each confirm reusing the `confirmSend` broadcast
 path. Purely additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `26` (#105/#106 send/receive trio) added an optional `memo` on
+`prepareSend` (§18.8b) and an optional `memoText` on its response summary, plus the
+`listDerivedAddresses` action (§18.1b) — a read-only page of the active wallet's derived addresses
+for viewing/copying. Purely additive — no existing action/shape changed. (#107's QR camera scanner
+is client-side only and adds no message action.)
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1137,6 +1143,27 @@ wallet view; the extension MUST NOT perform a multi-index gap-limit sweep anywhe
   scan-index-count setting (a superseded proposal) is INTENTIONALLY not built — there is no range to
   size once the model derives exactly one index.
 
+### 18.1b Derived-address list — view/copy only, not a scan (#106)
+
+An ADVANCED-tier list (`DerivedAddressList`, rendered alongside the chain-node override / auto-lock
+/ connected-sites settings) shows a PAGE of the active wallet's derived addresses, BOTH HD schemes,
+for indexes `0..count-1`, for VIEWING and COPYING — never for balance/activity scanning:
+
+- **Pure local derivation.** `listDerivedAddresses` (§7) derives via the SAME `deriveAccounts`
+  primitive §18.1a's single-index model uses, but over a RANGE (`start:0, count`) instead of one
+  index — it makes NO chain query and touches NO balance/activity/coin state. It does not read or
+  change the active index (§18.1a); it is a strictly read-only, display-only view.
+  - **Does NOT reintroduce multi-index scanning.** §18.1a's "no multi-index gap-limit sweep" rule
+    governs SCANS (balance/CAT/NFT/DID discovery, coinset round-trips per index) — deriving an
+    address for display is a cheap, local, no-network computation; deriving 100 of them costs
+    nothing a browser need worry about. `count` defaults to a small page (5) and is clamped
+    server-side (100) so even a maximal request stays a bounded, instant local computation.
+- **"Generate fresh" extends the page, never replaces it** — clicking "Show more" re-requests with
+  a larger `count`; previously-shown/copied addresses stay visible (RTK Query serves the same
+  `Address`-tagged cache key family, re-fetched with the new arg).
+- **Copy copies the FULL address**, never the shortened display text (`shortenAddress` is
+  presentational only).
+
 ### 18.2 At-rest keystore — `DIGWX1` v1
 
 The wallet entropy is stored ONLY as an encrypted `DIGWX1` record under `chrome.storage.local`
@@ -1521,6 +1548,59 @@ picker (1h/1d/3d/7d presets) render ONLY in the fullscreen `SendPanel` (`full` p
 clawback management list (`ClawbackPanel`, claim/claw-back actions) is fullscreen-only, reachable
 from the Assets view's "Clawback pending (N)" link; the popup shows a lighter "N pending
 clawback(s) — open full screen" hint instead of the management UI.
+
+### 18.8b Memo — an optional note on a send (#105)
+
+`prepareSend` accepts an optional `memo` (plain UTF-8 text, ≤512 bytes) attached to the recipient's
+CREATE_COIN as a SINGLE-atom memo list — built via `clvm.alloc([bytes])` against the SAME `Clvm`
+instance the send driver allocates internally (`send.ts`'s `buildMemos` hook, the same seam
+§18.8a's clawback memo uses). **Memos are PUBLIC on chain** — the UI states this next to the field;
+it is a payment reference, never a place for secrets.
+
+- **Mutually exclusive with `clawbackSeconds` in v1** — a clawback send's memo slot already carries
+  `[receiverPuzzleHash, clawback.memo()]` (the reconstruction params); combining the two is rejected
+  `BAD_REQUEST` rather than silently dropped or merged.
+- **Decoded back from the built spend, never echoed from caller input** (§5.5): `send.ts`'s
+  `decodePlainMemo` reads the recipient's actual CREATE_COIN memo list and requires it be EXACTLY
+  ONE atom (the shape this feature builds) before decoding it as UTF-8 — a clawback's 2-element list
+  is structurally distinct and never mistaken for a plain memo. The decoded value is
+  `summary.memoText`, shown in the review step so the user sees exactly what will land on chain.
+  CAT sends echo `opts.memo` directly into `summary.memoText` instead (matching that path's existing
+  echo-not-decode rigor for `sent`/`change`).
+- **Gotcha:** `TextEncoder().encode(...)` output can fail the wasm boundary's `instanceof
+  Uint8Array` check under Vitest/jsdom (a cross-realm typed array) — always normalize with
+  `Uint8Array.from(...)` before passing bytes to `chia-wallet-sdk-wasm` (`sendFlow.ts`'s
+  `buildPlainMemo`).
+- Available in BOTH the popup and fullscreen `SendPanel` (not gated behind `full`, unlike clawback)
+  — an optional note is basic functionality, not an advanced/rare operation.
+
+### 18.8c QR camera scanner (#107)
+
+`QrScanner` (`features/wallet/custody/QrScanner.tsx`) scans a recipient address (or an `offer1…`
+string) via the device camera and reports the decoded text to its caller. No new wasm — decoding is
+`jsqr` (a small pure-JS QR decoder, no native/wasm binding), kept behind the pure
+`lib/qrScan.ts#decodeQrFromImageData` seam so the decode + camera-error classification are
+unit-tested without a real camera or `HTMLCanvasElement` 2D rendering (jsdom has neither).
+
+- **Lifecycle:** `requesting` (a `getUserMedia({video:{facingMode:'environment'}})` prompt is in
+  flight) → `scanning` (a live `<video>` preview + a `requestAnimationFrame` loop that draws each
+  frame to an offscreen `<canvas>`, reads its `ImageData`, and calls `decodeQrFromImageData`) → on a
+  decode, the camera stops and `onScan(text)` fires exactly once. `error` renders instead of
+  `requesting`/`scanning` when the camera can't be used at all.
+- **Camera NEVER left running.** Every exit path — a successful decode, clicking Cancel, or the
+  component unmounting — stops every `MediaStreamTrack` and cancels the pending animation frame.
+  Cancel stops the camera directly (not merely via the unmount cleanup) — a privacy-sensitive
+  resource like a live camera must not depend on unmount timing to turn off.
+- **Graceful camera-access failures** (`lib/qrScan.ts#classifyCameraError`): `NotAllowedError`/
+  `SecurityError` → permission-denied copy (points at browser settings); `NotFoundError`/
+  `OverconstrainedError` → no-camera-found copy; no `navigator.mediaDevices.getUserMedia` at all
+  (checked BEFORE ever prompting) → unsupported copy; anything else → a generic retry-able message.
+  Cancel always works from the error state.
+- **FULLSCREEN-ONLY** (§145, mirroring the clawback advanced option, §18.8a): the popup surface
+  never renders the Scan button — a live camera preview needs more room than the compact popup, and
+  the OS permission prompt can steal focus and close a popup mid-request. Wired into `SendPanel`'s
+  recipient field; a decode calls the SAME `updateRecipient` the manual input and contact picker use
+  (so the #74 address-poisoning check, §18.14, still runs against a scanned address).
 
 ### 18.9 Activity — the LOCAL activity log (#154, MetaMask-style)
 

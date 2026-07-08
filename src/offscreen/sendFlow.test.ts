@@ -130,6 +130,36 @@ describe('prepareXchSend coin selection (#91)', () => {
     expect(inputIds).not.toContain(idB); // coin B was NOT selected → never spent
   });
 
+  it('#105 — includes an optional memo, decoded back from the built spend', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { index: 0 });
+    const ph0 = ring[0].puzzleHashHex;
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ph0), 1_000_000_000_000n);
+    const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
+
+    const prepared = await prepareXchSend(flow(), simChain(sim), {
+      seed,
+      recipient,
+      amount: 100_000_000_000n,
+      fee: 0n,
+      activeIndex: 0,
+      memo: 'thanks!',
+    });
+    expect(prepared.summary.memoText).toBe('thanks!');
+  });
+
+  it('omits memoText when no memo is given', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { index: 0 });
+    const ph0 = ring[0].puzzleHashHex;
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ph0), 1_000_000_000_000n);
+    const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
+    const prepared = await prepareXchSend(flow(), simChain(sim), { seed, recipient, amount: 1000n, fee: 0n, activeIndex: 0 });
+    expect(prepared.summary.memoText).toBeUndefined();
+  });
+
   it('throws when the selection matches no owned coin', async () => {
     const seed = await mnemonicToSeed(golden.mnemonic);
     const ring = buildKeyring(flow(), seed, { index: 0 });
@@ -190,6 +220,40 @@ describe('prepareCatSend (Simulator-validated)', () => {
     const prepared = await prepareCatSend(flow(), chain, { seed, assetId: assetIdHex, recipient, amount: 400n, fee: 0n, activeIndex: 0 });
     expect(prepared.summary.asset).toBe(assetIdHex);
     expect(prepared.summary.sent).toBe('400');
+
+    const bundle = signAndBundle(flow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
+    const res = await chain.pushSpendBundle(bundle);
+    expect(res.success).toBe(true);
+  });
+
+  it('#105 — forwards an optional memo onto the CAT send', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { index: 0 });
+    const ph0 = ring[0].puzzleHashHex;
+    const key0 = ring[0];
+
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ph0), 5_000_000_000_000n);
+
+    const clvm = new chia.Clvm();
+    const spends = new chia.Spends(clvm, chia.fromHex(ph0));
+    const xch = sim.unspentCoins(chia.fromHex(ph0), false)[0];
+    spends.addXch(xch);
+    const finished = spends.prepare(spends.apply([chia.Action.singleIssueCat(undefined, 1000n)]));
+    for (const ps of finished.pendingSpends()) {
+      finished.insert(ps.coin().coinId(), clvm.standardSpend(key0.pk, clvm.delegatedSpend(ps.conditions())));
+    }
+    const outputs = finished.spend();
+    const assetIdHex = chia.toHex((outputs.cat(outputs.cats()[0])[0] as { info: { assetId: Uint8Array } }).info.assetId).replace(/^0x/i, '').toLowerCase();
+    const issueSpends = clvm.coinSpends();
+    const issueSig = signCoinSpends(sig(), issueSpends, [key0.sk], TESTNET11_AGG_SIG_ME);
+    sim.newTransaction(new (chia as unknown as { SpendBundle: new (cs: unknown, s: unknown) => ChainSpendBundle }).SpendBundle(issueSpends, issueSig));
+    sim.createBlock();
+
+    const chain = simChain(sim);
+    const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
+    const prepared = await prepareCatSend(flow(), chain, { seed, assetId: assetIdHex, recipient, amount: 400n, fee: 0n, activeIndex: 0, memo: 'for the CAT' });
+    expect(prepared.summary.memoText).toBe('for the CAT');
 
     const bundle = signAndBundle(flow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
     const res = await chain.pushSpendBundle(bundle);

@@ -48,7 +48,7 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'listWallets', 'switchWallet', 'renameWallet', 'removeWallet',
     // Single active derivation index (#165): navigate the active wallet's active HD derivation index:
     'setActiveIndex',
-    'getReceiveAddress', 'getCustodyBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity',
+    'getReceiveAddress', 'listDerivedAddresses', 'getCustodyBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity',
     'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade',
     // NFTs / Collectibles (#56): list + transfer routed to the offscreen vault:
     'listNfts', 'prepareNftTransfer', 'confirmNftTransfer',

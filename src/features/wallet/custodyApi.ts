@@ -34,6 +34,12 @@ export interface LockStateResult {
   /** The active wallet's active HD derivation index (#165 — the single active-index model). */
   activeIndex?: number;
 }
+/** One derived address (#106) — a display-only row (index + scheme + address), no key material. */
+export interface DerivedAddress {
+  index: number;
+  scheme: 'unhardened' | 'hardened';
+  address: string;
+}
 export interface CreateWalletResult {
   lockState: LockState;
   /** The 24-word recovery phrase — shown ONCE for backup, never stored. */
@@ -57,7 +63,17 @@ export interface CustodyBalances {
 /** A prepared (unsigned) send: the pending id + the decoded summary to approve. */
 export interface PreparedSend {
   pendingId: string;
-  summary: { asset: string; sent: string; change: string; fee: string; recipientPuzzleHashHex: string; coinCount: number };
+  summary: {
+    asset: string;
+    sent: string;
+    change: string;
+    fee: string;
+    recipientPuzzleHashHex: string;
+    coinCount: number;
+    /** #105 — the plain-text memo attached to the send, decoded back from the built spend; absent
+     * when no memo was sent. */
+    memoText?: string;
+  };
   /** #152 — present iff sent WITH a clawback window; persist it (the local activity log carries it
    * automatically once confirmed) so the pending clawback can later be listed/claimed/clawed back. */
   clawbackInfo?: WireClawbackInfo;
@@ -221,6 +237,15 @@ export const custodyApi = api.injectEndpoints({
       providesTags: ['Address'],
     }),
 
+    // Derived-address list (#106): a read-only page of the active wallet's addresses (BOTH HD
+    // schemes, indexes 0..count-1) for viewing/copying — pure local derivation, independent of the
+    // active index (#165's single-active-index model is unaffected; this never drives a balance
+    // view). `count` omitted uses the vault's small default page.
+    getDerivedAddresses: build.query<{ addresses: DerivedAddress[] }, { count?: number } | void>({
+      query: (arg) => ({ action: ACTIONS.listDerivedAddresses, ...(arg?.count ? { count: arg.count } : {}) }),
+      providesTags: ['Address'],
+    }),
+
     getCustodyBalances: build.query<CustodyBalances, void>({
       query: () => ({ action: ACTIONS.getCustodyBalances }),
       providesTags: ['Balances'],
@@ -229,7 +254,9 @@ export const custodyApi = api.injectEndpoints({
     // Build (not broadcast) a send → returns the decoded summary to approve. An optional `assetId`
     // routes a CAT send (#121); an optional `coinIds` hand-picks the funding coins (#91). An optional
     // `clawbackSeconds` (#152, XCH only) sends WITH a reclaimable timelock instead of a plain send.
-    prepareSend: build.mutation<PreparedSend, { recipient: string; amount: string; fee?: string; assetId?: string; coinIds?: string[]; clawbackSeconds?: string }>({
+    // An optional `memo` (#105) attaches a plain-text note to the recipient's CREATE_COIN — PUBLIC
+    // on chain, and mutually exclusive with `clawbackSeconds` (the vault rejects combining them).
+    prepareSend: build.mutation<PreparedSend, { recipient: string; amount: string; fee?: string; assetId?: string; coinIds?: string[]; clawbackSeconds?: string; memo?: string }>({
       query: (arg) => ({ action: ACTIONS.prepareSend, ...arg }),
     }),
     // Sign + BROADCAST a prepared send / split / combine (the approved step). Invalidates the caches.
@@ -318,6 +345,7 @@ export const {
   useLockWalletMutation,
   useRevealPhraseMutation,
   useGetReceiveAddressQuery,
+  useGetDerivedAddressesQuery,
   useGetCustodyBalancesQuery,
   usePrepareSendMutation,
   useConfirmSendMutation,

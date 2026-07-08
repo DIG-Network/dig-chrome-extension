@@ -53,6 +53,23 @@ export interface KeyringEntry {
 
 const strip0x = (h: string): string => h.replace(/^0x/i, '').toLowerCase();
 
+/** The `Clvm.alloc` surface a plain-text memo is built against (see {@link buildPlainMemo}). */
+interface MemoClvm {
+  alloc(items: unknown[]): unknown;
+}
+
+/**
+ * Build a plain-text memo Program (#105) — a SINGLE-atom CREATE_COIN memo list, distinct from
+ * clawback's 2-element `[receiverPuzzleHash, clawback.memo()]` list (`offscreen/clawback.ts`) so
+ * the two are never conflated on decode (`send.ts`'s `decodePlainMemo`). `Uint8Array.from(...)`
+ * normalizes `TextEncoder` output, which can otherwise fail the wasm boundary's `instanceof
+ * Uint8Array` check under Vitest/jsdom (a cross-realm typed array) — see send.test.ts.
+ */
+function buildPlainMemo(clvm: unknown, memo: string): unknown {
+  const bytes = Uint8Array.from(new TextEncoder().encode(memo));
+  return (clvm as MemoClvm).alloc([bytes]);
+}
+
 /**
  * Restrict coins to a hand-picked selection (coin control, #91). When `selectedCoinIds` is given, only
  * coins whose id is in it are kept and an empty result throws `NO_SELECTED_COINS` (so a stale selection
@@ -122,11 +139,25 @@ export interface PreparedSend {
  * unix timestamp, and the sender can CLAW BACK any time before they do (`offscreen/clawback.ts`
  * builds those two follow-up spends). The decoded summary still reports the full sent amount (the
  * "sent" side of the ledger doesn't change — only where it settles does).
+ *
+ * `memo` (#105, optional): attach a plain-text note to the recipient's CREATE_COIN — memos are
+ * PUBLIC on chain, so this is for a payment reference, not a secret. Mutually exclusive with
+ * `clawbackSeconds` in v1 (the vault layer rejects combining them, `vault.ts`'s `prepareSend`) —
+ * a clawback send's memo slot already carries the reconstruction params.
  */
 export async function prepareXchSend(
   chia: SendFlowWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; recipient: string; amount: bigint; fee: bigint; activeIndex?: number; selectedCoinIds?: string[]; clawbackSeconds?: bigint },
+  opts: {
+    seed: Uint8Array;
+    recipient: string;
+    amount: bigint;
+    fee: bigint;
+    activeIndex?: number;
+    selectedCoinIds?: string[];
+    clawbackSeconds?: bigint;
+    memo?: string;
+  },
 ): Promise<PreparedSend> {
   const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map<string, KeyPair>(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
@@ -148,6 +179,8 @@ export async function prepareXchSend(
     const dest = clawbackDestination(chia as unknown as ClawbackWasm, clawbackInfo);
     destPuzzleHash = dest.puzzleHash;
     buildMemos = dest.buildMemos;
+  } else if (opts.memo) {
+    buildMemos = (clvm: unknown) => buildPlainMemo(clvm, opts.memo as string);
   }
 
   const built = buildXchSend(chia, {
@@ -215,11 +248,16 @@ interface CatSpends {
  * at it, add XCH coins to cover the fee, and build via the driver (`Action.send(Id.existing(assetId),
  * …)`). Change/coin selection is the driver's; the summary echoes the requested transfer (the driver
  * + simulator guarantee the amounts). Does NOT sign or broadcast.
+ *
+ * `memo` (#105, optional): attach a plain-text note to the recipient's CREATE_COIN, same as
+ * {@link prepareXchSend}'s `memo` — echoed straight into the summary (this path already echoes
+ * `sent`/`change` rather than decoding them back from the built spend, so memo matches that rigor
+ * level).
  */
 export async function prepareCatSend(
   chia: SendFlowWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; assetId: string; recipient: string; amount: bigint; fee: bigint; activeIndex?: number; selectedCoinIds?: string[] },
+  opts: { seed: Uint8Array; assetId: string; recipient: string; amount: bigint; fee: bigint; activeIndex?: number; selectedCoinIds?: string[]; memo?: string },
 ): Promise<PreparedSend> {
   const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map<string, KeyPair>(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
@@ -236,7 +274,8 @@ export async function prepareCatSend(
   for (const c of cats) spends.addCat(c);
   const assetIdBytes = chia.fromHex(opts.assetId.replace(/^0x/i, '').toLowerCase());
   const idExisting = (chia.Id as unknown as { existing(a: Uint8Array): unknown }).existing(assetIdBytes);
-  const sendAction = (chia.Action as unknown as { send(id: unknown, ph: Uint8Array, amount: bigint, memos: undefined): unknown }).send(idExisting, destPuzzleHash, opts.amount, undefined);
+  const memos = opts.memo ? buildPlainMemo(clvm, opts.memo) : undefined;
+  const sendAction = (chia.Action as unknown as { send(id: unknown, ph: Uint8Array, amount: bigint, memos: unknown): unknown }).send(idExisting, destPuzzleHash, opts.amount, memos);
   const finished = spends.prepare(spends.apply([sendAction, chia.Action.fee(opts.fee)]));
   for (const ps of finished.pendingSpends()) {
     const key = keyByPuzzleHash.get(strip0x(chia.toHex(ps.p2PuzzleHash())));
@@ -252,6 +291,7 @@ export async function prepareCatSend(
     fee: opts.fee.toString(),
     recipientPuzzleHashHex: strip0x(chia.toHex(destPuzzleHash)),
     coinCount: coinSpends.length,
+    ...(opts.memo ? { memoText: opts.memo } : {}),
   };
   return { coinSpends, summary, secretKeys: keyring.map((k) => k.sk) };
 }
