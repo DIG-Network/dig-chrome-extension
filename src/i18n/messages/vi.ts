@@ -279,6 +279,12 @@ export const vi: Record<string, string> = {
   'trade.take.failed': 'Giao dịch không thành công. Hãy thử lại.',
   'trade.summary.youGet': 'Bạn nhận',
   'trade.summary.youPay': 'Bạn trả',
+  'trade.dexie.post': 'Đăng lên Dexie',
+  'trade.dexie.posted': 'Đã đăng lên Dexie — các ví khác giờ có thể tìm thấy.',
+  'trade.dexie.postFailed': 'Không thể đăng lên Dexie. Vui lòng thử lại.',
+  'trade.dexie.browse': 'Duyệt Dexie',
+  'trade.dexie.browseEmpty': 'Không tìm thấy đề nghị đang mở nào trên Dexie.',
+  'trade.dexie.import': 'Nhập',
 
   // ── apps (#59) ──
   'apps.title': 'Kho dApp DIG',

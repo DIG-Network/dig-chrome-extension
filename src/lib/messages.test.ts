@@ -60,6 +60,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'appViewFraming',
     // Shield action (per-resource proof ledger) + Control Panel (node management view):
     'recordLedgerEntry', 'getShieldLedger', 'getControlStatus',
+    // dexie marketplace integration (#102): post/browse/resolve — no wallet key involved:
+    'dexiePost', 'dexieBrowse', 'dexieResolve',
     'addSearchEngine', 'getDefaultSearchEngine', 'isDigSearchDefault', 'updateSearchConfig',
     // background → content broadcast:
     'updateRpcHost',

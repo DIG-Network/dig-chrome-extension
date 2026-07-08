@@ -444,3 +444,134 @@ describe('TradePanel — multi-asset offers (#100: >1 offered and/or >1 requeste
     expect(screen.queryByTestId('trade-make-review')).not.toBeInTheDocument();
   });
 });
+
+describe('TradePanel — dexie marketplace integration (#102, fullscreen-only advanced actions)', () => {
+  it('the popup deal card has no "post to dexie" action (basic surface)', async () => {
+    mockSw((m) => (m.action === 'makeOffer' ? { offer: OFFER, offerSummary: SUMMARY } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+    await screen.findByTestId('trade-deal-card');
+    expect(screen.queryByTestId('trade-deal-dexie-post')).not.toBeInTheDocument();
+  });
+
+  it('fullscreen: posts a made offer to dexie and shows the success state', async () => {
+    let posted: unknown;
+    mockSw((m) => {
+      if (m.action === 'makeOffer') return { offer: OFFER, offerSummary: SUMMARY };
+      if (m.action === 'dexiePost') {
+        posted = m.offer;
+        return { dexieId: 'newDexieId123', known: false };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+    await screen.findByTestId('trade-deal-card');
+
+    fireEvent.click(screen.getByTestId('trade-deal-dexie-post'));
+    expect(await screen.findByTestId('trade-deal-dexie-posted')).toBeInTheDocument();
+    expect(posted).toBe(OFFER);
+  });
+
+  it('fullscreen: surfaces a failed dexie post', async () => {
+    mockSw((m) => {
+      if (m.action === 'makeOffer') return { offer: OFFER, offerSummary: SUMMARY };
+      if (m.action === 'dexiePost') return { success: false, code: 'DEXIE_POST_FAILED' };
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+    await screen.findByTestId('trade-deal-card');
+
+    fireEvent.click(screen.getByTestId('trade-deal-dexie-post'));
+    expect(await screen.findByTestId('trade-deal-dexie-post-failed')).toBeInTheDocument();
+  });
+
+  it('the popup Take form has no "Browse Dexie" action (basic surface)', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    expect(screen.queryByTestId('trade-take-dexie-browse')).not.toBeInTheDocument();
+  });
+
+  it('fullscreen: browses open dexie offers and imports one into the review step', async () => {
+    const DEXIE_OFFER = 'offer1qqqfromdexieqqq';
+    mockSw((m) => {
+      if (m.action === 'dexieBrowse') {
+        return {
+          offers: [
+            {
+              id: 'o1',
+              offerStr: DEXIE_OFFER,
+              status: 0,
+              dateFound: '2026-07-08T00:00:00.000Z',
+              offered: [{ id: 'xch', code: 'XCH', amount: 1.5 }],
+              requested: [{ id: 'bb'.repeat(32), code: 'DIG', amount: 100 }],
+            },
+          ],
+        };
+      }
+      if (m.action === 'inspectOffer') return { offerSummary: SUMMARY };
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    fireEvent.click(screen.getByTestId('trade-take-dexie-browse'));
+
+    expect(await screen.findByTestId('trade-take-dexie-import-o1')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('trade-take-dexie-import-o1'));
+    expect(await screen.findByTestId('trade-take-review')).toBeInTheDocument();
+  });
+
+  it('fullscreen: shows an empty state when dexie has no matching open offers', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [] } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    fireEvent.click(screen.getByTestId('trade-take-dexie-browse'));
+    expect(await screen.findByTestId('trade-take-dexie-browse-empty')).toBeInTheDocument();
+  });
+
+  it('pasting a dexie link auto-resolves it before inspecting (never treated as a raw offer1… string)', async () => {
+    const DEXIE_URL = 'https://dexie.space/offers/HuorAxfhfB9mvaTN7d1qAMohLjTaQ8P6ZisJiEhxtNwa';
+    const RESOLVED_OFFER = 'offer1qqqresolvedqqq';
+    let resolvedIdOrUrl: unknown;
+    let inspectedOfferStr: unknown;
+    mockSw((m) => {
+      if (m.action === 'dexieResolve') {
+        resolvedIdOrUrl = m.idOrUrl;
+        return { offer: { id: 'HuorAxfhfB9mvaTN7d1qAMohLjTaQ8P6ZisJiEhxtNwa', offerStr: RESOLVED_OFFER, status: 0, dateFound: '', offered: [], requested: [] } };
+      }
+      if (m.action === 'inspectOffer') {
+        inspectedOfferStr = m.offerStr;
+        return { offerSummary: SUMMARY };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    fireEvent.change(screen.getByTestId('trade-take-input'), { target: { value: DEXIE_URL } });
+    fireEvent.click(screen.getByTestId('trade-take-review-btn'));
+
+    expect(await screen.findByTestId('trade-take-review')).toBeInTheDocument();
+    expect(resolvedIdOrUrl).toBe(DEXIE_URL);
+    expect(inspectedOfferStr).toBe(RESOLVED_OFFER);
+  });
+
+  it('a dexie link that fails to resolve falls back to the normal invalid-offer error', async () => {
+    mockSw((m) => (m.action === 'dexieResolve' ? { offer: null } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    fireEvent.change(screen.getByTestId('trade-take-input'), { target: { value: 'https://dexie.space/offers/unknownId123456' } });
+    fireEvent.click(screen.getByTestId('trade-take-review-btn'));
+    expect(await screen.findByTestId('trade-take-error')).toBeInTheDocument();
+  });
+});

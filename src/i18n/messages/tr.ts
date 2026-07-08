@@ -279,6 +279,12 @@ export const tr: Record<string, string> = {
   'trade.take.failed': 'Takas gerçekleşmedi. Tekrar deneyin.',
   'trade.summary.youGet': 'Aldığınız',
   'trade.summary.youPay': 'Ödediğiniz',
+  'trade.dexie.post': 'Dexie\'de yayınla',
+  'trade.dexie.posted': 'Dexie\'de yayınlandı — diğer cüzdanlar artık bulabilir.',
+  'trade.dexie.postFailed': 'Dexie\'de yayınlanamadı. Tekrar deneyin.',
+  'trade.dexie.browse': 'Dexie\'ye göz at',
+  'trade.dexie.browseEmpty': 'Dexie\'de açık teklif bulunamadı.',
+  'trade.dexie.import': 'İçe aktar',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dApp Mağazası',

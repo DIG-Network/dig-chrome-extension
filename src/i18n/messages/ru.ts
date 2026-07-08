@@ -279,6 +279,12 @@ export const ru: Record<string, string> = {
   'trade.take.failed': 'Сделка не состоялась. Попробуйте снова.',
   'trade.summary.youGet': 'Вы получаете',
   'trade.summary.youPay': 'Вы платите',
+  'trade.dexie.post': 'Опубликовать на Dexie',
+  'trade.dexie.posted': 'Опубликовано на Dexie — другие кошельки теперь могут его найти.',
+  'trade.dexie.postFailed': 'Не удалось опубликовать на Dexie. Попробуйте снова.',
+  'trade.dexie.browse': 'Просмотреть Dexie',
+  'trade.dexie.browseEmpty': 'Открытых предложений на Dexie не найдено.',
+  'trade.dexie.import': 'Импортировать',
 
   // ── apps (#59) ──
   'apps.title': 'Магазин dApp DIG',

@@ -1844,6 +1844,45 @@ local activity log's idiom exactly: `chrome.storage.local[OFFER_LOG_KEY]`, a fla
   mocked SW (`OffersPanel.test.tsx`) — a live-coinset-dependent full make→list→cancel round trip is
   not exercised in CI (no live chain access), matching the existing `offers.spec.ts` split.
 
+### 18.10b dexie marketplace integration (#102)
+
+A thin client (`lib/dexie.ts`, chrome-free — `fetch` injected) for the public `api.dexie.space/v1`
+REST API — an offer AGGREGATOR, not a counterparty: this wallet's own offer bytes are already
+dexie-compatible (the same `chia-sdk-driver` construction, §18.10's module doc), so posting is a
+plain upload of bytes `makeOffer` already built. `api.dexie.space` is pre-granted in both
+`host_permissions` and the extension-pages CSP `connect-src` (`manifest.json`).
+
+- **Post** (`dexiePost` → `postOfferToDexie`): upload an already-built `offer1…` string. Fullscreen
+  ONLY — a "Post to Dexie" button on the MAKE deal card, alongside the existing copy/QR/cancel
+  actions. Returns dexie's own id; `known:true` when dexie had already indexed the exact bytes.
+- **Browse** (`dexieBrowse` → `searchDexieOffers`): list currently-open offers (`status:0`),
+  optionally filtered by offered/requested asset. Fullscreen ONLY — a "Browse Dexie" toggle on the
+  TAKE paste form, listing each row's dexie-reported `<amount> <code>` legs (DISPLAY only, see the
+  amount caveat below) with an "Import" button.
+- **Resolve / import** (`dexieResolve` → `fetchDexieOffer`): given a `dexie.space/offers/<id>` URL
+  or a bare id, fetch the underlying `offer1…` bytes. Wired into the Take paste box itself: pasting
+  input that doesn't start with `offer1` is tried as a dexie link/id FIRST (before the normal
+  invalid-offer rejection) — so a user can paste either a raw offer string or a dexie link
+  interchangeably. Importing from the Browse list skips the resolve round trip (the search response
+  already embeds the full offer bytes) and goes straight to the shared `inspectOffer` step.
+- **Fail-closed: dexie's own decoded fields are DISPLAY-only, never trusted for the actual take.**
+  Every dexie response embeds its own `offered`/`requested` arrays with HUMAN-decimal `amount`
+  numbers (dexie normalizes server-side; confirmed against the LIVE API — no formal OpenAPI spec is
+  published, see DEVELOPMENT_LOG.md) — these are used ONLY to render the browse list. The instant a
+  user imports/resolves an offer, its raw `offer1…` bytes are fed into this wallet's OWN
+  `inspectOffer`, which re-derives the two-sided summary from scratch exactly like a pasted or
+  dropped offer (§18.10) — dexie is never a source of truth for what a spend actually does.
+- `dexiePost`/`dexieBrowse`/`dexieResolve` are NOT custody actions (no wallet key involved) —
+  handled directly by the SW, mirroring `getNftMetadata`'s off-chain-fetch pattern (§18.11c) rather
+  than routing through the offscreen vault.
+- The pure client is unit-tested (`lib/dexie.test.ts`) with an injected fetch stub; the full
+  post/browse/import UI incl. failure paths is unit-tested with a mocked SW (`tradePanel.test.tsx`).
+  `e2e/sw/dexie-integration.spec.ts` proves REAL wiring against the live `api.dexie.space` API
+  (reachable from CI, unlike coinset) — a real browse read, a real post-rejection for a garbage
+  offer, and a real "no such id" resolve — never posting an actual wallet-built offer (that needs a
+  live coinset read to build, out of scope here, matching the `offers.spec.ts` split) and never
+  broadcasting a mainnet spend.
+
 ### 18.11 NFTs / Collectibles
 
 NFTs are read, minted, and transferred from `chia-wallet-sdk-wasm` primitives so the spends match the

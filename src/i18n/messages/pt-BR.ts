@@ -279,6 +279,12 @@ export const ptBR: Record<string, string> = {
   'trade.take.failed': 'A negociação não foi concluída. Tente novamente.',
   'trade.summary.youGet': 'Você recebe',
   'trade.summary.youPay': 'Você paga',
+  'trade.dexie.post': 'Publicar no Dexie',
+  'trade.dexie.posted': 'Publicado no Dexie — outras carteiras já podem encontrá-la.',
+  'trade.dexie.postFailed': 'Não foi possível publicar no Dexie. Tente novamente.',
+  'trade.dexie.browse': 'Explorar Dexie',
+  'trade.dexie.browseEmpty': 'Nenhuma oferta aberta encontrada no Dexie.',
+  'trade.dexie.import': 'Importar',
 
   // ── apps (#59) ──
   'apps.title': 'Loja de dApps DIG',

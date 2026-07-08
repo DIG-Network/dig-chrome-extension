@@ -279,6 +279,12 @@ export const hi: Record<string, string> = {
   'trade.take.failed': 'ट्रेड पूरा नहीं हो सका। फिर से कोशिश करें।',
   'trade.summary.youGet': 'आपको मिलेगा',
   'trade.summary.youPay': 'आप देंगे',
+  'trade.dexie.post': 'Dexie पर पोस्ट करें',
+  'trade.dexie.posted': 'Dexie पर पोस्ट हो गया — अन्य वॉलेट अब इसे ढूंढ सकते हैं।',
+  'trade.dexie.postFailed': 'Dexie पर पोस्ट नहीं हो सका। फिर से प्रयास करें।',
+  'trade.dexie.browse': 'Dexie ब्राउज़ करें',
+  'trade.dexie.browseEmpty': 'Dexie पर कोई खुला ऑफ़र नहीं मिला।',
+  'trade.dexie.import': 'आयात करें',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dApp स्टोर',

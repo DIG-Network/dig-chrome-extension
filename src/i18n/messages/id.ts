@@ -279,6 +279,12 @@ export const id: Record<string, string> = {
   'trade.take.failed': 'Pertukaran tidak berhasil. Coba lagi.',
   'trade.summary.youGet': 'Anda menerima',
   'trade.summary.youPay': 'Anda membayar',
+  'trade.dexie.post': 'Posting ke Dexie',
+  'trade.dexie.posted': 'Diposting ke Dexie — dompet lain sekarang dapat menemukannya.',
+  'trade.dexie.postFailed': 'Gagal memposting ke Dexie. Coba lagi.',
+  'trade.dexie.browse': 'Jelajahi Dexie',
+  'trade.dexie.browseEmpty': 'Tidak ada penawaran terbuka ditemukan di Dexie.',
+  'trade.dexie.import': 'Impor',
 
   // ── apps (#59) ──
   'apps.title': 'Toko dApp DIG',

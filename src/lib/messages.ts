@@ -316,6 +316,11 @@ export const ACTIONS = Object.freeze({
   // ── diagnostics ──
   reportError: 'reportError',
   reportSuccess: 'reportSuccess',
+  // ── dexie marketplace integration (#102): NOT a custody action — no wallet key involved, handled
+  // directly by the SW (mirrors getNftMetadata's off-chain-fetch pattern) ──
+  dexiePost: 'dexiePost',
+  dexieBrowse: 'dexieBrowse',
+  dexieResolve: 'dexieResolve',
   // ── search engine ──
   addSearchEngine: 'addSearchEngine',
   getDefaultSearchEngine: 'getDefaultSearchEngine',
@@ -746,6 +751,21 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Record a resolution-strategy success (rolling diagnostics buffer).',
     request: '{ action, url:string, strategy:string, timestamp:number }',
     response: 'none (synchronous)',
+  },
+  [ACTIONS.dexiePost]: {
+    summary: "dexie marketplace (#102): POST this wallet's already-built offer bytes to api.dexie.space so other wallets can discover it. No wallet key involved — a plain upload of bytes `makeOffer` already produced.",
+    request: '{ action, offer:string /* offer1… */ }',
+    response: "{ dexieId:string, known:boolean } | { success:false, code:'DEXIE_POST_FAILED', message }",
+  },
+  [ACTIONS.dexieBrowse]: {
+    summary: 'dexie marketplace (#102): browse currently-open offers on api.dexie.space, optionally filtered by offered/requested asset. Never throws — a flaky dexie read returns an empty list.',
+    request: '{ action, offered?:string, requested?:string }',
+    response: "{ offers:[{ id, offerStr, status:number, dateFound, offered:[{id,code,name,amount}], requested:[{id,code,name,amount}] }] }",
+  },
+  [ACTIONS.dexieResolve]: {
+    summary: 'dexie marketplace (#102): resolve a dexie.space offer link/id to its `offer1…` bytes, for the Take flow to inspect via the SAME path as a pasted offer (dexie\'s own decoded fields are never trusted for the actual take).',
+    request: '{ action, idOrUrl:string }',
+    response: '{ offer:{ id, offerStr, status, dateFound, offered, requested } | null }',
   },
   [ACTIONS.addSearchEngine]: {
     summary: 'Register the DIG omnibox/search engine.',

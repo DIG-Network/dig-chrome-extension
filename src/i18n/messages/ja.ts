@@ -279,6 +279,12 @@ export const ja: Record<string, string> = {
   'trade.take.failed': '取引は成立しませんでした。もう一度お試しください。',
   'trade.summary.youGet': '受け取る資産',
   'trade.summary.youPay': '支払う資産',
+  'trade.dexie.post': 'Dexieに投稿',
+  'trade.dexie.posted': 'Dexieに投稿しました — 他のウォレットが見つけられるようになりました。',
+  'trade.dexie.postFailed': 'Dexieへの投稿に失敗しました。もう一度お試しください。',
+  'trade.dexie.browse': 'Dexieを閲覧',
+  'trade.dexie.browseEmpty': 'Dexieでオープンなオファーが見つかりません。',
+  'trade.dexie.import': 'インポート',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dAppストア',

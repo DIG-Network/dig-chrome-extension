@@ -279,6 +279,12 @@ export const ko: Record<string, string> = {
   'trade.take.failed': '거래가 처리되지 않았습니다. 다시 시도해 주십시오.',
   'trade.summary.youGet': '받는 자산',
   'trade.summary.youPay': '지불하는 자산',
+  'trade.dexie.post': 'Dexie에 게시',
+  'trade.dexie.posted': 'Dexie에 게시되었습니다 — 이제 다른 지갑에서 찾을 수 있습니다.',
+  'trade.dexie.postFailed': 'Dexie에 게시하지 못했습니다. 다시 시도하세요.',
+  'trade.dexie.browse': 'Dexie 둘러보기',
+  'trade.dexie.browseEmpty': 'Dexie에서 열린 오퍼를 찾을 수 없습니다.',
+  'trade.dexie.import': '가져오기',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dApp 스토어',

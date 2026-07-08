@@ -279,6 +279,12 @@ export const de: Record<string, string> = {
   'trade.take.failed': 'Der Trade wurde nicht abgeschlossen. Versuchen Sie es erneut.',
   'trade.summary.youGet': 'Sie erhalten',
   'trade.summary.youPay': 'Sie zahlen',
+  'trade.dexie.post': 'Bei Dexie veröffentlichen',
+  'trade.dexie.posted': 'Bei Dexie veröffentlicht – andere Wallets können es jetzt finden.',
+  'trade.dexie.postFailed': 'Veröffentlichung bei Dexie fehlgeschlagen. Bitte erneut versuchen.',
+  'trade.dexie.browse': 'Dexie durchsuchen',
+  'trade.dexie.browseEmpty': 'Keine offenen Angebote auf Dexie gefunden.',
+  'trade.dexie.import': 'Importieren',
 
   // ── apps (#59) ──
   'apps.title': 'DIG-dApp-Store',

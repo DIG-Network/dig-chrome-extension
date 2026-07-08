@@ -288,6 +288,13 @@ export const en: Record<string, string> = {
   'trade.take.failed': "The trade didn't go through. Try again.",
   'trade.summary.youGet': 'You get',
   'trade.summary.youPay': 'You pay',
+  // dexie marketplace integration (#102)
+  'trade.dexie.post': 'Post to Dexie',
+  'trade.dexie.posted': 'Posted to Dexie — other wallets can now find it.',
+  'trade.dexie.postFailed': "Couldn't post to Dexie. Try again.",
+  'trade.dexie.browse': 'Browse Dexie',
+  'trade.dexie.browseEmpty': 'No open offers found on Dexie.',
+  'trade.dexie.import': 'Import',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dApp store',

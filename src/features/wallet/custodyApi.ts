@@ -4,6 +4,7 @@ import { ACTIONS } from '@/lib/messages';
 import type { LockState } from '@/features/wallet/walletSlice';
 import type { LocalActivityEntry } from '@/lib/activity-log';
 import type { OfferLogEntry } from '@/lib/offer-log';
+import type { DexieOfferSummary } from '@/lib/dexie';
 import type { WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 import type { WalletMeta } from '@/lib/wallet-registry';
 
@@ -342,6 +343,20 @@ export const custodyApi = api.injectEndpoints({
       query: () => ({ action: ACTIONS.getOffers }),
       providesTags: ['Offers'],
     }),
+
+    // ── dexie marketplace integration (#102) — NOT custody actions (no wallet key involved) ──
+    // POST an already-built offer to dexie so other wallets can discover it.
+    postOfferToDexie: build.mutation<{ dexieId: string; known: boolean }, { offer: string }>({
+      query: (arg) => ({ action: ACTIONS.dexiePost, ...arg }),
+    }),
+    // Browse currently-open dexie offers, optionally filtered by offered/requested asset.
+    browseDexieOffers: build.query<{ offers: DexieOfferSummary[] }, { offered?: string; requested?: string } | void>({
+      query: (arg) => ({ action: ACTIONS.dexieBrowse, ...(arg ?? {}) }),
+    }),
+    // Resolve a pasted dexie link/id to its offer1… bytes (Take then inspects it like a pasted offer).
+    resolveDexieOffer: build.mutation<{ offer: DexieOfferSummary | null }, { idOrUrl: string }>({
+      query: (arg) => ({ action: ACTIONS.dexieResolve, ...arg }),
+    }),
   }),
   overrideExisting: false,
 });
@@ -376,4 +391,7 @@ export const {
   usePrepareTradeMutation,
   useConfirmTradeMutation,
   useGetCustodyOffersQuery,
+  usePostOfferToDexieMutation,
+  useBrowseDexieOffersQuery,
+  useResolveDexieOfferMutation,
 } = custodyApi;

@@ -279,6 +279,12 @@ export const es: Record<string, string> = {
   'trade.take.failed': 'El intercambio no se completó. Inténtalo de nuevo.',
   'trade.summary.youGet': 'Tú recibes',
   'trade.summary.youPay': 'Tú pagas',
+  'trade.dexie.post': 'Publicar en Dexie',
+  'trade.dexie.posted': 'Publicado en Dexie: otras wallets ya pueden encontrarlo.',
+  'trade.dexie.postFailed': 'No se pudo publicar en Dexie. Inténtalo de nuevo.',
+  'trade.dexie.browse': 'Explorar Dexie',
+  'trade.dexie.browseEmpty': 'No se encontraron ofertas abiertas en Dexie.',
+  'trade.dexie.import': 'Importar',
 
   // ── apps (#59) ──
   'apps.title': 'Tienda de dApps DIG',

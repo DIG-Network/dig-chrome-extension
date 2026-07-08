@@ -5,6 +5,7 @@ import { toBaseUnits } from '@/lib/wallet-view';
 import { popOutToFullpage } from '@/lib/popout';
 import { isFullpageSurface } from '@/features/collectibles/surface';
 import { ViewHeader } from '@/components/ViewHeader';
+import { FourState } from '@/components/FourState';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { WireOfferAsset, WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 import { useListCollectiblesQuery } from '@/features/collectibles/collectiblesApi';
@@ -19,6 +20,9 @@ import {
   usePrepareTradeMutation,
   useConfirmTradeMutation,
   useLazySendStatusQuery,
+  usePostOfferToDexieMutation,
+  useBrowseDexieOffersQuery,
+  useResolveDexieOfferMutation,
 } from '@/features/wallet/custodyApi';
 
 const XCH_DECIMALS = 12;
@@ -111,7 +115,7 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
         </div>
 
         {mode === 'make' && <MakeTrade assets={assets} full={isFull} />}
-        {mode === 'take' && <TakeTrade pollMs={pollMs} />}
+        {mode === 'take' && <TakeTrade pollMs={pollMs} full={isFull} />}
         {mode === 'offers' && <OffersPanel full={isFull} />}
       </section>
     </div>
@@ -178,6 +182,15 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
   const [confirmTrade, ct] = useConfirmTradeMutation();
   const [cancelState, setCancelState] = useState<'idle' | 'cancelled' | 'failed'>('idle');
   const nfts = useListCollectiblesQuery(undefined, { skip: giveKind !== 'nft' });
+
+  // dexie marketplace integration (#102, fullscreen-only advanced action): post the just-made offer
+  // so other wallets can discover it via dexie's public listing.
+  const [postToDexie, dx] = usePostOfferToDexieMutation();
+  const [dexieState, setDexieState] = useState<'idle' | 'posted' | 'failed'>('idle');
+  async function doPostToDexie() {
+    const res = await postToDexie({ offer });
+    setDexieState('data' in res && res.data?.dexieId ? 'posted' : 'failed');
+  }
 
   const giveNft = nfts.data?.nfts?.find((n) => n.launcherId === giveNftLauncherId);
   const qr = useMemo(() => (offer ? offerQrDataUrl(offer) : null), [offer]);
@@ -301,10 +314,28 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
           <button type="button" className="dig-btn dig-btn--primary" data-testid="trade-copy" onClick={copyOffer}>
             <FormattedMessage id={copied ? 'trade.deal.copied' : 'trade.deal.copy'} />
           </button>
-          <button type="button" className="dig-btn" data-testid="trade-new" onClick={() => { setPhase('form'); setOffer(''); setCancelState('idle'); }}>
+          <button type="button" className="dig-btn" data-testid="trade-new" onClick={() => { setPhase('form'); setOffer(''); setCancelState('idle'); setDexieState('idle'); }}>
             <FormattedMessage id="trade.deal.new" />
           </button>
         </div>
+        {full && (
+          <div style={{ marginTop: 8 }}>
+            {dexieState === 'posted' ? (
+              <p className="dig-state" data-state="success" role="status" data-testid="trade-deal-dexie-posted">
+                <FormattedMessage id="trade.dexie.posted" />
+              </p>
+            ) : (
+              <button type="button" className="dig-btn" data-testid="trade-deal-dexie-post" onClick={() => void doPostToDexie()} disabled={dx.isLoading}>
+                <FormattedMessage id={dx.isLoading ? 'custody.working' : 'trade.dexie.post'} />
+              </button>
+            )}
+            {dexieState === 'failed' && (
+              <p className="dig-error-text" role="alert" data-testid="trade-deal-dexie-post-failed">
+                <FormattedMessage id="trade.dexie.postFailed" />
+              </p>
+            )}
+          </div>
+        )}
         {cancelState === 'cancelled' ? (
           <p className="dig-state" data-state="success" role="status" data-testid="trade-cancelled" style={{ marginTop: 10 }}>
             <FormattedMessage id="trade.cancel.done" />
@@ -515,7 +546,7 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
 }
 
 /** TAKE: paste an offer → inspect the two-sided summary → prepare → confirm → broadcast → poll. */
-function TakeTrade({ pollMs }: { pollMs: number }) {
+function TakeTrade({ pollMs, full }: { pollMs: number; full: boolean }) {
   const intl = useIntl();
   const [phase, setPhase] = useState<TakePhase>('paste');
   const [offerStr, setOfferStr] = useState('');
@@ -529,20 +560,39 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
   const [confirmTrade, ct] = useConfirmTradeMutation();
   const [pollStatus] = useLazySendStatusQuery();
 
+  // dexie marketplace integration (#102, fullscreen-only advanced action): browse open offers +
+  // import one, and auto-resolve a pasted dexie link/id before the normal offer1… validation.
+  const [resolveDexieOffer] = useResolveDexieOfferMutation();
+  const [dexieBrowseOpen, setDexieBrowseOpen] = useState(false);
+  const browse = useBrowseDexieOffersQuery(undefined, { skip: !dexieBrowseOpen });
+
   async function doInspect(text?: string) {
-    const trimmed = (text ?? offerStr).trim();
+    let trimmed = (text ?? offerStr).trim();
     if (!trimmed.startsWith('offer1')) {
-      setError(intl.formatMessage({ id: 'trade.error.invalid' }));
-      return;
+      // Not a raw offer string — try resolving it as a dexie link/id (#102) before rejecting.
+      const resolved = await resolveDexieOffer({ idOrUrl: trimmed });
+      const resolvedOffer = 'data' in resolved ? resolved.data?.offer : null;
+      if (!resolvedOffer?.offerStr) {
+        setError(intl.formatMessage({ id: 'trade.error.invalid' }));
+        return;
+      }
+      trimmed = resolvedOffer.offerStr;
     }
     setError(null);
     const res = await inspect({ offerStr: trimmed });
     if ('data' in res && res.data?.offerSummary) {
+      setOfferStr(trimmed);
       setSummary(res.data.offerSummary);
       setPhase('review');
     } else {
       setError(intl.formatMessage({ id: 'trade.error.invalid' }));
     }
+  }
+
+  /** Import a dexie-browsed offer directly (its bytes are already known — no resolve round trip). */
+  function importDexieOffer(offer: string) {
+    setOfferStr(offer);
+    void doInspect(offer);
   }
 
   /** Read a dropped `.offer`/text file's contents, populate the field, and inspect it immediately. */
@@ -674,6 +724,36 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
       <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="trade-take-review-btn" disabled={busy}>
         <FormattedMessage id={busy ? 'custody.working' : 'trade.take.review'} />
       </button>
+      {full && (
+        <div style={{ marginTop: 10 }}>
+          <button type="button" className="dig-link" data-testid="trade-take-dexie-browse" onClick={() => setDexieBrowseOpen((v) => !v)}>
+            <FormattedMessage id="trade.dexie.browse" />
+          </button>
+          {dexieBrowseOpen && (
+            <FourState
+              isLoading={browse.isLoading}
+              isError={browse.isError}
+              isEmpty={!browse.isLoading && !browse.isError && (browse.data?.offers.length ?? 0) === 0}
+              onRetry={() => void browse.refetch()}
+              testid="trade-take-dexie-browse"
+              emptyId="trade.dexie.browseEmpty"
+            >
+              <ul className="dig-list" data-testid="trade-take-dexie-browse-list" style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
+                {(browse.data?.offers ?? []).map((o) => (
+                  <li key={o.id} className="dig-card" style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <span className="dig-mono">
+                      {o.offered.map((a) => `${a.amount} ${a.code}`).join(' + ')} → {o.requested.map((a) => `${a.amount} ${a.code}`).join(' + ')}
+                    </span>
+                    <button type="button" className="dig-btn" data-testid={`trade-take-dexie-import-${o.id}`} onClick={() => importDexieOffer(o.offerStr)}>
+                      <FormattedMessage id="trade.dexie.import" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </FourState>
+          )}
+        </div>
+      )}
     </form>
   );
 }

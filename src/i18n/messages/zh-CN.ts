@@ -279,6 +279,12 @@ export const zhCN: Record<string, string> = {
   'trade.take.failed': '交易未能完成，请重试。',
   'trade.summary.youGet': '您获得',
   'trade.summary.youPay': '您支付',
+  'trade.dexie.post': '发布到 Dexie',
+  'trade.dexie.posted': '已发布到 Dexie——其他钱包现在可以找到它。',
+  'trade.dexie.postFailed': '发布到 Dexie 失败,请重试。',
+  'trade.dexie.browse': '浏览 Dexie',
+  'trade.dexie.browseEmpty': '在 Dexie 上未找到进行中的报价。',
+  'trade.dexie.import': '导入',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dApp 商店',

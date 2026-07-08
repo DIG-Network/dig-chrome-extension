@@ -474,3 +474,26 @@ carrier per leg, all sharing one `Offer::nonce` computed over every offered coin
 wire/UI plumbing. Lesson: when a v1 "single X" restriction is implemented as "loop once" rather than
 "the format only allows one", the generalization is a pure write-path exercise — audit the read path
 FIRST before assuming a full protocol rewrite is needed.
+
+## dexie.space `api.dexie.space/v1` response shape, confirmed against the LIVE API (#102)
+
+dexie.space has no published OpenAPI/formal spec (as of writing) — the shapes below were confirmed
+against the LIVE endpoint (a `curl` against production), so treat them as observed convention rather
+than a guaranteed contract:
+
+- `GET /v1/offers/<id>` → `{success:true, offer:{id,status,offer,involved_coins,date_found,
+  date_completed,date_pending,date_expiry,block_expiry,spent_block_index,price,
+  offered:[{id,code,name,amount}],requested:[...],fees,mempool,related_offers,mod_version,trade_id,
+  known_taker}}`.
+- `GET /v1/offers?status=0&offered=<code>&requested=<code>&page=1&page_size=20` → `{success:true,
+  count,page,page_size,offers:[<same per-offer shape as above>]}`.
+- `POST /v1/offers` with `{offer:"offer1…"}` → success `{success:true,id,...}`; rejection (e.g. a
+  non-decodable offer) → `{success:false,error_message:"Invalid Offer"}` — NOTE the field is
+  `error_message`, not `error` or `message`.
+- **`amount` on every offered/requested asset entry is already a HUMAN-decimal number** (e.g. `50`
+  wUSDC, `33.955` XCH), NOT base units — dexie normalizes by the asset's own decimals server-side.
+  Fine for display; never feed it into a spend (re-derive the real base-unit amounts from the raw
+  `offer` bytes via the wallet's own offer engine instead — see `offers.ts`'s module doc on the
+  offer format, and `lib/dexie.ts`'s module doc on why dexie's decoded fields are display-only).
+- Offer `status` codes (undocumented, inferred from the data): `0` open, `1` pending, `2` cancelling,
+  `3` cancelled, `4` completed, `5` unknown, `6` expired.
