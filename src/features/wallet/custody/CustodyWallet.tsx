@@ -27,6 +27,7 @@ import { IndexNavigator } from '@/features/wallet/custody/IndexNavigator';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
+import { DerivedAddressList } from '@/features/wallet/custody/DerivedAddressList';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
 import { CoinControlPanel } from '@/features/wallet/custody/CoinControlPanel';
 import { ClawbackPanel } from '@/features/wallet/custody/ClawbackPanel';
@@ -288,6 +289,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
               <ChainNodeSetting />
               <AutoLockSetting />
               <ConnectedSites />
+              <DerivedAddressList />
             </>
           )}
         </>

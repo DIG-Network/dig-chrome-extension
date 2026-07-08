@@ -87,6 +87,8 @@ export const CUSTODY_ACTIONS = Object.freeze([
   // reflects. A pure SW registry op (like renameWallet) — no vault round-trip, no key involved.
   'setActiveIndex',
   'getReceiveAddress',
+  // Derived-address list (#106): a read-only page of both-scheme addresses for viewing/copying.
+  'listDerivedAddresses',
   'getCustodyBalances',
   'prepareSend',
   'confirmSend',

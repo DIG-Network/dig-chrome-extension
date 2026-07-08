@@ -41,6 +41,7 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'renameWallet',
       'removeWallet',
       'setActiveIndex',
+      'listDerivedAddresses',
       'prepareSend',
       'confirmSend',
       'sendStatus',

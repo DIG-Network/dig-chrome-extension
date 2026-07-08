@@ -34,6 +34,12 @@ export interface LockStateResult {
   /** The active wallet's active HD derivation index (#165 — the single active-index model). */
   activeIndex?: number;
 }
+/** One derived address (#106) — a display-only row (index + scheme + address), no key material. */
+export interface DerivedAddress {
+  index: number;
+  scheme: 'unhardened' | 'hardened';
+  address: string;
+}
 export interface CreateWalletResult {
   lockState: LockState;
   /** The 24-word recovery phrase — shown ONCE for backup, never stored. */
@@ -231,6 +237,15 @@ export const custodyApi = api.injectEndpoints({
       providesTags: ['Address'],
     }),
 
+    // Derived-address list (#106): a read-only page of the active wallet's addresses (BOTH HD
+    // schemes, indexes 0..count-1) for viewing/copying — pure local derivation, independent of the
+    // active index (#165's single-active-index model is unaffected; this never drives a balance
+    // view). `count` omitted uses the vault's small default page.
+    getDerivedAddresses: build.query<{ addresses: DerivedAddress[] }, { count?: number } | void>({
+      query: (arg) => ({ action: ACTIONS.listDerivedAddresses, ...(arg?.count ? { count: arg.count } : {}) }),
+      providesTags: ['Address'],
+    }),
+
     getCustodyBalances: build.query<CustodyBalances, void>({
       query: () => ({ action: ACTIONS.getCustodyBalances }),
       providesTags: ['Balances'],
@@ -330,6 +345,7 @@ export const {
   useLockWalletMutation,
   useRevealPhraseMutation,
   useGetReceiveAddressQuery,
+  useGetDerivedAddressesQuery,
   useGetCustodyBalancesQuery,
   usePrepareSendMutation,
   useConfirmSendMutation,

@@ -233,6 +233,8 @@ export const ACTIONS = Object.freeze({
   // ── single active derivation index (#165): navigate the active wallet's active index ──
   setActiveIndex: 'setActiveIndex',
   getReceiveAddress: 'getReceiveAddress',
+  // ── derived-address list (#106): a read-only page of BOTH-scheme addresses for viewing/copying ──
+  listDerivedAddresses: 'listDerivedAddresses',
   getCustodyBalances: 'getCustodyBalances',
   prepareSend: 'prepareSend',
   confirmSend: 'confirmSend',
@@ -478,6 +480,11 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Derive the wallet\'s receive address for the ACTIVE HD derivation index (unhardened, #165) in the offscreen vault. Requires an unlocked wallet.',
     request: '{ action }',
     response: "{ address:string } | { success:false, code:'LOCKED'|..., message }",
+  },
+  [ACTIONS.listDerivedAddresses]: {
+    summary: "Derive a read-only PAGE of the active wallet's addresses (#106) — BOTH HD schemes, indexes 0..count-1 — for VIEWING/COPYING in an Advanced list. Pure local derivation (no chain query, no balance scan); NOT a multi-index sweep (#165's single-active-index model is unaffected — this never drives a balance/activity view). `count` defaults to a small page and is clamped server-side.",
+    request: '{ action, count?:number /* per scheme; default a small page, clamped to a server max */ }',
+    response: "{ addresses:[{ index:number, scheme:'unhardened'|'hardened', address:string }] } | { success:false, code:'LOCKED'|..., message }",
   },
   [ACTIONS.getCustodyBalances]: {
     summary: 'Scan self-custody balances (both HD schemes) AT THE ACTIVE INDEX (#165) from coinset for XCH + watched CATs. Cached to walletCache.balances; returns the cached snapshot on a transient scan failure.',

@@ -171,6 +171,7 @@ export type VaultOp =
   | 'forgetWallet'
   | 'getVaultState'
   | 'getReceiveAddress'
+  | 'listDerivedAddresses'
   | 'scanBalances'
   | 'prepareSend'
   | 'confirmSend'
@@ -274,6 +275,9 @@ export interface VaultRequest {
    * on chain. Mutually exclusive with `clawbackSeconds` (BAD_REQUEST) and capped at
    * {@link MAX_MEMO_BYTES} UTF-8 bytes (BAD_REQUEST past it). */
   memo?: string;
+  /** listDerivedAddresses (#106): how many indexes (per scheme) to derive, starting at 0. Defaults
+   * to {@link DEFAULT_DERIVED_ADDRESS_COUNT}; clamped to {@link MAX_DERIVED_ADDRESS_COUNT}. */
+  count?: number;
   /** prepareClawbackAction: which side is acting — claim (receiver) or claw back (sender). */
   direction?: 'claim' | 'reclaim';
   /** prepareClawbackAction: the locked coin's params (from `listClawbacks`/the original send). */
@@ -327,6 +331,8 @@ export interface VaultResponse {
   mnemonic?: string;
   /** The pooled receive address (getReceiveAddress). */
   address?: string;
+  /** listDerivedAddresses (#106): the derived page — both schemes, indexes `0..count-1`. */
+  addresses?: { index: number; scheme: 'unhardened' | 'hardened'; address: string }[];
   /** The scanned balances (scanBalances). */
   balances?: BalanceScan;
   /** prepareSend: the pending id + the decoded (tamper-resistant) summary to approve. */
@@ -415,6 +421,11 @@ const DEFAULT_WALLET_ID = 'default';
 /** #105 — the max UTF-8 byte length of an optional send memo (keeps CLVM/CREATE_COIN cost bounded). */
 const MAX_MEMO_BYTES = 512;
 
+/** #106 — `listDerivedAddresses` default page size (per scheme) when `count` is omitted. */
+const DEFAULT_DERIVED_ADDRESS_COUNT = 5;
+/** #106 — the max `listDerivedAddresses` page size (per scheme) a single request may ask for. */
+const MAX_DERIVED_ADDRESS_COUNT = 100;
+
 export class Vault {
   /**
    * The decrypted BIP-39 entropy per UNLOCKED wallet, keyed by wallet id — the ONLY secret held, in
@@ -481,6 +492,8 @@ export class Vault {
           return { success: true, hasKey: this.hasKey() };
         case 'getReceiveAddress':
           return await this.getReceiveAddress(req, deps);
+        case 'listDerivedAddresses':
+          return await this.listDerivedAddresses(req, deps);
         case 'scanBalances':
           return await this.scanBalances(req, deps);
         case 'prepareSend':
@@ -658,6 +671,24 @@ export class Vault {
     const seed = await this.heldSeed();
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     return { success: true, address: receiveAddress(deps.chia, seed, req.activeIndex ?? 0) };
+  }
+
+  /**
+   * #106 — a read-only PAGE of the active wallet's derived addresses (BOTH HD schemes, indexes
+   * `0..count-1`) for VIEWING/COPYING in an Advanced list. Pure local derivation via
+   * `deriveAccounts` — no chain query, no balance scan, and NOT a multi-index sweep (#165 stays
+   * intact: this never feeds a balance/activity view, only display). `count` defaults to a small
+   * page and is clamped to {@link MAX_DERIVED_ADDRESS_COUNT} so a hostile/mistaken huge request
+   * can't derive unboundedly.
+   */
+  private async listDerivedAddresses(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'derivation unavailable' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const requested = req.count ?? DEFAULT_DERIVED_ADDRESS_COUNT;
+    const count = Math.max(1, Math.min(MAX_DERIVED_ADDRESS_COUNT, Math.floor(requested)));
+    const accounts = deriveAccounts(deps.chia, seed, { schemes: ['unhardened', 'hardened'], start: 0, count });
+    return { success: true, addresses: accounts.map((a) => ({ index: a.index, scheme: a.scheme, address: a.address })) };
   }
 
   private async scanBalances(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {

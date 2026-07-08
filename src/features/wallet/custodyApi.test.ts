@@ -123,6 +123,26 @@ describe('custodyApi endpoints', () => {
     expect(res.data?.summary.memoText).toBe('thanks!');
   });
 
+  it('getDerivedAddresses forwards an optional count and returns the derived page (#106)', async () => {
+    const addresses = [
+      { index: 0, scheme: 'unhardened', address: 'xch1a' },
+      { index: 0, scheme: 'hardened', address: 'xch1b' },
+    ];
+    const sw = mockSw((m) => (m.action === 'listDerivedAddresses' ? { addresses } : {}));
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.getDerivedAddresses.initiate({ count: 10 }));
+    expect(res.data?.addresses).toEqual(addresses);
+    expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'listDerivedAddresses', count: 10 }), expect.any(Function));
+  });
+
+  it('getDerivedAddresses omits count when not given', async () => {
+    const sw = mockSw((m) => (m.action === 'listDerivedAddresses' ? { addresses: [] } : {}));
+    const store = createStore();
+    await store.dispatch(custodyApi.endpoints.getDerivedAddresses.initiate());
+    const call = sw.mock.calls.find(([m]) => (m as { action: string }).action === 'listDerivedAddresses');
+    expect(call?.[0]).not.toHaveProperty('count');
+  });
+
   it('revealPhrase returns the phrase on the right password and errors otherwise', async () => {
     mockSw((m) =>
       m.action === 'revealPhrase' && m.password === 'pw'

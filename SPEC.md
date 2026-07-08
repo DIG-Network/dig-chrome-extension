@@ -604,7 +604,7 @@ additive — no existing action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` `24` (#105/#106 send/receive trio) added an optional `memo` on
 `prepareSend` (§18.8b) and an optional `memoText` on its response summary, plus the
-`listDerivedAddresses` action (§18.5a) — a read-only page of the active wallet's derived addresses
+`listDerivedAddresses` action (§18.1b) — a read-only page of the active wallet's derived addresses
 for viewing/copying. Purely additive — no existing action/shape changed. (#107's QR camera scanner
 is client-side only and adds no message action.)
 
@@ -1115,6 +1115,27 @@ wallet view; the extension MUST NOT perform a multi-index gap-limit sweep anywhe
   window) is removed from every scan/prepare op (§7 `MESSAGE_PROTOCOL_VERSION` `19`); a configurable
   scan-index-count setting (a superseded proposal) is INTENTIONALLY not built — there is no range to
   size once the model derives exactly one index.
+
+### 18.1b Derived-address list — view/copy only, not a scan (#106)
+
+An ADVANCED-tier list (`DerivedAddressList`, rendered alongside the chain-node override / auto-lock
+/ connected-sites settings) shows a PAGE of the active wallet's derived addresses, BOTH HD schemes,
+for indexes `0..count-1`, for VIEWING and COPYING — never for balance/activity scanning:
+
+- **Pure local derivation.** `listDerivedAddresses` (§7) derives via the SAME `deriveAccounts`
+  primitive §18.1a's single-index model uses, but over a RANGE (`start:0, count`) instead of one
+  index — it makes NO chain query and touches NO balance/activity/coin state. It does not read or
+  change the active index (§18.1a); it is a strictly read-only, display-only view.
+  - **Does NOT reintroduce multi-index scanning.** §18.1a's "no multi-index gap-limit sweep" rule
+    governs SCANS (balance/CAT/NFT/DID discovery, coinset round-trips per index) — deriving an
+    address for display is a cheap, local, no-network computation; deriving 100 of them costs
+    nothing a browser need worry about. `count` defaults to a small page (5) and is clamped
+    server-side (100) so even a maximal request stays a bounded, instant local computation.
+- **"Generate fresh" extends the page, never replaces it** — clicking "Show more" re-requests with
+  a larger `count`; previously-shown/copied addresses stay visible (RTK Query serves the same
+  `Address`-tagged cache key family, re-fetched with the new arg).
+- **Copy copies the FULL address**, never the shortened display text (`shortenAddress` is
+  presentational only).
 
 ### 18.2 At-rest keystore — `DIGWX1` v1
 
