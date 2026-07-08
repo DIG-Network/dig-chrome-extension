@@ -91,6 +91,17 @@ test('resolveCoinsetUrl uses the override when set, else the coinset default', (
   assert.equal(resolveCoinsetUrl({ chainRpcUrl: 'https://my.node/rpc' }), 'https://my.node/rpc');
 });
 
+// Network switcher (#108): the selected network's default coinset endpoint applies when there is
+// no explicit chainRpcUrl override; the override still wins regardless of the selected network.
+test('resolveCoinsetUrl routes to the selected network default, override always wins', () => {
+  assert.equal(resolveCoinsetUrl({ network: 'mainnet' }), DEFAULT_COINSET_URL);
+  assert.equal(resolveCoinsetUrl({ network: 'testnet' }), 'https://testnet11.api.coinset.org');
+  // An unrecognized network value falls back to mainnet (the honest, funds-safe default).
+  assert.equal(resolveCoinsetUrl({ network: 'devnet' }), DEFAULT_COINSET_URL);
+  // A custom node override wins over the network selection either way.
+  assert.equal(resolveCoinsetUrl({ network: 'testnet', chainRpcUrl: 'https://my.node/rpc' }), 'https://my.node/rpc');
+});
+
 // Regression #121 (money-critical): the SW prepareSend handler MUST forward `assetId` to the vault.
 // Dropping it made the vault (`isCat = !!req.assetId`) build a native XCH send for a selected CAT —
 // a wrong-asset transfer shipped in v1.31.0. This is the exact mapping the SW handler now uses.

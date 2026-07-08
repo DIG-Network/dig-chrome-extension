@@ -102,6 +102,15 @@ export const en: Record<string, string> = {
   'custody.autolock.hint': 'Lock the wallet after this many minutes of inactivity. Any wallet activity resets the timer. Allowed range: {min}–{max} minutes.',
   'custody.autolock.save': 'Save auto-lock',
   'custody.autolock.saved': 'Saved',
+  // network switcher (#108) — mainnet is real funds, so switching requires an explicit confirm
+  'custody.network.label': 'Network',
+  'custody.network.hint': 'Choose which Chia network your balances, activity, and reads use. Mainnet holds real funds.',
+  'custody.network.mainnet': 'Mainnet',
+  'custody.network.testnet': 'Testnet',
+  'custody.network.confirmPrompt': 'Switch to {network}? This changes which chain your balances and activity show.',
+  'custody.network.confirmProceed': 'Switch network',
+  'custody.network.confirmCancel': 'Cancel',
+  'custody.network.saved': 'Saved',
   'custody.soon.activity': 'Activity history is coming with self-custody sending.',
   'custody.soon.trade': 'Trading is coming with self-custody signing.',
 

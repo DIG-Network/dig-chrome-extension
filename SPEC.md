@@ -1221,7 +1221,7 @@ custody requests, owns storage, and enforces auto-lock.
 | `wallet.registry` | `storage.local` | encrypted only | the multi-wallet registry (§18.16) — an array of `{ id, label, record (DIGWX1, §18.2), createdAt }`, one encrypted record per wallet |
 | `wallet.keystore` | `storage.local` | encrypted only | the ACTIVE wallet's DIGWX1 record (§18.2) — a mirror of the active registry entry, so every single-wallet read path keeps working; the only at-rest secret alongside the registry |
 | `wallet.activeId` | `storage.local` | no | active wallet id (multi-wallet switcher, §18.16) |
-| `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, `chainRpcUrl`, `chainPrivacyAck`, fee default…) |
+| `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, `chainRpcUrl`, `chainPrivacyAck`, `locale`, `theme`, `network`, fee default…) |
 | `walletCache.balances` | `storage.local` | no | last balance scan (`{ balances, at }`) for cached-first paint AND the #154 receive-delta baseline (§18.9); cleared on wallet/index switch |
 | `wallet.activityLog` | `storage.local` | no | the #154 LOCAL activity log (§18.9) — `{ "<walletId>:<index>": LocalActivityEntry[] }`, ring-buffered at 200/scope; durable history, NEVER cleared on switch |
 | `wallet.contacts` | `storage.local` | no | address book (§18.14) — array of `{ id, label, address, note?, createdAt, updatedAt }` |
@@ -1343,8 +1343,9 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
 - **Chain source.** The wasm coinset `RpcClient` fetches the configured chain endpoint from the
   offscreen document (extensions bypass CORS). Default `https://api.coinset.org`; an explicit
   `wallet.settings.chainRpcUrl` override wins (§5.3 — a user-facing custom node, settable +
-  persisted). The pooled `dig.local`/`localhost` tiers are NOT used for the wallet chain reads (a DIG
-  node does not expose coinset-shape chain reads today).
+  persisted); absent an override, the selected network's default applies (§18.6b). The pooled
+  `dig.local`/`localhost` tiers are NOT used for the wallet chain reads (a DIG node does not expose
+  coinset-shape chain reads today).
 - **Privacy.** The wallet DISCLOSES, once (until acknowledged, `wallet.settings.chainPrivacyAck`),
   that a scan reveals the wallet's full address set to the configured operator, and offers the
   override so a privacy-minded user can point at their own node.
@@ -1391,6 +1392,37 @@ scan/discovery, only how the resolved rows are ordered, which are pinned, and wh
 - **Scope.** Every other consumer of `custodyAssetBalances` (`SendPanel`'s asset picker,
   `ManageTokens`, `CoinControlPanel`, `TradePanel`) receives the UNSORTED, UNFILTERED, UNPINNED array
   — this ordering/pinning/filtering is local to the Home Assets list's own render.
+
+### 18.6b Network selection — mainnet/testnet11 (#108)
+
+A user-facing switcher (`NetworkSetting`, Advanced tier, alongside the chain-node override) selects
+which Chia network the wallet's balance/activity/coin reads resolve against:
+
+- **Config (`src/lib/network.ts`).** Two networks, `mainnet` (default) and `testnet` (Chia's
+  testnet11), each carrying the three things that differ between them: the bech32(m) address prefix
+  (`xch`/`txch`), the AGG_SIG_ME additional data (§18.7's network genesis), and the default coinset
+  endpoint (`https://api.coinset.org` / `https://testnet11.api.coinset.org`). Persisted to
+  `wallet.settings.network`; missing/unrecognized resolves to `mainnet` — the honest, funds-safe
+  default for every caller written before this switcher existed.
+- **Read-path wiring.** `resolveCoinsetUrl` (`src/lib/custody-session.ts`) resolves the effective
+  coinset endpoint: an explicit `chainRpcUrl` override ALWAYS wins (§5.3, unchanged); absent that,
+  the selected network's default applies. Every existing SW→vault call site already funnels through
+  this one function, so balances/activity/coins/NFTs/DIDs genuinely read from the selected network
+  with no per-call-site change.
+- **Guardrail (mainnet is real funds).** Switching networks requires an explicit two-step confirm
+  (`NetworkSetting` shows the target network + what changes before persisting); a persistent
+  `AppHeader` badge names the active network whenever it is NOT mainnet, visible on both popup and
+  fullscreen, so a user is never unsure which network a balance/activity view reflects. A confirmed
+  switch invalidates the network-dependent RTK Query tags (`Balances`/`Activity`/`Address`/
+  `Collectibles`/`Coins`) so the UI re-fetches against the new endpoint immediately.
+- **Known limitation (tracked, not silent).** Spend SIGNING (§18.7's `MAINNET_AGG_SIG_ME`, used by
+  `confirmSend`/`decodeDappSpend`/`signDappSpend` in the offscreen vault) and address DERIVATION
+  (§18.1, the `xch` bech32m prefix) are currently pinned to mainnet regardless of the selected
+  network — threading the network choice through those paths touches the SW's send/dApp-signing
+  dispatch (`src/background/index.ts`), which is out of this change's scope. A signed testnet spend
+  therefore fails safely at broadcast (a mainnet-domain signature is simply invalid on testnet) rather
+  than at risk of moving real funds. `NETWORKS.testnet.aggSigMeHex`/`.addressPrefix` are already
+  defined and tested (`network.test.ts`) — wiring them through is a scoped follow-up, not a design gap.
 
 ### 18.7 Spend signing
 

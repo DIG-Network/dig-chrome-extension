@@ -5,8 +5,20 @@ import { AppHeader } from '@/components/AppHeader';
 import { AppFooter } from '@/components/AppFooter';
 import { ExternalLink } from '@/components/ExternalLink';
 import { renderWithProviders } from '@/test/harness';
+import { createStore } from '@/app/store';
+import { setChainNetwork } from '@/features/ui/uiSlice';
 
 describe('AppHeader', () => {
+  it('shows no network badge on mainnet, a persistent TESTNET badge otherwise (#108)', () => {
+    renderWithProviders(<AppHeader surface="popup" />);
+    expect(screen.queryByTestId('network-badge')).not.toBeInTheDocument();
+
+    const store = createStore();
+    store.dispatch(setChainNetwork('testnet'));
+    renderWithProviders(<AppHeader surface="popup" />, { store });
+    expect(screen.getByTestId('network-badge')).toHaveTextContent(/testnet/i);
+  });
+
   it('opens settings + pops out to the full page', async () => {
     const openOptions = vi.fn();
     chrome.runtime.openOptionsPage = openOptions as never;
