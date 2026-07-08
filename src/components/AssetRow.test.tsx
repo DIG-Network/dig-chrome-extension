@@ -33,4 +33,16 @@ describe('AssetRow', () => {
     renderWithProviders(<AssetRow ticker="XCH" name="Chia" amountLabel="1" fiatLabel={null} priceLoading testid="asset-xch" />);
     expect(screen.getByTestId('asset-xch-fiat-loading')).toBeInTheDocument();
   });
+
+  it('renders an optional action slot next to the ticker (e.g. the $DIG "Get more" menu, #202)', () => {
+    renderWithProviders(
+      <AssetRow ticker="$DIG" name="DIG" amountLabel="1.5" fiatLabel="≈ $3.00" testid="asset-dig" action={<button data-testid="row-action">act</button>} />,
+    );
+    expect(screen.getByTestId('row-action')).toBeInTheDocument();
+  });
+
+  it('omits the action slot when none is supplied', () => {
+    renderWithProviders(<AssetRow ticker="XCH" name="Chia" amountLabel="1" fiatLabel={null} testid="asset-xch" />);
+    expect(screen.queryByTestId('row-action')).not.toBeInTheDocument();
+  });
 });

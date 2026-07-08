@@ -124,6 +124,12 @@ export const ja: Record<string, string> = {
   'wallet.assets.filter.clear': '絞り込みを解除',
   'wallet.assets.filter.empty': '"{query}" に一致するトークンがありません',
   'wallet.getdig': '$DIGを購入',
+  'wallet.getdig.open': 'もっと見る',
+  'wallet.getdig.hint.tibetswap': 'XCH ↔ DIG AMM',
+  'wallet.getdig.hint.dexie': 'dexie上のDIG / XCH',
+  'wallet.getdig.hint.9mm': '9mm.pro上のDIGトークン',
+  'wallet.currency.label': '表示通貨',
+  'wallet.currency.hint': 'ウォレット全体で$の値を表示する通貨を選択します。',
   'wallet.recent.title': '最近のアクティビティ',
   'wallet.recent.seeall': 'すべて見る',
 

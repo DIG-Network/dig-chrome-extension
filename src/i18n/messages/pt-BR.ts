@@ -124,6 +124,12 @@ export const ptBR: Record<string, string> = {
   'wallet.assets.filter.clear': 'Limpar filtro',
   'wallet.assets.filter.empty': 'Nenhum token corresponde a "{query}"',
   'wallet.getdig': 'Obter $DIG',
+  'wallet.getdig.open': 'Mais',
+  'wallet.getdig.hint.tibetswap': 'AMM XCH ↔ DIG',
+  'wallet.getdig.hint.dexie': 'DIG / XCH na DEX dexie',
+  'wallet.getdig.hint.9mm': 'Token DIG na 9mm.pro',
+  'wallet.currency.label': 'Moeda de exibição',
+  'wallet.currency.hint': 'Escolha a moeda usada para os valores em $ na carteira.',
   'wallet.recent.title': 'Atividade recente',
   'wallet.recent.seeall': 'Ver tudo',
 

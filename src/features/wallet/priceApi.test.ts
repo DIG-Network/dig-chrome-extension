@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { priceApi, PRICE_TTL_SECONDS } from '@/features/wallet/priceApi';
 import { COINGECKO_XCH_URL } from '@/features/wallet/priceSources';
+import { COINGECKO_FX_URL } from '@/features/wallet/fxRates';
 import { DIG_ASSET_ID } from '@/lib/links';
 
 /** Spin up an isolated store with just the price slice, so the queryFn runs end-to-end. */
@@ -38,6 +39,28 @@ describe('priceApi.getPrices', () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
     const store = makeStore();
     const res = await store.dispatch(priceApi.endpoints.getPrices.initiate());
+    expect(res.data).toBeUndefined();
+    expect(res.error).toBeTruthy();
+  });
+});
+
+describe('priceApi.getFxRates (#112)', () => {
+  it('resolves the fiat-per-USD rate table from the multi-currency source (fetch mocked)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url === COINGECKO_FX_URL ? { chia: { usd: 2, eur: 1.8 } } : {};
+      return Promise.resolve({ ok: true, json: async () => body } as Response);
+    });
+    const store = makeStore();
+    const res = await store.dispatch(priceApi.endpoints.getFxRates.initiate());
+    expect(res.data?.usd).toBe(1);
+    expect(res.data?.eur).toBeCloseTo(0.9);
+  });
+
+  it('surfaces an error (never throws) when exchange rates are unavailable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    const store = makeStore();
+    const res = await store.dispatch(priceApi.endpoints.getFxRates.initiate());
     expect(res.data).toBeUndefined();
     expect(res.error).toBeTruthy();
   });

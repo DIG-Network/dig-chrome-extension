@@ -459,6 +459,11 @@ h2.dig-heading {
   flex: 1;
   min-width: 0;
 }
+.dig-asset-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .dig-asset-name {
   font-weight: 600;
 }
@@ -474,6 +479,67 @@ h2.dig-heading {
 .dig-asset-fiat {
   color: var(--dig-text-faint);
   font-size: 12px;
+}
+
+/* ── "Get more $DIG" venue menu (#202) ── */
+.dig-getdig {
+  position: relative;
+  display: inline-flex;
+}
+.dig-getdig-trigger {
+  border: none;
+  background: transparent;
+  color: var(--dig-accent-ink);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: var(--dig-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dig-getdig-trigger:hover {
+  background: var(--dig-accent-soft);
+}
+.dig-getdig-trigger:focus-visible {
+  outline: 2px solid var(--dig-accent);
+  outline-offset: 1px;
+}
+.dig-getdig-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 200px;
+  background: var(--dig-bg);
+  border: 1px solid var(--dig-border);
+  border-radius: var(--dig-radius-sm);
+  box-shadow: var(--dig-shadow);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dig-getdig-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px;
+  border-radius: var(--dig-radius-sm);
+  color: var(--dig-text);
+  text-decoration: none;
+}
+.dig-getdig-item:hover,
+.dig-getdig-item:focus-visible {
+  background: var(--dig-accent-soft);
+  outline: none;
+}
+.dig-getdig-item-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.dig-getdig-item-hint {
+  color: var(--dig-text-faint);
+  font-size: 11px;
 }
 
 /* ── asset-list filter (#167) — a compact search field above the CAT rows, no horizontal overflow */

@@ -124,6 +124,12 @@ export const tr: Record<string, string> = {
   'wallet.assets.filter.clear': 'Filtreyi temizle',
   'wallet.assets.filter.empty': '"{query}" ile eşleşen token yok',
   'wallet.getdig': '$DIG edinin',
+  'wallet.getdig.open': 'Daha fazla',
+  'wallet.getdig.hint.tibetswap': 'XCH ↔ DIG AMM',
+  'wallet.getdig.hint.dexie': "dexie DEX'te DIG / XCH",
+  'wallet.getdig.hint.9mm': "9mm.pro'da DIG token'ı",
+  'wallet.currency.label': 'Görüntüleme para birimi',
+  'wallet.currency.hint': 'Cüzdandaki $ değerleri için kullanılacak para birimini seçin.',
   'wallet.recent.title': 'Son etkinlikler',
   'wallet.recent.seeall': 'Tümünü gör',
 

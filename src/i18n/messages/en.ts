@@ -128,6 +128,12 @@ export const en: Record<string, string> = {
   'wallet.assets.filter.clear': 'Clear filter',
   'wallet.assets.filter.empty': 'No tokens match "{query}"',
   'wallet.getdig': 'Get $DIG',
+  'wallet.getdig.open': 'Get more',
+  'wallet.getdig.hint.tibetswap': 'XCH ↔ DIG AMM',
+  'wallet.getdig.hint.dexie': 'DIG / XCH on the dexie DEX',
+  'wallet.getdig.hint.9mm': 'DIG token on 9mm.pro',
+  'wallet.currency.label': 'Display currency',
+  'wallet.currency.hint': 'Choose the currency used for $ values across the wallet.',
   'wallet.recent.title': 'Recent activity',
   'wallet.recent.seeall': 'See all',
 

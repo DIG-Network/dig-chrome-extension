@@ -124,6 +124,12 @@ export const vi: Record<string, string> = {
   'wallet.assets.filter.clear': 'Xóa bộ lọc',
   'wallet.assets.filter.empty': 'Không có token nào khớp với "{query}"',
   'wallet.getdig': 'Nhận $DIG',
+  'wallet.getdig.open': 'Thêm',
+  'wallet.getdig.hint.tibetswap': 'AMM XCH ↔ DIG',
+  'wallet.getdig.hint.dexie': 'DIG / XCH trên dexie DEX',
+  'wallet.getdig.hint.9mm': 'Token DIG trên 9mm.pro',
+  'wallet.currency.label': 'Đơn vị tiền tệ hiển thị',
+  'wallet.currency.hint': 'Chọn đơn vị tiền tệ dùng để hiển thị giá trị $ trong ví.',
   'wallet.recent.title': 'Hoạt động gần đây',
   'wallet.recent.seeall': 'Xem tất cả',
 
