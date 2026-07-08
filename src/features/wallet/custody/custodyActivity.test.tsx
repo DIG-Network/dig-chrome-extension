@@ -55,6 +55,52 @@ describe('CustodyActivity (#154 — local log, instant load, pending→confirmed
     expect(screen.getByTestId('activity-spacescan-s:2')).toBeInTheDocument();
   });
 
+  // #113 — the transaction detail view: amount/asset, timestamp, and an explorer address link for
+  // the counterparty are always present (fee/memo only when the entry actually recorded them).
+  it('#113 the detail receipt shows amount+asset, a timestamp, and an address explorer link', async () => {
+    mockSw([SENT]);
+    renderWithProviders(<CustodyActivity />);
+    fireEvent.click(await screen.findByTestId('activity-line-s:2'));
+
+    expect(screen.getByTestId('activity-amount-s:2')).toHaveTextContent('0.25 XCH');
+    expect(screen.getByTestId('activity-timestamp-s:2')).toHaveTextContent(/\d/);
+    const addressLink = screen.getByTestId('activity-address-link-s:2') as HTMLAnchorElement;
+    expect(addressLink.href).toBe(`https://www.spacescan.io/address/${SENT.counterparty}`);
+    // Fee/memo were never recorded on this entry — never fabricate them.
+    expect(screen.queryByTestId('activity-fee-s:2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('activity-memo-s:2')).not.toBeInTheDocument();
+  });
+
+  it('#113 shows a recorded fee (formatted in XCH) and memo when the entry carries them', async () => {
+    const withFeeMemo: LocalActivityEntry = { ...SENT, id: 's:fm', fee: '5000000', memo: 'lunch money' };
+    mockSw([withFeeMemo]);
+    renderWithProviders(<CustodyActivity />);
+    fireEvent.click(await screen.findByTestId('activity-line-s:fm'));
+
+    expect(screen.getByTestId('activity-fee-s:fm')).toHaveTextContent('0.000005 XCH');
+    expect(screen.getByTestId('activity-memo-s:fm')).toHaveTextContent('lunch money');
+  });
+
+  // #114 — block-explorer link coverage: a CAT-class entry's receipt also links to the CAT's own
+  // SpaceScan token page, distinct from the per-spend coin link; XCH/NFT/DID entries have none.
+  it('#114 the receipt links a CAT-class asset to its own SpaceScan token page', async () => {
+    const tail = 'c'.repeat(64);
+    const catSent: LocalActivityEntry = { id: 's:cat', kind: 'sent', asset: tail, amount: '2500', counterparty: 'xch1qqqqcatqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzz', timestamp: 600, coinId: 'g'.repeat(64), status: 'confirmed' };
+    mockSw([catSent]);
+    renderWithProviders(<CustodyActivity />);
+    fireEvent.click(await screen.findByTestId('activity-line-s:cat'));
+
+    const tokenLink = screen.getByTestId('activity-token-link-s:cat') as HTMLAnchorElement;
+    expect(tokenLink.href).toBe(`https://www.spacescan.io/token/${tail}`);
+  });
+
+  it('#114 an XCH entry\'s receipt has no token link (XCH has no CAT token page)', async () => {
+    mockSw([SENT]);
+    renderWithProviders(<CustodyActivity />);
+    fireEvent.click(await screen.findByTestId('activity-line-s:2'));
+    expect(screen.queryByTestId('activity-token-link-s:2')).not.toBeInTheDocument();
+  });
+
   // #154 — the flagship pending→confirmed behavior: a just-broadcast send shows Pending immediately
   // and does NOT yet offer a SpaceScan link (the coin may not resolve on the explorer yet).
   it('#154 a pending entry shows a Pending status and no SpaceScan link', async () => {

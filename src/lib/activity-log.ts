@@ -67,6 +67,17 @@ export interface LocalActivityEntry {
    * past clawback sends). Absent on every other entry, including a plain (non-clawback) 'sent'.
    */
   clawback?: { senderPuzzleHashHex: string; receiverPuzzleHashHex: string; seconds: string; amount: string };
+  /**
+   * #113 — the network fee paid for this spend, in XCH mojos (fees are ALWAYS paid in XCH,
+   * regardless of the asset transferred — never the transferred asset's own base units). Additive
+   * + optional: absent on a `received` entry (no fee to report) and on any entry logged before this
+   * field existed — the transaction-detail view renders it only when present, never fabricating a
+   * fee for an entry that didn't record one.
+   */
+  fee?: string;
+  /** #113 — an optional user-supplied memo/note attached to the spend; absent/`null` when none was
+   * set. Additive: older entries simply have no memo. */
+  memo?: string | null;
 }
 
 /** Ring-buffer cap per wallet+index scope — bounds `chrome.storage.local` growth indefinitely. */

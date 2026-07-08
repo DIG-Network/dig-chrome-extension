@@ -157,6 +157,12 @@ export const id: Record<string, string> = {
   'activity.receipt.to': 'Kepada',
   'activity.receipt.status': 'Status',
   'activity.receipt.coin': 'ID Koin',
+  'activity.receipt.amount': 'Jumlah',
+  'activity.receipt.timestamp': 'Waktu',
+  'activity.receipt.fee': 'Biaya jaringan',
+  'activity.receipt.memo': 'Memo',
+  'activity.viewAddressOnSpaceScan': 'Lihat alamat di SpaceScan',
+  'activity.viewTokenOnSpaceScan': 'Lihat token di SpaceScan',
 
   // ── wallet: send ──
   'send.title': 'Kirim',

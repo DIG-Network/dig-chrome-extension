@@ -76,3 +76,31 @@ export function orderAssetsByValue(rows: AssetBalance[], prices: PriceMap): Asse
 
   return [...xch, ...dig, ...scored.map((s) => s.row)];
 }
+
+/** The two protocol-native asset keys pinned above the filter (#204) — never entered into the
+ * filterable set, regardless of value. */
+const PINNED_KEYS = new Set(['xch', 'dig']);
+
+/** The Assets-list split #204 needs: a fixed pinned header block, and the filterable rest. */
+export interface PinnedAssetSections {
+  /** XCH (if held) then $DIG (if held), in that order — ALWAYS visible, never touched by a filter
+   * query. Empty when the wallet holds neither. */
+  pinned: AssetBalance[];
+  /** Every other CAT, value-sorted per {@link orderAssetsByValue} — the ONLY rows a filter query
+   * ever narrows. */
+  filterable: AssetBalance[];
+}
+
+/**
+ * Split {@link orderAssetsByValue}'s output into the pinned XCH+$DIG header block and the
+ * filterable CAT list beneath it (#204 — a follow-up to #202's pinned ordering). `pinned` is
+ * exactly the rows the filter input must NEVER hide or reorder; the caller renders `pinned` above
+ * the filter field and applies the filter predicate to `filterable` only. Pure + total (the same
+ * rows as the input, just partitioned — never dropped or duplicated).
+ */
+export function splitPinnedAssets(rows: AssetBalance[], prices: PriceMap): PinnedAssetSections {
+  const ordered = orderAssetsByValue(rows, prices);
+  const pinned = ordered.filter((r) => PINNED_KEYS.has(r.descriptor.key));
+  const filterable = ordered.filter((r) => !PINNED_KEYS.has(r.descriptor.key));
+  return { pinned, filterable };
+}

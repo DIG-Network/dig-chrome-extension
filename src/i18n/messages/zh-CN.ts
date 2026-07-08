@@ -157,6 +157,12 @@ export const zhCN: Record<string, string> = {
   'activity.receipt.to': '收款方',
   'activity.receipt.status': '状态',
   'activity.receipt.coin': '币 ID',
+  'activity.receipt.amount': '金额',
+  'activity.receipt.timestamp': '时间',
+  'activity.receipt.fee': '网络费用',
+  'activity.receipt.memo': '备注',
+  'activity.viewAddressOnSpaceScan': '在 SpaceScan 上查看地址',
+  'activity.viewTokenOnSpaceScan': '在 SpaceScan 上查看代币',
 
   // ── wallet: send ──
   'send.title': '发送',
