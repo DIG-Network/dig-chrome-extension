@@ -261,6 +261,8 @@ export const ACTIONS = Object.freeze({
   inspectOffer: 'inspectOffer',
   prepareTrade: 'prepareTrade',
   confirmTrade: 'confirmTrade',
+  // ── saved/active offer management (#101): the local "your offers" log + derived status ──
+  getOffers: 'getOffers',
   // ── self-custody NFTs / Collectibles (#56): routed to the offscreen vault ──
   listNfts: 'listNfts',
   prepareNftTransfer: 'prepareNftTransfer',
@@ -549,9 +551,14 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: '{ pendingId:string, offerSummary:{ offered, requested } } | { success:false, code, message }',
   },
   [ACTIONS.confirmTrade]: {
-    summary: 'BROADCAST a previously-prepared trade (the approved step — the only place a trade is pushed). Returns an input coin id to poll, plus a #154 activityHint the SW logs as a `trade` entry (always present, even for a cancel).',
+    summary: 'BROADCAST a previously-prepared trade (the approved step — the only place a trade is pushed). Returns an input coin id to poll, plus a #154 activityHint the SW logs as a `trade` entry (always present, even for a cancel). A CANCEL also eagerly flips the matching #101 offer-log entry to `cancelled` (never waits for the next getOffers poll to guess `taken`).',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string, activityHint:{ asset, amount, counterparty:null } } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.getOffers]: {
+    summary: "The LOCAL offer log (#101) for the ACTIVE wallet + active index (#165): every offer this wallet has MADE via makeOffer, newest first, with derived status. Before returning, reconciles every still-`open` entry against the chain (a cheap coin-spent check per entry, mirroring sendStatus) — a coin spent WITHOUT this wallet having cancelled it flips to `taken`; a cancel is flipped eagerly by confirmTrade instead of waiting for this poll. See src/lib/offer-log.ts.",
+    request: '{ action }',
+    response: "{ offers:[{ id, offer, summary:{ offered, requested }, coinIdHex, createdAt, status:'open'|'taken'|'cancelled'|'expired' }] }",
   },
   [ACTIONS.listNfts]: {
     summary: "List the wallet's NFTs (Collectibles) — the offscreen vault derives both HD schemes, finds coins hinted to its inner puzzle hashes (coinset get_coin_records_by_hints), and reconstructs each NFT from its parent spend. Read-only.",

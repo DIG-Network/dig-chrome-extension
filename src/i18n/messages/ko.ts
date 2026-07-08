@@ -252,6 +252,11 @@ export const ko: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': '생성',
   'trade.mode.take': '수락',
+  'trade.mode.offers': '오퍼',
+  'trade.offers.empty': '아직 만든 오퍼가 없습니다.',
+  'trade.offers.status.open': '진행 중',
+  'trade.offers.status.taken': '체결됨',
+  'trade.offers.status.cancelled': '취소됨',
   'trade.make.continue': '계속',
   'trade.make.review.intro': '오퍼를 생성하기 전에 거래 내용을 확인하세요.',
   'trade.make.submit': '오퍼 생성',

@@ -252,6 +252,11 @@ export const zhCN: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': '发起',
   'trade.mode.take': '接受',
+  'trade.mode.offers': '报价',
+  'trade.offers.empty': '您还没有创建任何报价。',
+  'trade.offers.status.open': '进行中',
+  'trade.offers.status.taken': '已成交',
+  'trade.offers.status.cancelled': '已取消',
   'trade.make.continue': '继续',
   'trade.make.review.intro': '创建报价前请确认交易内容。',
   'trade.make.submit': '创建报价',

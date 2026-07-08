@@ -252,6 +252,11 @@ export const fr: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Créer',
   'trade.mode.take': 'Accepter',
+  'trade.mode.offers': 'Offres',
+  'trade.offers.empty': 'Vous n\'avez pas encore créé d\'offre.',
+  'trade.offers.status.open': 'Ouverte',
+  'trade.offers.status.taken': 'Acceptée',
+  'trade.offers.status.cancelled': 'Annulée',
   'trade.make.continue': 'Continuer',
   'trade.make.review.intro': "Vérifiez votre échange avant de créer l'offre.",
   'trade.make.submit': "Créer l'offre",

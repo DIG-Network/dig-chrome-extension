@@ -252,6 +252,11 @@ export const id: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Buat',
   'trade.mode.take': 'Terima',
+  'trade.mode.offers': 'Penawaran',
+  'trade.offers.empty': 'Anda belum membuat penawaran apa pun.',
+  'trade.offers.status.open': 'Terbuka',
+  'trade.offers.status.taken': 'Diambil',
+  'trade.offers.status.cancelled': 'Dibatalkan',
   'trade.make.continue': 'Lanjutkan',
   'trade.make.review.intro': 'Tinjau perdagangan Anda sebelum membuat penawaran.',
   'trade.make.submit': 'Buat penawaran',

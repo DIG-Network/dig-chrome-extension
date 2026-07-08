@@ -252,6 +252,11 @@ export const ja: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': '作成',
   'trade.mode.take': '承諾',
+  'trade.mode.offers': 'オファー',
+  'trade.offers.empty': 'まだオファーを作成していません。',
+  'trade.offers.status.open': 'オープン',
+  'trade.offers.status.taken': '成立',
+  'trade.offers.status.cancelled': 'キャンセル済み',
   'trade.make.continue': '続ける',
   'trade.make.review.intro': 'オファーを作成する前に取引内容を確認してください。',
   'trade.make.submit': 'オファーを作成',

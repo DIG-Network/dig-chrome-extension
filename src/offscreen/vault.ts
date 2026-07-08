@@ -362,6 +362,9 @@ export interface VaultResponse {
    * {@link ActivityHint}. Absent for a self-only spend (mint / DID / split / combine) the caller
    * should not log as a "sent" entry. */
   activityHint?: ActivityHint;
+  /** confirmTrade (#101): whether the broadcast trade was a TAKE or CANCEL — lets the SW eagerly
+   * flip a matching offer-log entry to `cancelled` at confirm time. */
+  tradeKind?: 'take' | 'cancel';
   /** makeOffer: the shareable `offer1…` string. */
   offer?: string;
   /** makeOffer / inspectOffer / prepareTrade: the decoded two-sided summary. */
@@ -456,7 +459,7 @@ export class Vault {
   private pending = new Map<string, PendingSend>();
 
   /** Prepared trades (take/cancel) — a signed bundle held between approval and broadcast. */
-  private pendingTrades = new Map<string, { bundle: ChainSpendBundle; inputCoinId: string; activityHint?: ActivityHint }>();
+  private pendingTrades = new Map<string, { bundle: ChainSpendBundle; inputCoinId: string; activityHint?: ActivityHint; tradeKind: 'take' | 'cancel' }>();
 
   /** True iff the ACTIVE wallet's decrypted key is currently held in memory. */
   hasKey(): boolean {
@@ -841,7 +844,8 @@ export class Vault {
     if (!req.offerStr) return { success: false, code: 'BAD_REQUEST', message: 'offerStr required' };
     const seed = await this.heldSeed();
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
-    const build = req.tradeKind === 'cancel' ? cancelOffer : takeOffer;
+    const tradeKind: 'take' | 'cancel' = req.tradeKind === 'cancel' ? 'cancel' : 'take';
+    const build = tradeKind === 'cancel' ? cancelOffer : takeOffer;
     const prepared = await build(deps.chia as unknown as OfferWasm, deps.chain, {
       seed,
       offerStr: req.offerStr,
@@ -858,13 +862,15 @@ export class Vault {
     const activityHint: ActivityHint = firstLeg
       ? { asset: offerAssetLabel(firstLeg.asset), amount: firstLeg.amount.toString(), counterparty: null }
       : { asset: 'XCH', amount: '0', counterparty: null };
-    this.pendingTrades.set(pendingId, { bundle: prepared.bundle, inputCoinId: prepared.inputCoinId, activityHint });
+    this.pendingTrades.set(pendingId, { bundle: prepared.bundle, inputCoinId: prepared.inputCoinId, activityHint, tradeKind });
     return { success: true, pendingId, offerSummary: toWireSummary(prepared.summary) };
   }
 
   /**
    * BROADCAST a previously-prepared trade (the approved step). Consumes the pending entry; returns
-   * the #154 {@link ActivityHint} captured at prepare time so the SW can log a local 'trade' entry.
+   * the #154 {@link ActivityHint} captured at prepare time so the SW can log a local 'trade' entry,
+   * plus `tradeKind` (#101) so the SW can eagerly flip a matching offer-log entry to `cancelled`
+   * rather than waiting for the next `getOffers` poll to (mis)classify it as `taken`.
    */
   private async confirmTrade(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
@@ -873,7 +879,12 @@ export class Vault {
     const push = await deps.chain.pushSpendBundle(held.bundle);
     this.pendingTrades.delete(req.pendingId!);
     if (!push.success) return { success: false, code: 'PUSH_FAILED', message: push.error ?? 'broadcast failed' };
-    return { success: true, spentCoinId: held.inputCoinId, ...(held.activityHint ? { activityHint: held.activityHint } : {}) };
+    return {
+      success: true,
+      spentCoinId: held.inputCoinId,
+      tradeKind: held.tradeKind,
+      ...(held.activityHint ? { activityHint: held.activityHint } : {}),
+    };
   }
 
   /** LIST the wallet's NFTs (§18 Collectibles) — both HD schemes, discovered by hint. Read-only. */

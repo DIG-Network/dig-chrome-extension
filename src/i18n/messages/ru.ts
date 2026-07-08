@@ -252,6 +252,11 @@ export const ru: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Создать',
   'trade.mode.take': 'Принять',
+  'trade.mode.offers': 'Предложения',
+  'trade.offers.empty': 'Вы ещё не создали ни одного предложения.',
+  'trade.offers.status.open': 'Открыто',
+  'trade.offers.status.taken': 'Принято',
+  'trade.offers.status.cancelled': 'Отменено',
   'trade.make.continue': 'Продолжить',
   'trade.make.review.intro': 'Проверьте условия сделки перед созданием предложения.',
   'trade.make.submit': 'Создать предложение',

@@ -252,6 +252,11 @@ export const hi: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'बनाएं',
   'trade.mode.take': 'लें',
+  'trade.mode.offers': 'ऑफ़र',
+  'trade.offers.empty': 'आपने अभी तक कोई ऑफ़र नहीं बनाया है।',
+  'trade.offers.status.open': 'खुला',
+  'trade.offers.status.taken': 'स्वीकृत',
+  'trade.offers.status.cancelled': 'रद्द',
   'trade.make.continue': 'जारी रखें',
   'trade.make.review.intro': 'ऑफ़र बनाने से पहले अपने ट्रेड की समीक्षा करें।',
   'trade.make.submit': 'ऑफ़र बनाएं',

@@ -1806,6 +1806,44 @@ proven end-to-end in Playwright against the built extension pages (a real `DragE
 `DataTransfer` + `File`, and a filled textarea) — see `e2e/sw/trade-basic-surfaces.spec.ts` for the
 popup path and `e2e/sw/offers.spec.ts` for the vault-wiring guard clauses.
 
+### 18.10a Saved/active offer management + status (#101)
+
+The local "your offers" log (`lib/offer-log.ts`) persists every offer this wallet has MADE via
+`makeOffer`, so the **Offers** tab (`trade-mode-offers`, a third mode alongside Make/Take) lists them
+with a derived status, lets the maker re-share a still-open one, and cancel it — a
+MetaMask/dexie-"My offers"-style ledger, NOT a marketplace/network scan. Storage mirrors the #154
+local activity log's idiom exactly: `chrome.storage.local[OFFER_LOG_KEY]`, a flat map keyed by
+`"<walletId>:<activeIndex>"` → that scope's own ring-buffered entry array (newest first, capped at
+200), never cleared on wallet switch or index navigation.
+
+- **Recording.** The SW appends an entry the moment `makeOffer` succeeds (there is no broadcast to
+  hang this on — an offer is only a promise until someone takes it): `{ id, offer, summary,
+  coinIdHex, createdAt, status:'open' }`, where `coinIdHex` is the first of `makeOffer`'s
+  {@link MadeOffer.offeredCoinIdsHex} (#100) — any ONE of the offer's real offered coin ids suffices,
+  since the maker's spend consumes them all atomically together whether taken or cancelled.
+- **Status is derived, not pushed** (Chia has no "someone took my offer" event):
+  - `open` — the initial state; the offered coin(s) are still unspent.
+  - `taken` — `getOffers` reconciles every still-`open` entry against the chain first (the SAME
+    `sendStatus` vault op the send/trade confirm-poll uses, one cheap coin-spent check per entry) —
+    a coin observed spent that this wallet did NOT itself cancel flips to `taken`.
+  - `cancelled` — `confirmTrade` returns `tradeKind:'take'|'cancel'` (#101 addition to its response)
+    so the SW can EAGERLY flip the matching entry the moment a cancel broadcasts, rather than waiting
+    for the next `getOffers` poll (which would otherwise misclassify the spend as `taken`).
+  - `expired` — RESERVED (mirrors `activity-log.ts`'s reserved `offer`/`clawback`/`melt` kinds); the
+    offer engine does not set an on-chain expiry timestamp yet, so this is never currently emitted.
+  A terminal status (`taken`/`cancelled`) is never re-flipped by a later poll.
+- **Surface tiering, extending §18.10's advanced-capability gating.** BOTH surfaces render the SAME
+  list + status — the log itself is not fullscreen-gated. Only fullscreen renders the per-offer
+  ACTIONS (re-share via copy, and cancel for a still-open offer, reusing the existing
+  `prepareTrade('cancel')` → `confirmTrade` path); the popup is VIEW-ONLY (status only), matching its
+  persistent `trade-open-fullscreen` link for "go manage it".
+- Read-only listing is proven end-to-end in Playwright against the built extension
+  (`e2e/sw/offer-management.spec.ts` — the empty state, deterministic and network-free since
+  reconciliation only calls the chain for `open` entries). The append/status-flip/ring-buffer logic
+  is unit-tested (`lib/offer-log.test.ts`); the full copy/cancel/status UI is unit-tested with a
+  mocked SW (`OffersPanel.test.tsx`) — a live-coinset-dependent full make→list→cancel round trip is
+  not exercised in CI (no live chain access), matching the existing `offers.spec.ts` split.
+
 ### 18.11 NFTs / Collectibles
 
 NFTs are read, minted, and transferred from `chia-wallet-sdk-wasm` primitives so the spends match the

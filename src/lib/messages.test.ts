@@ -50,6 +50,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'setActiveIndex',
     'getReceiveAddress', 'listDerivedAddresses', 'getCustodyBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'getActivity',
     'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade',
+    // Saved/active offer management (#101): the local "your offers" log + derived status:
+    'getOffers',
     // NFTs / Collectibles (#56): list + transfer routed to the offscreen vault:
     'listNfts', 'prepareNftTransfer', 'confirmNftTransfer',
     // NFT minting (#92): build + broadcast a new NFT:

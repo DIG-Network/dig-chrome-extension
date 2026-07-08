@@ -252,6 +252,11 @@ export const ptBR: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Criar',
   'trade.mode.take': 'Aceitar',
+  'trade.mode.offers': 'Ofertas',
+  'trade.offers.empty': 'Você ainda não criou nenhuma oferta.',
+  'trade.offers.status.open': 'Aberta',
+  'trade.offers.status.taken': 'Aceita',
+  'trade.offers.status.cancelled': 'Cancelada',
   'trade.make.continue': 'Continuar',
   'trade.make.review.intro': 'Revise sua negociação antes de criar a oferta.',
   'trade.make.submit': 'Criar oferta',

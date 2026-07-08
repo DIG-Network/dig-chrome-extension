@@ -252,6 +252,11 @@ export const tr: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Oluştur',
   'trade.mode.take': 'Kabul et',
+  'trade.mode.offers': 'Teklifler',
+  'trade.offers.empty': 'Henüz hiç teklif oluşturmadınız.',
+  'trade.offers.status.open': 'Açık',
+  'trade.offers.status.taken': 'Kabul edildi',
+  'trade.offers.status.cancelled': 'İptal edildi',
   'trade.make.continue': 'Devam et',
   'trade.make.review.intro': 'Teklifi oluşturmadan önce takasınızı gözden geçirin.',
   'trade.make.submit': 'Teklif oluştur',

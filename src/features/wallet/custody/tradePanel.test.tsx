@@ -67,6 +67,13 @@ describe('TradePanel — surface tiering (#169 refines #145: basic maker/taker n
     expect(screen.getByTestId('trade-make-form')).toBeInTheDocument();
   });
 
+  it('#101: an "Offers" mode tab switches to the local made-offers log', async () => {
+    mockSw((m) => (m.action === 'getOffers' ? { offers: [] } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(await screen.findByTestId('trade-mode-offers'));
+    expect(await screen.findByTestId('offers-panel')).toBeInTheDocument();
+  });
+
   it('the popup surface still offers an explicit "open full screen" link for advanced options', async () => {
     mockSw(() => ({ success: true }));
     renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);

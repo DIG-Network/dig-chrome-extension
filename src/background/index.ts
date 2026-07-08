@@ -49,6 +49,7 @@ import {
   UNLOCK_EXPIRY_KEY,
   BALANCES_CACHE_KEY,
   ACTIVITY_LOG_KEY,
+  OFFER_LOG_KEY,
   LOCK_STATE,
   isCustodyAction,
   isSessionRenewingAction,
@@ -88,6 +89,9 @@ import {
   entriesFor,
   detectReceivedEntries,
 } from '@/lib/activity-log';
+// The LOCAL offer log (#101 — "your offers", mirrors the #154 activity log's storage idiom): pure
+// append/status-flip/read over the per-wallet+index `OFFER_LOG_KEY` state.
+import { appendOfferEntry, markOfferStatus, entriesFor as offerEntriesFor } from '@/lib/offer-log';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from '@/lib/wallet-assets';
 import { DIG_ASSET_ID } from '@/lib/links';
@@ -971,6 +975,80 @@ async function logReceivedActivity(prevBalances, nextBalances) {
   try { await chrome.storage.local.set({ [ACTIVITY_LOG_KEY]: next }); } catch { /* best-effort */ }
 }
 
+// ─── Local offer log (#101) — SW-side storage glue over the pure lib/offer-log.ts ────────────────
+
+/** Read the raw `OFFER_LOG_KEY` state (an empty object when nothing has been made yet). */
+async function readOfferLogState() {
+  const { [OFFER_LOG_KEY]: raw } = await chrome.storage.local.get(OFFER_LOG_KEY);
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
+/**
+ * Record one MADE offer (#101) for the ACTIVE wallet + active derivation index, right after
+ * `makeOffer` succeeds. A no-op without an active wallet (nothing to scope the entry to).
+ */
+async function recordOffer(offer, offerSummary, coinIdHex) {
+  const state = await loadRegistry();
+  if (!state.activeId) return;
+  const index = await activeDerivationIndex();
+  const entry = {
+    id: coinIdHex ? `offer:${coinIdHex}` : `offer:${crypto.randomUUID()}`,
+    offer,
+    summary: offerSummary,
+    coinIdHex: coinIdHex ?? null,
+    createdAt: Date.now(),
+    status: 'open',
+  };
+  const next = appendOfferEntry(await readOfferLogState(), state.activeId, index, entry);
+  try { await chrome.storage.local.set({ [OFFER_LOG_KEY]: next }); } catch { /* best-effort */ }
+}
+
+/** Eagerly flip a MADE offer's log entry to `cancelled` — called at `confirmTrade` time (never
+ * waits for the next `getOffers` poll, which would otherwise misclassify the spend as `taken`). */
+async function markOfferCancelled(coinIdHex) {
+  if (!coinIdHex) return;
+  const state = await loadRegistry();
+  if (!state.activeId) return;
+  const index = await activeDerivationIndex();
+  const before = await readOfferLogState();
+  const next = markOfferStatus(before, state.activeId, index, coinIdHex, 'cancelled');
+  if (next !== before) {
+    try { await chrome.storage.local.set({ [OFFER_LOG_KEY]: next }); } catch { /* best-effort */ }
+  }
+}
+
+/**
+ * List the ACTIVE wallet + active index's offer log (#101), reconciling every still-`open` entry
+ * against the chain first: a coin observed spent (via the SAME `sendStatus` vault op the send/trade
+ * confirm-poll uses) that this wallet did NOT itself cancel (see {@link markOfferCancelled}) flips
+ * to `taken`. Best-effort — a reconciliation failure for one entry never blocks listing the rest.
+ */
+async function listOffersReconciled(coinsetUrl) {
+  const state = await loadRegistry();
+  if (!state.activeId) return [];
+  const index = await activeDerivationIndex();
+  let logState = await readOfferLogState();
+  const entries = offerEntriesFor(logState, state.activeId, index);
+  let changed = false;
+  for (const e of entries) {
+    if (e.status !== 'open' || !e.coinIdHex) continue;
+    try {
+      const res = await callVault({ op: 'sendStatus', coinId: e.coinIdHex, coinsetUrl });
+      if (res && res.confirmed === true) {
+        const next = markOfferStatus(logState, state.activeId, index, e.coinIdHex, 'taken');
+        if (next !== logState) {
+          logState = next;
+          changed = true;
+        }
+      }
+    } catch { /* best-effort — an unreachable coinset leaves this entry `open` for the next poll */ }
+  }
+  if (changed) {
+    try { await chrome.storage.local.set({ [OFFER_LOG_KEY]: logState }); } catch { /* best-effort */ }
+  }
+  return offerEntriesFor(logState, state.activeId, index);
+}
+
 /**
  * Read the ACTIVE wallet's active HD derivation index (#165 — the single active-index model)
  * directly from storage. A light read (no full migration/normalization like {@link loadRegistry}),
@@ -1261,7 +1339,13 @@ async function handleCustodyActionInner(message) {
     }
     case ACTIONS.makeOffer: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
-      return callVault({ op: 'makeOffer', offered: message.offered, requested: message.requested, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
+      const res = await callVault({ op: 'makeOffer', offered: message.offered, requested: message.requested, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
+      // #101 — persist the made offer to the local "your offers" log the moment it's built (there is
+      // no broadcast to hang this on — an offer is only a promise until someone takes it).
+      if (res && res.success !== false && res.offer) {
+        await recordOffer(res.offer, res.offerSummary, res.offerCoinIds?.[0]);
+      }
+      return res;
     }
     case ACTIONS.inspectOffer: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
@@ -1278,8 +1362,17 @@ async function handleCustodyActionInner(message) {
       if (res && res.success !== false) {
         try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
         await logActivity('trade', res.activityHint, res.spentCoinId);
+        // #101 — a CANCEL of an offer THIS wallet made: flip its log entry eagerly (never let the
+        // next getOffers poll guess it was `taken` by someone else).
+        if (res.tradeKind === 'cancel') await markOfferCancelled(res.spentCoinId);
       }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'trade failed' };
+    }
+    case ACTIONS.getOffers: {
+      // #101 — the local "your offers" log for the ACTIVE wallet + active index (#165), reconciled
+      // against the chain for any still-`open` entry. See src/lib/offer-log.ts.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return { offers: await listOffersReconciled(coinsetUrl) };
     }
     case ACTIONS.listNfts: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());

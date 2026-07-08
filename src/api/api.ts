@@ -27,6 +27,8 @@ export const TAGS = [
   'ConnectedSites',
   // Clawback (#152): the pending incoming/outgoing clawback list.
   'Clawbacks',
+  // Trade offers (#101): the local "your offers" log (made offers + derived status).
+  'Offers',
 ] as const;
 
 /**

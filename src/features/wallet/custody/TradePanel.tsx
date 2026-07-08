@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import qrcode from 'qrcode-generator';
-import { toBaseUnits, formatBaseUnits } from '@/lib/wallet-view';
+import { toBaseUnits } from '@/lib/wallet-view';
 import { popOutToFullpage } from '@/lib/popout';
 import { isFullpageSurface } from '@/features/collectibles/surface';
 import { ViewHeader } from '@/components/ViewHeader';
@@ -11,6 +11,8 @@ import { useListCollectiblesQuery } from '@/features/collectibles/collectiblesAp
 import { NftPickerModal } from '@/features/collectibles/NftPickerModal';
 import { NftMedia } from '@/features/collectibles/NftDetail';
 import { nftDisplayName, nftImageSrc } from '@/features/collectibles/nftDisplay';
+import { legLabel } from '@/features/wallet/custody/offerLegFormat';
+import { OffersPanel } from '@/features/wallet/custody/OffersPanel';
 import {
   useMakeCustodyOfferMutation,
   useInspectCustodyOfferMutation,
@@ -39,7 +41,7 @@ function offerQrDataUrl(offer: string): string | null {
   }
 }
 
-type Mode = 'make' | 'take';
+type Mode = 'make' | 'take' | 'offers';
 type MakePhase = 'form' | 'review' | 'made';
 type TakePhase = 'paste' | 'review' | 'confirm' | 'sending' | 'confirmed' | 'failed';
 /** What the maker is GIVING: a fungible balance (XCH/CAT) or one of the wallet's own NFTs (§94). */
@@ -92,6 +94,9 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
             <button type="button" role="tab" aria-selected={mode === 'take'} className={`dig-btn ${mode === 'take' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-take" onClick={() => setMode('take')}>
               <FormattedMessage id="trade.mode.take" />
             </button>
+            <button type="button" role="tab" aria-selected={mode === 'offers'} className={`dig-btn ${mode === 'offers' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-offers" onClick={() => setMode('offers')}>
+              <FormattedMessage id="trade.mode.offers" />
+            </button>
           </div>
           {!isFull && (
             <button
@@ -105,7 +110,9 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
           )}
         </div>
 
-        {mode === 'make' ? <MakeTrade assets={assets} full={isFull} /> : <TakeTrade pollMs={pollMs} />}
+        {mode === 'make' && <MakeTrade assets={assets} full={isFull} />}
+        {mode === 'take' && <TakeTrade pollMs={pollMs} />}
+        {mode === 'offers' && <OffersPanel full={isFull} />}
       </section>
     </div>
   );
@@ -590,7 +597,7 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
   if (phase === 'review' || phase === 'confirm') {
     return (
       <div data-testid="trade-take-review">
-        <TwoSided summary={summary} intl={intl} />
+        <TwoSided summary={summary} />
         {phase === 'review' ? (
           <>
             <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="trade-take-accept" onClick={() => void doPrepare()} disabled={busy}>
@@ -672,23 +679,16 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
 }
 
 /** The two-sided offer summary (you get = the offered legs; you pay = the requested legs). */
-function TwoSided({ summary, intl }: { summary: WireOfferSummary | null; intl: ReturnType<typeof useIntl> }) {
+function TwoSided({ summary }: { summary: WireOfferSummary | null }) {
   if (!summary) return null;
   return (
     <dl className="dig-summary" data-testid="trade-summary">
       <dt><FormattedMessage id="trade.summary.youGet" /></dt>
-      <dd data-testid="trade-summary-get">{summary.offered.map((l) => legLabel(l, intl)).join(', ') || '—'}</dd>
+      <dd data-testid="trade-summary-get">{summary.offered.map((l) => legLabel(l)).join(', ') || '—'}</dd>
       <dt><FormattedMessage id="trade.summary.youPay" /></dt>
-      <dd data-testid="trade-summary-pay">{summary.requested.map((l) => legLabel(l, intl)).join(', ') || '—'}</dd>
+      <dd data-testid="trade-summary-pay">{summary.requested.map((l) => legLabel(l)).join(', ') || '—'}</dd>
     </dl>
   );
-}
-
-/** Format one leg as "<amount> <ticker>" (XCH decimals for XCH; a 3-dp CAT default; NFT by launcher id). */
-function legLabel(leg: { asset: WireOfferAsset; amount: string }, _intl: ReturnType<typeof useIntl>): string {
-  if (leg.asset.kind === 'xch') return `${formatBaseUnits(Number(leg.amount), XCH_DECIMALS)} XCH`;
-  if (leg.asset.kind === 'nft') return `NFT ${leg.asset.launcherId.slice(0, 6)}…`;
-  return `${formatBaseUnits(Number(leg.amount), 3)} ${leg.asset.assetId.slice(0, 6)}…`;
 }
 
 /** Parse a decimal amount to base units; 0 on garbage. */

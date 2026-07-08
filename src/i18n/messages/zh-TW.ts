@@ -252,6 +252,11 @@ export const zhTW: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': '發起',
   'trade.mode.take': '接受',
+  'trade.mode.offers': '報價',
+  'trade.offers.empty': '您尚未建立任何報價。',
+  'trade.offers.status.open': '進行中',
+  'trade.offers.status.taken': '已成交',
+  'trade.offers.status.cancelled': '已取消',
   'trade.make.continue': '繼續',
   'trade.make.review.intro': '建立報價前請確認交易內容。',
   'trade.make.submit': '建立報價',

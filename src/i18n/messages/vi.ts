@@ -252,6 +252,11 @@ export const vi: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Tạo',
   'trade.mode.take': 'Nhận',
+  'trade.mode.offers': 'Đề nghị',
+  'trade.offers.empty': 'Bạn chưa tạo đề nghị nào.',
+  'trade.offers.status.open': 'Đang mở',
+  'trade.offers.status.taken': 'Đã nhận',
+  'trade.offers.status.cancelled': 'Đã hủy',
   'trade.make.continue': 'Tiếp tục',
   'trade.make.review.intro': 'Xem lại giao dịch của bạn trước khi tạo đề nghị.',
   'trade.make.submit': 'Tạo đề nghị',
