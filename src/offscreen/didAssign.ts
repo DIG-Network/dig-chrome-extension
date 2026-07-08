@@ -179,3 +179,104 @@ export async function prepareNftDidAssign(
     },
   };
 }
+
+/** A prepared (unsigned) BULK NFT↔DID assignment (#99): coin spends for EVERY selected NFT + the ONE
+ * DID (asserting all their announcements), combined into one bundle, + the keys + the decoded summary. */
+export interface PreparedNftBulkDidAssign {
+  coinSpends: SigCoinSpend[];
+  secretKeys: SigSecretKey[];
+  summary: NftBulkDidAssignSummary;
+}
+/** The decoded, tamper-resistant summary of a bulk NFT↔DID assignment for the user to approve. */
+export interface NftBulkDidAssignSummary {
+  /** Launcher ids (hex, deduped) of every NFT this spend re-owners — in the order they were applied. */
+  nftLauncherIds: string[];
+  /** The DID's launcher id (hex) assigned as the owner of every NFT above. */
+  didLauncherId: string;
+  fee: string;
+  coinCount: number;
+}
+
+/**
+ * Prepare (build, don't sign/broadcast) assigning the wallet's DID `didLauncherId` as the owner of
+ * MULTIPLE wallet-owned NFTs (`nftLauncherIds`) in ONE spend bundle (#99 — Collectibles multi-select
+ * bulk assign-DID). Generalizes {@link prepareNftDidAssign}: each NFT emits its own `TransferNft`
+ * condition and its own auto-created assignment-puzzle-announcement id, and the DID is spent EXACTLY
+ * ONCE — asserting every NFT's announcement id and creating one puzzle announcement per NFT launcher
+ * id in return, so all N CHIP-0011 handshakes settle atomically. Neither the NFTs' nor the DID's
+ * custody changes; only each NFT's on-chain `currentOwner` is set to the DID.
+ *
+ * `nftLauncherIds` is deduped and MUST be non-empty (`NO_NFTS_SELECTED`); any selected NFT the wallet
+ * does not hold fails the WHOLE prepare (`NFT_NOT_FOUND`) — a bulk op builds completely or not at all,
+ * never partially (matching `buildBulkNftSpend`, `nfts.ts`). A `fee` (XCH), when given, is paid ONCE
+ * from a separate wallet-owned XCH coin. Does NOT sign or broadcast — the vault's confirm step does
+ * that on explicit user approval.
+ */
+export async function prepareNftBulkDidAssign(
+  chia: AssignWasm,
+  chain: ChainClient,
+  opts: { seed: Uint8Array; nftLauncherIds: string[]; didLauncherId: string; fee?: bigint; activeIndex?: number },
+): Promise<PreparedNftBulkDidAssign> {
+  const uniqueNftIds = [...new Set(opts.nftLauncherIds.map(strip0x))];
+  if (uniqueNftIds.length === 0) throw new Error('NO_NFTS_SELECTED: at least one NFT must be selected');
+  const fee = opts.fee ?? 0n;
+  const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
+  const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, k]));
+  const ownedPhs = new Set(keyring.map((k) => k.puzzleHashHex));
+  // ONE shared Clvm allocator: every reconstructed NFT's metadata Program + the DID handle must live
+  // in the SAME arena as the spends that consume them (cross-arena wasm handles trap).
+  const clvm = new chia.Clvm();
+
+  const did = await findOwnedDid(chia as unknown as DidWasm, chain, clvm as unknown as DidClvm, ownedPhs, opts.didLauncherId);
+  const didOwnerKey = keyByPuzzleHash.get(asHex(chia, did.info.p2PuzzleHash));
+  if (!didOwnerKey) throw new Error('MISSING_KEY: the DID owner key is not held by this wallet');
+  const didInnerPuzzleHash = did.info.innerPuzzleHash();
+
+  const secretKeys: SigSecretKey[] = [didOwnerKey.sk];
+  const announcementIds: Uint8Array[] = [];
+  const nftLauncherIds: Uint8Array[] = [];
+
+  for (const nftId of uniqueNftIds) {
+    const nft = await findOwnedNft(chia as unknown as NftWasm, chain, clvm as unknown as NftClvm, keyring, nftId);
+    const nftOwnerKey = keyByPuzzleHash.get(asHex(chia, nft.info.p2PuzzleHash));
+    if (!nftOwnerKey) throw new Error('MISSING_KEY: an NFT owner key is not held by this wallet');
+    secretKeys.push(nftOwnerKey.sk);
+
+    // Each NFT: keep the same p2 owner (custody unchanged); emit the ownership-transfer condition.
+    const transferCondition = new chia.TransferNft(did.info.launcherId, [], didInnerPuzzleHash);
+    const nftHint = clvm.alloc([nft.info.p2PuzzleHash]);
+    clvm.spendNft(
+      nft,
+      clvm.standardSpend(
+        nftOwnerKey.pk,
+        clvm.delegatedSpend([clvm.createCoin(nft.info.p2PuzzleHash, nft.coin.amount, nftHint), clvm.alloc(transferCondition)]),
+      ),
+    );
+
+    announcementIds.push(assignmentPuzzleAnnouncementId(chia, clvm, nft.coin.puzzleHash, did.info.launcherId, didInnerPuzzleHash));
+    nftLauncherIds.push(nft.info.launcherId);
+  }
+
+  const feeKeys = await payFeeFromSeparateCoin(chain, clvm as unknown as DidClvm, keyByPuzzleHash, keyring, (b) => asHex(chia, b), fee);
+  secretKeys.push(...feeKeys);
+
+  // DID (spent ONCE): recreate itself unchanged, assert EVERY NFT's automatic announcement, and create
+  // the puzzle announcement each NFT's ownership layer expects back (one per NFT launcher id).
+  const didHint = clvm.alloc([did.info.p2PuzzleHash]);
+  const didConditions: unknown[] = [clvm.createCoin(didInnerPuzzleHash, did.coin.amount, didHint)];
+  for (const id of announcementIds) didConditions.push(clvm.assertPuzzleAnnouncement(id));
+  for (const id of nftLauncherIds) didConditions.push(clvm.createPuzzleAnnouncement(id));
+  clvm.spendDid(did, clvm.standardSpend(didOwnerKey.pk, clvm.delegatedSpend(didConditions)));
+
+  const coinSpends = clvm.coinSpends();
+  return {
+    coinSpends,
+    secretKeys,
+    summary: {
+      nftLauncherIds: uniqueNftIds,
+      didLauncherId: strip0x(opts.didLauncherId),
+      fee: fee.toString(),
+      coinCount: coinSpends.length,
+    },
+  };
+}

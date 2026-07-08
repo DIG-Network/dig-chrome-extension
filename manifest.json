@@ -21,14 +21,15 @@
     "https://icons.dexie.space/*",
     "https://api.coingecko.com/*",
     "https://api.bugreport.dig.net/*",
-    "https://explore.dig.net/*"
+    "https://explore.dig.net/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' http://127.0.0.5:* https://rpc.dig.net https://*.dig.net https://api.coinset.org https://api.dexie.space https://api.coingecko.com https://api.bugreport.dig.net; frame-src 'self' https:; font-src 'self'; img-src 'self' data: https:"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' http://127.0.0.5:* https://rpc.dig.net https://*.dig.net https://api.coinset.org https://api.dexie.space https://api.coingecko.com https://api.bugreport.dig.net https:; frame-src 'self' https:; font-src 'self'; img-src 'self' data: https:"
   },
   "content_scripts": [
     {

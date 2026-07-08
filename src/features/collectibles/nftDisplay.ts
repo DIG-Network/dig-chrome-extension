@@ -86,6 +86,19 @@ export function nftExternalImageUrl(nft: WalletNft): string | null {
   return uri ? toGatewayUrl(uri) : null;
 }
 
+/**
+ * The best `metadataUris` entry to resolve (#98 — off-chain CHIP-0007 metadata): a `data:` URI is
+ * already a local, inline document (decode it directly, no network); a remote `http(s)`/`ipfs://`
+ * URI is gateway-rewritten so it's fetchable. Null when no entry is usable (an unrecognized scheme,
+ * or no `metadataUris` at all) — the caller falls back to on-chain-only display.
+ */
+export function nftMetadataUri(nft: WalletNft): { kind: 'data'; uri: string } | { kind: 'remote'; url: string } | null {
+  const uri = nft.metadataUris.find((u) => isDataUri(u) || isEmbeddableRemoteUri(u));
+  if (!uri) return null;
+  const trimmed = uri.trim();
+  return isDataUri(trimmed) ? { kind: 'data', uri: trimmed } : { kind: 'remote', url: toGatewayUrl(trimmed) };
+}
+
 /** A deterministic 2-char monogram (from the launcher id) for the placeholder tile. */
 export function nftMonogram(nft: WalletNft): string {
   const h = nft.launcherId.replace(/^0x/i, '');

@@ -48,4 +48,19 @@ describe('Sheet (modal a11y)', () => {
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(last);
   });
+
+  it('portals to document.body — escapes a `.dig-screen` ancestor so it is never confined/mis-stacked (#200)', () => {
+    const { container } = render(
+      <div className="dig-screen">
+        <Sheet title="Send" onClose={() => {}} testid="sheet">
+          <button data-testid="first">First</button>
+        </Sheet>
+      </div>,
+    );
+    const dialog = screen.getByRole('dialog');
+    const screenEl = container.querySelector('.dig-screen');
+    expect(screenEl).not.toBeNull();
+    expect(screenEl?.contains(dialog)).toBe(false);
+    expect(document.body.contains(dialog)).toBe(true);
+  });
 });
