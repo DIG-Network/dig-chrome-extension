@@ -14,13 +14,14 @@
  * the same category of request as the (already uncached) `icons.dexie.space` CAT icon fetches — and
  * has nothing to do with the DIG node-resolution/verification pipeline.
  *
- * Loaded via `<img>` + canvas, NOT `fetch()` (deliberate — see `loadImageBlobViaCanvas`): the
- * manifest's `connect-src` CSP is a small explicit allowlist (rpc.dig.net, coinset, dexie, coingecko,
- * bugreport) that does NOT — and must not — include arbitrary NFT-art hosts, so a raw `fetch(url)`
- * would be CSP-blocked for virtually every real NFT image host. `img-src` is already `https:` (any
- * host, #150), so loading through an `<img>` element stays inside the EXISTING CSP surface instead of
- * widening `connect-src` to arbitrary hosts (a materially bigger exfiltration/SSRF-style attack
- * surface for a compromised script than `img-src` alone grants).
+ * Loaded via `<img>` + canvas, NOT `fetch()` (deliberate — see `loadImageBlobViaCanvas`), predating
+ * #98's `connect-src` widening to `https:` (manifest.json, required for `getNftMetadata` to reach an
+ * arbitrary off-chain metadata host — see `nft-offchain-metadata.ts`'s doc comment). Kept this way on
+ * purpose even though a raw `fetch(url)` is no longer CSP-blocked here: reading a JSON response back
+ * into script is a materially bigger exfiltration surface for a compromised page script than
+ * `<img>` bytes are (an `<img>` load without `crossOrigin` never exposes its pixels to script at
+ * all), so image bytes stay on the narrower `img-src`-only path while only the JSON-metadata fetch
+ * (which genuinely needs to read the response) uses the wider `connect-src` surface.
  *
  * Three concerns are split for testability:
  *   - `selectEvictions` — a pure LRU policy function (given an index + caps, which keys to evict).

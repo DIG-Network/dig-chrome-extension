@@ -8,12 +8,15 @@ import { NftDetail, NftMedia } from '@/features/collectibles/NftDetail';
 import { MintNft } from '@/features/collectibles/MintNft';
 import { BulkNftActions } from '@/features/collectibles/BulkNftActions';
 import { isFullpageSurface } from '@/features/collectibles/surface';
+import { useNftMetadata } from '@/features/collectibles/useNftMetadata';
+import { useCachedNftImageSrc } from '@/features/collectibles/useCachedNftImageSrc';
 import {
   nftDisplayName,
   editionLabel,
   nftImageSrc,
   groupByCollection,
   shortHex,
+  type CollectionGroup,
 } from '@/features/collectibles/nftDisplay';
 
 /** How many tiles the constrained (popup) surface shows before "See all ⤢". */
@@ -35,7 +38,6 @@ const POPUP_LIMIT = 6;
  * NFT tiles/checkboxes; only the surrounding chrome (search, pagination, confirm footer) differs.
  */
 export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
-  const intl = useIntl();
   const isFull = full ?? isFullpageSurface();
   const list = useListCollectiblesQuery();
   const [selected, setSelected] = useState<WalletNft | null>(null);
@@ -166,11 +168,7 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
           <div data-testid="collectibles-grouped">
             {groupByCollection(nfts).map((group) => (
               <section key={group.collectionId ?? 'ungrouped'} style={{ marginBottom: 18 }}>
-                <h3 className="dig-heading" style={{ fontSize: 14 }}>
-                  {group.collectionId
-                    ? intl.formatMessage({ id: 'collectibles.collection.label' }, { id: shortHex(group.collectionId, 8, 6) })
-                    : intl.formatMessage({ id: 'collectibles.collection.ungrouped' })}
-                </h3>
+                <CollectionGroupHeader group={group} />
                 <NftGrid nfts={group.nfts} onOpen={setSelected} selecting={selecting} selectedIds={selectedIds} onToggle={toggleSelected} />
               </section>
             ))}
@@ -196,6 +194,47 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
   );
 }
 
+/**
+ * One collection group's heading (#98 richer gallery) — the real off-chain `collection.name`
+ * (resolved from the group's FIRST NFT's metadata) when it resolves, else the existing shortened
+ * owner-DID fallback label. When a name resolves, a soft banner treatment renders behind the heading
+ * built from that same first NFT's already-cached art (§18.11) — CHIP-0007 has no standardized
+ * banner/icon field, so this is a UI-only approximation, not an on-chain concept. The ungrouped
+ * bucket (`collectionId === null`) never fetches metadata — there is no real collection to enrich.
+ */
+function CollectionGroupHeader({ group }: { group: CollectionGroup }) {
+  const intl = useIntl();
+  const first = group.nfts[0]; // groupByCollection never produces an empty group
+  const { metadata } = useNftMetadata(first);
+  const bannerSrc = useCachedNftImageSrc(group.collectionId ? nftImageSrc(first) : null);
+
+  const label = group.collectionId
+    ? (metadata?.collection?.name ?? intl.formatMessage({ id: 'collectibles.collection.label' }, { id: shortHex(group.collectionId, 8, 6) }))
+    : intl.formatMessage({ id: 'collectibles.collection.ungrouped' });
+
+  return (
+    <div
+      data-testid={group.collectionId ? `collection-header-${group.collectionId}` : 'collection-header-ungrouped'}
+      style={
+        bannerSrc
+          ? {
+              backgroundImage: `linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,.55)), url(${bannerSrc})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              borderRadius: 10,
+              padding: '10px 12px',
+              marginBottom: 8,
+            }
+          : { padding: '2px 0', marginBottom: 8 }
+      }
+    >
+      <h3 className="dig-heading" style={{ fontSize: 14, margin: 0, color: bannerSrc ? '#fff' : undefined }}>
+        {label}
+      </h3>
+    </div>
+  );
+}
+
 /** {@link NftGrid}'s props — exported so other selection surfaces (the #170 {@link NftPickerModal}) can
  * reuse the exact same tile/checkbox-overlay markup instead of re-implementing it. */
 export interface NftGridProps {
@@ -215,60 +254,90 @@ export interface NftGridProps {
  * (#170) so the NFT-trade picker modal reuses this exact grid rather than re-implementing NFT tiles.
  */
 export function NftGrid({ nfts, onOpen, selecting, selectedIds, onToggle }: NftGridProps) {
-  const intl = useIntl();
   return (
     <ul
       className="dig-nft-grid"
       data-testid="nft-grid"
       style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: 10 }}
     >
-      {nfts.map((nft) => {
-        const edition = editionLabel(nft);
-        const isSelected = selectedIds.has(nft.launcherId);
-        return (
-          <li key={nft.launcherId}>
-            <button
-              type="button"
-              className="dig-nft-tile"
-              data-testid={`nft-tile-${nft.launcherId}`}
-              onClick={() => (selecting ? onToggle(nft.launcherId) : onOpen(nft))}
-              aria-pressed={selecting ? isSelected : undefined}
-              aria-label={selecting ? intl.formatMessage({ id: 'collectibles.select.itemLabel' }, { name: nftDisplayName(nft) }) : undefined}
-              style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer', position: 'relative' }}
-            >
-              {selecting && (
-                <span
-                  aria-hidden="true"
-                  data-testid={`nft-select-${nft.launcherId}`}
-                  style={{
-                    position: 'absolute',
-                    top: 4,
-                    left: 4,
-                    zIndex: 1,
-                    width: 20,
-                    height: 20,
-                    borderRadius: 5,
-                    display: 'grid',
-                    placeItems: 'center',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: '#fff',
-                    border: '2px solid #fff',
-                    background: isSelected ? 'var(--dig-accent, #7a3dff)' : 'rgba(0, 0, 0, 0.35)',
-                  }}
-                >
-                  {isSelected ? '✓' : ''}
-                </span>
-              )}
-              <NftMedia nft={nft} imageSrc={nftImageSrc(nft)} />
-              <span className="dig-mono" style={{ display: 'block', fontSize: 11, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {nftDisplayName(nft)}
-              </span>
-              {edition && <span className="dig-muted" style={{ display: 'block', fontSize: 10 }}>{edition}</span>}
-            </button>
-          </li>
-        );
-      })}
+      {nfts.map((nft) => (
+        <NftTile
+          key={nft.launcherId}
+          nft={nft}
+          onOpen={onOpen}
+          selecting={selecting}
+          isSelected={selectedIds.has(nft.launcherId)}
+          onToggle={onToggle}
+        />
+      ))}
     </ul>
+  );
+}
+
+/**
+ * One grid tile — split out of {@link NftGrid} (#98) so each tile can independently resolve its own
+ * off-chain metadata name ({@link useNftMetadata}) without violating the rules of hooks (a hook
+ * cannot be called from inside `.map()` in the PARENT component). Falls back to the shortened
+ * launcher id ({@link nftDisplayName}) while metadata is loading or unavailable.
+ */
+function NftTile({
+  nft,
+  onOpen,
+  selecting,
+  isSelected,
+  onToggle,
+}: {
+  nft: WalletNft;
+  onOpen: (nft: WalletNft) => void;
+  selecting: boolean;
+  isSelected: boolean;
+  onToggle: (launcherId: string) => void;
+}) {
+  const intl = useIntl();
+  const { metadata } = useNftMetadata(nft);
+  const edition = editionLabel(nft);
+  const displayName = metadata?.name ?? nftDisplayName(nft);
+  return (
+    <li>
+      <button
+        type="button"
+        className="dig-nft-tile"
+        data-testid={`nft-tile-${nft.launcherId}`}
+        onClick={() => (selecting ? onToggle(nft.launcherId) : onOpen(nft))}
+        aria-pressed={selecting ? isSelected : undefined}
+        aria-label={selecting ? intl.formatMessage({ id: 'collectibles.select.itemLabel' }, { name: displayName }) : undefined}
+        style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer', position: 'relative' }}
+      >
+        {selecting && (
+          <span
+            aria-hidden="true"
+            data-testid={`nft-select-${nft.launcherId}`}
+            style={{
+              position: 'absolute',
+              top: 4,
+              left: 4,
+              zIndex: 1,
+              width: 20,
+              height: 20,
+              borderRadius: 5,
+              display: 'grid',
+              placeItems: 'center',
+              fontSize: 13,
+              fontWeight: 700,
+              color: '#fff',
+              border: '2px solid #fff',
+              background: isSelected ? 'var(--dig-accent, #7a3dff)' : 'rgba(0, 0, 0, 0.35)',
+            }}
+          >
+            {isSelected ? '✓' : ''}
+          </span>
+        )}
+        <NftMedia nft={nft} imageSrc={nftImageSrc(nft)} />
+        <span className="dig-mono" style={{ display: 'block', fontSize: 11, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {displayName}
+        </span>
+        {edition && <span className="dig-muted" style={{ display: 'block', fontSize: 10 }}>{edition}</span>}
+      </button>
+    </li>
   );
 }

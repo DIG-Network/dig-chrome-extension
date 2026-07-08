@@ -328,6 +328,8 @@ export const ja: Record<string, string> = {
   "nft.detail.edition": "エディション",
   "nft.detail.royalty": "ロイヤルティ",
   "nft.detail.collection": "コレクション",
+  "nft.detail.description": "説明",
+  "nft.detail.attributes": "属性",
   "nft.detail.viewImage": "画像を表示",
   "nft.detail.viewMetadata": "メタデータを表示",
   "nft.detail.viewLicense": "ライセンスを表示",

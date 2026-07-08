@@ -328,6 +328,8 @@ export const ko: Record<string, string> = {
   "nft.detail.edition": "에디션",
   "nft.detail.royalty": "로열티",
   "nft.detail.collection": "컬렉션",
+  "nft.detail.description": "설명",
+  "nft.detail.attributes": "속성",
   "nft.detail.viewImage": "이미지 보기",
   "nft.detail.viewMetadata": "메타데이터 보기",
   "nft.detail.viewLicense": "라이선스 보기",

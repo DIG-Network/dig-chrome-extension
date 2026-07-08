@@ -328,6 +328,8 @@ export const ru: Record<string, string> = {
   "nft.detail.edition": "Издание",
   "nft.detail.royalty": "Роялти",
   "nft.detail.collection": "Коллекция",
+  "nft.detail.description": "Описание",
+  "nft.detail.attributes": "Атрибуты",
   "nft.detail.viewImage": "Посмотреть изображение",
   "nft.detail.viewMetadata": "Посмотреть метаданные",
   "nft.detail.viewLicense": "Посмотреть лицензию",

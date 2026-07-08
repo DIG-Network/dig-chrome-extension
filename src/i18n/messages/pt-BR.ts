@@ -328,6 +328,8 @@ export const ptBR: Record<string, string> = {
   "nft.detail.edition": "Edição",
   "nft.detail.royalty": "Royalties",
   "nft.detail.collection": "Coleção",
+  "nft.detail.description": "Descrição",
+  "nft.detail.attributes": "Atributos",
   "nft.detail.viewImage": "Ver imagem",
   "nft.detail.viewMetadata": "Ver metadados",
   "nft.detail.viewLicense": "Ver licença",

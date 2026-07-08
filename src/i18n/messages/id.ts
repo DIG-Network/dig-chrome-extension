@@ -328,6 +328,8 @@ export const id: Record<string, string> = {
   "nft.detail.edition": "Edisi",
   "nft.detail.royalty": "Royalti",
   "nft.detail.collection": "Koleksi",
+  "nft.detail.description": "Deskripsi",
+  "nft.detail.attributes": "Atribut",
   "nft.detail.viewImage": "Lihat gambar",
   "nft.detail.viewMetadata": "Lihat metadata",
   "nft.detail.viewLicense": "Lihat lisensi",

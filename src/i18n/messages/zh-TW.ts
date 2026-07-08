@@ -328,6 +328,8 @@ export const zhTW: Record<string, string> = {
   "nft.detail.edition": "版本",
   "nft.detail.royalty": "版稅",
   "nft.detail.collection": "系列",
+  "nft.detail.description": "描述",
+  "nft.detail.attributes": "屬性",
   "nft.detail.viewImage": "查看圖片",
   "nft.detail.viewMetadata": "查看中繼資料",
   "nft.detail.viewLicense": "查看授權",

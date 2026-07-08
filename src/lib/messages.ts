@@ -167,8 +167,20 @@ import { DIG_ERR } from './error-codes';
  * broadcast path exactly like the existing single-NFT `confirmNftTransfer`); confirmation polls via
  * the shared `sendStatus`. A burn is irreversible once confirmed — the caller MUST gate it behind an
  * explicit, distinct user confirmation and must NEVER auto-invoke the confirm step.
+ *
+ * v24 (#98 NFT collection metadata + richer gallery): added `getNftMetadata` -- fetches + parses the
+ * off-chain CHIP-0007 JSON document a `metadataUri` points at (real name/description/attributes +
+ * the collection's real name), used to enrich the Collectibles gallery + detail view beyond the
+ * on-chain-only shortened-launcher-id label. Handled DIRECTLY in the background service worker
+ * (`src/background/index.ts`), NOT the offscreen vault -- a simple no-vault-dependency read, like
+ * the other non-custody SW actions. `metadataUris` are arbitrary third-party hosts the extension
+ * cannot enumerate in advance, so `manifest.json`'s CSP `connect-src`/`host_permissions` are widened
+ * to `https:`/an all-hosts pattern -- matching the breadth `img-src` already grants NFT art -- after
+ * an empirically-discovered gotcha (`DEVELOPMENT_LOG.md`) showed a background service worker's own
+ * `fetch()` IS still subject to `connect-src` in this Chromium build. Read-only, capped (size +
+ * timeout); the caller's own cache (keyed by URI) is what avoids re-fetching, not this handler.
  */
-export const MESSAGE_PROTOCOL_VERSION = 23;
+export const MESSAGE_PROTOCOL_VERSION = 24;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -237,6 +249,8 @@ export const ACTIONS = Object.freeze({
   listNfts: 'listNfts',
   prepareNftTransfer: 'prepareNftTransfer',
   confirmNftTransfer: 'confirmNftTransfer',
+  // ── NFT collection metadata + richer gallery (#98): handled DIRECTLY by the SW, not the vault ──
+  getNftMetadata: 'getNftMetadata',
   // ── Collectibles multi-select bulk transfer/burn (#171; confirm reuses the confirmSend path) ──
   prepareNftBulkTransfer: 'prepareNftBulkTransfer',
   confirmNftBulkTransfer: 'confirmNftBulkTransfer',
@@ -529,6 +543,11 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Sign + BROADCAST a previously-prepared NFT transfer (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.getNftMetadata]: {
+    summary: "Fetch + JSON-decode the off-chain CHIP-0007 metadata document at `uri` (#98 — a `metadataUri` from listNfts, gateway-rewritten by the caller if it was ipfs://). Handled directly in the SW (not the offscreen vault) as a simple no-vault read; the host is arbitrary and not enumerable in advance, so the manifest's CSP connect-src/host_permissions are widened to any https host (matching img-src's existing breadth for NFT art). GET-only, size- and time-capped. Returns the RAW decoded JSON — the caller validates/shapes it via parseNftOffchainMetadata (src/lib/nft-offchain-metadata.ts) since this is untrusted third-party content. Read-only.",
+    request: '{ action, uri:string /* http(s):// */ }',
+    response: "{ metadata:unknown } | { success:false, code:'BAD_REQUEST'|'FETCH_FAILED'|'TOO_LARGE'|'INVALID_JSON'|'TIMEOUT'|'NETWORK_ERROR', message }",
   },
   [ACTIONS.prepareNftBulkTransfer]: {
     summary: "Build (not sign/broadcast) a transfer of MULTIPLE selected NFTs to one recipient in a SINGLE spend bundle (#171 — Collectibles multi-select). Hold under a pending id and return the decoded bulk summary to approve. The recipient's p2 puzzle hash is carried as the create-coin hint for every NFT.",

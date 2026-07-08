@@ -58,16 +58,26 @@ re-decrypts (§15).
   `importScripts()`.
 - `content_security_policy.extension_pages` MUST permit `'wasm-unsafe-eval'` (WASM
   instantiation) and MUST restrict `script-src`/`object-src` to `'self'`. It MUST additionally
-  declare an explicit `connect-src` enumerating every network egress (the chain host(s)
+  declare a `connect-src` naming the KNOWN, fixed network egress hosts (the chain host(s)
   `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT price + token-metadata host `api.dexie.space`, and
-  `api.bugreport.dig.net`), `frame-src 'self' https:` (the in-window
-  dApp app-view frames curated store `link`s over https, §2.4a), `font-src 'self'` (the vendored Space
-  Grotesk / Space Mono woff2), and `img-src 'self' data: https:` (any HTTPS host — the native
-  dApp-launcher icons §2.4, the auto-discovered CAT token icons §18.6, and remote NFT art §18.11).
-  An `<img>` load cannot execute script, so allowing arbitrary HTTPS image hosts is not a
-  script-injection risk; the tradeoff is PRIVACY (the image host observes the requester's IP), which
-  §18.11 documents and which every other NFT wallet (Sage included) accepts by rendering art by
-  default.
+  `api.bugreport.dig.net`) **plus `https:`** (any HTTPS host — required for `getNftMetadata`, §18.11c,
+  to reach an arbitrary off-chain metadata host not enumerable in advance), `frame-src 'self' https:`
+  (the in-window dApp app-view frames curated store `link`s over https, §2.4a), `font-src 'self'`
+  (the vendored Space Grotesk / Space Mono woff2), and `img-src 'self' data: https:` (any HTTPS host —
+  the native dApp-launcher icons §2.4, the auto-discovered CAT token icons §18.6, and remote NFT art
+  §18.11). `host_permissions` correspondingly includes an all-hosts HTTPS pattern (needed for the
+  extension's CORS-bypass fetch elevation — most off-chain metadata hosts won't send
+  `Access-Control-Allow-Origin`).
+  - **A Manifest V3 background SERVICE WORKER's own `fetch()` IS subject to `connect-src`** —
+    empirically verified (`DEVELOPMENT_LOG.md`) building `getNftMetadata` (§18.11c): a fetch to a host
+    outside `connect-src` failed before ever reaching the network layer, the signature of a CSP block,
+    not a CORS failure. Do not assume the SW is exempt from the page CSP when adding a new SW-side
+    fetch — verify against the manifest's actual `connect-src`.
+  - An `<img>` load or a JSON-only `fetch()`+parse cannot execute script, so allowing arbitrary HTTPS
+    hosts here is not a script-injection risk; the tradeoff is PRIVACY (the host observes the
+    requester's IP) and a wider POST/readable-response surface than `img-src` alone grants, which
+    §18.11/§18.11c document and which every other NFT wallet (Sage included) accepts by rendering art
+    by default.
 - Content scripts (`middleware.js`, then `content.js`) run at `document_start`,
   `all_frames: true`, matching `<all_urls>`.
 - The injected provider (`dist/dig-provider.js`) and the page fetch bridge (`page-script.js`)
@@ -536,7 +546,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `23`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `24`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -601,6 +611,11 @@ action/shape changed.
 `prepareNftBulkTransfer` + `confirmNftBulkTransfer` and `prepareNftBulkBurn` +
 `confirmNftBulkBurn` (§18.11a) — each confirm reusing the `confirmSend` broadcast path. Purely
 additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `24` (#98) added `getNftMetadata` (§18.11c) — fetches + JSON-decodes the
+off-chain CHIP-0007 metadata document a `metadataUri` points at, handled directly by the service
+worker (not the offscreen vault) since the target host is arbitrary and not enumerable in the
+extension-pages CSP `connect-src` allowlist. Purely additive — no existing action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1653,12 +1668,12 @@ decrypted key never leaves the offscreen vault.
   network request; a miss loads the bytes, caches them, and resolves to a fresh object URL. NFT art is
   immutable per URI (an `ipfs://` CID's content never changes; a marketplace CDN URL for a minted NFT
   is likewise treated as content-addressed here), so URL-keyed caching needs no invalidation.
-  - **Loaded via `<img crossOrigin="anonymous">` + canvas, NOT `fetch()`.** The manifest's
-    `connect-src` CSP (§2) is a small explicit allowlist (rpc.dig.net, coinset, dexie, coingecko,
-    bugreport) that deliberately excludes arbitrary NFT-art hosts, so a raw `fetch(url)` would be
-    CSP-blocked for virtually every real NFT image host. `img-src` is already `https:` (any host,
-    #150), so the cache loads through an `<img>` element + canvas (`canvas.toBlob()`) to stay inside
-    the EXISTING CSP surface rather than widening `connect-src` to arbitrary hosts.
+  - **Loaded via `<img crossOrigin="anonymous">` + canvas, NOT `fetch()`.** Predates #98's
+    `connect-src` widening to `https:` (§2, needed for `getNftMetadata`, §18.11c) and is kept this
+    way on purpose even though a raw `fetch(url)` is no longer CSP-blocked here: reading a JSON
+    response back into script is a materially bigger exfiltration surface for a compromised page
+    script than `<img>` bytes are (a plain `<img>` load without `crossOrigin` never exposes its
+    pixels to script at all), so image bytes stay on the narrower `img-src`-only path.
   - **Graceful CORS fallback.** `crossOrigin="anonymous"` requires the host to send
     `Access-Control-Allow-Origin`, or the browser refuses the load entirely. A load failure (CORS
     refusal, network error) does NOT fail closed to the monogram — it falls back to embedding the RAW
@@ -1811,15 +1826,83 @@ drop it in without separately wiring the collectibles query.
   siblings, so the bottom tab bar (later in DOM order) paints ABOVE anything nested inside the content
   area regardless of that content's own z-index. Together these would silently confine an ordinarily-
   rendered fixed modal to the current screen's scrolled box AND stack it below the tab bar
-  (intercepting its clicks) on a narrow fullscreen viewport — reproducible today with `Sheet`/
-  `NftImageLightbox` rendered deep in a `.dig-screen`. A portal to `document.body` escapes that
+  (intercepting its clicks) on a narrow fullscreen viewport. A portal to `document.body` escapes that
   ancestor chain entirely (for both positioning and stacking) without touching the shared layout CSS
-  other modals still rely on; see `DEVELOPMENT_LOG.md` for the full gotcha.
+  other modals still rely on; see `DEVELOPMENT_LOG.md` for the full gotcha. `Sheet`
+  (`components/Sheet.tsx`, the Send/Receive/wallet-switcher modal) and `NftImageLightbox` are ALSO
+  portaled to `document.body` the same way (#200) — every overlay in this codebase renders through a
+  portal, none inline in the `.dig-screen` tree.
 - **Wired into Trade (§18.10).** `MakeTrade`'s NFT give-kind replaces the plain `<select>` dropdown
   with a "Select NFT" trigger that opens this modal; the chosen NFT renders as a small thumbnail +
   name chip with a "Change" affordance that reopens the modal pre-selecting the current pick. The
   wallet-empty case (`nfts.length === 0`) still shows the existing inline empty message without
   opening the modal at all.
+
+### 18.11c NFT collection metadata + richer gallery (#98)
+
+§18.11's `listNfts` only decodes the NFT's ON-CHAIN metadata program (edition/royalty/URIs) — no
+human name, description, trait attributes, or real collection name exists on-chain. CHIP-0007 defines
+those as an OFF-CHAIN JSON document at `metadataUris[0]`, which nothing in the extension parsed before
+#98 (the gallery/detail showed only the shortened launcher id and the owner-DID hex as a collection
+stand-in).
+
+- **Wire shape (`src/lib/nft-offchain-metadata.ts`, `parseNftOffchainMetadata`).** Matches the
+  CHIP-0007 document `chip35_dl_coin`'s `Chip0007Metadata`/`CollectionRef`/`CollectionAttribute` Rust
+  types mint (the ecosystem's one schema, read-side counterpart): `{ format, name, description,
+  minting_tool, sensitive_content, series_number, series_total, attributes:[{trait_type,value}],
+  collection:{ id, name, attributes:[{type,value}] } }`. `collection.attributes[].type` accepts the
+  legacy `trait_type` key too (parity with `chip35_dl_coin`'s #189 collection-attr fix — some older
+  minted documents used it for the same field).
+- **Untrusted input — never throws, always capped.** `raw` is third-party content served by whatever
+  host the on-chain URI happens to name. The parser pulls only the known string/array fields, caps
+  every string length (name 200, description 4000) and the attributes array (100 entries), and
+  returns `null` for a non-object or a document with none of the recognized fields — the caller then
+  falls back to the existing on-chain-only display exactly as if no `metadataUris` existed at all.
+- **Fetched by the background service worker (`getNftMetadata`, §7), NOT the offscreen vault** — a
+  simple no-vault-dependency read, matching the other non-custody SW actions (`getDigDnsStatus`,
+  `getVerification`, …), not a CSP workaround (see below). The handler is GET-only, time-capped, and
+  rejects a response over 200 KB (`TOO_LARGE`) before attempting to parse it — a CHIP-0007 document
+  is always small.
+- **`connect-src`/`host_permissions` are widened to any HTTPS host (§2) — required, not optional.**
+  `metadataUris` point at arbitrary hosts (IPFS gateways, marketplace CDNs) not enumerable in
+  advance. It was assumed while designing this that a Manifest V3 background SERVICE WORKER's own
+  `fetch()` is NOT subject to the `extension_pages` CSP `connect-src` directive (its name suggests it
+  governs only extension HTML documents — popup, options, offscreen — not the service worker
+  script). **That assumption was empirically WRONG** (`DEVELOPMENT_LOG.md`): a `getNftMetadata` call
+  to a host outside `connect-src` failed with a network error and the request never reached the
+  network layer at all — the signature of a CSP block, not a CORS failure (which would still hit the
+  network before failing to read the response). `connect-src` had to gain `https:` and
+  `host_permissions` an all-hosts pattern (the latter for the extension's CORS-bypass fetch
+  elevation — most off-chain metadata hosts won't send `Access-Control-Allow-Origin`) before the SW
+  could reach an arbitrary host at all. This matches the breadth `img-src: https:` already grants NFT
+  art (§18.11) — the same IP-disclosure privacy tradeoff, plus a wider POST/readable-response surface
+  than `img-src` alone grants (a JSON `fetch()` response is readable back into script; a plain
+  `<img>` load's pixels are not, without a separate `crossOrigin` opt-in). Every existing
+  connect-src-scoped fetch (chain queries, price feeds) is unaffected by the widening.
+- **Cache (`src/features/collectibles/nftMetadataCache.ts`).** Off-chain metadata is immutable per
+  URI (same content-addressed reasoning as the #159 image cache, §18.11) — a resolved document is
+  cached FOREVER, keyed by URI, in `chrome.storage.local`, reusing the #159 image cache's exact LRU
+  eviction policy (`selectEvictions`) at a smaller cap (300 entries — JSON documents are far smaller
+  than image bytes). A negative result (fetch failure, invalid JSON, no usable fields) is NOT cached,
+  so a transient network error can resolve on a later render/session instead of failing permanently.
+- **`useNftMetadata(nft)` hook (`src/features/collectibles/useNftMetadata.ts`).** Resolves the first
+  embeddable (`http(s)`/gateway-rewritten `ipfs://`) `metadataUris` entry, checks the shared cache,
+  else sends `getNftMetadata` and parses the raw response. Returns `{ metadata, isLoading }` — no
+  explicit error state (mirroring `NftMedia`'s existing graceful degradation for third-party content,
+  §18.11): a failure simply resolves `metadata: null` and the caller shows the on-chain-only
+  fallback.
+- **Richer gallery.** `NftGrid` tiles (`CollectiblesPanel.tsx`) show the metadata `name` in place of
+  the shortened launcher id once resolved (falling back to the shortened id while loading/absent).
+  Each collection group's header shows the metadata `collection.name` in place of the shortened
+  owner-DID hex (sourced from the group's first NFT — CHIP-0007 does not require every NFT in a
+  collection to repeat identical `collection` metadata, but in practice minters do), with a soft
+  banner treatment behind the header built from that same first NFT's already-cached art (§18.11) —
+  CHIP-0007 has no standardized banner/icon field, so this is a UI-only approximation, not an
+  on-chain or off-chain "banner" concept.
+- **Richer detail (`NftDetail.tsx`).** The header shows the resolved `name` (falling back to the
+  shortened launcher id); when metadata resolves, a description paragraph and a trait-attribute list
+  (`trait_type` / `value` pairs) render below the existing on-chain summary. Absent/unresolved
+  metadata renders neither section — never an empty placeholder.
 
 ### 18.12 dApp `window.chia` requests & the SW-summoned approval window (§5.5)
 

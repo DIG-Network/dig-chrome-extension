@@ -328,6 +328,8 @@ export const es: Record<string, string> = {
   "nft.detail.edition": "Edición",
   "nft.detail.royalty": "Regalías",
   "nft.detail.collection": "Colección",
+  "nft.detail.description": "Descripción",
+  "nft.detail.attributes": "Atributos",
   "nft.detail.viewImage": "Ver imagen",
   "nft.detail.viewMetadata": "Ver metadatos",
   "nft.detail.viewLicense": "Ver licencia",

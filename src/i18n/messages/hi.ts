@@ -328,6 +328,8 @@ export const hi: Record<string, string> = {
   "nft.detail.edition": "संस्करण",
   "nft.detail.royalty": "रॉयल्टी",
   "nft.detail.collection": "संग्रह",
+  "nft.detail.description": "विवरण",
+  "nft.detail.attributes": "विशेषताएँ",
   "nft.detail.viewImage": "छवि देखें",
   "nft.detail.viewMetadata": "मेटाडेटा देखें",
   "nft.detail.viewLicense": "लाइसेंस देखें",

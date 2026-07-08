@@ -328,6 +328,8 @@ export const tr: Record<string, string> = {
   "nft.detail.edition": "Sürüm",
   "nft.detail.royalty": "Telif",
   "nft.detail.collection": "Koleksiyon",
+  "nft.detail.description": "Açıklama",
+  "nft.detail.attributes": "Özellikler",
   "nft.detail.viewImage": "Görseli görüntüle",
   "nft.detail.viewMetadata": "Meta verileri görüntüle",
   "nft.detail.viewLicense": "Lisansı görüntüle",

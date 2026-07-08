@@ -328,6 +328,8 @@ export const vi: Record<string, string> = {
   "nft.detail.edition": "Phiên bản",
   "nft.detail.royalty": "Tiền bản quyền",
   "nft.detail.collection": "Bộ sưu tập",
+  "nft.detail.description": "Mô tả",
+  "nft.detail.attributes": "Thuộc tính",
   "nft.detail.viewImage": "Xem hình ảnh",
   "nft.detail.viewMetadata": "Xem metadata",
   "nft.detail.viewLicense": "Xem giấy phép",

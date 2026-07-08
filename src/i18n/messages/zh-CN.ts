@@ -328,6 +328,8 @@ export const zhCN: Record<string, string> = {
   "nft.detail.edition": "版本",
   "nft.detail.royalty": "版税",
   "nft.detail.collection": "合集",
+  "nft.detail.description": "描述",
+  "nft.detail.attributes": "属性",
   "nft.detail.viewImage": "查看图片",
   "nft.detail.viewMetadata": "查看元数据",
   "nft.detail.viewLicense": "查看许可",

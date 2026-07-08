@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import { renderWithProviders } from '@/test/harness';
 import { CollectiblesPanel } from '@/features/collectibles/CollectiblesPanel';
 import { isFullpageSurface } from '@/features/collectibles/surface';
+import { resetSharedNftMetadataCacheForTests } from '@/features/collectibles/nftMetadataCache';
 import type { WalletNft } from '@/offscreen/nfts';
 
 function nft(over: Partial<WalletNft> = {}): WalletNft {
@@ -38,6 +39,10 @@ function mockSw(router: (m: { action: string; [k: string]: unknown }) => unknown
 const manyNfts = (n: number) =>
   Array.from({ length: n }, (_, i) => nft({ launcherId: i.toString(16).padStart(2, '0').repeat(32) }));
 
+beforeEach(async () => {
+  resetSharedNftMetadataCacheForTests();
+  await chrome.storage.local.remove('digNftMetadataCache');
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe('isFullpageSurface', () => {
@@ -79,6 +84,47 @@ describe('CollectiblesPanel', () => {
     expect(await screen.findByTestId('collectibles-grouped')).toBeInTheDocument();
     expect(screen.getByText(/Collection/)).toBeInTheDocument();
     expect(screen.getByText('Ungrouped')).toBeInTheDocument();
+  });
+
+  it('richer gallery (#98): a tile shows the resolved off-chain name once metadata resolves, falling back to the shortened id meanwhile', async () => {
+    const target = nft({ metadataUris: ['https://example.test/meta.json'] });
+    mockSw((m) =>
+      m.action === 'listNfts'
+        ? { nfts: [target] }
+        : m.action === 'getNftMetadata'
+          ? { metadata: { name: 'Cool Cat #1' } }
+          : { success: true },
+    );
+    renderWithProviders(<CollectiblesPanel full />);
+    await screen.findByTestId('nft-grid');
+    // resolves to the real off-chain name (the shortened-id fallback, nftDisplayName(target), is
+    // what would render while loading/unavailable — covered by the other CollectiblesPanel tests
+    // above, which use an nft() with no metadataUris at all).
+    expect(await screen.findByText('Cool Cat #1')).toBeInTheDocument();
+  });
+
+  it('richer gallery (#98): the collection group header shows the resolved off-chain collection name', async () => {
+    const target = nft({ collectionId: 'did1', metadataUris: ['https://example.test/meta.json'] });
+    mockSw((m) =>
+      m.action === 'listNfts'
+        ? { nfts: [target] }
+        : m.action === 'getNftMetadata'
+          ? { metadata: { collection: { id: 'did1', name: 'Cool Cats Club' } } }
+          : { success: true },
+    );
+    renderWithProviders(<CollectiblesPanel full />);
+    await screen.findByTestId('collectibles-grouped');
+    expect(await screen.findByText('Cool Cats Club')).toBeInTheDocument();
+    // the shortened-DID fallback label is gone once the real name resolves
+    expect(screen.queryByText(/Collection did1/)).not.toBeInTheDocument();
+  });
+
+  it('richer gallery (#98): falls back to the shortened owner-DID label when no off-chain collection name resolves', async () => {
+    const target = nft({ collectionId: 'did1'.padEnd(64, '0'), metadataUris: [] });
+    mockSw((m) => (m.action === 'listNfts' ? { nfts: [target] } : { success: true }));
+    renderWithProviders(<CollectiblesPanel full />);
+    await screen.findByTestId('collectibles-grouped');
+    expect(screen.getByText(/Collection did1/)).toBeInTheDocument();
   });
 
   it('caps the grid and offers "See all" on the constrained popup surface', async () => {

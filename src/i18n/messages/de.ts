@@ -328,6 +328,8 @@ export const de: Record<string, string> = {
   "nft.detail.edition": "Edition",
   "nft.detail.royalty": "Tantiemen",
   "nft.detail.collection": "Kollektion",
+  "nft.detail.description": "Beschreibung",
+  "nft.detail.attributes": "Attribute",
   "nft.detail.viewImage": "Bild ansehen",
   "nft.detail.viewMetadata": "Metadaten ansehen",
   "nft.detail.viewLicense": "Lizenz ansehen",
