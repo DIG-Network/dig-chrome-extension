@@ -737,4 +737,8 @@ export const ptBR: Record<string, string> = {
   'wallet.index.next': 'Próximo índice',
   'wallet.index.jump': 'Ir para o índice',
   'wallet.index.error': 'Não foi possível trocar de índice. Tente novamente.',
+  'send.poison.title': 'Este endereço se parece com um contato salvo',
+  'send.poison.body': 'Ele tem o mesmo início e fim que {label}, mas difere no meio — um golpe conhecido de envenenamento de endereço. Verifique cada caractere antes de enviar.',
+  'send.poison.ack': 'Verifiquei cada caractere deste endereço',
+  'send.firstTime': 'Primeira vez enviando para este endereço.',
 };

@@ -737,4 +737,8 @@ export const zhCN: Record<string, string> = {
   'wallet.index.next': '下一个索引',
   'wallet.index.jump': '跳转到索引',
   'wallet.index.error': '无法切换索引，请重试。',
+  'send.poison.title': '此地址看起来像已保存的联系人',
+  'send.poison.body': '它与 {label} 的开头和结尾相同，但中间不同——这是一种已知的地址投毒骗局。发送前请核对每个字符。',
+  'send.poison.ack': '我已核对此地址的每个字符',
+  'send.firstTime': '这是首次向此地址转账。',
 };

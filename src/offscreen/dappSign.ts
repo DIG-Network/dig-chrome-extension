@@ -94,6 +94,15 @@ export interface DappSpendSummary {
   requiredSigners: string[];
   /** How many required signers this wallet can satisfy (raw or synthetic key match). */
   ownedSigners: number;
+  /**
+   * The required signers this wallet CANNOT account for — a required public key that maps to no
+   * wallet-derived key (raw or synthetic). A non-empty list is the over-broad / foreign-signer
+   * signature #75 surfaces: the self-custody signer is all-or-nothing, so such a spend is either a
+   * failed request or authorizes alongside keys the user does not control. Always set by
+   * `decodeDappSpend`; optional on the type so the risk model still falls back to the owned-vs-required
+   * count for a summary that predates the field.
+   */
+  unaccountedSigners?: string[];
 }
 
 /** Read a wire field by either its camelCase or snake_case name; throws if absent. */
@@ -176,7 +185,8 @@ export function decodeDappSpend(
 
   const reqs = requiredSignatures(chia, coinSpends, additionalDataHex);
   const requiredSigners = [...new Set(reqs.map((r) => strip0x(r.publicKeyHex)))];
-  const ownedSigners = requiredSigners.filter((pk) => ownPk.has(pk)).length;
+  const unaccountedSigners = requiredSigners.filter((pk) => !ownPk.has(pk));
+  const ownedSigners = requiredSigners.length - unaccountedSigners.length;
 
   return {
     coinCount: coinSpends.length,
@@ -188,6 +198,7 @@ export function decodeDappSpend(
     allInputsSelf,
     requiredSigners,
     ownedSigners,
+    unaccountedSigners,
   };
 }
 

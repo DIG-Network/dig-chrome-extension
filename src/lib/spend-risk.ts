@@ -23,7 +23,11 @@ export const RISK = Object.freeze({
   DRAIN_ALL: 'DRAIN_ALL',
   /** The reserved network fee is anomalously large (exceeds the amount sent, or a large absolute). */
   HIGH_FEE: 'HIGH_FEE',
-  /** The spend requires a signature the wallet cannot provide (it will not fully sign). */
+  /**
+   * The spend requires a signature from a key the wallet cannot account for (foreign / over-broad
+   * signer). HIGH severity (#75): the self-custody signer is all-or-nothing, so this is either a
+   * failed request or an over-broad authorization the user must explicitly confirm.
+   */
   CANNOT_SIGN: 'CANNOT_SIGN',
   /** The spend mixes in coins the wallet does not own — the mojo amounts cannot be verified. */
   FOREIGN_INPUTS: 'FOREIGN_INPUTS',
@@ -93,9 +97,16 @@ export function assessSpendRisk(summary: DappSpendSummary | null | undefined): S
       findings.push({ code: RISK.FOREIGN_INPUTS, severity: 'caution' });
     }
 
-    // CANNOT_SIGN: a required signer the wallet cannot satisfy (checkable regardless of input trust).
-    if (summary.requiredSigners.length > 0 && summary.ownedSigners < summary.requiredSigners.length) {
-      findings.push({ code: RISK.CANNOT_SIGN, severity: 'caution' });
+    // FOREIGN/OVER-BROAD SIGNER (#75): the spend requires a signer the wallet cannot account for
+    // (checkable regardless of input trust). Prefer the enumerated `unaccountedSigners` list when the
+    // summary carries it; otherwise fall back to the owned-vs-required count. HIGH severity — the
+    // self-custody signer never contributes a partial signature, so this spend must be explicitly
+    // confirmed (or it will simply fail), never one-click approved.
+    const unaccounted = summary.unaccountedSigners
+      ? summary.unaccountedSigners.length
+      : Math.max(0, summary.requiredSigners.length - summary.ownedSigners);
+    if (summary.requiredSigners.length > 0 && unaccounted > 0) {
+      findings.push({ code: RISK.CANNOT_SIGN, severity: 'high' });
     }
   }
 

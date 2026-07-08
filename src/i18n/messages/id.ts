@@ -737,4 +737,8 @@ export const id: Record<string, string> = {
   'wallet.index.next': 'Indeks berikutnya',
   'wallet.index.jump': 'Lompat ke indeks',
   'wallet.index.error': 'Tidak dapat beralih indeks. Silakan coba lagi.',
+  'send.poison.title': 'Alamat ini mirip dengan kontak tersimpan',
+  'send.poison.body': 'Awalan dan akhirannya sama dengan {label} tetapi berbeda di tengah — penipuan address poisoning yang dikenal. Periksa setiap karakter sebelum mengirim.',
+  'send.poison.ack': 'Saya telah memverifikasi setiap karakter alamat ini',
+  'send.firstTime': 'Pertama kali mengirim ke alamat ini.',
 };

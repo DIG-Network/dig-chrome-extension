@@ -127,11 +127,25 @@ describe('assessSpendRisk', () => {
     expect(r.findings.map((f) => f.code)).toContain(RISK.FOREIGN_INPUTS);
   });
 
-  it('raises a caution when the wallet cannot fully sign the spend', () => {
+  it('flags an over-broad/foreign-signer spend as HIGH and requires explicit confirmation (#75)', () => {
+    // A required signer the wallet cannot account for → the self-custody signer is all-or-nothing,
+    // so this is either a failed request or an over-broad authorization: HIGH, must be acknowledged.
     const r = assessSpendRisk(summary({ requiredSigners: ['pk1', 'pk2'], ownedSigners: 1 }));
     expect(r.findings.map((f) => f.code)).toContain(RISK.CANNOT_SIGN);
-    expect(r.level).toBe('caution');
-    expect(r.requiresExtraConfirm).toBe(false);
+    expect(r.findings.find((f) => f.code === RISK.CANNOT_SIGN)?.severity).toBe('high');
+    expect(r.level).toBe('high');
+    expect(r.requiresExtraConfirm).toBe(true);
+  });
+
+  it('drives the foreign-signer flag off the enumerated unaccountedSigners list when present (#75)', () => {
+    const r = assessSpendRisk(summary({ requiredSigners: ['pk1', 'pk2'], ownedSigners: 2, unaccountedSigners: ['pk2'] }));
+    expect(r.findings.map((f) => f.code)).toContain(RISK.CANNOT_SIGN);
+    expect(r.level).toBe('high');
+  });
+
+  it('does NOT flag a fully-accountable spend (no unaccounted signers)', () => {
+    const r = assessSpendRisk(summary({ requiredSigners: ['pk1'], ownedSigners: 1, unaccountedSigners: [] }));
+    expect(r.findings.map((f) => f.code)).not.toContain(RISK.CANNOT_SIGN);
   });
 
   it('escalates to high when any high-severity finding is present alongside cautions', () => {

@@ -132,7 +132,12 @@ test('the injected provider entry (src/entries/dig-provider.entry.ts) derives wi
   assert.match(entry, /from ['"]@dignetwork\/chia-provider['"]/, 'entry must import from @dignetwork/chia-provider');
   assert.match(entry, /buildProvider/, 'entry must call the package buildProvider');
   assert.match(entry, /window\.chia\s*=\s*buildProvider/, 'window.chia must be the package buildProvider output');
-  assert.match(entry, /DIG_WALLET_REQUEST/, 'entry must relay over the postMessage bridge (DIG_WALLET_REQUEST)');
+  // #73: the entry relays over the HARDENED provider channel — CSPRNG ids, origin-validated
+  // responses, and a bounded id-correlated pending registry (no raw flat postMessage envelope).
+  assert.match(entry, /from ['"]\.\.\/lib\/provider-channel['"]/, 'entry must use the hardened provider-channel');
+  assert.match(entry, /buildRequest/, 'entry must build requests via the channel builder');
+  assert.match(entry, /parseInboundResponse/, 'entry must origin-validate inbound responses');
+  assert.match(entry, /PendingRegistry/, 'entry must correlate responses through the bounded pending registry');
   assert.match(entry, /if \(window\.chia\) return/, 'entry must never clobber an existing provider');
 });
 

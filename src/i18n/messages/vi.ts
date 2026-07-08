@@ -737,4 +737,8 @@ export const vi: Record<string, string> = {
   'wallet.index.next': 'Chỉ số tiếp theo',
   'wallet.index.jump': 'Đi đến chỉ số',
   'wallet.index.error': 'Không thể chuyển chỉ số. Vui lòng thử lại.',
+  'send.poison.title': 'Địa chỉ này trông giống một liên hệ đã lưu',
+  'send.poison.body': 'Nó có phần đầu và phần cuối giống {label} nhưng khác ở giữa — một trò lừa đầu độc địa chỉ đã biết. Hãy kiểm tra từng ký tự trước khi gửi.',
+  'send.poison.ack': 'Tôi đã xác minh từng ký tự của địa chỉ này',
+  'send.firstTime': 'Lần đầu gửi đến địa chỉ này.',
 };
