@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.65.0] - 2026-07-08
+
+### Features
+- Security/provider/signing hardening trio (#73 #74 #75) (#88)
+
 ## [1.64.0] - 2026-07-08
 
 ### Features
