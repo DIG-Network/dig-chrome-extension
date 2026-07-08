@@ -19,6 +19,7 @@ export default defineConfig({
     '**/wallet-switcher.spec.ts',
     '**/home-balance.spec.ts',
     '**/did-create-errors.spec.ts',
+    '**/settings-prefs.spec.ts',
   ],
   fullyParallel: true,
   reporter: 'list',

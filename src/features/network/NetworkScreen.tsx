@@ -1,4 +1,4 @@
-import { FormattedMessage } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { setNetworkView } from '@/features/ui/uiSlice';
@@ -16,6 +16,7 @@ const SEG_OPTIONS = NETWORK_VIEWS.map((v) => ({ value: v, labelId: `network.view
  * `#resolver`/`#shield`/`#control` deep-links still land here on the right sub-view (see tabs.ts).
  */
 export function NetworkScreen() {
+  const intl = useIntl();
   const dispatch = useAppDispatch();
   const networkView = useAppSelector((s) => s.ui.networkView);
   return (
@@ -30,7 +31,7 @@ export function NetworkScreen() {
           value={networkView}
           options={SEG_OPTIONS}
           onChange={(v) => dispatch(setNetworkView(v))}
-          ariaLabel="Network views"
+          ariaLabel={intl.formatMessage({ id: 'network.views.ariaLabel' })}
           idPrefix="network"
         />
       </div>

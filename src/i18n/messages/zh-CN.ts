@@ -11,6 +11,10 @@ export const zhCN: Record<string, string> = {
   'shell.settings': 'DIG 设置',
   'shell.version': '版本 {version}',
   'shell.language': '语言',
+  'shell.theme': '主题',
+  'shell.theme.light': '浅色',
+  'shell.theme.dark': '深色',
+  'shell.theme.system': '跟随系统',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': '首页',
@@ -95,6 +99,14 @@ export const zhCN: Record<string, string> = {
   'custody.autolock.hint': '钱包在闲置这么多分钟后将被锁定。任何钱包操作都会重置计时器。允许范围：{min}–{max} 分钟。',
   'custody.autolock.save': '保存自动锁定设置',
   'custody.autolock.saved': '已保存',
+  'custody.network.label': '网络',
+  'custody.network.hint': '选择余额、活动和读取所使用的 Chia 网络。主网持有真实资金。',
+  'custody.network.mainnet': '主网',
+  'custody.network.testnet': '测试网',
+  'custody.network.confirmPrompt': '切换到{network}？这将改变您的余额和活动所显示的链。',
+  'custody.network.confirmProceed': '切换网络',
+  'custody.network.confirmCancel': '取消',
+  'custody.network.saved': '已保存',
   'custody.soon.activity': '活动记录功能将随自托管转账功能一同推出。',
   'custody.soon.trade': '交易功能将随自托管签名功能一同推出。',
 
@@ -318,6 +330,14 @@ export const zhCN: Record<string, string> = {
   'control.install.cta': '下载 dig-node',
   'control.openFull': '打开完整控制面板',
   'control.getBrowser': '获取 DIG 浏览器',
+  'control.stats': '托管的存储：{hosted} · 已缓存：{cached}',
+  'control.note.default': '您的 dig-node 正在运行 — 您已拥有完整的 DIG 体验：chia:// 内容会在您的计算机上本地解析（更快、更私密，缓存后可离线使用）。如需完整的节点管理，请使用原生 DIG 浏览器。',
+  'control.note.authRequired': '您的 dig-node 正在运行 — 您已拥有完整的 DIG 体验：chia:// 内容会在您的计算机上本地解析。完整的节点管理（托管存储、设置缓存上限、触发同步）需要原生 DIG 浏览器，它可以在您的计算机上授权节点控制。',
+  'control.readFallback.local': '读取通过您的 dig-node 在本地解析 — 私密且快速。',
+  'control.readFallback.hosted': '未检测到本地 dig-node — 扩展程序正通过托管网络（{endpoint}）以只读模式运行。安装 dig-node 以获得完整体验。',
+  'control.install.title': '安装 dig-node 以获得完整体验',
+  'control.install.body': 'DIG 扩展程序在您的计算机上安装并运行 dig-node 时效果最佳 — 这正是解锁完整体验的关键：它会在本地解析 chia:// 内容（更快、更私密，缓存后可离线使用），并让您托管和管理自己的存储。它可在 Windows、macOS 和 Linux 上一步完成安装。没有它，扩展程序仍可使用，但只能通过托管网络（rpc.dig.net）以只读模式运行 — 您无法托管，且每次读取都要经过 DIG 的服务器。',
+  'network.views.ariaLabel': '网络视图',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "收藏品",

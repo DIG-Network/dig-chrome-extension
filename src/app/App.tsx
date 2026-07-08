@@ -11,6 +11,7 @@ import { routeFromHash } from '@/features/ui/uiSlice';
 import { routeToHash } from '@/app/tabs';
 import { installStorageSync } from '@/app/storageSync';
 import { useBackgroundPrefetch } from '@/app/useBackgroundPrefetch';
+import { useAppliedTheme } from '@/app/useAppliedTheme';
 import { publishVersionGlobal } from '@/lib/version';
 import { messagesFor, DEFAULT_LOCALE } from '@/i18n';
 
@@ -41,6 +42,8 @@ function Shell({ surface }: { surface: Surface }) {
 
   // #168 — warm balances/assets/collectibles/activity on unlock + on wallet/index switch.
   useBackgroundPrefetch();
+  // #111 — apply the active theme (light/dark/system) to the document; live for OS-theme changes.
+  useAppliedTheme();
 
   // Boot: publish version (§6.7) + install the storage→store bridge (§3.4).
   useEffect(() => {

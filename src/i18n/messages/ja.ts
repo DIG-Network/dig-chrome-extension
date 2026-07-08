@@ -11,6 +11,10 @@ export const ja: Record<string, string> = {
   'shell.settings': 'DIG設定',
   'shell.version': 'バージョン {version}',
   'shell.language': '言語',
+  'shell.theme': 'テーマ',
+  'shell.theme.light': 'ライト',
+  'shell.theme.dark': 'ダーク',
+  'shell.theme.system': 'システムに合わせる',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'ホーム',
@@ -95,6 +99,14 @@ export const ja: Record<string, string> = {
   'custody.autolock.hint': '指定した分数、操作がない場合にウォレットをロックします。ウォレットの操作があるとタイマーはリセットされます。指定可能な範囲：{min}～{max}分。',
   'custody.autolock.save': '自動ロック設定を保存',
   'custody.autolock.saved': '保存しました',
+  'custody.network.label': 'ネットワーク',
+  'custody.network.hint': '残高・アクティビティ・読み取りに使用する Chia ネットワークを選択します。メインネットには実際の資金があります。',
+  'custody.network.mainnet': 'メインネット',
+  'custody.network.testnet': 'テストネット',
+  'custody.network.confirmPrompt': '{network}に切り替えますか？残高とアクティビティに表示されるチェーンが変わります。',
+  'custody.network.confirmProceed': 'ネットワークを切り替える',
+  'custody.network.confirmCancel': 'キャンセル',
+  'custody.network.saved': '保存しました',
   'custody.soon.activity': 'アクティビティ履歴は、自己管理型の送金機能とあわせて追加予定です。',
   'custody.soon.trade': '取引機能は、自己管理型の署名機能とあわせて追加予定です。',
 
@@ -318,6 +330,14 @@ export const ja: Record<string, string> = {
   'control.install.cta': 'dig-nodeをダウンロード',
   'control.openFull': 'コントロールパネルを開く',
   'control.getBrowser': 'DIG Browserを入手',
+  'control.stats': 'ホストしているストア: {hosted} · キャッシュ済み: {cached}',
+  'control.note.default': 'dig-nodeが実行中です — DIGのフル体験が利用できます：chia://コンテンツはお使いの端末上でローカルに解決されます（より高速、プライベート、キャッシュ後はオフラインでも動作）。フルのノード管理にはネイティブのDIG Browserをご利用ください。',
+  'control.note.authRequired': 'dig-nodeが実行中です — DIGのフル体験が利用できます：chia://コンテンツはお使いの端末上でローカルに解決されます。フルのノード管理（ストアのホスティング、キャッシュ上限の設定、同期の実行）には、お使いの端末でノード制御を許可できるネイティブのDIG Browserが必要です。',
+  'control.readFallback.local': '読み取りはお使いのdig-nodeを通じてローカルに解決されます — プライベートかつ高速です。',
+  'control.readFallback.hosted': 'ローカルのdig-nodeが検出されませんでした — 拡張機能はホストされたネットワーク（{endpoint}）経由で読み取り専用モードで動作しています。フル体験のためにdig-nodeをインストールしてください。',
+  'control.install.title': 'フル体験のためにdig-nodeをインストール',
+  'control.install.body': 'DIG拡張機能は、dig-nodeがお使いの端末にインストールされ、実行中の状態で最も効果を発揮します — これがフル体験を解き放つ鍵です：chia://コンテンツをローカルに解決し（より高速、プライベート、キャッシュ後はオフラインでも動作）、自分のストアをホスト・管理できるようになります。Windows、macOS、Linuxでワンステップでインストールできます。なくても拡張機能は動作しますが、ホストされたネットワーク（rpc.dig.net）経由の読み取り専用モードのみとなります — ホストはできず、すべての読み取りがDIGのサーバーを経由します。',
+  'network.views.ariaLabel': 'ネットワークビュー',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "コレクション",

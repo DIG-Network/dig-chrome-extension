@@ -1,16 +1,22 @@
-import { useIntl } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 import { useAppSelector } from '@/app/hooks';
 import { routeToHash } from '@/app/tabs';
 import { popOutToFullpage } from '@/lib/popout';
 import { hasRuntime } from '@/lib/messaging';
+import { StatusPill } from '@/components/StatusPill';
 import type { Surface } from '@/app/layout';
 
-/** Top header: brand lockup + ⤢ pop-out (popup only) + DIG settings. */
+/**
+ * Top header: brand lockup + a persistent non-mainnet indicator (#108 guardrail — mainnet is real
+ * funds, so a user must never be unsure which network they're viewing, on EITHER surface) + ⤢
+ * pop-out (popup only) + DIG settings.
+ */
 export function AppHeader({ surface }: { surface: Surface }) {
   const intl = useIntl();
   const tab = useAppSelector((s) => s.ui.tab);
   const walletView = useAppSelector((s) => s.ui.walletView);
   const networkView = useAppSelector((s) => s.ui.networkView);
+  const chainNetwork = useAppSelector((s) => s.ui.network);
 
   const openSettings = () => {
     if (!hasRuntime()) return;
@@ -24,6 +30,11 @@ export function AppHeader({ surface }: { surface: Surface }) {
         <span className="dig-brand-dot" aria-hidden="true" />
         <h1>{intl.formatMessage({ id: 'shell.title' })}</h1>
       </div>
+      {chainNetwork !== 'mainnet' && (
+        <StatusPill tone="warn" testid="network-badge">
+          <FormattedMessage id="custody.network.testnet" />
+        </StatusPill>
+      )}
       <span className="dig-spacer" />
       {surface === 'popup' && (
         <button

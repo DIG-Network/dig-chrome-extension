@@ -1,6 +1,7 @@
-import { useIntl } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 import { AppFooter } from '@/components/AppFooter';
 import { TabBar } from '@/components/TabBar';
+import { StatusPill } from '@/components/StatusPill';
 import { ActiveTabPanel } from '@/app/ActiveTabPanel';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { setTab } from '@/features/ui/uiSlice';
@@ -20,6 +21,7 @@ export function ExpandedLayout({ surface }: { surface: Surface }) {
   const tab = useAppSelector((s) => s.ui.tab);
   const walletView = useAppSelector((s) => s.ui.walletView);
   const networkView = useAppSelector((s) => s.ui.networkView);
+  const chainNetwork = useAppSelector((s) => s.ui.network);
 
   const openSettings = () => {
     if (!hasRuntime()) return;
@@ -33,6 +35,16 @@ export function ExpandedLayout({ surface }: { surface: Surface }) {
           <span className="dig-brand-dot" aria-hidden="true" />
           {intl.formatMessage({ id: 'shell.title' })}
         </div>
+        {/* #108 guardrail: mainnet is real funds — a persistent non-mainnet indicator on EVERY
+            surface. This sidebar does NOT render AppHeader (the compact layout's header), so it
+            needs its own copy of the badge. */}
+        {chainNetwork !== 'mainnet' && (
+          <div style={{ padding: '0 10px 12px' }}>
+            <StatusPill tone="warn" testid="network-badge">
+              <FormattedMessage id="custody.network.testnet" />
+            </StatusPill>
+          </div>
+        )}
         <TabBar active={tab} onSelect={(t) => dispatch(setTab(t))} orientation="sidebar" />
         <span style={{ flex: 1 }} />
         {surface === 'popup' && (
