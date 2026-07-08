@@ -48,13 +48,16 @@ export function ControlTab() {
                   <div className="dig-row" data-testid="control-stats">
                     <div className="dig-row-main">
                       <div className="dig-muted">
-                        Hosted stores: {String(vm.stats.hostedStores)} · Cached: {String(vm.stats.cachedCapsules)}
+                        <FormattedMessage
+                          id="control.stats"
+                          values={{ hosted: String(vm.stats.hostedStores), cached: String(vm.stats.cachedCapsules) }}
+                        />
                       </div>
                     </div>
                   </div>
                 )}
                 <p className="dig-muted" data-testid="control-manage-note">
-                  {vm.note}
+                  {vm.noteId && <FormattedMessage id={vm.noteId} />}
                 </p>
                 <ExternalLink href={DIG_BROWSER_URL} className="dig-btn dig-btn--block" testid="control-get-browser" closePopup>
                   <FormattedMessage id="control.getBrowser" />
@@ -62,9 +65,11 @@ export function ControlTab() {
               </>
             ) : (
               <>
-                <p style={{ fontWeight: 600, margin: '0 0 4px' }}>{vm.install.title}</p>
+                <p style={{ fontWeight: 600, margin: '0 0 4px' }}>
+                  <FormattedMessage id={vm.install.titleId} />
+                </p>
                 <p className="dig-muted" data-testid="control-install-note">
-                  {vm.install.body}
+                  <FormattedMessage id={vm.install.bodyId} />
                 </p>
                 <ExternalLink href={vm.install.installUrl} className="dig-btn dig-btn--primary dig-btn--block" testid="control-install" closePopup>
                   <FormattedMessage id="control.install.cta" />
@@ -72,7 +77,7 @@ export function ControlTab() {
               </>
             )}
             <p className="dig-muted" data-testid="control-read-fallback" style={{ marginTop: 12 }}>
-              {vm.readFallbackLine}
+              <FormattedMessage id={vm.readFallback.id} values={vm.readFallback.values} />
             </p>
           </div>
         )}

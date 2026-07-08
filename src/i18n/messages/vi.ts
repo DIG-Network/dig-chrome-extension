@@ -11,6 +11,10 @@ export const vi: Record<string, string> = {
   'shell.settings': 'Cài đặt DIG',
   'shell.version': 'Phiên bản {version}',
   'shell.language': 'Ngôn ngữ',
+  'shell.theme': 'Giao diện',
+  'shell.theme.light': 'Sáng',
+  'shell.theme.dark': 'Tối',
+  'shell.theme.system': 'Theo hệ thống',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Trang chủ',
@@ -95,6 +99,14 @@ export const vi: Record<string, string> = {
   'custody.autolock.hint': 'Khóa ví sau số phút không hoạt động này. Bất kỳ hoạt động nào của ví sẽ đặt lại bộ đếm thời gian. Phạm vi cho phép: {min}–{max} phút.',
   'custody.autolock.save': 'Lưu cài đặt tự động khóa',
   'custody.autolock.saved': 'Đã lưu',
+  'custody.network.label': 'Mạng',
+  'custody.network.hint': 'Chọn mạng Chia mà số dư, hoạt động và dữ liệu đọc của bạn sử dụng. Mạng chính chứa tiền thật.',
+  'custody.network.mainnet': 'Mạng chính',
+  'custody.network.testnet': 'Mạng thử nghiệm',
+  'custody.network.confirmPrompt': 'Chuyển sang {network}? Thao tác này sẽ đổi chuỗi hiển thị trong số dư và hoạt động của bạn.',
+  'custody.network.confirmProceed': 'Chuyển mạng',
+  'custody.network.confirmCancel': 'Hủy',
+  'custody.network.saved': 'Đã lưu',
   'custody.soon.activity': 'Lịch sử hoạt động sẽ có cùng với tính năng gửi tự quản lý.',
   'custody.soon.trade': 'Tính năng giao dịch sẽ có cùng với việc ký tự quản lý.',
 
@@ -330,6 +342,14 @@ export const vi: Record<string, string> = {
   'control.install.cta': 'Tải xuống dig-node',
   'control.openFull': 'Mở Bảng điều khiển đầy đủ',
   'control.getBrowser': 'Tải Trình duyệt DIG',
+  'control.stats': 'Kho lưu trữ được host: {hosted} · Đã lưu đệm: {cached}',
+  'control.note.default': 'dig-node của bạn đang chạy — bạn có trải nghiệm DIG đầy đủ: nội dung chia:// được phân giải cục bộ trên máy của bạn (nhanh hơn, riêng tư, hoạt động ngoại tuyến sau khi lưu đệm). Để quản lý node đầy đủ, hãy dùng DIG Browser gốc.',
+  'control.note.authRequired': 'dig-node của bạn đang chạy — bạn có trải nghiệm DIG đầy đủ: nội dung chia:// được phân giải cục bộ trên máy của bạn. Quản lý node đầy đủ (host kho lưu trữ, đặt giới hạn bộ đệm, kích hoạt đồng bộ) cần DIG Browser gốc, ứng dụng có thể ủy quyền kiểm soát node trên máy của bạn.',
+  'control.readFallback.local': 'Việc đọc được phân giải cục bộ qua dig-node của bạn — riêng tư và nhanh.',
+  'control.readFallback.hosted': 'Không phát hiện dig-node cục bộ — tiện ích mở rộng đang chạy ở chế độ chỉ đọc qua mạng được host ({endpoint}). Cài đặt dig-node để có trải nghiệm đầy đủ.',
+  'control.install.title': 'Cài đặt dig-node để có trải nghiệm đầy đủ',
+  'control.install.body': 'Tiện ích mở rộng DIG hoạt động tốt nhất khi dig-node được cài đặt và ĐANG CHẠY trên máy của bạn — đó chính là điều mở khóa trải nghiệm đầy đủ: nó phân giải nội dung chia:// cục bộ (nhanh hơn, riêng tư, hoạt động ngoại tuyến sau khi lưu đệm) và cho phép bạn host cũng như quản lý kho lưu trữ của riêng mình. Cài đặt chỉ trong một bước trên Windows, macOS và Linux. Nếu không có nó, tiện ích mở rộng vẫn hoạt động, nhưng chỉ ở chế độ chỉ đọc qua mạng được host (rpc.dig.net) — bạn không thể host, và mọi lượt đọc đều đi qua máy chủ của DIG.',
+  'network.views.ariaLabel': 'Chế độ xem mạng',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Bộ sưu tập",

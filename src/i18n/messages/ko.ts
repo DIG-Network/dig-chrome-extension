@@ -11,6 +11,10 @@ export const ko: Record<string, string> = {
   'shell.settings': 'DIG 설정',
   'shell.version': '버전 {version}',
   'shell.language': '언어',
+  'shell.theme': '테마',
+  'shell.theme.light': '라이트',
+  'shell.theme.dark': '다크',
+  'shell.theme.system': '시스템 설정',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': '홈',
@@ -95,6 +99,14 @@ export const ko: Record<string, string> = {
   'custody.autolock.hint': '이 분수만큼 활동이 없으면 지갑이 잠깁니다. 지갑 활동이 있으면 타이머가 초기화됩니다. 허용 범위: {min}~{max}분.',
   'custody.autolock.save': '자동 잠금 저장',
   'custody.autolock.saved': '저장됨',
+  'custody.network.label': '네트워크',
+  'custody.network.hint': '잔액, 활동, 읽기에 사용할 Chia 네트워크를 선택하세요. 메인넷에는 실제 자금이 있습니다.',
+  'custody.network.mainnet': '메인넷',
+  'custody.network.testnet': '테스트넷',
+  'custody.network.confirmPrompt': '{network}(으)로 전환하시겠습니까? 잔액과 활동에 표시되는 체인이 변경됩니다.',
+  'custody.network.confirmProceed': '네트워크 전환',
+  'custody.network.confirmCancel': '취소',
+  'custody.network.saved': '저장됨',
   'custody.soon.activity': '활동 내역은 자가 보관 방식의 전송 기능과 함께 제공될 예정입니다.',
   'custody.soon.trade': '거래 기능은 자가 보관 방식의 서명 기능과 함께 제공될 예정입니다.',
 
@@ -330,6 +342,14 @@ export const ko: Record<string, string> = {
   'control.install.cta': 'dig-node 다운로드',
   'control.openFull': '전체 제어판 열기',
   'control.getBrowser': 'DIG Browser 다운로드',
+  'control.stats': '호스팅된 스토어: {hosted} · 캐시됨: {cached}',
+  'control.note.default': 'dig-node가 실행 중입니다 — 이제 완전한 DIG 경험을 이용할 수 있습니다: chia:// 콘텐츠가 사용자의 기기에서 로컬로 해석됩니다(더 빠르고, 더 사적이며, 캐시된 후에는 오프라인에서도 작동). 전체 노드 관리를 하려면 네이티브 DIG Browser를 사용하세요.',
+  'control.note.authRequired': 'dig-node가 실행 중입니다 — 이제 완전한 DIG 경험을 이용할 수 있습니다: chia:// 콘텐츠가 사용자의 기기에서 로컬로 해석됩니다. 전체 노드 관리(스토어 호스팅, 캐시 상한 설정, 동기화 실행)는 사용자의 기기에서 노드 제어를 승인할 수 있는 네이티브 DIG Browser가 필요합니다.',
+  'control.readFallback.local': '읽기는 사용자의 dig-node를 통해 로컬로 해석됩니다 — 사적이고 빠릅니다.',
+  'control.readFallback.hosted': '로컬 dig-node가 감지되지 않았습니다 — 확장 프로그램이 호스팅 네트워크({endpoint})를 통해 읽기 전용 모드로 실행 중입니다. 완전한 경험을 위해 dig-node를 설치하세요.',
+  'control.install.title': '완전한 경험을 위해 dig-node를 설치하세요',
+  'control.install.body': 'DIG 확장 프로그램은 dig-node가 사용자의 기기에 설치되어 실행 중일 때 가장 잘 작동합니다 — 이것이 완전한 경험을 여는 열쇠입니다: chia:// 콘텐츠를 로컬로 해석하고(더 빠르고, 더 사적이며, 캐시된 후에는 오프라인에서도 작동), 자신의 스토어를 호스팅하고 관리할 수 있게 해줍니다. Windows, macOS, Linux에서 한 번에 설치됩니다. 이것이 없어도 확장 프로그램은 계속 작동하지만, 호스팅 네트워크(rpc.dig.net)를 통한 읽기 전용 모드로만 작동합니다 — 호스팅할 수 없으며, 모든 읽기가 DIG의 서버를 거칩니다.',
+  'network.views.ariaLabel': '네트워크 보기',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "컬렉션",

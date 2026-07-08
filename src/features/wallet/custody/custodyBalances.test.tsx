@@ -7,6 +7,7 @@ import { CustodyWallet } from '@/features/wallet/custody/CustodyWallet';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
+import { NetworkSetting } from '@/features/wallet/custody/NetworkSetting';
 import { readWalletSettings, updateWalletSettings } from '@/features/wallet/custody/settings';
 
 function mockSw(router: (m: { action: string }) => unknown) {
@@ -123,6 +124,14 @@ describe('CustodyWallet', () => {
     expect(await screen.findByTestId('derived-addresses')).toBeInTheDocument();
     expect(await screen.findByTestId('derived-address-unhardened-0')).toBeInTheDocument();
   });
+
+  it('shows the network switcher in advanced mode (#108)', async () => {
+    mockSw((m) => (m.action === 'getReceiveAddress' ? { address: 'xch1receive' } : { balances: { xch: 0, cats: {} } }));
+    const store = createStore();
+    store.dispatch(setAdvanced(true));
+    renderWithProviders(<CustodyWallet />, { store });
+    expect(await screen.findByTestId('network-setting')).toBeInTheDocument();
+  });
 });
 
 describe('PrivacyNote', () => {
@@ -142,6 +151,39 @@ describe('ChainNodeSetting', () => {
     fireEvent.change(screen.getByTestId('chain-node-input'), { target: { value: 'https://my.node/rpc' } });
     fireEvent.click(screen.getByTestId('chain-node-save'));
     await waitFor(async () => expect((await readWalletSettings()).chainRpcUrl).toBe('https://my.node/rpc'));
+  });
+});
+
+describe('NetworkSetting (#108)', () => {
+  it('defaults to mainnet, requires confirmation before switching, and persists on confirm', async () => {
+    const store = createStore();
+    renderWithProviders(<NetworkSetting />, { store });
+    expect(await screen.findByTestId('network-select')).toHaveValue('mainnet');
+
+    fireEvent.change(screen.getByTestId('network-select'), { target: { value: 'testnet' } });
+    // Not persisted yet — the guardrail requires an explicit confirm (mainnet is real funds).
+    expect(await screen.findByTestId('network-confirm')).toBeInTheDocument();
+    expect((await readWalletSettings()).network).toBeUndefined();
+
+    fireEvent.click(screen.getByTestId('network-confirm-proceed'));
+    await waitFor(async () => expect((await readWalletSettings()).network).toBe('testnet'));
+    expect(store.getState().ui.network).toBe('testnet');
+    expect(screen.queryByTestId('network-confirm')).not.toBeInTheDocument();
+  });
+
+  it('cancelling the confirmation leaves the network unchanged', async () => {
+    renderWithProviders(<NetworkSetting />);
+    fireEvent.change(await screen.findByTestId('network-select'), { target: { value: 'testnet' } });
+    fireEvent.click(await screen.findByTestId('network-confirm-cancel'));
+    expect(screen.queryByTestId('network-confirm')).not.toBeInTheDocument();
+    expect(screen.getByTestId('network-select')).toHaveValue('mainnet');
+    expect((await readWalletSettings()).network).toBeUndefined();
+  });
+
+  it('loads a previously persisted testnet selection', async () => {
+    await updateWalletSettings({ network: 'testnet' });
+    renderWithProviders(<NetworkSetting />);
+    expect(await screen.findByTestId('network-select')).toHaveValue('testnet');
   });
 });
 

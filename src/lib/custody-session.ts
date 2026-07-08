@@ -10,6 +10,8 @@
  * the TTL lapsed?) and never touches key material.
  */
 
+import { resolveNetwork } from '@/lib/network';
+
 /** `chrome.storage.local` key holding the encrypted DIGWX1 keystore blob (the only at-rest secret). */
 export const KEYSTORE_KEY = 'wallet.keystore';
 /** `chrome.storage.local` key: the durable settings blob (unlock TTL, fee default, overrides…). */
@@ -32,20 +34,28 @@ export const BALANCES_CACHE_KEY = 'walletCache.balances';
  * with the heavy `includeSpent: true` coinset reconstruction it cached). */
 export const ACTIVITY_LOG_KEY = 'wallet.activityLog';
 
-/** The default public coinset chain source (extensions bypass its CORS). */
+/** The default public coinset chain source (extensions bypass its CORS). Mainnet — see `resolveNetwork`. */
 export const DEFAULT_COINSET_URL = 'https://api.coinset.org';
 
 /** The persisted self-custody settings blob (all fields optional / user-configurable). */
 export interface CustodySettings {
   chainRpcUrl?: string;
   unlockTtlMinutes?: number;
+  /** Active chain network (#108): 'mainnet' | 'testnet'. Missing/unrecognized → mainnet. */
+  network?: string;
   [key: string]: unknown;
 }
 
-/** Resolve the chain RPC URL: an explicit `settings.chainRpcUrl` override wins, else coinset.org. */
+/**
+ * Resolve the chain RPC URL: an explicit `settings.chainRpcUrl` override ALWAYS wins (§5.3 — a
+ * user's own node); absent that, the selected network's default coinset endpoint applies (#108) —
+ * `DEFAULT_COINSET_URL` (mainnet) when `network` is missing/unrecognized, so this is unchanged
+ * back-compat behavior for every caller that predates the network switcher.
+ */
 export function resolveCoinsetUrl(settings?: CustodySettings | null): string {
   const url = settings && typeof settings.chainRpcUrl === 'string' ? settings.chainRpcUrl.trim() : '';
-  return url || DEFAULT_COINSET_URL;
+  if (url) return url;
+  return resolveNetwork(settings?.network).coinsetUrl;
 }
 
 /**

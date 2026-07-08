@@ -21,6 +21,7 @@ export default defineConfig({
     '**/did-create-errors.spec.ts',
     '**/send-receive-trio.spec.ts',
     '**/qr-scanner-camera.spec.ts',
+    '**/settings-prefs.spec.ts',
   ],
   fullyParallel: true,
   reporter: 'list',

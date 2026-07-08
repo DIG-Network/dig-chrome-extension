@@ -8,6 +8,8 @@ import {
   closeApp,
   setLocale,
   setAdvanced,
+  setTheme,
+  setChainNetwork,
   routeFromHash,
   settingsHydrated,
 } from '@/features/ui/uiSlice';
@@ -45,6 +47,22 @@ describe('uiSlice', () => {
     expect(uiReducer(initial(), setAdvanced(true)).advanced).toBe(true);
   });
 
+  it('defaults theme to "system" and validates, ignoring unsupported (#111)', () => {
+    expect(initial().theme).toBe('system');
+    let s = uiReducer(initial(), setTheme('dark'));
+    expect(s.theme).toBe('dark');
+    s = uiReducer(s, setTheme('neon' as never));
+    expect(s.theme).toBe('system');
+  });
+
+  it('defaults network to "mainnet" and validates, ignoring unsupported (#108)', () => {
+    expect(initial().network).toBe('mainnet');
+    let s = uiReducer(initial(), setChainNetwork('testnet'));
+    expect(s.network).toBe('testnet');
+    s = uiReducer(s, setChainNetwork('devnet' as never));
+    expect(s.network).toBe('mainnet');
+  });
+
   it('hydrates route from a hash', () => {
     const s = uiReducer(initial(), routeFromHash('#wallet/activity'));
     expect(s).toMatchObject({ tab: 'wallet', walletView: 'activity' });
@@ -57,5 +75,14 @@ describe('uiSlice', () => {
     expect(s).toMatchObject({ locale: 'de', advanced: true });
     s = uiReducer(s, settingsHydrated({ locale: 'zzz' }));
     expect(s.locale).toBe('de');
+  });
+
+  it('merges persisted theme + network, ignoring bad/absent values (#111, #108)', () => {
+    let s = uiReducer(initial(), settingsHydrated({ theme: 'dark', network: 'testnet' }));
+    expect(s).toMatchObject({ theme: 'dark', network: 'testnet' });
+    s = uiReducer(s, settingsHydrated(undefined));
+    expect(s).toMatchObject({ theme: 'dark', network: 'testnet' });
+    s = uiReducer(s, settingsHydrated({ theme: 'neon', network: 'devnet' } as never));
+    expect(s).toMatchObject({ theme: 'dark', network: 'testnet' });
   });
 });

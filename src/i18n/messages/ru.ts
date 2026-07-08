@@ -11,6 +11,10 @@ export const ru: Record<string, string> = {
   'shell.settings': 'Настройки DIG',
   'shell.version': 'Версия {version}',
   'shell.language': 'Язык',
+  'shell.theme': 'Тема',
+  'shell.theme.light': 'Светлая',
+  'shell.theme.dark': 'Тёмная',
+  'shell.theme.system': 'Как в системе',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Главная',
@@ -95,6 +99,14 @@ export const ru: Record<string, string> = {
   'custody.autolock.hint': 'Кошелёк будет заблокирован после указанного числа минут бездействия. Любая активность в кошельке сбрасывает таймер. Допустимый диапазон: {min}–{max} мин.',
   'custody.autolock.save': 'Сохранить автоблокировку',
   'custody.autolock.saved': 'Сохранено',
+  'custody.network.label': 'Сеть',
+  'custody.network.hint': 'Выберите сеть Chia, которую используют ваши балансы, активность и чтение данных. Мейннет содержит реальные средства.',
+  'custody.network.mainnet': 'Мейннет',
+  'custody.network.testnet': 'Тестнет',
+  'custody.network.confirmPrompt': 'Переключиться на {network}? Это изменит сеть, в которой отображаются ваши балансы и активность.',
+  'custody.network.confirmProceed': 'Переключить сеть',
+  'custody.network.confirmCancel': 'Отмена',
+  'custody.network.saved': 'Сохранено',
   'custody.soon.activity': 'История активности появится вместе с отправкой из некастодиального кошелька.',
   'custody.soon.trade': 'Обмен появится вместе с подписанием в некастодиальном кошельке.',
 
@@ -330,6 +342,14 @@ export const ru: Record<string, string> = {
   'control.install.cta': 'Скачать dig-node',
   'control.openFull': 'Открыть полную панель управления',
   'control.getBrowser': 'Получить браузер DIG',
+  'control.stats': 'Размещённые хранилища: {hosted} · В кэше: {cached}',
+  'control.note.default': 'Ваш dig-node запущен — вам доступен полный опыт DIG: содержимое chia:// разрешается локально на вашем устройстве (быстрее, приватнее, работает офлайн после кэширования). Для полного управления узлом используйте нативный DIG Browser.',
+  'control.note.authRequired': 'Ваш dig-node запущен — вам доступен полный опыт DIG: содержимое chia:// разрешается локально на вашем устройстве. Для полного управления узлом (размещение хранилищ, установка лимита кэша, запуск синхронизации) нужен нативный DIG Browser, который может авторизовать управление узлом на вашем устройстве.',
+  'control.readFallback.local': 'Чтение выполняется локально через ваш dig-node — приватно и быстро.',
+  'control.readFallback.hosted': 'Локальный dig-node не обнаружен — расширение работает в режиме только для чтения через размещённую сеть ({endpoint}). Установите dig-node для полного опыта.',
+  'control.install.title': 'Установите dig-node для полного опыта',
+  'control.install.body': 'Расширение DIG работает лучше всего, когда dig-node установлен и ЗАПУЩЕН на вашем устройстве — именно это открывает полный опыт: оно разрешает содержимое chia:// локально (быстрее, приватнее, работает офлайн после кэширования) и позволяет вам размещать и управлять собственными хранилищами. Устанавливается в один шаг на Windows, macOS и Linux. Без него расширение всё равно работает, но только в режиме только для чтения через размещённую сеть (rpc.dig.net) — вы не можете размещать хранилища, и каждое чтение проходит через серверы DIG.',
+  'network.views.ariaLabel': 'Виды сети',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Коллекция",

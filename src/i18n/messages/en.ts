@@ -12,6 +12,11 @@ export const en: Record<string, string> = {
   'shell.settings': 'DIG settings',
   'shell.version': 'Version {version}',
   'shell.language': 'Language',
+  // ── theme (#111) ──
+  'shell.theme': 'Theme',
+  'shell.theme.light': 'Light',
+  'shell.theme.dark': 'Dark',
+  'shell.theme.system': 'System',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Home',
@@ -97,6 +102,15 @@ export const en: Record<string, string> = {
   'custody.autolock.hint': 'Lock the wallet after this many minutes of inactivity. Any wallet activity resets the timer. Allowed range: {min}–{max} minutes.',
   'custody.autolock.save': 'Save auto-lock',
   'custody.autolock.saved': 'Saved',
+  // network switcher (#108) — mainnet is real funds, so switching requires an explicit confirm
+  'custody.network.label': 'Network',
+  'custody.network.hint': 'Choose which Chia network your balances, activity, and reads use. Mainnet holds real funds.',
+  'custody.network.mainnet': 'Mainnet',
+  'custody.network.testnet': 'Testnet',
+  'custody.network.confirmPrompt': 'Switch to {network}? This changes which chain your balances and activity show.',
+  'custody.network.confirmProceed': 'Switch network',
+  'custody.network.confirmCancel': 'Cancel',
+  'custody.network.saved': 'Saved',
   'custody.soon.activity': 'Activity history is coming with self-custody sending.',
   'custody.soon.trade': 'Trading is coming with self-custody signing.',
 
@@ -337,6 +351,20 @@ export const en: Record<string, string> = {
   'control.install.cta': 'Download the dig-node',
   'control.openFull': 'Open the full Control Panel',
   'control.getBrowser': 'Get the DIG Browser',
+  // Control-tab prose, externalized (#82) — was hardcoded in dig-control.ts / ControlTab.tsx.
+  'control.stats': 'Hosted stores: {hosted} · Cached: {cached}',
+  'control.note.default':
+    'Your dig-node is running — you have the full DIG experience: chia:// content resolves locally on your machine (faster, private, works offline once cached). For full node management, use the native DIG Browser.',
+  'control.note.authRequired':
+    'Your dig-node is running — you have the full DIG experience: chia:// content resolves locally on your machine. Full node management (host stores, set the cache cap, trigger sync) needs the native DIG Browser, which can authorize node control on your machine.',
+  'control.readFallback.local': 'Reads resolve locally through your dig-node — private and fast.',
+  'control.readFallback.hosted':
+    'No local dig-node detected — the extension is running in read-only mode through the hosted network ({endpoint}). Install the dig-node for the full experience.',
+  'control.install.title': 'Install the dig-node for the full experience',
+  'control.install.body':
+    'The DIG extension works best with the dig-node installed and RUNNING on your machine — that is what unlocks the full experience: it resolves chia:// content locally (faster, private, works offline once cached) and lets you host and manage your own stores. It installs in one step on Windows, macOS, and Linux. Without it the extension still works, but only in read-only mode through the hosted network (rpc.dig.net) — you can’t host, and every read goes through DIG’s servers.',
+  // Network screen's segmented control aria-label (#82) — was a hardcoded literal in NetworkScreen.tsx.
+  'network.views.ariaLabel': 'Network views',
 
   // ── collectibles (NFTs) ──
   'collectibles.title': 'Collectibles',

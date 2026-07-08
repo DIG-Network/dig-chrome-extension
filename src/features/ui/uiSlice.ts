@@ -9,6 +9,8 @@ import {
   type NetworkView,
 } from '@/app/tabs';
 import { DEFAULT_LOCALE, isSupportedLocale } from '@/i18n/locales';
+import { DEFAULT_THEME_MODE, isThemeMode, type ThemeMode } from '@/lib/theme';
+import { DEFAULT_NETWORK_ID, isNetworkId, type NetworkId } from '@/lib/network';
 
 /** Cross-document client UI state (route + prefs), kept in sync via the storage bridge. */
 export interface UiState {
@@ -20,6 +22,10 @@ export interface UiState {
   locale: string;
   /** Tier-3 "Advanced/Pro" disclosure toggle (persisted to `wallet.settings.advanced`). */
   advanced: boolean;
+  /** Active theme mode (#111, persisted to `wallet.settings.theme`); `system` follows the OS. */
+  theme: ThemeMode;
+  /** Active chain network (#108, persisted to `wallet.settings.network`). Mainnet is real funds. */
+  network: NetworkId;
   /** The dApp opened in the in-window app-view (mobile-OS "app launch"), else null. Ephemeral. */
   openApp: OpenApp | null;
 }
@@ -35,11 +41,22 @@ export interface OpenApp {
 interface PersistedSettings {
   locale?: string;
   advanced?: boolean;
+  theme?: string;
+  network?: string;
 }
 
 function initialState(): UiState {
   const route = resolveRoute(typeof location !== 'undefined' ? location.hash : '');
-  return { tab: route.tab, walletView: route.walletView, networkView: route.networkView, locale: DEFAULT_LOCALE, advanced: false, openApp: null };
+  return {
+    tab: route.tab,
+    walletView: route.walletView,
+    networkView: route.networkView,
+    locale: DEFAULT_LOCALE,
+    advanced: false,
+    theme: DEFAULT_THEME_MODE,
+    network: DEFAULT_NETWORK_ID,
+    openApp: null,
+  };
 }
 
 const uiSlice = createSlice({
@@ -69,6 +86,14 @@ const uiSlice = createSlice({
     setAdvanced(state, action: PayloadAction<boolean>) {
       state.advanced = action.payload;
     },
+    /** Set the active theme mode (#111), ignoring an unrecognized value (falls back to system). */
+    setTheme(state, action: PayloadAction<ThemeMode>) {
+      state.theme = isThemeMode(action.payload) ? action.payload : DEFAULT_THEME_MODE;
+    },
+    /** Set the active chain network (#108), ignoring an unrecognized value (falls back to mainnet). */
+    setChainNetwork(state, action: PayloadAction<NetworkId>) {
+      state.network = isNetworkId(action.payload) ? action.payload : DEFAULT_NETWORK_ID;
+    },
     /** Hydrate route from a `location.hash` (on mount + on hashchange). */
     routeFromHash(state, action: PayloadAction<string>) {
       const route = resolveRoute(action.payload);
@@ -82,12 +107,25 @@ const uiSlice = createSlice({
       if (!s) return;
       if (typeof s.locale === 'string' && isSupportedLocale(s.locale)) state.locale = s.locale;
       if (typeof s.advanced === 'boolean') state.advanced = s.advanced;
+      if (isThemeMode(s.theme)) state.theme = s.theme;
+      if (isNetworkId(s.network)) state.network = s.network;
     },
   },
 });
 
-export const { setTab, setWalletView, setNetworkView, setOpenApp, closeApp, setLocale, setAdvanced, routeFromHash, settingsHydrated } =
-  uiSlice.actions;
+export const {
+  setTab,
+  setWalletView,
+  setNetworkView,
+  setOpenApp,
+  closeApp,
+  setLocale,
+  setAdvanced,
+  setTheme,
+  setChainNetwork,
+  routeFromHash,
+  settingsHydrated,
+} = uiSlice.actions;
 export const uiReducer = uiSlice.reducer;
 
 export { DEFAULT_TAB, DEFAULT_WALLET_VIEW, DEFAULT_NETWORK_VIEW };

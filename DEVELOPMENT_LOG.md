@@ -3,6 +3,17 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## `CompactLayout` and `ExpandedLayout` do NOT share a header — a "global" indicator must be added to BOTH (#108)
+
+The popup/narrow-`app.html` surface (`CompactLayout`) renders `AppHeader`; the wide `app.html`
+(≥960px, `ExpandedLayout`) has its OWN hand-rolled sidebar (brand + tab list + settings/pop-out) and
+never mounts `AppHeader` at all. Adding the #108 non-mainnet "Testnet" badge only to `AppHeader`
+left it silently missing from the fullscreen surface — a real gap the unit suite didn't catch
+(`chrome-ui.test.tsx` only renders `AppHeader` in isolation) but the Playwright screenshot pass did
+(a fullscreen `network-badge` assertion timed out). Any future "show this everywhere" chrome
+(banners, badges, status indicators) needs an explicit check-in-both-layouts step — grep both
+`CompactLayout.tsx` and `ExpandedLayout.tsx`, don't assume one header component covers every surface.
+
 ## `aria-hidden` on a wrapper swallows a child's `role="img"` + `aria-label` (#157)
 
 Wrapping an inline brand SVG in `<div aria-hidden="true"><svg role="img" aria-label="…">…</svg></div>`

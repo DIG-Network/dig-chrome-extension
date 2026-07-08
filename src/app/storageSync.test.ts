@@ -19,6 +19,19 @@ describe('installStorageSync', () => {
     cleanup();
   });
 
+  it('hydrates theme + network (#111, #108) and follows later changes', async () => {
+    await chrome.storage.local.set({ 'wallet.settings': { theme: 'dark', network: 'testnet' } });
+    const store = createStore();
+    const cleanup = await installStorageSync(store);
+    expect(store.getState().ui.theme).toBe('dark');
+    expect(store.getState().ui.network).toBe('testnet');
+
+    emitChange({ 'wallet.settings': { newValue: { theme: 'light', network: 'mainnet' } } });
+    expect(store.getState().ui.theme).toBe('light');
+    expect(store.getState().ui.network).toBe('mainnet');
+    cleanup();
+  });
+
   it('ignores non-local/session areas and unrelated keys without throwing', async () => {
     const store = createStore();
     const cleanup = await installStorageSync(store);
