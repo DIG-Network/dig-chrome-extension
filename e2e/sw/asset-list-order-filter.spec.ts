@@ -13,9 +13,10 @@ import { existsSync, readFileSync } from 'node:fs';
  * the two price sources (CoinGecko + `api.dexie.space/v2`) are mocked via Playwright routing so the
  * value-based ordering is fully reproducible.
  *
- * Holdings: XCH (hero, always first) + $DIG (10, $5) + AAA (5, $50 — highest) + BBB (2, $2) + an
- * unregistered CAT (a huge raw amount but genuinely unpriced — must still sort LAST). Expected order
- * beneath XCH: AAA, $DIG, BBB, unregistered.
+ * Holdings: XCH (hero, always first) + $DIG (10, $5 — ALWAYS pinned second per #202, regardless of
+ * value) + AAA (5, $50 — highest of the rest) + BBB (2, $2) + an unregistered CAT (a huge raw amount
+ * but genuinely unpriced — must still sort LAST). Expected order beneath XCH: $DIG, AAA, BBB,
+ * unregistered.
  *
  * Run: `npm run build && npm run test:sw`.
  */
@@ -117,12 +118,12 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-test('the Assets list sorts by value: XCH first, then AAA ($50) > $DIG ($5) > BBB ($2) > the unpriced CAT last', async () => {
+test('the Assets list sorts: XCH first, $DIG ALWAYS second, then AAA ($50) > BBB ($2) > the unpriced CAT last', async () => {
   const page = await openWallet();
   await expect(page.getByTestId(`asset-cat-${CAT_A}`)).toBeVisible({ timeout: 25_000 });
 
   const testids = await page.getByTestId('custody-assets').locator('.dig-asset').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
-  expect(testids).toEqual(['asset-xch', `asset-cat-${CAT_A}`, 'asset-dig', `asset-cat-${CAT_B}`, `asset-cat-${CAT_U}`]);
+  expect(testids).toEqual(['asset-xch', 'asset-dig', `asset-cat-${CAT_A}`, `asset-cat-${CAT_B}`, `asset-cat-${CAT_U}`]);
   await page.close();
 });
 

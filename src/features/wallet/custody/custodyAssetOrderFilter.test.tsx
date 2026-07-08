@@ -12,6 +12,9 @@ import { DIG_ASSET_ID } from '@/lib/links';
  * REAL wired `CustodyWallet` (the SW seam + both public price/registry fetches mocked), same harness
  * as `custodyPrices.test.tsx`. Fast jsdom-level proof that the wiring is correct; the built-extension
  * Playwright spec (`e2e/sw/asset-list-order-filter.spec.ts`) proves the same behavior end-to-end.
+ *
+ * #202 revised the pinned order: XCH first, $DIG ALWAYS second (regardless of value), then the
+ * remaining CATs by descending USD value.
  */
 
 const CAT_A = 'a'.repeat(64); // registry: ticker "AAA" — ends up the highest-value row
@@ -87,14 +90,14 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe('CustodyWallet — value-ordered + filterable Assets list (#167)', () => {
-  it('keeps XCH first and sorts the rest by descending USD value (AAA $50 > DIG $5 > BBB $2 > unpriced CAT last)', async () => {
+describe('CustodyWallet — value-ordered + filterable Assets list (#167, pin order per #202)', () => {
+  it('keeps XCH first, $DIG pinned second, then sorts the rest by descending USD value (AAA $50 > BBB $2 > unpriced CAT last)', async () => {
     renderWithProviders(<CustodyWallet />);
     await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
 
     const rows = screen.getByTestId('custody-assets').querySelectorAll('.dig-asset');
     const testids = [...rows].map((r) => r.getAttribute('data-testid'));
-    expect(testids).toEqual(['asset-xch', `asset-cat-${CAT_A}`, 'asset-dig', `asset-cat-${CAT_B}`, `asset-cat-${CAT_C}`]);
+    expect(testids).toEqual(['asset-xch', 'asset-dig', `asset-cat-${CAT_A}`, `asset-cat-${CAT_B}`, `asset-cat-${CAT_C}`]);
   });
 
   it('narrows the list live as the user types (ticker or name), leaving XCH visible', async () => {
