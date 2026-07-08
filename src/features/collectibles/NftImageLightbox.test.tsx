@@ -76,4 +76,19 @@ describe('NftImageLightbox (#173 a11y dialog mechanics)', () => {
     const { container } = renderLightbox();
     expect((await axe(container, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([]);
   });
+
+  it('portals to document.body — escapes a `.dig-screen` ancestor so it is never confined/mis-stacked (#200)', () => {
+    const { container } = render(
+      <IntlProvider locale={DEFAULT_LOCALE} defaultLocale={DEFAULT_LOCALE} messages={messagesFor(DEFAULT_LOCALE)}>
+        <div className="dig-screen">
+          <NftImageLightbox src="blob:mock-1" label="NFT ab12…cd34 — full image" onClose={() => {}} />
+        </div>
+      </IntlProvider>,
+    );
+    const dialog = screen.getByRole('dialog');
+    const screenEl = container.querySelector('.dig-screen');
+    expect(screenEl).not.toBeNull();
+    expect(screenEl?.contains(dialog)).toBe(false);
+    expect(document.body.contains(dialog)).toBe(true);
+  });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * A modal dialog used for the Send / Receive actions — a bottom sheet on compact, a centered modal
@@ -6,6 +7,14 @@ import { useEffect, useRef, type ReactNode } from 'react';
  * in on open + is restored on close, Tab is TRAPPED within the dialog (WCAG 2.2 — focus can't reach
  * the inert page behind it), Escape closes, a backdrop click closes. Copy is passed in by the caller
  * (already localized).
+ *
+ * **Portaled to `document.body` (#200, the same fix as {@link NftPickerModal}, #170).**
+ * `.dig-screen`'s permanent entrance-animation `transform` establishes a CSS containing block for
+ * `position: fixed` descendants, and the compact layout's sibling z-index rule can stack the tab bar
+ * above nested content — together silently confining/mis-stacking an inline fixed overlay on a
+ * narrow fullscreen viewport (see `DEVELOPMENT_LOG.md`). `createPortal` detaches this dialog from
+ * whatever `.dig-screen` it is opened from, for both positioning AND stacking, with no change to the
+ * shared layout CSS other consumers still rely on.
  */
 export function Sheet({
   title,
@@ -59,7 +68,7 @@ export function Sheet({
     };
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div className="dig-sheet-backdrop" data-testid={testid} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         className="dig-sheet"
@@ -79,6 +88,7 @@ export function Sheet({
         </div>
         <div className="dig-sheet-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

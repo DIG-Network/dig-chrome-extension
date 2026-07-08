@@ -193,6 +193,36 @@ test.describe('NFT detail image lightbox (#173)', () => {
     await expect(page.getByTestId('nft-lightbox')).toHaveCount(0);
   });
 
+  test('narrow FULLSCREEN viewport (app.html below the 960px expanded breakpoint, compact layout): the lightbox is not confined/mis-stacked by `.dig-screen` (#200)', async () => {
+    await ensureUnlocked();
+    const page = await context.newPage();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    // Below EXPANDED_MIN_WIDTH (960px, src/app/layout.ts) app.html degrades to the SAME compact
+    // layout as the popup — the exact combination (`.dig-screen`'s stale-transform containing block +
+    // the compact sibling z-index override, DEVELOPMENT_LOG.md) that trapped/mis-stacked an inline
+    // `position: fixed` overlay. This is distinct from the mobile-width `popup.html` case above.
+    await page.setViewportSize({ width: 390, height: 700 });
+    await page.goto(`chrome-extension://${extensionId}/app.html#wallet/collectibles`);
+
+    await page.getByTestId(`nft-tile-${ART_NFT.launcherId}`).click();
+    await page.getByTestId('nft-image-trigger').click();
+
+    const lightbox = page.getByTestId('nft-lightbox');
+    await expect(lightbox).toBeVisible();
+    const box = await page.getByRole('dialog').boundingBox();
+    expect(box).not.toBeNull();
+    // Fully within the true viewport — not confined to a smaller ancestor box by the trap.
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(700 + 1);
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390 + 1);
+
+    await page.screenshot({ path: 'test-results/nft-image-lightbox-fullscreen-narrow.png' });
+
+    await page.getByTestId('nft-lightbox').click({ position: { x: 4, y: 4 } });
+    await expect(lightbox).toHaveCount(0);
+  });
+
   test('an NFT with no art (monogram fallback, #150) offers no trigger and never opens an empty lightbox', async () => {
     await ensureUnlocked();
     const page = await context.newPage();

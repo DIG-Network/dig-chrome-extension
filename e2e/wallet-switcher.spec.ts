@@ -208,4 +208,29 @@ test.describe('#90 multi-wallet switcher', () => {
       await page.screenshot({ path: `e2e/__screenshots__/wallet-switcher-${label}.png` });
     });
   }
+
+  // #200: `app.html` below `EXPANDED_MIN_WIDTH` (960px) degrades to the COMPACT layout — the exact
+  // combination (`.dig-screen`'s stale-transform containing block + the compact sibling z-index
+  // override, DEVELOPMENT_LOG.md) that trapped/mis-stacked an inline `position: fixed` `Sheet`. The
+  // 1200px "fullscreen" capture above is the EXPANDED layout and never exercised the trap — this one
+  // does. Asserts the sheet renders fully within the true viewport (not confined to a smaller
+  // scrolled ancestor box) now that it is portaled to `document.body`.
+  test('screenshot: wallet switcher manager on a NARROW fullscreen viewport (compact layout, overlay-trap regression)', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    await openWallet(page, 'app.html');
+    await importSecondWallet(page);
+    await openSwitcher(page);
+    await page.waitForTimeout(200);
+
+    const sheet = page.getByTestId('wallet-switcher-sheet');
+    await expect(sheet).toBeVisible();
+    const box = await sheet.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(700 + 1);
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390 + 1);
+
+    await page.screenshot({ path: 'e2e/__screenshots__/wallet-switcher-fullscreen-narrow.png' });
+  });
 });
