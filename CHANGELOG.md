@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.67.0] - 2026-07-08
+
+### Features
+- Activity detail view, explorer link coverage, pinned XCH+$DIG filter
+
+## [1.66.0] - 2026-07-08
+
+### Features
+- **collectibles:** Overlays portal fix + collection metadata + bulk ops (#89)
+
 ## [1.65.0] - 2026-07-08
 
 ### Features

@@ -10,7 +10,7 @@ import { useGetCustodyBalancesQuery, useGetReceiveAddressQuery, useGetClawbacksQ
 import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
-import { orderAssetsByValue } from '@/features/wallet/custody/assetOrder';
+import { splitPinnedAssets } from '@/features/wallet/custody/assetOrder';
 import { filterAssetsByQuery, assetAutocompleteSuggestions } from '@/features/wallet/custody/assetFilter';
 import { AssetFilterField } from '@/features/wallet/custody/AssetFilterField';
 import { ManageTokens } from '@/features/wallet/custody/ManageTokens';
@@ -93,14 +93,13 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
   const cached = balances.data?.cached === true;
   const [homePanel, setHomePanel] = useState<'assets' | 'send' | 'receive' | 'contacts' | 'tokens' | 'coins' | 'clawback'>('assets');
 
-  // #167 — value-ordered, live-filterable Assets list. XCH is rendered separately (the pinned
-  // hero row); every other row ($DIG + discovered/watched CATs) sorts by value beneath it, and the
-  // filter narrows THAT set only — XCH always stays visible. Pure selectors do the work
-  // (`assetOrder`/`assetFilter`); this is just the memoized wiring + the filter's own input state.
+  // #167 — value-ordered, live-filterable Assets list. #204: XCH + $DIG are PINNED in a fixed header
+  // block ABOVE the filter input (via `splitPinnedAssets`) — the filter predicate never sees them,
+  // so typing can neither hide nor reorder either. Only the remaining CATs (`tokenRows`) are ever
+  // narrowed. Pure selectors do the work (`assetOrder`/`assetFilter`); this is just the memoized
+  // wiring + the filter's own input state.
   const [assetFilter, setAssetFilter] = useState('');
-  const orderedAssets = useMemo(() => orderAssetsByValue(assets, priceMap), [assets, priceMap]);
-  const xchRow = orderedAssets.find((a) => a.descriptor.key === 'xch') ?? null;
-  const tokenRows = useMemo(() => orderedAssets.filter((a) => a.descriptor.key !== 'xch'), [orderedAssets]);
+  const { pinned: pinnedAssets, filterable: tokenRows } = useMemo(() => splitPinnedAssets(assets, priceMap), [assets, priceMap]);
   const visibleTokenRows = useMemo(() => filterAssetsByQuery(tokenRows, assetFilter), [tokenRows, assetFilter]);
   const filterSuggestions = useMemo(
     () => assetAutocompleteSuggestions(tokenRows, registry.data, assetFilter),
@@ -272,7 +271,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
             errorId="wallet.assets.error"
           >
             <div data-testid="custody-assets">
-              {xchRow && renderAssetRow(xchRow)}
+              {pinnedAssets.map(renderAssetRow)}
               <AssetFilterField value={assetFilter} onChange={setAssetFilter} suggestions={filterSuggestions} testid="asset-filter" />
               {visibleTokenRows.length === 0 && assetFilter.trim() ? (
                 <p className="dig-muted" data-testid="custody-assets-filter-empty">

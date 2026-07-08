@@ -86,6 +86,31 @@ export function spaceScanAddressUrl(address: string | null): string | null {
 }
 
 /**
+ * SpaceScan CAT/token page for an asset id (TAIL hash) — #114's centralized builder for CAT
+ * coverage. Normalises a `0x`-prefixed id to the bare-hex form SpaceScan's `/token/` route
+ * expects (matching e.g. `spacescan.io/token/7108b478…`); a bare-hex id passes through unchanged.
+ * `null` for an empty/absent id.
+ */
+export function spaceScanTokenUrl(assetId: string | null): string | null {
+  const s = String(assetId == null ? '' : assetId).trim();
+  if (!s) return null;
+  const bare = s.replace(/^0x/i, '');
+  return `${SPACESCAN_URL}/token/${bare}`;
+}
+
+/**
+ * SpaceScan NFT detail page for a bech32m `nft1…` id — #114's centralized builder for NFT
+ * coverage (a launcher-id-to-`nft1…` encode is the caller's responsibility; this only builds the
+ * URL from an already-encoded id, keeping this module free of the wasm bech32m encoder). `null`
+ * for an empty/absent id.
+ */
+export function spaceScanNftUrl(nftId: string | null): string | null {
+  const s = String(nftId == null ? '' : nftId).trim();
+  if (!s) return null;
+  return `${SPACESCAN_URL}/nft/${s}`;
+}
+
+/**
  * Ordered list of resource links rendered in the popup's Resources/footer section.
  * `id` is used for stable hooks/tests; `external` marks links that open a new tab.
  * "Get $DIG" leads to TibetSwap (the primary venue); the popup wallet panel also surfaces

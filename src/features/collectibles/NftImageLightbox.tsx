@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useIntl } from 'react-intl';
 
 /**
@@ -15,6 +16,10 @@ import { useIntl } from 'react-intl';
  * are intentionally duplicated rather than shared with `Sheet` — `Sheet` is a titled form sheet with a
  * scrollable body; this is a full-bleed image viewer with no header — each stays a small, self-
  * contained, single-purpose component.
+ *
+ * **Portaled to `document.body` (#200, the same fix as {@link NftPickerModal}, #170)** — see
+ * `Sheet`'s doc comment / `DEVELOPMENT_LOG.md` for why an inline fixed overlay nested in a
+ * `.dig-screen` can be silently confined/mis-stacked on a narrow fullscreen viewport.
  */
 export function NftImageLightbox({ src, label, onClose }: { src: string; label: string; onClose: () => void }) {
   const intl = useIntl();
@@ -59,7 +64,7 @@ export function NftImageLightbox({ src, label, onClose }: { src: string; label: 
     };
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div className="dig-lightbox-backdrop" data-testid="nft-lightbox" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dig-lightbox" role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} ref={ref}>
         <button
@@ -73,6 +78,7 @@ export function NftImageLightbox({ src, label, onClose }: { src: string; label: 
         </button>
         <img src={src} alt="" className="dig-lightbox-img" data-testid="nft-lightbox-image" />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

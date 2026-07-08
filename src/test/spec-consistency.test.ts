@@ -47,7 +47,7 @@ test('node-resolution ladder tries dig.local before localhost:<port>', () => {
 });
 
 test('SPEC documents the current message-protocol version', () => {
-  assert.equal(MESSAGE_PROTOCOL_VERSION, 24);
+  assert.equal(MESSAGE_PROTOCOL_VERSION, 26);
   assert.match(SPEC, new RegExp(`MESSAGE_PROTOCOL_VERSION[^\\n]*\\b${MESSAGE_PROTOCOL_VERSION}\\b`));
 });
 
@@ -85,4 +85,18 @@ test('SPEC documents the dig.getContent JSON-RPC wire params', () => {
     assert.match(SPEC, new RegExp(field), `SPEC must document dig.getContent param ${field}`);
   }
   assert.match(SPEC, /dig\.getContent/);
+});
+
+test('manifest allows an arbitrary HTTPS host, required for getNftMetadata (#98)', () => {
+  // #98's off-chain metadata fetch (getNftMetadata) needs to reach hosts that cannot be enumerated
+  // in advance (IPFS gateways, marketplace CDNs). A background service worker's own fetch() was
+  // empirically found to still be subject to extension-pages connect-src (DEVELOPMENT_LOG.md) — so
+  // connect-src/host_permissions must include a broad allowance, not just the fixed known hosts.
+  const manifest = JSON.parse(readFileSync(join(ROOT, 'manifest.json'), 'utf8')) as {
+    host_permissions: string[];
+    content_security_policy: { extension_pages: string };
+  };
+  assert.match(manifest.content_security_policy.extension_pages, /connect-src[^;]*\bhttps:/, 'connect-src must allow any https host');
+  assert.ok(manifest.host_permissions.some((p) => /^https:\/\/\*\/\*$/.test(p)), 'host_permissions must include an all-hosts https pattern');
+  assert.match(SPEC, /widened to any HTTPS host/, 'SPEC must document the widened connect-src/host_permissions');
 });

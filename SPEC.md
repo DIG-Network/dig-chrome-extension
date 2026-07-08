@@ -58,16 +58,26 @@ re-decrypts (§15).
   `importScripts()`.
 - `content_security_policy.extension_pages` MUST permit `'wasm-unsafe-eval'` (WASM
   instantiation) and MUST restrict `script-src`/`object-src` to `'self'`. It MUST additionally
-  declare an explicit `connect-src` enumerating every network egress (the chain host(s)
+  declare a `connect-src` naming the KNOWN, fixed network egress hosts (the chain host(s)
   `rpc.dig.net`/`*.dig.net`/`coinset.org`, the CAT price + token-metadata host `api.dexie.space`, and
-  `api.bugreport.dig.net`), `frame-src 'self' https:` (the in-window
-  dApp app-view frames curated store `link`s over https, §2.4a), `font-src 'self'` (the vendored Space
-  Grotesk / Space Mono woff2), and `img-src 'self' data: https:` (any HTTPS host — the native
-  dApp-launcher icons §2.4, the auto-discovered CAT token icons §18.6, and remote NFT art §18.11).
-  An `<img>` load cannot execute script, so allowing arbitrary HTTPS image hosts is not a
-  script-injection risk; the tradeoff is PRIVACY (the image host observes the requester's IP), which
-  §18.11 documents and which every other NFT wallet (Sage included) accepts by rendering art by
-  default.
+  `api.bugreport.dig.net`) **plus `https:`** (any HTTPS host — required for `getNftMetadata`, §18.11c,
+  to reach an arbitrary off-chain metadata host not enumerable in advance), `frame-src 'self' https:`
+  (the in-window dApp app-view frames curated store `link`s over https, §2.4a), `font-src 'self'`
+  (the vendored Space Grotesk / Space Mono woff2), and `img-src 'self' data: https:` (any HTTPS host —
+  the native dApp-launcher icons §2.4, the auto-discovered CAT token icons §18.6, and remote NFT art
+  §18.11). `host_permissions` correspondingly includes an all-hosts HTTPS pattern (needed for the
+  extension's CORS-bypass fetch elevation — most off-chain metadata hosts won't send
+  `Access-Control-Allow-Origin`).
+  - **A Manifest V3 background SERVICE WORKER's own `fetch()` IS subject to `connect-src`** —
+    empirically verified (`DEVELOPMENT_LOG.md`) building `getNftMetadata` (§18.11c): a fetch to a host
+    outside `connect-src` failed before ever reaching the network layer, the signature of a CSP block,
+    not a CORS failure. Do not assume the SW is exempt from the page CSP when adding a new SW-side
+    fetch — verify against the manifest's actual `connect-src`.
+  - An `<img>` load or a JSON-only `fetch()`+parse cannot execute script, so allowing arbitrary HTTPS
+    hosts here is not a script-injection risk; the tradeoff is PRIVACY (the host observes the
+    requester's IP) and a wider POST/readable-response surface than `img-src` alone grants, which
+    §18.11/§18.11c document and which every other NFT wallet (Sage included) accepts by rendering art
+    by default.
 - Content scripts (`middleware.js`, then `content.js`) run at `document_start`,
   `all_frames: true`, matching `<all_urls>`.
 - The injected provider (`dist/dig-provider.js`) and the page fetch bridge (`page-script.js`)
@@ -536,7 +546,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `24`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `26`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -602,7 +612,17 @@ action/shape changed.
 `confirmNftBulkBurn` (§18.11a) — each confirm reusing the `confirmSend` broadcast path. Purely
 additive — no existing action/shape changed.
 
-`MESSAGE_PROTOCOL_VERSION` `24` (#105/#106 send/receive trio) added an optional `memo` on
+`MESSAGE_PROTOCOL_VERSION` `24` (#98) added `getNftMetadata` (§18.11c) — fetches + JSON-decodes the
+off-chain CHIP-0007 metadata document a `metadataUri` points at, handled directly by the service
+worker (not the offscreen vault) since the target host is arbitrary and not enumerable in the
+extension-pages CSP `connect-src` allowlist. Purely additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `25` (#99) added the Collectibles bulk assign-DID actions —
+`prepareNftBulkDidAssign` + `confirmNftBulkDidAssign` (§18.11a) — assigning the wallet's DID as the
+owner of MULTIPLE selected NFTs in one spend bundle, each confirm reusing the `confirmSend` broadcast
+path. Purely additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `26` (#105/#106 send/receive trio) added an optional `memo` on
 `prepareSend` (§18.8b) and an optional `memoText` on its response summary, plus the
 `listDerivedAddresses` action (§18.1b) — a read-only page of the active wallet's derived addresses
 for viewing/copying. Purely additive — no existing action/shape changed. (#107's QR camera scanner
@@ -1362,33 +1382,42 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
   serves every asset (XCH, `$DIG`, every CAT), the Receive screen needs no per-asset selector (§2.1a)
   — it shows that single QR/address, full stop.
 
-### 18.6a Assets list — value ordering + live filter (#167)
+### 18.6a Assets list — value ordering + a pinned header block above the live filter (#167, #202, #204)
 
 The Home Assets list is a VIEW transform over `custodyAssetBalances` (§18.6) — it never changes the
-scan/discovery, only how the resolved rows are ordered and which of them are shown:
+scan/discovery, only how the resolved rows are ordered, which are pinned, and which are shown:
 
 - **Ordering (`orderAssetsByValue`).** XCH is the hero/prominent row (`pickHeroBalance`) and always
-  renders first, unmoved. Every other row — the built-in $DIG row + discovered/watched CATs — sorts
-  beneath it, highest value first, in two tiers:
+  renders first, unmoved. `$DIG` renders second, ALSO unconditionally (#202) — regardless of its own
+  or any other row's USD value, because it is the network's own token, not just another CAT. Every
+  remaining CAT sorts beneath those two, highest value first, in two tiers:
   1. Rows with a KNOWN USD value (`assetUsdValue`, §18.13 pricing) sort by that value, descending.
-  2. Rows with NO known price sort after every priced row: a "known" token ($DIG, or a CAT whose
-     ticker resolved via the registry — i.e. NOT the generic `CAT` fallback, §18.6) outranks a
+  2. Rows with NO known price sort after every priced row: a "known" token (a CAT whose ticker
+     resolved via the registry — i.e. NOT the generic `CAT` fallback, §18.6) outranks a
      generic-unknown one, then within a tier by held amount (normalized by decimals), descending. A
      null/unknown balance sorts last within its tier. Ties preserve the original discovery order
      (a stable sort) — never a re-shuffle on every render for equal-value rows.
-- **Live filter (`filterAssetsByQuery` + `AssetFilterField`).** A search field renders directly above
-  the token rows (below the pinned XCH row): it narrows the $DIG + CAT rows live by a case-insensitive
-  substring match against EITHER the ticker or the display name; XCH itself is never filtered out. A
-  blank query shows every row unchanged; a query matching nothing shows a dedicated empty-state line
-  (`wallet.assets.filter.empty`) rather than silently rendering nothing — Clear restores the full list.
+- **Pinned header block (`splitPinnedAssets`, #204).** XCH and $DIG (in that order, whichever are
+  held) render as a FIXED block ABOVE the filter input — `splitPinnedAssets` partitions
+  `orderAssetsByValue`'s output into `{ pinned, filterable }`, where `pinned` is exactly `[xch?,
+  dig?]` and `filterable` is every other CAT. The filter predicate is applied ONLY to `filterable`;
+  `pinned` is rendered unconditionally before the `AssetFilterField` and is NEVER hidden or reordered
+  by a filter query, including a query that matches nothing in the CAT list (the CAT-list empty state
+  renders beneath the still-visible pinned block, never replacing it).
+- **Live filter (`filterAssetsByQuery` + `AssetFilterField`).** The search field renders directly
+  below the pinned XCH+$DIG block: it narrows the filterable CAT rows live by a case-insensitive
+  substring match against EITHER the ticker or the display name. A blank query shows every filterable
+  row unchanged; a query matching nothing shows a dedicated empty-state line
+  (`wallet.assets.filter.empty`) rather than silently rendering nothing — Clear restores the full
+  filterable list (the pinned block was never affected either way).
 - **Autocomplete (`assetAutocompleteSuggestions`).** The filter field's native `<datalist>` suggests
-  candidates from BOTH the currently-held rows AND the full known-CAT registry (so a recognized
-  name/ticker not currently held still autocompletes — filtering on it then honestly shows the empty
-  state, never a silent no-op). Deduped by ticker (a held row wins over a registry duplicate), a
-  prefix match ranks above a mere substring match, capped to 8 suggestions.
+  candidates from BOTH the currently-held FILTERABLE rows AND the full known-CAT registry (so a
+  recognized name/ticker not currently held still autocompletes — filtering on it then honestly shows
+  the empty state, never a silent no-op). Deduped by ticker (a held row wins over a registry
+  duplicate), a prefix match ranks above a mere substring match, capped to 8 suggestions.
 - **Scope.** Every other consumer of `custodyAssetBalances` (`SendPanel`'s asset picker,
-  `ManageTokens`, `CoinControlPanel`, `TradePanel`) receives the UNSORTED, UNFILTERED array — this
-  ordering/filtering is local to the Home Assets list's own render.
+  `ManageTokens`, `CoinControlPanel`, `TradePanel`) receives the UNSORTED, UNFILTERED, UNPINNED array
+  — this ordering/pinning/filtering is local to the Home Assets list's own render.
 
 ### 18.7 Spend signing
 
@@ -1551,7 +1580,7 @@ at 200 per scope (`MAX_ACTIVITY_LOG_ENTRIES`, `src/lib/activity-log.ts`). Unlike
 navigation (`clearActiveWalletCaches`) — per-wallet/index isolation comes from the composite key
 alone, so switching back to a wallet/index later reads exactly the slice that scope wrote.
 
-**Entry shape:** `{ id, kind, asset, amount, counterparty, coinId, timestamp, status, clawback? }` —
+**Entry shape:** `{ id, kind, asset, amount, counterparty, coinId, timestamp, status, clawback?, fee?, memo? }` —
 - `kind` ∈ `sent | received | mint | did | offer | trade | clawback | melt`. `sent` / `received` /
   `mint` / `did` / `trade` / `clawback` (#152) are EMITTED; `offer` (making one has no coin spent yet
   to poll for confirmation — the spend happens only if/when a counterparty takes it) and `melt` (no
@@ -1570,6 +1599,11 @@ alone, so switching back to a wallet/index later reads exactly the slice that sc
   confirm-poll saw it on-chain); a `received` entry is logged straight to `confirmed` (a balance delta
   is already-settled by the time it's observed) with `coinId: null` (best-effort — no specific coin is
   attributed to a bare balance delta).
+- `fee` (#113) — the network fee paid, in XCH mojos (fees are ALWAYS paid in XCH regardless of the
+  transferred asset). `memo` (#113) — an optional user-supplied note. Both are ADDITIVE + OPTIONAL:
+  absent on a `received` entry and on any entry logged before these fields existed; the detail view
+  (below) renders each only when present, never fabricating a fee/memo for an entry that recorded
+  none.
 
 **Write path — an action performed BY the extension:**
 - `confirmSend` / `confirmTrade` (the ONLY places a real spend broadcasts, §18.8/§18.10) return an
@@ -1607,8 +1641,35 @@ fixed; the built-in $DIG TAIL keeps its canonical `$DIG` branding; the synthetic
 render as whole-unit tickers (never through CAT decimal math); every other TAIL resolves against the
 dexie registry (real ticker + decimals on a hit), degrading to the generic short-form fallback ONLY
 when the registry has no entry (or hasn't loaded) — never a hardcoded/generic ticker for a token the
-registry actually knows. A row's SpaceScan link is shown ONLY once `status === 'confirmed'` (a
-still-pending or coinId-less coin may not resolve on the block explorer yet).
+registry actually knows.
+
+**Transaction detail view (#113).** Tapping an activity row expands it in place
+(`data-testid="activity-receipt-<id>"`) into a full receipt built purely from the row's own
+already-formatted fields (`activityRows.ts`, no new wasm, no on-chain reconstruction): amount +
+ticker, the counterparty (when one exists), status (`Confirmed`/`Pending` — a local-log entry carries
+no block height, so status IS the confirmation signal; there is no separate confirmation COUNT),
+timestamp (locale-formatted via `intl.formatDate`), the recorded fee (formatted in XCH — ALWAYS XCH,
+independent of the transferred asset's own decimals) and memo, each shown ONLY when the entry
+actually recorded one (§5.1-style additive honesty — never a fabricated fee/memo), and the coin id.
+
+**Block-explorer link coverage (#114).** Every explorer link in the extension is built from the ONE
+centralized set of `lib/links.ts` SpaceScan URL builders — `spaceScanCoinUrl` (a coin/transaction),
+`spaceScanAddressUrl` (a bech32 `xch1…` address), `spaceScanTokenUrl` (a CAT's `/token/<TAIL>` page,
+accepts an id with or without a `0x` prefix), and `spaceScanNftUrl` (an NFT's `/nft/<nft1…>` page) —
+each opened via the shared `ExternalLink` component (a real `<a target="_blank">`, `chrome.tabs.create`
+inside the extension) so link behavior is consistent everywhere. The Activity receipt surfaces up to
+THREE distinct links, each only when applicable:
+  - the per-spend coin/transaction link (`spaceScanCoinUrl`) — shown ONLY once `status === 'confirmed'`
+    (a still-pending or coinId-less coin may not resolve on the block explorer yet);
+  - a counterparty ADDRESS link (`spaceScanAddressUrl`, built from the entry's FULL, unshortened
+    address — distinct from the row's own shortened DISPLAY text) — shown whenever a counterparty
+    exists, independent of the spend's own confirmation state (an address is valid to look up
+    regardless);
+  - a CAT TOKEN link (`spaceScanTokenUrl`) — shown for any CAT-class asset (excludes `XCH` and the
+    synthetic `NFT`/`DID` labels; $DIG counts too, since it is a CAT under the hood).
+`spaceScanNftUrl` is defined for ecosystem-wide reuse (e.g. a future Collectibles NFT-detail view)
+but is not yet wired into any surface — Activity has no NFT-asset rows to link today (a mint/transfer
+entry uses the synthetic `NFT` label, not a specific token id).
 
 ### 18.10 Trade offers
 
@@ -1733,12 +1794,12 @@ decrypted key never leaves the offscreen vault.
   network request; a miss loads the bytes, caches them, and resolves to a fresh object URL. NFT art is
   immutable per URI (an `ipfs://` CID's content never changes; a marketplace CDN URL for a minted NFT
   is likewise treated as content-addressed here), so URL-keyed caching needs no invalidation.
-  - **Loaded via `<img crossOrigin="anonymous">` + canvas, NOT `fetch()`.** The manifest's
-    `connect-src` CSP (§2) is a small explicit allowlist (rpc.dig.net, coinset, dexie, coingecko,
-    bugreport) that deliberately excludes arbitrary NFT-art hosts, so a raw `fetch(url)` would be
-    CSP-blocked for virtually every real NFT image host. `img-src` is already `https:` (any host,
-    #150), so the cache loads through an `<img>` element + canvas (`canvas.toBlob()`) to stay inside
-    the EXISTING CSP surface rather than widening `connect-src` to arbitrary hosts.
+  - **Loaded via `<img crossOrigin="anonymous">` + canvas, NOT `fetch()`.** Predates #98's
+    `connect-src` widening to `https:` (§2, needed for `getNftMetadata`, §18.11c) and is kept this
+    way on purpose even though a raw `fetch(url)` is no longer CSP-blocked here: reading a JSON
+    response back into script is a materially bigger exfiltration surface for a compromised page
+    script than `<img>` bytes are (a plain `<img>` load without `crossOrigin` never exposes its
+    pixels to script at all), so image bytes stay on the narrower `img-src`-only path.
   - **Graceful CORS fallback.** `crossOrigin="anonymous"` requires the host to send
     `Access-Control-Allow-Origin`, or the browser refuses the load entirely. A load failure (CORS
     refusal, network error) does NOT fail closed to the monogram — it falls back to embedding the RAW
@@ -1802,18 +1863,18 @@ decrypted key never leaves the offscreen vault.
   assigning the new NFT to a DID owner at mint requires owning + co-spending that DID and is a follow-up
   with DID management (#93).
 
-### 18.11a Collectibles multi-select — bulk transfer & destructive burn (#171)
+### 18.11a Collectibles multi-select — bulk transfer, assign-DID & destructive burn (#171, #99)
 
-The Collectibles grid supports selecting MULTIPLE NFTs at once and moving or destroying all of them in
-ONE spend bundle (one broadcast, one aggregated signature) — the same discovery/reconstruction/
-same-allocator rules as §18.11 apply to every selected NFT.
+The Collectibles grid supports selecting MULTIPLE NFTs at once and moving, re-owning, or destroying all
+of them in ONE spend bundle (one broadcast, one aggregated signature) — the same discovery/
+reconstruction/same-allocator rules as §18.11 apply to every selected NFT.
 
 - **Fullscreen-only, mirroring mint/assign (§6.1/#145).** Selection mode (`CollectiblesPanel.tsx`)
   exists ONLY on the fullscreen surface — a "Select" control toggles it, tapping a tile in selection
   mode toggles membership instead of opening the detail view, and a selection bar shows the live count
-  + select-all/clear + Transfer/Burn actions once ≥1 NFT is selected. The popup surface stays
-  view-only: it NEVER enters selection mode, offering an "open full screen" link instead, exactly like
-  the existing mint/assign popup affordances.
+  + select-all/clear + Transfer / Assign DID / Burn actions once ≥1 NFT is selected. The popup surface
+  stays view-only: it NEVER enters selection mode, offering an "open full screen" link instead, exactly
+  like the existing mint/assign popup affordances.
 - **Bulk PREPARE** (`prepareNftBulkTransfer` / `prepareNftBulkBurn`, no broadcast): reconstruct EVERY
   selected NFT (by launcher id, deduped) in the SAME driver `Clvm`/`Spends`, add XCH coins for the fee
   once (not per NFT), then emit ONE `Action.send(Id.existing(launcherId), destPuzzleHash, 1, memo)` per
@@ -1850,6 +1911,19 @@ same-allocator rules as §18.11 apply to every selected NFT.
   DISTINCT `burn` kind (asset `'NFT'`, amount = NFT count, counterparty `null` — the burn destination
   has no spending key, so it is not a real "sent to" counterparty) so the ledger never conflates an
   irreversible burn with an ordinary transfer.
+- **Bulk assign-DID (#99, `prepareNftBulkDidAssign` / `confirmNftBulkDidAssign`).** Generalizes the
+  single-NFT §18.11 assign-owner CHIP-0011 handshake to the whole selected set in ONE spend bundle:
+  each selected NFT emits its own `TransferNft` condition and its own
+  `assignment_puzzle_announcement_id`, and the wallet's chosen DID is spent EXACTLY ONCE — asserting
+  every NFT's announcement id and creating one puzzle announcement per NFT launcher id in return, so
+  all N handshakes settle atomically (`src/offscreen/didAssign.ts`, Simulator-validated in
+  `didAssign.test.ts`). Neither the NFTs' nor the DID's custody changes; only each NFT's on-chain
+  `currentOwner` is set to the DID. `launcherIds` is deduped + MUST be non-empty (`NO_NFTS_SELECTED`);
+  any selected NFT the wallet does not hold fails the WHOLE prepare (`NFT_NOT_FOUND`) — builds
+  completely or not at all. A fee is paid ONCE from a separate wallet-owned XCH coin. The UI
+  (`BulkNftActions.tsx` `assign` mode) is a pick-DID → review → confirm flow with the four states;
+  `confirmNftBulkDidAssign` reuses the vault's `confirmSend` broadcast path and is logged as the
+  `did` activity kind.
 
 ### 18.11b NFT picker — XL modal multi-select grid (#170)
 
@@ -1891,15 +1965,83 @@ drop it in without separately wiring the collectibles query.
   siblings, so the bottom tab bar (later in DOM order) paints ABOVE anything nested inside the content
   area regardless of that content's own z-index. Together these would silently confine an ordinarily-
   rendered fixed modal to the current screen's scrolled box AND stack it below the tab bar
-  (intercepting its clicks) on a narrow fullscreen viewport — reproducible today with `Sheet`/
-  `NftImageLightbox` rendered deep in a `.dig-screen`. A portal to `document.body` escapes that
+  (intercepting its clicks) on a narrow fullscreen viewport. A portal to `document.body` escapes that
   ancestor chain entirely (for both positioning and stacking) without touching the shared layout CSS
-  other modals still rely on; see `DEVELOPMENT_LOG.md` for the full gotcha.
+  other modals still rely on; see `DEVELOPMENT_LOG.md` for the full gotcha. `Sheet`
+  (`components/Sheet.tsx`, the Send/Receive/wallet-switcher modal) and `NftImageLightbox` are ALSO
+  portaled to `document.body` the same way (#200) — every overlay in this codebase renders through a
+  portal, none inline in the `.dig-screen` tree.
 - **Wired into Trade (§18.10).** `MakeTrade`'s NFT give-kind replaces the plain `<select>` dropdown
   with a "Select NFT" trigger that opens this modal; the chosen NFT renders as a small thumbnail +
   name chip with a "Change" affordance that reopens the modal pre-selecting the current pick. The
   wallet-empty case (`nfts.length === 0`) still shows the existing inline empty message without
   opening the modal at all.
+
+### 18.11c NFT collection metadata + richer gallery (#98)
+
+§18.11's `listNfts` only decodes the NFT's ON-CHAIN metadata program (edition/royalty/URIs) — no
+human name, description, trait attributes, or real collection name exists on-chain. CHIP-0007 defines
+those as an OFF-CHAIN JSON document at `metadataUris[0]`, which nothing in the extension parsed before
+#98 (the gallery/detail showed only the shortened launcher id and the owner-DID hex as a collection
+stand-in).
+
+- **Wire shape (`src/lib/nft-offchain-metadata.ts`, `parseNftOffchainMetadata`).** Matches the
+  CHIP-0007 document `chip35_dl_coin`'s `Chip0007Metadata`/`CollectionRef`/`CollectionAttribute` Rust
+  types mint (the ecosystem's one schema, read-side counterpart): `{ format, name, description,
+  minting_tool, sensitive_content, series_number, series_total, attributes:[{trait_type,value}],
+  collection:{ id, name, attributes:[{type,value}] } }`. `collection.attributes[].type` accepts the
+  legacy `trait_type` key too (parity with `chip35_dl_coin`'s #189 collection-attr fix — some older
+  minted documents used it for the same field).
+- **Untrusted input — never throws, always capped.** `raw` is third-party content served by whatever
+  host the on-chain URI happens to name. The parser pulls only the known string/array fields, caps
+  every string length (name 200, description 4000) and the attributes array (100 entries), and
+  returns `null` for a non-object or a document with none of the recognized fields — the caller then
+  falls back to the existing on-chain-only display exactly as if no `metadataUris` existed at all.
+- **Fetched by the background service worker (`getNftMetadata`, §7), NOT the offscreen vault** — a
+  simple no-vault-dependency read, matching the other non-custody SW actions (`getDigDnsStatus`,
+  `getVerification`, …), not a CSP workaround (see below). The handler is GET-only, time-capped, and
+  rejects a response over 200 KB (`TOO_LARGE`) before attempting to parse it — a CHIP-0007 document
+  is always small.
+- **`connect-src`/`host_permissions` are widened to any HTTPS host (§2) — required, not optional.**
+  `metadataUris` point at arbitrary hosts (IPFS gateways, marketplace CDNs) not enumerable in
+  advance. It was assumed while designing this that a Manifest V3 background SERVICE WORKER's own
+  `fetch()` is NOT subject to the `extension_pages` CSP `connect-src` directive (its name suggests it
+  governs only extension HTML documents — popup, options, offscreen — not the service worker
+  script). **That assumption was empirically WRONG** (`DEVELOPMENT_LOG.md`): a `getNftMetadata` call
+  to a host outside `connect-src` failed with a network error and the request never reached the
+  network layer at all — the signature of a CSP block, not a CORS failure (which would still hit the
+  network before failing to read the response). `connect-src` had to gain `https:` and
+  `host_permissions` an all-hosts pattern (the latter for the extension's CORS-bypass fetch
+  elevation — most off-chain metadata hosts won't send `Access-Control-Allow-Origin`) before the SW
+  could reach an arbitrary host at all. This matches the breadth `img-src: https:` already grants NFT
+  art (§18.11) — the same IP-disclosure privacy tradeoff, plus a wider POST/readable-response surface
+  than `img-src` alone grants (a JSON `fetch()` response is readable back into script; a plain
+  `<img>` load's pixels are not, without a separate `crossOrigin` opt-in). Every existing
+  connect-src-scoped fetch (chain queries, price feeds) is unaffected by the widening.
+- **Cache (`src/features/collectibles/nftMetadataCache.ts`).** Off-chain metadata is immutable per
+  URI (same content-addressed reasoning as the #159 image cache, §18.11) — a resolved document is
+  cached FOREVER, keyed by URI, in `chrome.storage.local`, reusing the #159 image cache's exact LRU
+  eviction policy (`selectEvictions`) at a smaller cap (300 entries — JSON documents are far smaller
+  than image bytes). A negative result (fetch failure, invalid JSON, no usable fields) is NOT cached,
+  so a transient network error can resolve on a later render/session instead of failing permanently.
+- **`useNftMetadata(nft)` hook (`src/features/collectibles/useNftMetadata.ts`).** Resolves the first
+  embeddable (`http(s)`/gateway-rewritten `ipfs://`) `metadataUris` entry, checks the shared cache,
+  else sends `getNftMetadata` and parses the raw response. Returns `{ metadata, isLoading }` — no
+  explicit error state (mirroring `NftMedia`'s existing graceful degradation for third-party content,
+  §18.11): a failure simply resolves `metadata: null` and the caller shows the on-chain-only
+  fallback.
+- **Richer gallery.** `NftGrid` tiles (`CollectiblesPanel.tsx`) show the metadata `name` in place of
+  the shortened launcher id once resolved (falling back to the shortened id while loading/absent).
+  Each collection group's header shows the metadata `collection.name` in place of the shortened
+  owner-DID hex (sourced from the group's first NFT — CHIP-0007 does not require every NFT in a
+  collection to repeat identical `collection` metadata, but in practice minters do), with a soft
+  banner treatment behind the header built from that same first NFT's already-cached art (§18.11) —
+  CHIP-0007 has no standardized banner/icon field, so this is a UI-only approximation, not an
+  on-chain or off-chain "banner" concept.
+- **Richer detail (`NftDetail.tsx`).** The header shows the resolved `name` (falling back to the
+  shortened launcher id); when metadata resolves, a description paragraph and a trait-attribute list
+  (`trait_type` / `value` pairs) render below the existing on-chain summary. Absent/unresolved
+  metadata renders neither section — never an empty placeholder.
 
 ### 18.12 dApp `window.chia` requests & the SW-summoned approval window (§5.5)
 

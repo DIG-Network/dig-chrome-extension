@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import { renderWithProviders } from '@/test/harness';
@@ -6,6 +6,7 @@ import { NftDetail } from '@/features/collectibles/NftDetail';
 import type { WalletNft } from '@/offscreen/nfts';
 import golden from '@/lib/keystore/derive.golden.json';
 import { NftImageCache, setSharedNftImageCacheForTests, resetSharedNftImageCacheForTests, type CacheIndex } from '@/features/collectibles/nftImageCache';
+import { resetSharedNftMetadataCacheForTests } from '@/features/collectibles/nftMetadataCache';
 
 const RECIPIENT = golden.unhardened[0].address;
 
@@ -37,6 +38,11 @@ function mockSw(router: (m: { action: string; [k: string]: unknown }) => unknown
   (chrome.runtime as unknown as { sendMessage: typeof fn }).sendMessage = fn;
   return fn;
 }
+
+beforeEach(async () => {
+  resetSharedNftMetadataCacheForTests();
+  await chrome.storage.local.remove('digNftMetadataCache');
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -87,6 +93,27 @@ describe('NftDetail', () => {
     expect(screen.getByTestId('nft-royalty')).toHaveTextContent('3%');
     expect(screen.getByTestId('nft-edition')).toHaveTextContent('2 / 10');
     expect(screen.getByTestId('nft-monogram')).toBeInTheDocument();
+  });
+
+  it('richer detail (#98): shows the resolved off-chain name, description, and attributes once metadata resolves', async () => {
+    mockSw((m) =>
+      m.action === 'getNftMetadata'
+        ? { metadata: { name: 'Cool Cat #1', description: 'A very cool cat.', attributes: [{ trait_type: 'Eyes', value: 'Green' }] } }
+        : { success: true },
+    );
+    renderWithProviders(<NftDetail nft={nft({ metadataUris: ['https://ex.test/m.json'] })} onBack={() => {}} />);
+    expect(await screen.findByText('Cool Cat #1')).toBeInTheDocument();
+    expect(screen.getByText('A very cool cat.')).toBeInTheDocument();
+    expect(screen.getByText('Eyes')).toBeInTheDocument();
+    expect(screen.getByText('Green')).toBeInTheDocument();
+  });
+
+  it('richer detail (#98): renders neither description nor attributes when no off-chain metadata resolves', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<NftDetail nft={nft()} onBack={() => {}} />);
+    expect(await screen.findByTestId('nft-detail')).toBeInTheDocument();
+    expect(screen.queryByTestId('nft-detail-description')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nft-detail-attributes')).not.toBeInTheDocument();
   });
 
   it('embeds a data: image and links out to remote metadata', () => {

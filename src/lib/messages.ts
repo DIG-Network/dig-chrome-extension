@@ -168,7 +168,24 @@ import { DIG_ERR } from './error-codes';
  * the shared `sendStatus`. A burn is irreversible once confirmed — the caller MUST gate it behind an
  * explicit, distinct user confirmation and must NEVER auto-invoke the confirm step.
  *
- * v24 (#105/#106/#107 send/receive trio): `prepareSend` gained an optional `memo` — a plain-text
+ * v24 (#98 NFT collection metadata + richer gallery): added `getNftMetadata` -- fetches + parses the
+ * off-chain CHIP-0007 JSON document a `metadataUri` points at (real name/description/attributes +
+ * the collection's real name), used to enrich the Collectibles gallery + detail view beyond the
+ * on-chain-only shortened-launcher-id label. Handled DIRECTLY in the background service worker
+ * (`src/background/index.ts`), NOT the offscreen vault -- a simple no-vault-dependency read, like
+ * the other non-custody SW actions. `metadataUris` are arbitrary third-party hosts the extension
+ * cannot enumerate in advance, so `manifest.json`'s CSP `connect-src`/`host_permissions` are widened
+ * to `https:`/an all-hosts pattern -- matching the breadth `img-src` already grants NFT art -- after
+ * an empirically-discovered gotcha (`DEVELOPMENT_LOG.md`) showed a background service worker's own
+ * `fetch()` IS still subject to `connect-src` in this Chromium build. Read-only, capped (size +
+ * timeout); the caller's own cache (keyed by URI) is what avoids re-fetching, not this handler.
+ *
+ * v25 (#99 Collectibles bulk assign-DID): added `prepareNftBulkDidAssign` (assign the wallet's DID
+ * as the owner of MULTIPLE selected NFTs in ONE spend bundle — generalizing the single-NFT
+ * `prepareNftDidAssign`) + `confirmNftBulkDidAssign` (reuses the shared `confirmSend` broadcast
+ * path). Purely additive — no existing action/shape changed.
+ *
+ * v26 (#105/#106/#107 send/receive trio): `prepareSend` gained an optional `memo` — a plain-text
  * note attached to the recipient's CREATE_COIN (PUBLIC on chain), decoded back from the built spend
  * into `summary.memoText`; mutually exclusive with `clawbackSeconds` and capped at 512 UTF-8 bytes
  * (both BAD_REQUEST). Added `listDerivedAddresses` — derive a page of the active wallet's addresses
@@ -177,7 +194,7 @@ import { DIG_ERR } from './error-codes';
  * message action) — it decodes a QR frame in the popup/fullscreen UI and fills the existing
  * `send.recipient`/offer fields.
  */
-export const MESSAGE_PROTOCOL_VERSION = 24;
+export const MESSAGE_PROTOCOL_VERSION = 26;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -248,6 +265,8 @@ export const ACTIONS = Object.freeze({
   listNfts: 'listNfts',
   prepareNftTransfer: 'prepareNftTransfer',
   confirmNftTransfer: 'confirmNftTransfer',
+  // ── NFT collection metadata + richer gallery (#98): handled DIRECTLY by the SW, not the vault ──
+  getNftMetadata: 'getNftMetadata',
   // ── Collectibles multi-select bulk transfer/burn (#171; confirm reuses the confirmSend path) ──
   prepareNftBulkTransfer: 'prepareNftBulkTransfer',
   confirmNftBulkTransfer: 'confirmNftBulkTransfer',
@@ -267,6 +286,9 @@ export const ACTIONS = Object.freeze({
   // ── assign a wallet-owned DID as an NFT's owner (#93; confirm reuses confirmSend) ──
   prepareNftDidAssign: 'prepareNftDidAssign',
   confirmNftDidAssign: 'confirmNftDidAssign',
+  // ── bulk-assign a wallet-owned DID as MULTIPLE NFTs' owner in one spend (#99; confirm reuses confirmSend) ──
+  prepareNftBulkDidAssign: 'prepareNftBulkDidAssign',
+  confirmNftBulkDidAssign: 'confirmNftBulkDidAssign',
   // ── coin control (#91): per-asset coin listing + split / combine (confirmed via confirmSend) ──
   listCoins: 'listCoins',
   prepareSplit: 'prepareSplit',
@@ -546,6 +568,11 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },
+  [ACTIONS.getNftMetadata]: {
+    summary: "Fetch + JSON-decode the off-chain CHIP-0007 metadata document at `uri` (#98 — a `metadataUri` from listNfts, gateway-rewritten by the caller if it was ipfs://). Handled directly in the SW (not the offscreen vault) as a simple no-vault read; the host is arbitrary and not enumerable in advance, so the manifest's CSP connect-src/host_permissions are widened to any https host (matching img-src's existing breadth for NFT art). GET-only, size- and time-capped. Returns the RAW decoded JSON — the caller validates/shapes it via parseNftOffchainMetadata (src/lib/nft-offchain-metadata.ts) since this is untrusted third-party content. Read-only.",
+    request: '{ action, uri:string /* http(s):// */ }',
+    response: "{ metadata:unknown } | { success:false, code:'BAD_REQUEST'|'FETCH_FAILED'|'TOO_LARGE'|'INVALID_JSON'|'TIMEOUT'|'NETWORK_ERROR', message }",
+  },
   [ACTIONS.prepareNftBulkTransfer]: {
     summary: "Build (not sign/broadcast) a transfer of MULTIPLE selected NFTs to one recipient in a SINGLE spend bundle (#171 — Collectibles multi-select). Hold under a pending id and return the decoded bulk summary to approve. The recipient's p2 puzzle hash is carried as the create-coin hint for every NFT.",
     request: '{ action, launcherIds:string[] /* hex, ≥1 */, recipient:string /* xch1… */, fee?:string /* mojos */ }',
@@ -618,6 +645,16 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.confirmNftDidAssign]: {
     summary: 'Sign + BROADCAST a previously-prepared NFT↔DID assignment (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareNftBulkDidAssign]: {
+    summary: "Build (not sign/broadcast) assigning the wallet's DID as the OWNER of MULTIPLE selected NFTs in ONE spend bundle (#99 — Collectibles multi-select assign-DID). Generalizes prepareNftDidAssign: each NFT emits its own CHIP-0011 TransferNft + announcement, the DID is spent ONCE asserting every one of them. launcherIds is deduped + MUST be non-empty (NO_NFTS_SELECTED); any NFT not held fails the whole prepare (NFT_NOT_FOUND) — builds completely or not at all. Neither NFT nor DID custody changes; a fee is paid once from a separate XCH coin.",
+    request: '{ action, launcherIds:string[] /* the NFTs, hex, ≥1 */, didLauncherId:string /* hex */, fee?:string /* mojos */ }',
+    response: '{ pendingId:string, nftBulkDidAssignSummary:{ nftLauncherIds, didLauncherId, fee, coinCount } } | { success:false, code:\'NO_NFTS_SELECTED\'|\'NFT_NOT_FOUND\'|\'DID_NOT_FOUND\'|..., message }',
+  },
+  [ACTIONS.confirmNftBulkDidAssign]: {
+    summary: 'Sign + BROADCAST a previously-prepared bulk NFT↔DID assignment (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },
