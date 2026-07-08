@@ -510,6 +510,14 @@ export class DappApprovalManager {
       entry.resolve(err(USER_REJECTED_STATUS, 'User rejected the request'));
       return { success: true, remaining: this.queue.size };
     }
+    // #75 — NEVER authorize a request whose spend could not be decoded for review. The approval
+    // window already hides Approve on a decodeError; the SW enforces it too (defense in depth): a
+    // decode-failed request is refused with an explicit error, never handed to the vault to sign or
+    // broadcast — a user can never authorize a spend they could not see.
+    if (entry.decodeError) {
+      entry.resolve(err(400, 'Refusing to authorize a request that could not be decoded for review'));
+      return { success: true, code: 'DECODE_ERROR', remaining: this.queue.size };
+    }
     entry.resolve(await this.#performApproved(entry));
     return { success: true, remaining: this.queue.size };
   }

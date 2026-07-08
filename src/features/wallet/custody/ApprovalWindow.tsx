@@ -304,9 +304,21 @@ function SpendSummaryView({ summary }: { summary: DappSpendSummary | null }) {
       </p>
 
       {!fullySignable && (
-        <p className="dig-error-text" role="alert" data-testid="approval-cannot-sign">
-          <FormattedMessage id="dapp.approval.cannotSign" />
-        </p>
+        <div role="alert" data-testid="approval-cannot-sign">
+          <p className="dig-error-text" style={{ margin: '0 0 4px' }}>
+            <FormattedMessage id="dapp.approval.cannotSign" />
+          </p>
+          {/* #75 — surface the specific signer(s) the wallet cannot account for (foreign/over-broad). */}
+          {summary.unaccountedSigners && summary.unaccountedSigners.length > 0 && (
+            <ul data-testid="approval-unaccounted-signers" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {summary.unaccountedSigners.map((pk) => (
+                <li key={pk} className="dig-mono dig-error-text" style={{ wordBreak: 'break-all', fontSize: '0.82em' }}>
+                  {short(pk)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {summary.outputs.length > 0 && (
