@@ -163,6 +163,81 @@ describe('SendPanel', () => {
   });
 
   /**
+   * #74 — address-poisoning defense: a recipient that shares a saved contact's start AND end (but
+   * differs in the middle — visually identical when truncated) is flagged BEFORE the send, and the
+   * build is blocked until the user acknowledges the warning.
+   */
+  describe('#74 — address-poisoning / confusable-recipient warning', () => {
+    // A saved contact and a poison of it: same first-10 + last-8 chars, different middle. Both pass
+    // the xch1 FORMAT gate (isChiaAddress is format-only, no checksum), which is all the UI needs.
+    const KNOWN = `xch1qqqqhead${'0'.repeat(40)}wxyztail99`;
+    const POISON = `xch1qqqqhead${'1'.repeat(40)}wxyztail99`;
+
+    async function seedContact() {
+      const contact: Contact = { id: 'c-alice', label: 'Alice', address: normalizeAddress(KNOWN), note: '', createdAt: 1, updatedAt: 1 };
+      await chrome.storage.local.set({ [CONTACTS_KEY]: [contact] });
+    }
+
+    it('flags a lookalike of a saved contact and blocks Review until acknowledged', async () => {
+      await seedContact();
+      const sw = mockSw((m) => (m.action === 'prepareSend' ? { pendingId: 'p1', summary: SUMMARY } : { success: true }));
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: POISON } });
+      fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+
+      // The warning appears and names the resembled contact; Review is disabled.
+      const warn = await screen.findByTestId('send-poison-warning');
+      expect(warn).toHaveTextContent('Alice');
+      expect(screen.getByTestId('send-review')).toBeDisabled();
+
+      // Clicking Review while blocked must NOT build a spend.
+      fireEvent.click(screen.getByTestId('send-review'));
+      expect(sw).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareSend' }), expect.any(Function));
+
+      // Acknowledge → Review enables and builds.
+      fireEvent.click(screen.getByTestId('send-poison-ack'));
+      expect(screen.getByTestId('send-review')).toBeEnabled();
+      fireEvent.click(screen.getByTestId('send-review'));
+      expect(await screen.findByTestId('send-review-panel')).toBeInTheDocument();
+    });
+
+    it('re-requires acknowledgement when the recipient is edited', async () => {
+      await seedContact();
+      mockSw(() => ({ success: true }));
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: POISON } });
+      fireEvent.click(await screen.findByTestId('send-poison-ack'));
+      expect(screen.getByTestId('send-review')).toBeEnabled();
+
+      // Editing the recipient to another poison clears the ack → blocked again.
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: `xch1qqqqhead${'2'.repeat(40)}wxyztail99` } });
+      expect(await screen.findByTestId('send-poison-warning')).toBeInTheDocument();
+      expect(screen.getByTestId('send-review')).toBeDisabled();
+    });
+
+    it('shows a subtle first-time notice for an unrelated valid address (no block)', () => {
+      mockSw(() => ({ success: true }));
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+      expect(screen.getByTestId('send-firsttime')).toBeInTheDocument();
+      expect(screen.queryByTestId('send-poison-warning')).not.toBeInTheDocument();
+      expect(screen.getByTestId('send-review')).toBeEnabled();
+    });
+
+    it('shows no warning for an exact saved contact', async () => {
+      await seedContact();
+      mockSw(() => ({ success: true }));
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: KNOWN } });
+      await waitFor(() => expect(screen.getByTestId('send-recipient-contact')).toBeInTheDocument());
+      expect(screen.queryByTestId('send-poison-warning')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('send-firsttime')).not.toBeInTheDocument();
+    });
+  });
+
+  /**
    * #166 — the cancel/back affordance lives in the sticky ViewHeader (the top of the screen), not
    * scattered at the bottom of each phase's (possibly growable) form — so it's reachable at any
    * scroll position instead of buried below a long coin picker.

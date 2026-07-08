@@ -737,4 +737,8 @@ export const zhTW: Record<string, string> = {
   'wallet.index.next': '下一個索引',
   'wallet.index.jump': '跳至索引',
   'wallet.index.error': '無法切換索引，請重試。',
+  'send.poison.title': '此地址看起來像已儲存的聯絡人',
+  'send.poison.body': '它與 {label} 的開頭和結尾相同，但中間不同——這是一種已知的地址投毒騙局。發送前請核對每個字元。',
+  'send.poison.ack': '我已核對此地址的每個字元',
+  'send.firstTime': '這是首次向此地址轉帳。',
 };

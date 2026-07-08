@@ -737,4 +737,8 @@ export const es: Record<string, string> = {
   'wallet.index.next': 'Índice siguiente',
   'wallet.index.jump': 'Ir al índice',
   'wallet.index.error': 'No se pudo cambiar de índice. Inténtalo de nuevo.',
+  'send.poison.title': 'Esta dirección se parece a un contacto guardado',
+  'send.poison.body': 'Comparte el mismo inicio y final que {label} pero difiere en el medio: una estafa conocida de envenenamiento de direcciones. Verifica cada carácter antes de enviar.',
+  'send.poison.ack': 'He verificado cada carácter de esta dirección',
+  'send.firstTime': 'Es la primera vez que envías a esta dirección.',
 };
