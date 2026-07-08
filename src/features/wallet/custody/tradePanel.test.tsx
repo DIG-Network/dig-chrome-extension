@@ -11,6 +11,13 @@ function twoAssets() {
   return custodyAssetBalances({ xch: 1_000_000_000_000, cats: { [DIG_ASSET_ID]: 5000 } }, []);
 }
 
+/** XCH + $DIG + a second CAT (#100 — multi-asset tests need a 3rd distinct asset so a give leg and
+ * TWO requested legs can each name a different asset with none overlapping). */
+const OTHER_CAT = 'ee'.repeat(32);
+function threeAssets() {
+  return custodyAssetBalances({ xch: 1_000_000_000_000, cats: { [DIG_ASSET_ID]: 5000, [OTHER_CAT]: 900 } }, []);
+}
+
 function mockSw(router: (m: { action: string; [k: string]: unknown }) => unknown) {
   const fn = vi.fn((msg: unknown, cb?: (r: unknown) => void) => {
     const reply = router(msg as { action: string; [k: string]: unknown });
@@ -253,7 +260,8 @@ describe('TradePanel — make an NFT (offering a self-custody singleton, #94 —
     fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
 
     expect(await screen.findByTestId('trade-deal-card')).toBeInTheDocument();
-    expect(capturedOffered).toEqual({ asset: { kind: 'nft', launcherId: nftFixture().launcherId }, amount: '1' });
+    // #100 — offered/requested are ARRAYS on the wire now (a single-asset offer is a 1-element array).
+    expect(capturedOffered).toEqual([{ asset: { kind: 'nft', launcherId: nftFixture().launcherId }, amount: '1' }]);
   });
 
   it('shows an empty state when the wallet holds no NFTs to offer', async () => {
@@ -337,5 +345,95 @@ describe('TradePanel — make an NFT (offering a self-custody singleton, #94 —
 
     renderWithProviders(<TradePanel assets={twoAssets()} full onClose={() => {}} />);
     expect(screen.getByTestId('view-header')).toContainElement(screen.getByTestId('trade-close'));
+  });
+});
+
+describe('TradePanel — multi-asset offers (#100: >1 offered and/or >1 requested asset, fullscreen-only advanced path)', () => {
+  it('the popup Make form has no "add asset" controls — basic single-asset only', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+    await screen.findByTestId('trade-make-form');
+    expect(screen.queryByTestId('trade-give-add-asset')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trade-get-add-asset')).not.toBeInTheDocument();
+  });
+
+  it('the fullscreen Make form offers "add another asset" on both give and get', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    expect(await screen.findByTestId('trade-give-add-asset')).toBeInTheDocument();
+    expect(screen.getByTestId('trade-get-add-asset')).toBeInTheDocument();
+  });
+
+  it('adding a second GIVE asset sends a 2-element offered array', async () => {
+    let capturedOffered: unknown;
+    let capturedRequested: unknown;
+    mockSw((m) => {
+      if (m.action === 'makeOffer') {
+        capturedOffered = m.offered;
+        capturedRequested = m.requested;
+        return { offer: OFFER, offerSummary: SUMMARY };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={threeAssets()} full />);
+
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } }); // give row 0: XCH (idx 0)
+    fireEvent.click(screen.getByTestId('trade-give-add-asset'));
+    fireEvent.change(screen.getByTestId('trade-give-asset-1'), { target: { value: '2' } }); // give row 1: the 3rd asset — distinct from get's default ($DIG, idx 1)
+    fireEvent.change(screen.getByTestId('trade-give-amount-1'), { target: { value: '0.1' } }); // well within the 900-base-unit balance
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } }); // get: $DIG (idx 1)
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    await screen.findByTestId('trade-make-review');
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+
+    expect(await screen.findByTestId('trade-deal-card')).toBeInTheDocument();
+    expect(capturedOffered).toHaveLength(2);
+    expect(capturedRequested).toHaveLength(1);
+  });
+
+  it('adding a second GET asset sends a 2-element requested array', async () => {
+    let capturedRequested: unknown;
+    mockSw((m) => {
+      if (m.action === 'makeOffer') {
+        capturedRequested = m.requested;
+        return { offer: OFFER, offerSummary: SUMMARY };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={threeAssets()} full />);
+
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } }); // give: XCH (idx 0)
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } }); // get row 0: $DIG (idx 1)
+    fireEvent.click(screen.getByTestId('trade-get-add-asset'));
+    fireEvent.change(screen.getByTestId('trade-get-asset-1'), { target: { value: '2' } }); // get row 1: the 3rd asset — distinct from both the give leg AND get row 0
+    fireEvent.change(screen.getByTestId('trade-get-amount-1'), { target: { value: '5' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    await screen.findByTestId('trade-make-review');
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+
+    expect(await screen.findByTestId('trade-deal-card')).toBeInTheDocument();
+    expect(capturedRequested).toHaveLength(2);
+  });
+
+  it('removing an added asset row drops it back to a single leg', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-give-add-asset'));
+    expect(screen.getByTestId('trade-give-asset-1')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('trade-give-remove-asset-1'));
+    expect(screen.queryByTestId('trade-give-asset-1')).not.toBeInTheDocument();
+  });
+
+  it('rejects picking the SAME asset twice on the give side before reaching review', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.click(screen.getByTestId('trade-give-add-asset'));
+    fireEvent.change(screen.getByTestId('trade-give-asset-1'), { target: { value: '0' } }); // same as row 0 (XCH)
+    fireEvent.change(screen.getByTestId('trade-give-amount-1'), { target: { value: '0.2' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    expect(await screen.findByTestId('trade-make-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('trade-make-review')).not.toBeInTheDocument();
   });
 });

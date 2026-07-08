@@ -255,6 +255,7 @@ export const ko: Record<string, string> = {
   'trade.make.continue': '계속',
   'trade.make.review.intro': '오퍼를 생성하기 전에 거래 내용을 확인하세요.',
   'trade.make.submit': '오퍼 생성',
+  'trade.addAsset': '+ 자산 추가',
   'trade.error.sameAsset': '거래할 서로 다른 두 자산을 선택하십시오',
   'trade.error.build': '거래를 생성하지 못했습니다 — 잔액을 확인한 후 다시 시도해 주십시오',
   'trade.deal.intro': '이 오퍼를 공유하십시오. 누구나 수락할 수 있으며, 교환은 원자적으로 처리됩니다.',

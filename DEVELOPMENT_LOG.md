@@ -460,3 +460,17 @@ guaranteed contract — re-verify before depending on a new entity type:
 - NFT: `spacescan.io/nft/<nft1…>` — the bech32m NFT id (SpaceScan does NOT accept a raw launcher-id
   hex here); encoding a launcher id to `nft1…` is the caller's job (the wasm bech32m encoder), which
   is why `spaceScanNftUrl` only builds the URL from an already-encoded id and stays wasm-free.
+
+## Multi-asset offers (#100) — INSPECT/TAKE/CANCEL were already array-shaped; only MAKE was single-leg
+
+When generalizing the offer engine (`offscreen/offers.ts`) from one offered/one requested asset to
+arrays of either, the read-side functions needed almost no change: `offeredSettlementLegs` (used by
+`inspectOffer`/`takeOffer`/`cancelOffer`) already collected an arbitrary number of distinct CAT asset
+ids into a `Set` plus XCH plus one NFT, and `parseRequested` already looped over every phantom carrier
+coin — both because a chia-sdk offer's on-chain shape has NO single-asset constraint; the v1 code just
+never fed more than one leg into the WRITE path (`makeOffer`). The actual multi-asset work was
+concentrated entirely in `makeOffer`'s construction loop (one `Action.send`/notarized-payment/phantom
+carrier per leg, all sharing one `Offer::nonce` computed over every offered coin id together) plus the
+wire/UI plumbing. Lesson: when a v1 "single X" restriction is implemented as "loop once" rather than
+"the format only allows one", the generalization is a pure write-path exercise — audit the read path
+FIRST before assuming a full protocol rewrite is needed.

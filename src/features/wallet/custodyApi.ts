@@ -310,9 +310,10 @@ export const custodyApi = api.injectEndpoints({
       providesTags: ['Activity'],
     }),
 
-    // ── Trade offers (#56) ──
-    // Build (not broadcast) a shareable offer → the `offer1…` string + two-sided summary.
-    makeCustodyOffer: build.mutation<{ offer: string; offerSummary: WireOfferSummary }, { offered: WireOfferLeg; requested: WireOfferLeg; fee?: string }>({
+    // ── Trade offers (#56, multi-asset #100) ──
+    // Build (not broadcast) a shareable offer → the `offer1…` string + two-sided summary. `offered`/
+    // `requested` are ARRAYS (#100) — 1 or more legs per side; a single-asset offer is a 1-element array.
+    makeCustodyOffer: build.mutation<{ offer: string; offerSummary: WireOfferSummary; offerCoinIds?: string[] }, { offered: WireOfferLeg[]; requested: WireOfferLeg[]; fee?: string }>({
       query: (arg) => ({ action: ACTIONS.makeOffer, ...arg }),
     }),
     // Decode an offer string → its two-sided summary (read-only review).

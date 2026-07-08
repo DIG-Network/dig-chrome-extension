@@ -255,6 +255,7 @@ export const zhTW: Record<string, string> = {
   'trade.make.continue': '繼續',
   'trade.make.review.intro': '建立報價前請確認交易內容。',
   'trade.make.submit': '建立報價',
+  'trade.addAsset': '+ 新增另一種資產',
   'trade.error.sameAsset': '請選擇兩種不同的資產進行交易',
   'trade.error.build': '交易建立失敗——請檢查您的餘額後再試一次',
   'trade.deal.intro': '分享此報價。任何人都可以接受它——交換過程具有原子性，安全可靠。',

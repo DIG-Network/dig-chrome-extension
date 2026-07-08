@@ -1714,19 +1714,29 @@ entry uses the synthetic `NFT` label, not a specific token id).
 
 Offers are assembled from `chia-wallet-sdk-wasm` primitives to match the canonical `chia-sdk-driver`
 offer construction byte-for-byte, so they interoperate with Sage / dexie. All money paths are proven
-consensus-valid by a two-party simulator settlement test. v1 supports a SINGLE offered asset and a
+consensus-valid by a two-party simulator settlement test. v1 supported a SINGLE offered asset and a
 SINGLE requested asset, each XCH or a CAT (covering every XCH↔token trade); v2 (#94) additionally
-supports offering an NFT (selling a self-custody NFT for XCH/CAT), with CHIP-0011 royalty. The offered
-and requested assets MUST differ.
+supports offering an NFT (selling a self-custody NFT for XCH/CAT), with CHIP-0011 royalty; v3 (#100)
+generalizes `offered`/`requested` to ARRAYS — 1 or more legs per side, any mix of XCH/CAT on EITHER
+side plus at most one offered NFT (the NFT-per-offer cap is unchanged). No asset may appear more than
+once on the same side (`DUPLICATE_ASSET`), and no asset may appear on BOTH sides (`SAME_ASSET`,
+generalized from the v1 single-pair check). The offer's `Offer::nonce` is computed once, over the
+ascending-sorted coin ids of EVERY offered coin across every offered asset, and every requested
+leg's `NotarizedPayment` shares that same nonce — one notarized payment + one phantom carrier +
+one `AssertPuzzleAnnouncement` per requested leg. `INSPECT`/`TAKE`/`CANCEL` already parsed/handled an
+arbitrary number of legs per side (the array shape was latent in their coin-spend reconstruction);
+#100's change is concentrated in `makeOffer`'s construction loop + the wire/UI plumbing.
 
-- **Surface tiering (#169, refining #145).** A BASIC maker/taker renders on BOTH the compact popup
-  AND fullscreen. Taking an offer has no advanced variant (accepting fixed, already-built terms is
-  basic by nature) and is IDENTICAL on both surfaces. Making an offer is basic
-  (currency-for-currency) on both surfaces too; only the ADVANCED capability — offering one of the
-  wallet's own NFTs (the give-kind toggle) — is fullscreen (ExpandedLayout) ONLY. The popup keeps a
-  persistent "open full screen" link (`trade-open-fullscreen`) for that and any future advanced
-  option (multi-asset legs, fee tuning). This SUPERSEDES the earlier #145 rule that gated the
-  entire Trade surface to fullscreen.
+- **Surface tiering (#169, refining #145; extended by #100).** A BASIC maker/taker renders on BOTH
+  the compact popup AND fullscreen — a single give leg + a single get leg, one asset each. Taking an
+  offer has no advanced variant (accepting fixed, already-built terms is basic by nature) and is
+  IDENTICAL on both surfaces. Two capabilities are ADVANCED — fullscreen (ExpandedLayout) ONLY:
+  offering one of the wallet's own NFTs (the give-kind toggle, #94), and composing MULTIPLE assets
+  per side via "+ Add another asset" (`trade-give-add-asset`/`trade-get-add-asset`, #100 — each added
+  row gets its own `trade-give-asset-{i}`/`trade-give-amount-{i}` pair and a
+  `trade-give-remove-asset-{i}` control, mirrored on the get side). The popup keeps a persistent
+  "open full screen" link (`trade-open-fullscreen`) for both. This SUPERSEDES the earlier #145 rule
+  that gated the entire Trade surface to fullscreen.
 - **Guided review step (#169 clarity redesign).** Making an offer is a 3-step guided flow: **form**
   (pick give/get assets + amounts) → **review** (a "You give / You get" summary of the exact terms,
   computed locally — no network call yet) → **made** (the built `offer1…` deal card). The ONLY

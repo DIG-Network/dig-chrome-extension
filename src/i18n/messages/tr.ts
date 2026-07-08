@@ -255,6 +255,7 @@ export const tr: Record<string, string> = {
   'trade.make.continue': 'Devam et',
   'trade.make.review.intro': 'Teklifi oluşturmadan önce takasınızı gözden geçirin.',
   'trade.make.submit': 'Teklif oluştur',
+  'trade.addAsset': '+ Başka bir varlık ekle',
   'trade.error.sameAsset': 'Takas için iki farklı varlık seçin',
   'trade.error.build': 'Bu takas oluşturulamadı — bakiyelerinizi kontrol edip tekrar deneyin',
   'trade.deal.intro': 'Bu teklifi paylaşın. Herkes kabul edebilir — takas atomiktir.',

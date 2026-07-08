@@ -111,11 +111,41 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
   );
 }
 
+/** One currency (XCH/CAT) leg being edited in the multi-asset give/get builder (#100): which asset
+ * row it points at (an index into `assets`) + its decimal-string amount. */
+interface CurrencyLegDraft {
+  assetIdx: number;
+  amount: string;
+}
+
+/** A stable overlap/dedupe key for one wire offer leg — same asset identity ⇒ same key (#100,
+ * mirrors the offer engine's own `assetKey`, kept client-side for an immediate inline error rather
+ * than a round trip to discover a DUPLICATE_ASSET/SAME_ASSET failure). */
+function wireLegKey(l: WireOfferLeg): string {
+  return l.asset.kind === 'xch' ? 'xch' : l.asset.kind === 'cat' ? `cat:${l.asset.assetId}` : `nft:${l.asset.launcherId}`;
+}
+
+/** The first asset index NOT already used by `legs` (falls back to 0 when every asset is used —
+ * the user can still change it; validation catches a resulting duplicate). */
+function nextUnusedAssetIdx(assets: AssetBalance[], legs: CurrencyLegDraft[]): number {
+  const used = new Set(legs.map((l) => l.assetIdx));
+  for (let i = 0; i < assets.length; i++) if (!used.has(i)) return i;
+  return 0;
+}
+
 /**
  * MAKE: pick give/get assets + amounts → a "You give / You get" review → build the offer → show
  * the shareable deal card. Guided steps (#169): form → review → made, so nothing is built until
- * the maker has confirmed the exact terms. `full` gates the ADVANCED give-kind toggle (offering an
- * NFT, §94) — the compact popup only offers currency-for-currency (basic maker).
+ * the maker has confirmed the exact terms. `full` gates TWO advanced capabilities — offering an NFT
+ * (§94) and composing MULTIPLE assets per side (#100, "+ Add another asset"); the compact popup
+ * stays a single currency-for-currency leg on each side (basic maker).
+ *
+ * **Multi-asset (#100).** `giveLegs`/`getLegs` are arrays of {@link CurrencyLegDraft} — 1 element in
+ * the popup (no add/remove controls rendered), 1-or-more in fullscreen. Every leg on a side must
+ * name a DIFFERENT asset (checked client-side before ever building anything, mirroring the engine's
+ * own `DUPLICATE_ASSET`/`SAME_ASSET` checks), and no asset may appear on BOTH sides. Offering an NFT
+ * (`giveKind === 'nft'`) stays a single exclusive leg — the v1 offer engine supports at most one
+ * offered NFT — so the "+ Add another asset" control only applies to the currency give path.
  *
  * **NFT picker (#170).** Choosing the offered NFT opens the {@link NftPickerModal} XL modal (the
  * wallet's NFTs in a searchable grid) instead of a plain dropdown, giving real thumbnails + search
@@ -128,12 +158,10 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
   const intl = useIntl();
   const [phase, setPhase] = useState<MakePhase>('form');
   const [giveKind, setGiveKind] = useState<GiveKind>('currency');
-  const [giveIdx, setGiveIdx] = useState(0);
+  const [giveLegs, setGiveLegs] = useState<CurrencyLegDraft[]>([{ assetIdx: 0, amount: '' }]);
   const [giveNftLauncherId, setGiveNftLauncherId] = useState<string | null>(null);
   const [nftPickerOpen, setNftPickerOpen] = useState(false);
-  const [getIdx, setGetIdx] = useState(assets.length > 1 ? 1 : 0);
-  const [giveAmount, setGiveAmount] = useState('');
-  const [getAmount, setGetAmount] = useState('');
+  const [getLegs, setGetLegs] = useState<CurrencyLegDraft[]>([{ assetIdx: assets.length > 1 ? 1 : 0, amount: '' }]);
   const [error, setError] = useState<string | null>(null);
   const [offer, setOffer] = useState('');
   const [copied, setCopied] = useState(false);
@@ -144,45 +172,73 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
   const [cancelState, setCancelState] = useState<'idle' | 'cancelled' | 'failed'>('idle');
   const nfts = useListCollectiblesQuery(undefined, { skip: giveKind !== 'nft' });
 
-  const give = assets[giveIdx];
-  const get = assets[getIdx];
   const giveNft = nfts.data?.nfts?.find((n) => n.launcherId === giveNftLauncherId);
   const qr = useMemo(() => (offer ? offerQrDataUrl(offer) : null), [offer]);
 
-  /** Validate the current picks and build the two offer legs — the ONE validation path shared by
-   * "Continue" (validate only) and the review step's "Create offer" (validate + build). Sets
-   * `error` and returns null on any invalid pick; never throws. */
-  function computeLegs(): { offered: WireOfferLeg; requested: WireOfferLeg } | null {
-    const getBase = safeBase(getAmount, decimalsOf(get));
-    if (!get || getBase <= 0) {
-      setError(intl.formatMessage({ id: 'send.error.amount' }));
-      return null;
-    }
+  const updateGiveLeg = (i: number, patch: Partial<CurrencyLegDraft>) =>
+    setGiveLegs((legs) => legs.map((l, li) => (li === i ? { ...l, ...patch } : l)));
+  const updateGetLeg = (i: number, patch: Partial<CurrencyLegDraft>) =>
+    setGetLegs((legs) => legs.map((l, li) => (li === i ? { ...l, ...patch } : l)));
+  const addGiveLeg = () => setGiveLegs((legs) => [...legs, { assetIdx: nextUnusedAssetIdx(assets, legs), amount: '' }]);
+  const addGetLeg = () => setGetLegs((legs) => [...legs, { assetIdx: nextUnusedAssetIdx(assets, legs), amount: '' }]);
+  const removeGiveLeg = (i: number) => setGiveLegs((legs) => (legs.length > 1 ? legs.filter((_, li) => li !== i) : legs));
+  const removeGetLeg = (i: number) => setGetLegs((legs) => (legs.length > 1 ? legs.filter((_, li) => li !== i) : legs));
 
-    let offered: WireOfferLeg;
-    if (giveKind === 'nft') {
-      if (!giveNft) return null;
-      offered = { asset: { kind: 'nft', launcherId: giveNft.launcherId }, amount: '1' };
-    } else {
-      if (!give) return null;
-      if (giveIdx === getIdx) {
-        setError(intl.formatMessage({ id: 'trade.error.sameAsset' }));
-        return null;
-      }
-      const giveBase = safeBase(giveAmount, decimalsOf(give));
-      if (giveBase <= 0) {
+  /** Build + validate one side's currency legs into wire legs, or return null (setting `error`) on
+   * the first invalid amount / insufficient balance / duplicate asset within the side. */
+  function buildCurrencyLegs(legs: CurrencyLegDraft[], checkBalance: boolean): WireOfferLeg[] | null {
+    const seen = new Set<string>();
+    const out: WireOfferLeg[] = [];
+    for (const leg of legs) {
+      const asset = assets[leg.assetIdx];
+      if (!asset) return null;
+      const base = safeBase(leg.amount, decimalsOf(asset));
+      if (base <= 0) {
         setError(intl.formatMessage({ id: 'send.error.amount' }));
         return null;
       }
-      if ((give.balance ?? 0) < giveBase) {
+      if (checkBalance && (asset.balance ?? 0) < base) {
         setError(intl.formatMessage({ id: 'send.error.insufficient' }));
         return null;
       }
-      offered = { asset: toWireAsset(give), amount: String(giveBase) };
+      const wireLeg = { asset: toWireAsset(asset), amount: String(base) };
+      const key = wireLegKey(wireLeg);
+      if (seen.has(key)) {
+        setError(intl.formatMessage({ id: 'trade.error.sameAsset' }));
+        return null;
+      }
+      seen.add(key);
+      out.push(wireLeg);
+    }
+    return out;
+  }
+
+  /** Validate the current picks and build the two offer leg arrays — the ONE validation path shared
+   * by "Continue" (validate only) and the review step's "Create offer" (validate + build). Sets
+   * `error` and returns null on any invalid pick; never throws. */
+  function computeLegs(): { offered: WireOfferLeg[]; requested: WireOfferLeg[] } | null {
+    const requested = buildCurrencyLegs(getLegs, false);
+    if (!requested) return null;
+
+    let offered: WireOfferLeg[];
+    if (giveKind === 'nft') {
+      if (!giveNft) return null;
+      offered = [{ asset: { kind: 'nft', launcherId: giveNft.launcherId }, amount: '1' }];
+    } else {
+      const built = buildCurrencyLegs(giveLegs, true);
+      if (!built) return null;
+      offered = built;
+    }
+
+    // Generalized SAME_ASSET (#100): no asset may appear on BOTH sides.
+    const offeredKeys = new Set(offered.map(wireLegKey));
+    if (requested.some((r) => offeredKeys.has(wireLegKey(r)))) {
+      setError(intl.formatMessage({ id: 'trade.error.sameAsset' }));
+      return null;
     }
 
     setError(null);
-    return { offered, requested: { asset: toWireAsset(get), amount: String(getBase) } };
+    return { offered, requested };
   }
 
   /** Step 1 → 2: validate the picks and move to the "You give / You get" review (no network call). */
@@ -260,11 +316,13 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
 
   // Step 2 (#169): the "You give / You get" review — the terms are fixed at this point; Confirm is
   // the ONLY place `makeOffer` is actually called. Mirrors `TwoSided`'s take-side review framing.
+  // Multi-asset (#100): each side's legs join with " + " ("0.1 XCH + 10 $DIG").
   if (phase === 'review') {
+    const legLabel = (leg: CurrencyLegDraft) => `${leg.amount || '0'} ${assets[leg.assetIdx]?.descriptor.ticker ?? ''}`;
     const giveLabel = giveKind === 'nft'
       ? (giveNft ? `NFT ${giveNft.launcherId.slice(0, 6)}…` : '')
-      : `${giveAmount || '0'} ${give?.descriptor.ticker ?? ''}`;
-    const getLabel = `${getAmount || '0'} ${get?.descriptor.ticker ?? ''}`;
+      : giveLegs.map(legLabel).join(' + ');
+    const getLabel = getLegs.map(legLabel).join(' + ');
     return (
       <div data-testid="trade-make-review">
         <p className="dig-muted" style={{ marginTop: 0 }}>
@@ -322,16 +380,46 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
           </div>
         )}
         {giveKind === 'currency' ? (
-          <label className="dig-field">
-            <div style={{ display: 'flex', gap: 8 }}>
-              <select className="dig-input" data-testid="trade-give-asset" value={giveIdx} onChange={(e) => setGiveIdx(Number(e.target.value))}>
-                {assets.map((a, i) => (
-                  <option key={`give-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={i}>{a.descriptor.ticker}</option>
-                ))}
-              </select>
-              <input className="dig-input" data-testid="trade-give-amount" inputMode="decimal" value={giveAmount} onChange={(e) => setGiveAmount(e.target.value)} aria-label={intl.formatMessage({ id: 'trade.give' })} />
-            </div>
-          </label>
+          <>
+            {giveLegs.map((leg, i) => (
+              <div key={i} className="dig-field" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <select
+                  className="dig-input"
+                  data-testid={i === 0 ? 'trade-give-asset' : `trade-give-asset-${i}`}
+                  value={leg.assetIdx}
+                  onChange={(e) => updateGiveLeg(i, { assetIdx: Number(e.target.value) })}
+                >
+                  {assets.map((a, ai) => (
+                    <option key={`give-${i}-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={ai}>{a.descriptor.ticker}</option>
+                  ))}
+                </select>
+                <input
+                  className="dig-input"
+                  data-testid={i === 0 ? 'trade-give-amount' : `trade-give-amount-${i}`}
+                  inputMode="decimal"
+                  value={leg.amount}
+                  onChange={(e) => updateGiveLeg(i, { amount: e.target.value })}
+                  aria-label={intl.formatMessage({ id: 'trade.give' })}
+                />
+                {full && i > 0 && (
+                  <button
+                    type="button"
+                    className="dig-link"
+                    data-testid={`trade-give-remove-asset-${i}`}
+                    onClick={() => removeGiveLeg(i)}
+                    aria-label={intl.formatMessage({ id: 'wallet.switcher.remove' })}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            {full && (
+              <button type="button" className="dig-link" data-testid="trade-give-add-asset" onClick={addGiveLeg}>
+                <FormattedMessage id="trade.addAsset" />
+              </button>
+            )}
+          </>
         ) : nfts.data?.nfts?.length ? (
           <div data-testid="trade-give-nft">
             {giveNft ? (
@@ -370,17 +458,47 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
           }}
         />
       )}
-      <label className="dig-field">
+      <div className="dig-field">
         <span><FormattedMessage id="trade.get" /></span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select className="dig-input" data-testid="trade-get-asset" value={getIdx} onChange={(e) => setGetIdx(Number(e.target.value))}>
-            {assets.map((a, i) => (
-              <option key={`get-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={i}>{a.descriptor.ticker}</option>
-            ))}
-          </select>
-          <input className="dig-input" data-testid="trade-get-amount" inputMode="decimal" value={getAmount} onChange={(e) => setGetAmount(e.target.value)} aria-label={intl.formatMessage({ id: 'trade.get' })} />
-        </div>
-      </label>
+        {getLegs.map((leg, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+            <select
+              className="dig-input"
+              data-testid={i === 0 ? 'trade-get-asset' : `trade-get-asset-${i}`}
+              value={leg.assetIdx}
+              onChange={(e) => updateGetLeg(i, { assetIdx: Number(e.target.value) })}
+            >
+              {assets.map((a, ai) => (
+                <option key={`get-${i}-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={ai}>{a.descriptor.ticker}</option>
+              ))}
+            </select>
+            <input
+              className="dig-input"
+              data-testid={i === 0 ? 'trade-get-amount' : `trade-get-amount-${i}`}
+              inputMode="decimal"
+              value={leg.amount}
+              onChange={(e) => updateGetLeg(i, { amount: e.target.value })}
+              aria-label={intl.formatMessage({ id: 'trade.get' })}
+            />
+            {full && i > 0 && (
+              <button
+                type="button"
+                className="dig-link"
+                data-testid={`trade-get-remove-asset-${i}`}
+                onClick={() => removeGetLeg(i)}
+                aria-label={intl.formatMessage({ id: 'wallet.switcher.remove' })}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+        {full && (
+          <button type="button" className="dig-link" data-testid="trade-get-add-asset" onClick={addGetLeg}>
+            <FormattedMessage id="trade.addAsset" />
+          </button>
+        )}
+      </div>
       {error && <p className="dig-error-text" role="alert" data-testid="trade-make-error">{error}</p>}
       <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="trade-make-continue">
         <FormattedMessage id="trade.make.continue" />

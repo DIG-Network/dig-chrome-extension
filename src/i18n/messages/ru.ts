@@ -255,6 +255,7 @@ export const ru: Record<string, string> = {
   'trade.make.continue': 'Продолжить',
   'trade.make.review.intro': 'Проверьте условия сделки перед созданием предложения.',
   'trade.make.submit': 'Создать предложение',
+  'trade.addAsset': '+ Добавить ещё один актив',
   'trade.error.sameAsset': 'Выберите два разных актива для обмена',
   'trade.error.build': 'Не удалось сформировать сделку — проверьте балансы и попробуйте снова',
   'trade.deal.intro': 'Поделитесь этим предложением. Принять его может кто угодно — обмен атомарен.',

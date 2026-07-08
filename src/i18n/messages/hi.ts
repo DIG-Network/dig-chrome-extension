@@ -255,6 +255,7 @@ export const hi: Record<string, string> = {
   'trade.make.continue': 'जारी रखें',
   'trade.make.review.intro': 'ऑफ़र बनाने से पहले अपने ट्रेड की समीक्षा करें।',
   'trade.make.submit': 'ऑफ़र बनाएं',
+  'trade.addAsset': '+ एक और संपत्ति जोड़ें',
   'trade.error.sameAsset': 'ट्रेड करने के लिए दो अलग-अलग एसेट चुनें',
   'trade.error.build': 'यह ट्रेड नहीं बन सका — अपना बैलेंस जांचें और फिर से कोशिश करें',
   'trade.deal.intro': 'यह ऑफ़र शेयर करें। कोई भी इसे स्वीकार कर सकता है — स्वैप एटॉमिक होता है।',

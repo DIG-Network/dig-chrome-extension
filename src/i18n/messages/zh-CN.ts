@@ -255,6 +255,7 @@ export const zhCN: Record<string, string> = {
   'trade.make.continue': '继续',
   'trade.make.review.intro': '创建报价前请确认交易内容。',
   'trade.make.submit': '创建报价',
+  'trade.addAsset': '+ 添加另一种资产',
   'trade.error.sameAsset': '请选择两种不同的资产进行交易',
   'trade.error.build': '交易创建失败——请检查您的余额后重试',
   'trade.deal.intro': '分享此报价。任何人都可以接受它——交换过程具有原子性，安全可靠。',

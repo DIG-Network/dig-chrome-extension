@@ -255,6 +255,7 @@ export const de: Record<string, string> = {
   'trade.make.continue': 'Weiter',
   'trade.make.review.intro': 'Prüfen Sie Ihren Tausch, bevor Sie das Angebot erstellen.',
   'trade.make.submit': 'Angebot erstellen',
+  'trade.addAsset': '+ Weiteres Asset hinzufügen',
   'trade.error.sameAsset': 'Wählen Sie zwei unterschiedliche Vermögenswerte zum Handeln aus',
   'trade.error.build': 'Dieser Trade konnte nicht erstellt werden — überprüfen Sie Ihre Guthaben und versuchen Sie es erneut',
   'trade.deal.intro': 'Teilen Sie dieses Angebot. Jeder kann es annehmen — der Tausch erfolgt atomar.',

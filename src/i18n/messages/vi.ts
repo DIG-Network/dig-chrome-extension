@@ -255,6 +255,7 @@ export const vi: Record<string, string> = {
   'trade.make.continue': 'Tiếp tục',
   'trade.make.review.intro': 'Xem lại giao dịch của bạn trước khi tạo đề nghị.',
   'trade.make.submit': 'Tạo đề nghị',
+  'trade.addAsset': '+ Thêm tài sản khác',
   'trade.error.sameAsset': 'Chọn hai tài sản khác nhau để giao dịch',
   'trade.error.build': 'Không thể tạo giao dịch này — hãy kiểm tra số dư và thử lại',
   'trade.deal.intro': 'Chia sẻ đề nghị này. Bất kỳ ai cũng có thể chấp nhận — đây là một giao dịch hoán đổi nguyên tử.',

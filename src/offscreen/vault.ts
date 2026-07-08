@@ -100,6 +100,7 @@ export interface WireOfferSummary {
 }
 
 const toLeg = (w: WireOfferLeg): OfferLeg => ({ asset: w.asset as OfferAsset, amount: BigInt(w.amount) });
+const toLegs = (ws: WireOfferLeg[]): OfferLeg[] => ws.map(toLeg);
 const toWireSummary = (s: OfferSummary): WireOfferSummary => ({
   offered: s.offered.map((l) => ({ asset: l.asset, amount: l.amount.toString() })),
   requested: s.requested.map((r) => ({ asset: r.asset, amount: r.amount.toString(), toPuzzleHashHex: r.toPuzzleHashHex })),
@@ -287,9 +288,12 @@ export interface VaultRequest {
   /** listClawbacks (#152): the caller's own OUTGOING candidates (from its local activity log) to
    * check against live chain state — the vault has no other way to enumerate a wallet's past sends. */
   clawbackCandidates?: WireClawbackInfo[];
-  /** makeOffer: the leg the wallet gives / the leg it wants (wire-safe, string amounts). */
-  offered?: WireOfferLeg;
-  requested?: WireOfferLeg;
+  /**
+   * makeOffer: the asset(s) the wallet gives / the asset(s) it wants (wire-safe, string amounts).
+   * ARRAYS (#100) — 1 or more legs per side; a single-asset offer is simply a 1-element array.
+   */
+  offered?: WireOfferLeg[];
+  requested?: WireOfferLeg[];
   /** inspectOffer / prepareTrade: the `offer1…` string. */
   offerStr?: string;
   /** prepareTrade: whether to TAKE (fund + accept) or CANCEL (reclaim) the offer. */
@@ -362,6 +366,9 @@ export interface VaultResponse {
   offer?: string;
   /** makeOffer / inspectOffer / prepareTrade: the decoded two-sided summary. */
   offerSummary?: WireOfferSummary;
+  /** makeOffer (#101): the hex coin ids of every real offered coin (across every offered asset) —
+   * the SW's poll key for the offer-log's later take/cancel detection. */
+  offerCoinIds?: string[];
   /** listNfts: the wallet's NFTs (both HD schemes), wire-safe. */
   nfts?: WalletNft[];
   /** prepareNftTransfer: the decoded transfer summary to approve. */
@@ -804,17 +811,17 @@ export class Vault {
   /** MAKE a trade offer (build + encode; does NOT broadcast). Returns the shareable string + summary. */
   private async makeOffer(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
-    if (!req.offered || !req.requested) return { success: false, code: 'BAD_REQUEST', message: 'offered + requested required' };
+    if (!req.offered?.length || !req.requested?.length) return { success: false, code: 'BAD_REQUEST', message: 'offered + requested required' };
     const seed = await this.heldSeed();
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const made = await makeOffer(deps.chia as unknown as OfferWasm, deps.chain, {
       seed,
-      offered: toLeg(req.offered),
-      requested: toLeg(req.requested),
+      offered: toLegs(req.offered),
+      requested: toLegs(req.requested),
       ...(req.fee ? { fee: BigInt(req.fee) } : {}),
       activeIndex: req.activeIndex ?? 0,
     });
-    return { success: true, offer: made.offer, offerSummary: toWireSummary(made.summary) };
+    return { success: true, offer: made.offer, offerSummary: toWireSummary(made.summary), offerCoinIds: made.offeredCoinIdsHex };
   }
 
   /** INSPECT an offer (decode + two-sided summary). Read-only; needs the wasm but no held key. */

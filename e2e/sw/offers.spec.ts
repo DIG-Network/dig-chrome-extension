@@ -89,8 +89,9 @@ test.describe('Trade offers (routed to the self-custody vault, incl. NFT legs #9
       ext,
       {
         action: 'makeOffer',
-        offered: { asset: { kind: 'nft', launcherId: 'ab'.repeat(32) }, amount: '1' },
-        requested: { asset: { kind: 'xch' }, amount: '1000000000' },
+        // #100 — offered/requested are ARRAYS on the wire (a single-asset offer is a 1-element array).
+        offered: [{ asset: { kind: 'nft', launcherId: 'ab'.repeat(32) }, amount: '1' }],
+        requested: [{ asset: { kind: 'xch' }, amount: '1000000000' }],
       },
       6000,
     );

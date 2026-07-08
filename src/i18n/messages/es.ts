@@ -255,6 +255,7 @@ export const es: Record<string, string> = {
   'trade.make.continue': 'Continuar',
   'trade.make.review.intro': 'Revisa tu intercambio antes de crear la oferta.',
   'trade.make.submit': 'Crear oferta',
+  'trade.addAsset': '+ Añadir otro activo',
   'trade.error.sameAsset': 'Elige dos activos diferentes para intercambiar',
   'trade.error.build': 'No se pudo crear este intercambio. Revisa tus saldos e inténtalo de nuevo',
   'trade.deal.intro': 'Comparte esta oferta. Cualquiera puede aceptarla — el intercambio es atómico.',

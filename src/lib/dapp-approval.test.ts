@@ -401,7 +401,7 @@ test('write: takeOffer requires an offer string (400 before summon)', async () =
 test('write: createOffer builds via makeOffer; the offer string is only released to the dApp on approve', async () => {
   const { m, calls } = makeManager({
     vault: {
-      makeOffer: (r) => ({ success: true, offer: 'offer1MADE', offerSummary: { offered: [{ asset: r.offered, amount: (r.offered as { amount?: string }).amount }], requested: [] } }),
+      makeOffer: (r) => ({ success: true, offer: 'offer1MADE', offerSummary: { offered: r.offered as unknown[], requested: [] } }),
     },
   });
   const p = m.route({
@@ -414,8 +414,10 @@ test('write: createOffer builds via makeOffer; the offer string is only released
   const item = m.list()[0];
   assert.equal(item.kind, 'createOffer');
   const mk = calls.vault.find((r) => r.op === 'makeOffer');
-  assert.deepEqual(mk!.offered, { asset: { kind: 'xch' }, amount: '100' });
-  assert.deepEqual(mk!.requested, { asset: { kind: 'cat', assetId: CAT }, amount: '5' });
+  // #100 — the vault's makeOffer wire contract is ARRAYS; the dApp RPC itself stays restricted to
+  // exactly one leg per side (see the multi-leg-rejection test below), just wrapped for the vault call.
+  assert.deepEqual(mk!.offered, [{ asset: { kind: 'xch' }, amount: '100' }]);
+  assert.deepEqual(mk!.requested, [{ asset: { kind: 'cat', assetId: CAT }, amount: '5' }]);
   await m.resolve(item.id, true);
   const env = await p;
   assert.equal(env.status, 200);

@@ -255,6 +255,7 @@ export const ja: Record<string, string> = {
   'trade.make.continue': '続ける',
   'trade.make.review.intro': 'オファーを作成する前に取引内容を確認してください。',
   'trade.make.submit': 'オファーを作成',
+  'trade.addAsset': '+ 別の資産を追加',
   'trade.error.sameAsset': '取引する2つの異なる資産を選択してください',
   'trade.error.build': 'この取引を作成できませんでした。残高を確認してもう一度お試しください',
   'trade.deal.intro': 'このオファーを共有してください。誰でも承諾でき、交換はアトミックに行われます。',

@@ -263,6 +263,7 @@ export const en: Record<string, string> = {
   'trade.make.continue': 'Continue',
   'trade.make.review.intro': 'Review your trade before you create the offer.',
   'trade.make.submit': 'Create offer',
+  'trade.addAsset': '+ Add another asset',
   'trade.error.sameAsset': 'Pick two different assets to trade',
   'trade.error.build': "Couldn't build this trade — check your balances and try again",
   'trade.deal.intro': 'Share this offer. Anyone can accept it — the swap is atomic.',
