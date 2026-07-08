@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ExternalLink } from '@/components/ExternalLink';
 import { FourState } from '@/components/FourState';
@@ -18,8 +18,9 @@ import {
   nftMonogram,
   shortHex,
 } from '@/features/collectibles/nftDisplay';
-import { getSharedNftImageCache } from '@/features/collectibles/nftImageCache';
 import { NftImageLightbox } from '@/features/collectibles/NftImageLightbox';
+import { useNftMetadata } from '@/features/collectibles/useNftMetadata';
+import { useCachedNftImageSrc } from '@/features/collectibles/useCachedNftImageSrc';
 
 const XCH_DECIMALS = 12;
 
@@ -55,6 +56,8 @@ export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft:
   const imageSrc = nftImageSrc(nft);
   const externalImage = nftExternalImageUrl(nft);
   const edition = editionLabel(nft);
+  const { metadata } = useNftMetadata(nft);
+  const displayName = metadata?.name ?? nftDisplayName(nft);
 
   async function doPrepare() {
     const v = validateSendForm({ address: recipient, amount: '1', fee });
@@ -138,8 +141,8 @@ export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft:
       <div className="dig-nft-hero" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', margin: '8px 0 14px' }}>
         <NftMedia nft={nft} imageSrc={imageSrc} big enableLightbox />
         <div style={{ minWidth: 0 }}>
-          <h2 className="dig-heading dig-mono" id="nft-detail-title" style={{ margin: 0, wordBreak: 'break-all' }}>
-            {nftDisplayName(nft)}
+          <h2 className={metadata?.name ? 'dig-heading' : 'dig-heading dig-mono'} id="nft-detail-title" style={{ margin: 0, wordBreak: 'break-all' }}>
+            {displayName}
           </h2>
           {edition && <p className="dig-muted" style={{ margin: '2px 0 0' }}>{edition}</p>}
         </div>
@@ -155,10 +158,33 @@ export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft:
             <dt><FormattedMessage id="nft.detail.royalty" /></dt>
             <dd data-testid="nft-royalty">{royaltyPercentLabel(nft.royaltyBasisPoints)}</dd>
             <dt><FormattedMessage id="nft.detail.collection" /></dt>
-            <dd className="dig-mono" data-testid="nft-collection">
-              {nft.collectionId ? shortHex(nft.collectionId, 8, 6) : intl.formatMessage({ id: 'collectibles.collection.ungrouped' })}
+            <dd className={metadata?.collection?.name ? undefined : 'dig-mono'} data-testid="nft-collection">
+              {metadata?.collection?.name ??
+                (nft.collectionId ? shortHex(nft.collectionId, 8, 6) : intl.formatMessage({ id: 'collectibles.collection.ungrouped' }))}
             </dd>
           </dl>
+
+          {metadata?.description && (
+            <p className="dig-muted" data-testid="nft-detail-description" style={{ margin: '0 0 12px' }}>
+              {metadata.description}
+            </p>
+          )}
+
+          {metadata && metadata.attributes.length > 0 && (
+            <div data-testid="nft-detail-attributes" style={{ margin: '0 0 12px' }}>
+              <h3 className="dig-heading" style={{ fontSize: 14, margin: '0 0 6px' }}>
+                <FormattedMessage id="nft.detail.attributes" />
+              </h3>
+              <dl className="dig-summary">
+                {metadata.attributes.map((attr, i) => (
+                  <Fragment key={`${attr.traitType}-${i}`}>
+                    <dt>{attr.traitType}</dt>
+                    <dd>{attr.value}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+            </div>
+          )}
 
           {(externalImage || nft.metadataUris[0] || nft.licenseUris[0]) && (
             <ul className="dig-link-list" style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexWrap: 'wrap', gap: 12 }}>
@@ -347,51 +373,6 @@ export function NftDetail({ nft, isFull = false, onBack, pollMs = 8000 }: { nft:
       </section>
     </div>
   );
-}
-
-/**
- * Resolve an NFT image source (`nftImageSrc` — `data:` inline or a remote `http(s)`/gateway-rewritten
- * `ipfs://` URL, #150) to what `<img src>` should actually render: a `data:` URI passes through
- * unchanged (already inline, no network cost); a remote URL is served through the local NFT image
- * cache (#159) — a cache hit resolves immediately with NO re-fetch, a miss fetches once, caches the
- * bytes, and resolves to an object URL.
- *
- * A cache/fetch failure falls back to the RAW remote URL (uncached, exactly the pre-#159 behavior) —
- * NOT to the monogram — because `fetch()` (unlike an `<img>` load) is subject to CORS, and plenty of
- * real NFT-art hosts (marketplace CDNs, some IPFS gateways) render fine as an `<img src>` without ever
- * sending `Access-Control-Allow-Origin`. Failing closed to the monogram here would regress #150 for
- * every such host. `NftMedia`'s existing `<img onerror>` handling still catches a genuinely dead host
- * (a real 404/timeout fails identically whether requested via `fetch()` or `<img src>`).
- *
- * Returns null only while still resolving (NftMedia shows the monogram placeholder meanwhile, same
- * as "no image yet").
- */
-function useCachedNftImageSrc(imageSrc: string | null): string | null {
-  const [resolved, setResolved] = useState<string | null>(null);
-  useEffect(() => {
-    if (!imageSrc) {
-      setResolved(null);
-      return;
-    }
-    if (imageSrc.startsWith('data:')) {
-      setResolved(imageSrc);
-      return;
-    }
-    let cancelled = false;
-    setResolved(null);
-    getSharedNftImageCache()
-      .getOrFetchObjectUrl(imageSrc)
-      .then((src) => {
-        if (!cancelled) setResolved(src);
-      })
-      .catch(() => {
-        if (!cancelled) setResolved(imageSrc); // graceful, uncached fallback — see doc comment above
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [imageSrc]);
-  return resolved;
 }
 
 /**

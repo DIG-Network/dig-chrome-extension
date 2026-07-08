@@ -10,6 +10,7 @@ import {
   nftMonogram,
   groupByCollection,
   toGatewayUrl,
+  nftMetadataUri,
 } from './nftDisplay';
 
 function nft(over: Partial<WalletNft> = {}): WalletNft {
@@ -139,5 +140,28 @@ describe('groupByCollection', () => {
   });
   it('is empty for no NFTs', () => {
     expect(groupByCollection([])).toEqual([]);
+  });
+});
+
+describe('nftMetadataUri (#98 — the off-chain metadata document to fetch)', () => {
+  it('resolves a data: metadataUri as an inline document — no fetch needed', () => {
+    const n = nft({ metadataUris: ['data:application/json;base64,eyJuYW1lIjoiWCJ9'] });
+    expect(nftMetadataUri(n)).toEqual({ kind: 'data', uri: 'data:application/json;base64,eyJuYW1lIjoiWCJ9' });
+  });
+  it('gateway-rewrites an ipfs:// metadataUri for fetching', () => {
+    const n = nft({ metadataUris: ['ipfs://bafy123/meta.json'] });
+    expect(nftMetadataUri(n)).toEqual({ kind: 'remote', url: 'https://ipfs.io/ipfs/bafy123/meta.json' });
+  });
+  it('passes an https:// metadataUri through unchanged', () => {
+    const n = nft({ metadataUris: ['https://example.test/meta.json'] });
+    expect(nftMetadataUri(n)).toEqual({ kind: 'remote', url: 'https://example.test/meta.json' });
+  });
+  it('skips an unrecognized-scheme URI and picks the next usable one', () => {
+    const n = nft({ metadataUris: ['ar://weave-id', 'https://example.test/meta.json'] });
+    expect(nftMetadataUri(n)).toEqual({ kind: 'remote', url: 'https://example.test/meta.json' });
+  });
+  it('is null when there is no usable metadataUri', () => {
+    expect(nftMetadataUri(nft({ metadataUris: [] }))).toBeNull();
+    expect(nftMetadataUri(nft({ metadataUris: ['ar://weave-id'] }))).toBeNull();
   });
 });

@@ -395,5 +395,38 @@ modal to `document.body`** (`createPortal` from `react-dom`) instead of relying 
 nesting — this escapes the ancestor chain for BOTH positioning (containing block) and stacking
 (z-index context) without touching the shared layout CSS other modals still depend on. RTL's `screen`
 queries and Playwright's `page.getByTestId` both search the whole document, so a portaled modal needs
-no test changes. Prefer this pattern for any FUTURE full-screen/XL modal in this codebase; retrofitting
-`Sheet`/`NftImageLightbox` is a tracked follow-up, not yet done.
+no test changes. Prefer this pattern for any FUTURE full-screen/XL modal in this codebase.
+`Sheet`/`NftImageLightbox` were retrofitted the same way in #200 — every overlay in this codebase now
+portals to `document.body`; a NEW inline `position: fixed` overlay nested in a `.dig-screen` would
+reintroduce this exact trap.
+
+## A Manifest V3 background SERVICE WORKER's own `fetch()` IS subject to `extension_pages` CSP `connect-src` (#98)
+
+Building `getNftMetadata` (#98 — fetching an NFT's off-chain CHIP-0007 metadata JSON from an
+arbitrary `metadataUri` host), the design assumed a background service worker's own `fetch()` calls
+are NOT subject to the manifest's `content_security_policy.extension_pages` directive — the
+directive's NAME suggests it governs only extension HTML documents (popup, options, the offscreen
+document), not the service worker script, which has no DOM/document at all. **This assumption was
+empirically WRONG** in the real Chromium build this extension ships against: a `getNftMetadata` call
+to a host outside `connect-src` failed with a `NETWORK_ERROR` ("Failed to fetch"), and a Playwright
+`context.route()` handler registered for that exact URL was NEVER invoked — i.e. the request never
+reached the network layer at all. That is the diagnostic signature of a CSP block, not a CORS
+failure: a CORS-rejected request still round-trips over the real network (the browser sends it,
+receives the response, and only THEN refuses to expose it to script), so `context.route()` — which
+intercepts at the network layer — would still have fired. A zero-hit route with an immediate
+`TypeError: Failed to fetch` is what a pre-flight CSP `connect-src` violation looks like from JS.
+
+**Fix:** widen `connect-src` to `https:` and `host_permissions` to an all-hosts HTTPS pattern
+(`manifest.json`) — the same breadth `img-src: https:` already grants remote NFT art (#150, §18.11)
+— rather than trying to find an SW-specific CSP exemption that does not exist in practice. The
+`host_permissions` widening is separately required for the extension's CORS-bypass fetch elevation
+(most off-chain metadata hosts won't send `Access-Control-Allow-Origin`, and without
+`host_permissions` covering the origin, an extension's fetch is subject to ordinary CORS like any web
+page's).
+
+**Takeaway for future SW-side network code in this extension:** do NOT assume the service worker is
+exempt from the extension-pages CSP just because it isn't an HTML document. Verify empirically
+(build the extension, hit a real host outside `connect-src` from the SW, check whether it reaches
+the network at all) before designing around that assumption — the #122 regression test pattern
+(`manifest-coinset-hosts.test.ts`) already existed for exactly this class of "the client wants a host
+the manifest doesn't grant" bug, and this is the same failure mode one level more general.

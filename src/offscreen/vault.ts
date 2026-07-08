@@ -48,7 +48,7 @@ import {
   type NftMintSummary,
 } from '@/offscreen/nfts';
 import { listDids, prepareDidCreate, prepareDidTransfer, prepareDidProfileUpdate, type DidWasm, type WalletDid, type DidCreateSummary, type DidTransferSummary, type DidProfileUpdateSummary } from '@/offscreen/dids';
-import { prepareNftDidAssign, type AssignWasm, type NftDidAssignSummary } from '@/offscreen/didAssign';
+import { prepareNftDidAssign, prepareNftBulkDidAssign, type AssignWasm, type NftDidAssignSummary, type NftBulkDidAssignSummary } from '@/offscreen/didAssign';
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
 import { decodeDappSpend, reconstructCoinSpends, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
 import { makeOffer, inspectOffer, takeOffer, cancelOffer, type OfferWasm, type OfferAsset, type OfferLeg, type OfferSummary } from '@/offscreen/offers';
@@ -194,6 +194,8 @@ export type VaultOp =
   | 'prepareDidProfileUpdate'
   // Assign a wallet-owned DID as an NFT's owner (#93); broadcast via confirmSend.
   | 'prepareNftDidAssign'
+  // Assign a wallet-owned DID as the owner of MULTIPLE NFTs in ONE spend (#99); broadcast via confirmSend.
+  | 'prepareNftBulkDidAssign'
   // Coin control (#91): per-asset coin listing + split / combine self-sends.
   | 'listCoins'
   | 'prepareSplit'
@@ -289,9 +291,12 @@ export interface VaultRequest {
   launcherId?: string;
   /** prepareNftBulkTransfer / prepareNftBulkBurn (#171): the launcher ids (hex) of EVERY selected NFT
    * to move/burn in one spend. `recipient` (above) is required for a bulk TRANSFER, ignored for a
-   * bulk BURN (the destination is the fixed well-known burn puzzle hash). */
+   * bulk BURN (the destination is the fixed well-known burn puzzle hash).
+   * prepareNftBulkDidAssign (#99): the launcher ids (hex) of EVERY selected NFT to re-owner to
+   * {@link didLauncherId} in one spend. */
   launcherIds?: string[];
-  /** prepareNftDidAssign (#93): the DID's launcher id (hex) to assign as the NFT's owner. */
+  /** prepareNftDidAssign (#93) / prepareNftBulkDidAssign (#99): the DID's launcher id (hex) to assign
+   * as the owner of the NFT(s). */
   didLauncherId?: string;
   /** prepareDidProfileUpdate (#93): the new on-chain profile name (plain UTF-8). */
   profileName?: string;
@@ -368,6 +373,8 @@ export interface VaultResponse {
   didProfileSummary?: DidProfileUpdateSummary;
   /** prepareNftDidAssign (#93): the decoded NFT↔DID assignment summary to approve. */
   nftDidAssignSummary?: NftDidAssignSummary;
+  /** prepareNftBulkDidAssign (#99): the decoded bulk NFT↔DID assignment summary to approve. */
+  nftBulkDidAssignSummary?: NftBulkDidAssignSummary;
   /** listCoins: the wallet's unspent coins for the requested asset. */
   coins?: CoinInfo[];
   /** prepareSplit / prepareCombine: the decoded (tamper-resistant) coin-op summary to approve. */
@@ -510,6 +517,8 @@ export class Vault {
           return await this.prepareDidProfileUpdate(req, deps);
         case 'prepareNftDidAssign':
           return await this.prepareNftDidAssign(req, deps);
+        case 'prepareNftBulkDidAssign':
+          return await this.prepareNftBulkDidAssign(req, deps);
         case 'listCoins':
           return await this.listCoins(req, deps);
         case 'prepareSplit':
@@ -1062,6 +1071,35 @@ export class Vault {
     const activityHint: ActivityHint = { asset: 'NFT', amount: '0', counterparty: null };
     this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, nftDidAssignSummary: prepared.summary };
+  }
+
+  /**
+   * Prepare (build, don't sign/broadcast) assigning the wallet's DID as the OWNER of MULTIPLE
+   * wallet-owned NFTs in ONE spend bundle and HOLD it under a pending id (#99) — the SAME pending map
+   * + `confirmSend` broadcast path as the single-NFT {@link prepareNftDidAssign}.
+   */
+  private async prepareNftBulkDidAssign(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.launcherIds || req.launcherIds.length === 0 || !req.didLauncherId) {
+      return { success: false, code: 'BAD_REQUEST', message: 'launcherIds (NFTs) + didLauncherId required' };
+    }
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as AssignWasm;
+    const prepared = await prepareNftBulkDidAssign(chia, deps.chain, {
+      seed,
+      nftLauncherIds: req.launcherIds,
+      didLauncherId: req.didLauncherId,
+      fee: BigInt(req.fee ?? '0'),
+      activeIndex: req.activeIndex ?? 0,
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    // #154 — bulk-assigning DID ownership is a self-only spend; logged as kind 'did'.
+    const activityHint: ActivityHint = { asset: 'NFT', amount: '0', counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
+    return { success: true, pendingId, nftBulkDidAssignSummary: prepared.summary };
   }
 
   /**

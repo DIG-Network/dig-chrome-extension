@@ -113,6 +113,8 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'confirmDidProfileUpdate',
   'prepareNftDidAssign',
   'confirmNftDidAssign',
+  'prepareNftBulkDidAssign',
+  'confirmNftBulkDidAssign',
   'listCoins',
   'prepareSplit',
   'prepareCombine',
