@@ -11,6 +11,10 @@ export const zhCN: Record<string, string> = {
   'shell.settings': 'DIG 设置',
   'shell.version': '版本 {version}',
   'shell.language': '语言',
+  'shell.theme': '主题',
+  'shell.theme.light': '浅色',
+  'shell.theme.dark': '深色',
+  'shell.theme.system': '跟随系统',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': '首页',

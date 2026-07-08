@@ -11,6 +11,10 @@ export const ko: Record<string, string> = {
   'shell.settings': 'DIG 설정',
   'shell.version': '버전 {version}',
   'shell.language': '언어',
+  'shell.theme': '테마',
+  'shell.theme.light': '라이트',
+  'shell.theme.dark': '다크',
+  'shell.theme.system': '시스템 설정',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': '홈',

@@ -11,6 +11,10 @@ export const vi: Record<string, string> = {
   'shell.settings': 'Cài đặt DIG',
   'shell.version': 'Phiên bản {version}',
   'shell.language': 'Ngôn ngữ',
+  'shell.theme': 'Giao diện',
+  'shell.theme.light': 'Sáng',
+  'shell.theme.dark': 'Tối',
+  'shell.theme.system': 'Theo hệ thống',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Trang chủ',

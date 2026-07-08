@@ -11,6 +11,12 @@ export interface WalletSettings {
   chainPrivacyAck?: boolean;
   /** Unlock TTL in minutes. */
   unlockTtlMinutes?: number;
+  /** Active UI locale (§6.6). */
+  locale?: string;
+  /** Theme mode: light | dark | system (#111). */
+  theme?: string;
+  /** Active chain network: mainnet | testnet (#108). Mainnet is real funds. */
+  network?: string;
   [k: string]: unknown;
 }
 

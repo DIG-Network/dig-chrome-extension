@@ -11,6 +11,10 @@ export const ptBR: Record<string, string> = {
   'shell.settings': 'Configurações do DIG',
   'shell.version': 'Versão {version}',
   'shell.language': 'Idioma',
+  'shell.theme': 'Tema',
+  'shell.theme.light': 'Claro',
+  'shell.theme.dark': 'Escuro',
+  'shell.theme.system': 'Sistema',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Início',

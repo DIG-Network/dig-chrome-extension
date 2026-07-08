@@ -11,6 +11,10 @@ export const ja: Record<string, string> = {
   'shell.settings': 'DIG設定',
   'shell.version': 'バージョン {version}',
   'shell.language': '言語',
+  'shell.theme': 'テーマ',
+  'shell.theme.light': 'ライト',
+  'shell.theme.dark': 'ダーク',
+  'shell.theme.system': 'システムに合わせる',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'ホーム',

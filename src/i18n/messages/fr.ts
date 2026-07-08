@@ -11,6 +11,10 @@ export const fr: Record<string, string> = {
   'shell.settings': 'Paramètres DIG',
   'shell.version': 'Version {version}',
   'shell.language': 'Langue',
+  'shell.theme': 'Thème',
+  'shell.theme.light': 'Clair',
+  'shell.theme.dark': 'Sombre',
+  'shell.theme.system': 'Système',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Accueil',

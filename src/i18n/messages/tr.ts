@@ -11,6 +11,10 @@ export const tr: Record<string, string> = {
   'shell.settings': 'DIG ayarları',
   'shell.version': 'Sürüm {version}',
   'shell.language': 'Dil',
+  'shell.theme': 'Tema',
+  'shell.theme.light': 'Açık',
+  'shell.theme.dark': 'Koyu',
+  'shell.theme.system': 'Sistem',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Ana Sayfa',

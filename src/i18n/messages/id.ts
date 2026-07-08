@@ -11,6 +11,10 @@ export const id: Record<string, string> = {
   'shell.settings': 'Pengaturan DIG',
   'shell.version': 'Versi {version}',
   'shell.language': 'Bahasa',
+  'shell.theme': 'Tema',
+  'shell.theme.light': 'Terang',
+  'shell.theme.dark': 'Gelap',
+  'shell.theme.system': 'Ikuti sistem',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Beranda',

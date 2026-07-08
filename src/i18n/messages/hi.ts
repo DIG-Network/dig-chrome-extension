@@ -11,6 +11,10 @@ export const hi: Record<string, string> = {
   'shell.settings': 'DIG सेटिंग्स',
   'shell.version': 'वर्शन {version}',
   'shell.language': 'भाषा',
+  'shell.theme': 'थीम',
+  'shell.theme.light': 'हल्की',
+  'shell.theme.dark': 'गहरी',
+  'shell.theme.system': 'सिस्टम के अनुसार',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'होम',

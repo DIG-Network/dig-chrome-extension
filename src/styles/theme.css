@@ -36,6 +36,34 @@
   --dig-mono: 'Space Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
+/* ── dark theme (#111) — the SAME token set, repainted for a dark ground. Every component reads
+   colors exclusively through these `--dig-*` custom properties (never a baked-in hex), so this one
+   override block re-themes the entire shell (popup + fullscreen) with no other CSS/component
+   changes. Applied via `data-dig-theme` on `documentElement` (`useAppliedTheme`, #111): explicit
+   `light`/`dark` picks pass straight through; `system` mirrors the OS `prefers-color-scheme`. Kept
+   close to the light palette's contrast + brand hues (DIG violet→magenta) rather than a generic
+   dark theme, so the product still reads as DIG. `.dig-loader`'s OWN scoped tokens are intentionally
+   dark in BOTH themes (brand parity with on.dig.net, see its own comment below) and are untouched
+   here; the QR wrapper stays white in both themes (a QR code needs a light quiet zone to scan). ── */
+:root[data-dig-theme='dark'] {
+  --dig-bg: #0b0a12;
+  --dig-bg-raised: #14111f;
+  --dig-bg-elev: #1c1830;
+  --dig-border: #2a2440;
+  --dig-border-strong: #3a3358;
+  --dig-text: #f5f3fb;
+  --dig-text-dim: #b7b0d1;
+  --dig-text-faint: #8b84a8;
+  --dig-accent: #9d6bff;
+  --dig-accent-2: #ff4de0;
+  --dig-accent-ink: #c9b3ff;
+  --dig-accent-soft: rgba(157, 107, 255, 0.18);
+  --dig-good: #22c78f;
+  --dig-warn: #f0a83a;
+  --dig-bad: #ff5c72;
+  --dig-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
 * {
   box-sizing: border-box;
 }

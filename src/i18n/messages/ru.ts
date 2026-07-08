@@ -11,6 +11,10 @@ export const ru: Record<string, string> = {
   'shell.settings': 'Настройки DIG',
   'shell.version': 'Версия {version}',
   'shell.language': 'Язык',
+  'shell.theme': 'Тема',
+  'shell.theme.light': 'Светлая',
+  'shell.theme.dark': 'Тёмная',
+  'shell.theme.system': 'Как в системе',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Главная',

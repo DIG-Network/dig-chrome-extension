@@ -11,6 +11,10 @@ export const zhTW: Record<string, string> = {
   'shell.settings': 'DIG 設定',
   'shell.version': '版本 {version}',
   'shell.language': '語言',
+  'shell.theme': '主題',
+  'shell.theme.light': '淺色',
+  'shell.theme.dark': '深色',
+  'shell.theme.system': '跟隨系統',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': '首頁',
