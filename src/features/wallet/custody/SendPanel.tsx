@@ -8,6 +8,7 @@ import { useContacts } from '@/features/contacts/useContacts';
 import { assessRecipient } from '@/features/contacts/address-poisoning';
 import { ViewHeader } from '@/components/ViewHeader';
 import { isFullpageSurface } from '@/features/collectibles/surface';
+import { QrScanner } from '@/features/wallet/custody/QrScanner';
 
 const XCH_DECIMALS = 12;
 
@@ -66,6 +67,9 @@ export function SendPanel({
   // Clawback (#152): fullscreen-only ADVANCED send option — send WITH a reclaimable timelock.
   const [clawback, setClawback] = useState(false);
   const [clawbackWindow, setClawbackWindow] = useState<(typeof CLAWBACK_PRESETS)[number]['value']>('1d');
+  // QR camera scanner (#107): fullscreen-only (a live camera preview needs more room than the
+  // compact popup, and the OS permission prompt can steal focus and close a popup).
+  const [scanning, setScanning] = useState(false);
 
   const [prepareSend, prep] = usePrepareSendMutation();
   const [confirmSend, conf] = useConfirmSendMutation();
@@ -205,7 +209,16 @@ export function SendPanel({
         titleId="send-title"
       />
       <section className="dig-card" aria-labelledby="send-title">
-      {phase === 'form' && (
+      {phase === 'form' && scanning && (
+        <QrScanner
+          onScan={(text) => {
+            updateRecipient(text);
+            setScanning(false);
+          }}
+          onClose={() => setScanning(false)}
+        />
+      )}
+      {phase === 'form' && !scanning && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -233,7 +246,17 @@ export function SendPanel({
           </label>
           <label className="dig-field">
             <span><FormattedMessage id="send.recipient" /></span>
-            <input data-testid="send-recipient" className="dig-input dig-mono" value={recipient} onChange={(e) => updateRecipient(e.target.value)} autoComplete="off" spellCheck={false} placeholder="xch1…" />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input data-testid="send-recipient" className="dig-input dig-mono" value={recipient} onChange={(e) => updateRecipient(e.target.value)} autoComplete="off" spellCheck={false} placeholder="xch1…" style={{ flex: 1 }} />
+              {/* #107 — QR camera scanner: fullscreen-only (a live camera preview needs more room
+                  than the compact popup, and the OS permission prompt can steal focus and close a
+                  popup). */}
+              {isFull && (
+                <button type="button" className="dig-btn" data-testid="send-scan-qr" onClick={() => setScanning(true)}>
+                  <FormattedMessage id="send.scan.button" />
+                </button>
+              )}
+            </div>
           </label>
           <ContactPicker onPick={updateRecipient} onManage={onManageContacts} />
           {recipientLabel && (

@@ -189,6 +189,16 @@ export const en: Record<string, string> = {
   'send.memo.label': 'Memo (optional)',
   'send.memo.hint': 'Memos are public on the blockchain — never include sensitive information.',
   'send.review.memo': 'Memo',
+  // QR camera scanner (#107) — fullscreen-only, scans a recipient address into the send form
+  'send.scan.button': 'Scan QR',
+  'send.scan.title': 'Scan address',
+  'send.scan.hint': 'Point your camera at a QR code.',
+  'send.scan.requesting': 'Requesting camera access…',
+  'send.scan.cancel': 'Cancel',
+  'send.scan.error.permissionDenied': 'Camera access was denied. Enable camera permission for this extension in your browser settings, then try again.',
+  'send.scan.error.notFound': 'No camera was found on this device.',
+  'send.scan.error.unsupported': 'This browser does not support camera scanning here.',
+  'send.scan.error.unknown': "Couldn't access the camera. Please try again.",
   'send.confirmed': 'Confirmed — your transaction is final.',
   'send.failed': 'Not confirmed — the transaction was not accepted. Your balance is unchanged; try again.',
   // clawback (#152) — an advanced, fullscreen-only send option

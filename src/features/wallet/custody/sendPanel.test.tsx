@@ -8,6 +8,12 @@ import { normalizeAddress, type Contact } from '@/features/contacts/contacts';
 import { DIG_ASSET_ID } from '@/lib/links';
 import golden from '@/lib/keystore/derive.golden.json';
 
+// #107 — the QR scanner's decode engine; mocked here so the "scan → fills recipient" test controls
+// exactly what one "camera frame" decodes to, without a real camera or canvas rendering (jsdom has
+// neither).
+vi.mock('jsqr', () => ({ default: vi.fn() }));
+import jsQR from 'jsqr';
+
 const RECIPIENT = golden.unhardened[0].address; // a valid xch1 bech32m address
 
 /** An asset list with the given XCH balance (mojos) for the picker. */
@@ -179,6 +185,57 @@ describe('SendPanel', () => {
       const call = sw.mock.calls.find(([m]) => (m as { action: string }).action === 'prepareSend');
       expect(call?.[0]).not.toHaveProperty('memo');
       expect(screen.queryByTestId('review-memo')).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * #107 — QR camera scanner: fullscreen-only (popup never shows the Scan button — a live camera
+   * preview needs more room, and the OS permission prompt can steal focus and close a popup).
+   */
+  describe('QR camera scanner (#107)', () => {
+    it('the popup surface (full=false) never renders the Scan button', () => {
+      mockSw(() => ({ success: true }));
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} full={false} />);
+      expect(screen.queryByTestId('send-scan-qr')).not.toBeInTheDocument();
+    });
+
+    it('fullscreen renders Scan; scanning a code fills the recipient and returns to the form', async () => {
+      mockSw(() => ({ success: true }));
+      const getUserMedia = vi.fn(() => Promise.reject(new DOMException('no camera in jsdom', 'NotFoundError')));
+      Object.assign(navigator, { mediaDevices: { getUserMedia } });
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} full={true} />);
+
+      expect(screen.getByTestId('send-scan-qr')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('send-scan-qr'));
+      // The scanner mounts in place of the form (real camera unavailable in jsdom → graceful error).
+      expect(await screen.findByTestId('qr-scanner')).toBeInTheDocument();
+      expect(screen.queryByTestId('send-recipient')).not.toBeInTheDocument();
+
+      // Cancelling the scanner returns to the form, recipient untouched.
+      fireEvent.click(screen.getByTestId('qr-scanner-cancel'));
+      expect(await screen.findByTestId('send-recipient')).toBeInTheDocument();
+    });
+
+    it('a successful decode fills the recipient field and returns to the form', async () => {
+      mockSw(() => ({ success: true }));
+      vi.mocked(jsQR).mockReturnValue({ data: RECIPIENT } as never);
+      const stream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream;
+      Object.assign(navigator, { mediaDevices: { getUserMedia: vi.fn(() => Promise.resolve(stream)) } });
+      HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+        drawImage: vi.fn(),
+        getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }) as ImageData),
+      })) as never;
+      Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', { configurable: true, get: () => 640 });
+      Object.defineProperty(HTMLVideoElement.prototype, 'videoHeight', { configurable: true, get: () => 480 });
+      Object.defineProperty(HTMLVideoElement.prototype, 'readyState', { configurable: true, get: () => 4 });
+      HTMLVideoElement.prototype.play = vi.fn(() => Promise.resolve());
+
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} full={true} />);
+      fireEvent.click(screen.getByTestId('send-scan-qr'));
+      await screen.findByTestId('qr-scanner');
+
+      await waitFor(() => expect(screen.queryByTestId('qr-scanner')).not.toBeInTheDocument(), { timeout: 3000 });
+      expect((await screen.findByTestId('send-recipient')) as HTMLInputElement).toHaveValue(RECIPIENT);
     });
   });
 

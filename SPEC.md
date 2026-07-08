@@ -1506,6 +1506,34 @@ it is a payment reference, never a place for secrets.
 - Available in BOTH the popup and fullscreen `SendPanel` (not gated behind `full`, unlike clawback)
   — an optional note is basic functionality, not an advanced/rare operation.
 
+### 18.8c QR camera scanner (#107)
+
+`QrScanner` (`features/wallet/custody/QrScanner.tsx`) scans a recipient address (or an `offer1…`
+string) via the device camera and reports the decoded text to its caller. No new wasm — decoding is
+`jsqr` (a small pure-JS QR decoder, no native/wasm binding), kept behind the pure
+`lib/qrScan.ts#decodeQrFromImageData` seam so the decode + camera-error classification are
+unit-tested without a real camera or `HTMLCanvasElement` 2D rendering (jsdom has neither).
+
+- **Lifecycle:** `requesting` (a `getUserMedia({video:{facingMode:'environment'}})` prompt is in
+  flight) → `scanning` (a live `<video>` preview + a `requestAnimationFrame` loop that draws each
+  frame to an offscreen `<canvas>`, reads its `ImageData`, and calls `decodeQrFromImageData`) → on a
+  decode, the camera stops and `onScan(text)` fires exactly once. `error` renders instead of
+  `requesting`/`scanning` when the camera can't be used at all.
+- **Camera NEVER left running.** Every exit path — a successful decode, clicking Cancel, or the
+  component unmounting — stops every `MediaStreamTrack` and cancels the pending animation frame.
+  Cancel stops the camera directly (not merely via the unmount cleanup) — a privacy-sensitive
+  resource like a live camera must not depend on unmount timing to turn off.
+- **Graceful camera-access failures** (`lib/qrScan.ts#classifyCameraError`): `NotAllowedError`/
+  `SecurityError` → permission-denied copy (points at browser settings); `NotFoundError`/
+  `OverconstrainedError` → no-camera-found copy; no `navigator.mediaDevices.getUserMedia` at all
+  (checked BEFORE ever prompting) → unsupported copy; anything else → a generic retry-able message.
+  Cancel always works from the error state.
+- **FULLSCREEN-ONLY** (§145, mirroring the clawback advanced option, §18.8a): the popup surface
+  never renders the Scan button — a live camera preview needs more room than the compact popup, and
+  the OS permission prompt can steal focus and close a popup mid-request. Wired into `SendPanel`'s
+  recipient field; a decode calls the SAME `updateRecipient` the manual input and contact picker use
+  (so the #74 address-poisoning check, §18.14, still runs against a scanned address).
+
 ### 18.9 Activity — the LOCAL activity log (#154, MetaMask-style)
 
 Activity is a LOCAL transaction log the extension writes to the moment IT performs an action —
