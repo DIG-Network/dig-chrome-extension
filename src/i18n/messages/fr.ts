@@ -11,6 +11,10 @@ export const fr: Record<string, string> = {
   'shell.settings': 'Paramètres DIG',
   'shell.version': 'Version {version}',
   'shell.language': 'Langue',
+  'shell.theme': 'Thème',
+  'shell.theme.light': 'Clair',
+  'shell.theme.dark': 'Sombre',
+  'shell.theme.system': 'Système',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Accueil',
@@ -95,6 +99,14 @@ export const fr: Record<string, string> = {
   'custody.autolock.hint': "Verrouille le portefeuille après ce nombre de minutes d'inactivité. Toute activité du portefeuille réinitialise le minuteur. Plage autorisée : {min}–{max} minutes.",
   'custody.autolock.save': 'Enregistrer le verrouillage automatique',
   'custody.autolock.saved': 'Enregistré',
+  'custody.network.label': 'Réseau',
+  'custody.network.hint': 'Choisissez le réseau Chia utilisé par vos soldes, votre activité et vos lectures. Le réseau principal contient des fonds réels.',
+  'custody.network.mainnet': 'Réseau principal',
+  'custody.network.testnet': 'Réseau de test',
+  'custody.network.confirmPrompt': 'Passer à {network} ? Cela change la chaîne affichée par vos soldes et votre activité.',
+  'custody.network.confirmProceed': 'Changer de réseau',
+  'custody.network.confirmCancel': 'Annuler',
+  'custody.network.saved': 'Enregistré',
   'custody.soon.activity': "L'historique des activités arrivera avec l'envoi en autoconservation.",
   'custody.soon.trade': "L'échange arrivera avec la signature en autoconservation.",
 
@@ -318,6 +330,14 @@ export const fr: Record<string, string> = {
   'control.install.cta': 'Télécharger le dig-node',
   'control.openFull': 'Ouvrir le panneau de contrôle complet',
   'control.getBrowser': 'Obtenir le DIG Browser',
+  'control.stats': 'Stores hébergés : {hosted} · En cache : {cached}',
+  'control.note.default': "Votre dig-node est en cours d'exécution — vous bénéficiez de l'expérience DIG complète : le contenu chia:// est résolu localement sur votre appareil (plus rapide, privé, fonctionne hors ligne une fois mis en cache). Pour une gestion complète du nœud, utilisez le DIG Browser natif.",
+  'control.note.authRequired': "Votre dig-node est en cours d'exécution — vous bénéficiez de l'expérience DIG complète : le contenu chia:// est résolu localement sur votre appareil. La gestion complète du nœud (héberger des stores, définir la limite de cache, déclencher la synchronisation) nécessite le DIG Browser natif, qui peut autoriser le contrôle du nœud sur votre appareil.",
+  'control.readFallback.local': 'Les lectures sont résolues localement via votre dig-node — privé et rapide.',
+  'control.readFallback.hosted': "Aucun dig-node local détecté — l'extension fonctionne en mode lecture seule via le réseau hébergé ({endpoint}). Installez dig-node pour l'expérience complète.",
+  'control.install.title': "Installez dig-node pour l'expérience complète",
+  'control.install.body': "L'extension DIG fonctionne mieux avec dig-node installé et EN COURS D'EXÉCUTION sur votre appareil — c'est ce qui débloque l'expérience complète : elle résout le contenu chia:// localement (plus rapide, privé, fonctionne hors ligne une fois en cache) et vous permet d'héberger et de gérer vos propres stores. Il s'installe en une seule étape sur Windows, macOS et Linux. Sans lui, l'extension fonctionne toujours, mais uniquement en mode lecture seule via le réseau hébergé (rpc.dig.net) — vous ne pouvez pas héberger, et chaque lecture passe par les serveurs de DIG.",
+  'network.views.ariaLabel': 'Vues réseau',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Objets de collection",

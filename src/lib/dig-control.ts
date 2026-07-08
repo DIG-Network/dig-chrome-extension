@@ -190,18 +190,16 @@ export async function decideControlView({
  * keeps the manage-vs-install presentation logic testable without a DOM — the popup renderer is
  * thin glue over this. Honest by construction: `nodeOnline` reflects an actually-reachable node;
  * `hasStats` is true only when the node returned a `control.status` payload; the install path
- * always carries the read-fallback line so the UI states that reads keep working without a node.
+ * always carries a read-fallback descriptor so the UI states that reads keep working without a node.
+ *
+ * #82: every piece of prose is returned as a react-intl MESSAGE ID (+ interpolation `values` where
+ * needed) rather than a raw English string — this module stays a plain, DOM-free ES module (no
+ * `react-intl`/JSX dependency), and `ControlTab.tsx` is the sole `<FormattedMessage>` consumer, so
+ * the copy itself lives in the 14-locale message catalogs (`dig-control-copy.test.ts` guards the
+ * English source's content quality; `locales.test.ts` guards the translations' completeness).
  *
  * @param {object} view a `getControlStatus` response
  *   ({mode, localNode, base, controlEndpoint, readFallback, status, authRequired}).
- * @returns {{
- *   mode:'manage'|'install', nodeOnline:boolean, base:string|null, authRequired:boolean,
- *   hasStats:boolean,
- *   stats:{hostedStores:(number|string), cachedCapsules:(number|string),
- *          cacheUsedBytes:(number|null), syncOn:boolean}|null,
- *   upstream:string, deepLinkBrowser:boolean, note:string,
- *   install:{title,body,installLabel,installUrl}, readFallbackLine:string,
- * }}
  */
 /** The read-only `control.status` payload the node returns (only the fields this view model reads). */
 export interface ControlStatusPayload {
@@ -226,6 +224,12 @@ export interface ControlView {
   authRequired?: boolean;
 }
 
+/** A message id + optional ICU interpolation values — what `<FormattedMessage>` needs. */
+export interface LocalizedLine {
+  id: string;
+  values?: Record<string, string>;
+}
+
 export function controlPanelViewModel(view: ControlView | null | undefined) {
   const v: ControlView = view || {};
   const readFallback = v.readFallback || HOSTED_RPC_FALLBACK;
@@ -241,15 +245,8 @@ export function controlPanelViewModel(view: ControlView | null | undefined) {
           syncOn: !!(s.sync && s.sync.available),
         }
       : null;
-    const note = v.authRequired
-      ? 'Your dig-node is running — you have the full DIG experience: chia:// content resolves ' +
-        'locally on your machine. Full node management (host stores, set the cache cap, trigger sync) ' +
-        'needs the native DIG Browser, which can authorize node control on your machine.'
-      : 'Your dig-node is running — you have the full DIG experience: chia:// content resolves ' +
-        'locally on your machine (faster, private, works offline once cached). For full node ' +
-        'management, use the native DIG Browser.';
     return {
-      mode: 'manage',
+      mode: 'manage' as const,
       nodeOnline: true,
       base: v.base || null,
       authRequired: !!v.authRequired,
@@ -259,15 +256,15 @@ export function controlPanelViewModel(view: ControlView | null | undefined) {
       // Even an open node deep-links full (mutating) management to the native browser, since the
       // extension cannot present the on-disk control token under MV3.
       deepLinkBrowser: true,
-      note,
+      noteId: v.authRequired ? 'control.note.authRequired' : 'control.note.default',
       install: controlInstallPrompt(),
       // In manage mode reads resolve through the LOCAL node, not the hosted fallback.
-      readFallbackLine: 'Reads resolve locally through your dig-node — private and fast.',
+      readFallback: { id: 'control.readFallback.local' } satisfies LocalizedLine,
     };
   }
 
   return {
-    mode: 'install',
+    mode: 'install' as const,
     nodeOnline: false,
     base: null,
     authRequired: false,
@@ -275,10 +272,10 @@ export function controlPanelViewModel(view: ControlView | null | undefined) {
     stats: null,
     upstream: readFallback,
     deepLinkBrowser: true,
-    note: '',
+    noteId: null as string | null,
     install: controlInstallPrompt(),
     // Honest: without a node the extension is READ-ONLY through the hosted network.
-    readFallbackLine: `No local dig-node detected — the extension is running in read-only mode through the hosted network (${readFallback}). Install the dig-node for the full experience.`,
+    readFallback: { id: 'control.readFallback.hosted', values: { endpoint: readFallback } } satisfies LocalizedLine,
   };
 }
 
@@ -287,20 +284,13 @@ export function controlPanelViewModel(view: ControlView | null | undefined) {
  * Control Panel's "install" mode. Same installer URL as the popup's soft banner
  * (dig-node-status.mjs), but framed for the Control Panel: it explains what a node gives you
  * (host + manage content) and is honest that reads keep working via the hosted network without
- * one. NEVER includes protocol jargon.
- *
- * @returns {{title:string, body:string, installLabel:string, installUrl:string}}
+ * one. NEVER includes protocol jargon (guarded by `dig-control-copy.test.ts` against the English
+ * catalog). The CTA label is the existing `control.install.cta` id (already wired in `ControlTab`).
  */
-export function controlInstallPrompt(): { title: string; body: string; installLabel: string; installUrl: string } {
+export function controlInstallPrompt(): { titleId: string; bodyId: string; installUrl: string } {
   return {
-    title: 'Install the dig-node for the full experience',
-    body:
-      'The DIG extension works best with the dig-node installed and RUNNING on your machine — that is ' +
-      'what unlocks the full experience: it resolves chia:// content locally (faster, private, works ' +
-      'offline once cached) and lets you host and manage your own stores. It installs in one step on ' +
-      'Windows, macOS, and Linux. Without it the extension still works, but only in read-only mode ' +
-      'through the hosted network (rpc.dig.net) — you can’t host, and every read goes through DIG’s servers.',
-    installLabel: 'Download the dig-node',
+    titleId: 'control.install.title',
+    bodyId: 'control.install.body',
     installUrl: DIG_INSTALLER_URL,
   };
 }

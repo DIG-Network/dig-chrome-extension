@@ -11,6 +11,10 @@ export const id: Record<string, string> = {
   'shell.settings': 'Pengaturan DIG',
   'shell.version': 'Versi {version}',
   'shell.language': 'Bahasa',
+  'shell.theme': 'Tema',
+  'shell.theme.light': 'Terang',
+  'shell.theme.dark': 'Gelap',
+  'shell.theme.system': 'Ikuti sistem',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Beranda',
@@ -95,6 +99,14 @@ export const id: Record<string, string> = {
   'custody.autolock.hint': 'Kunci dompet setelah sekian menit tidak ada aktivitas. Aktivitas dompet apa pun akan mengatur ulang penghitung waktu. Rentang yang diizinkan: {min}–{max} menit.',
   'custody.autolock.save': 'Simpan kunci otomatis',
   'custody.autolock.saved': 'Tersimpan',
+  'custody.network.label': 'Jaringan',
+  'custody.network.hint': 'Pilih jaringan Chia yang digunakan saldo, aktivitas, dan pembacaan Anda. Jaringan utama menyimpan dana sungguhan.',
+  'custody.network.mainnet': 'Jaringan utama',
+  'custody.network.testnet': 'Jaringan uji coba',
+  'custody.network.confirmPrompt': 'Beralih ke {network}? Ini mengubah rantai yang ditampilkan pada saldo dan aktivitas Anda.',
+  'custody.network.confirmProceed': 'Ganti jaringan',
+  'custody.network.confirmCancel': 'Batal',
+  'custody.network.saved': 'Tersimpan',
   'custody.soon.activity': 'Riwayat aktivitas akan hadir bersama fitur pengiriman swakelola.',
   'custody.soon.trade': 'Fitur trading akan hadir bersama fitur penandatanganan swakelola.',
 
@@ -318,6 +330,14 @@ export const id: Record<string, string> = {
   'control.install.cta': 'Unduh dig-node',
   'control.openFull': 'Buka Panel Kontrol lengkap',
   'control.getBrowser': 'Dapatkan Browser DIG',
+  'control.stats': 'Store yang dihosting: {hosted} · Di-cache: {cached}',
+  'control.note.default': 'dig-node Anda sedang berjalan — Anda mendapatkan pengalaman DIG lengkap: konten chia:// diselesaikan secara lokal di perangkat Anda (lebih cepat, privat, berfungsi offline setelah di-cache). Untuk manajemen node lengkap, gunakan DIG Browser native.',
+  'control.note.authRequired': 'dig-node Anda sedang berjalan — Anda mendapatkan pengalaman DIG lengkap: konten chia:// diselesaikan secara lokal di perangkat Anda. Manajemen node lengkap (menghosting store, mengatur batas cache, memicu sinkronisasi) memerlukan DIG Browser native, yang dapat mengotorisasi kontrol node di perangkat Anda.',
+  'control.readFallback.local': 'Pembacaan diselesaikan secara lokal melalui dig-node Anda — privat dan cepat.',
+  'control.readFallback.hosted': 'Tidak ada dig-node lokal yang terdeteksi — ekstensi berjalan dalam mode baca-saja melalui jaringan yang dihosting ({endpoint}). Instal dig-node untuk pengalaman lengkap.',
+  'control.install.title': 'Instal dig-node untuk pengalaman lengkap',
+  'control.install.body': 'Ekstensi DIG bekerja paling baik dengan dig-node terinstal dan BERJALAN di perangkat Anda — itulah yang membuka pengalaman lengkap: ekstensi ini menyelesaikan konten chia:// secara lokal (lebih cepat, privat, berfungsi offline setelah di-cache) dan memungkinkan Anda menghosting serta mengelola store Anda sendiri. Instalasi hanya satu langkah di Windows, macOS, dan Linux. Tanpanya, ekstensi tetap berfungsi, tetapi hanya dalam mode baca-saja melalui jaringan yang dihosting (rpc.dig.net) — Anda tidak dapat menghosting, dan setiap pembacaan melewati server DIG.',
+  'network.views.ariaLabel': 'Tampilan jaringan',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Koleksi",

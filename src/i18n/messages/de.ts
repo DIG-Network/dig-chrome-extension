@@ -11,6 +11,10 @@ export const de: Record<string, string> = {
   'shell.settings': 'DIG-Einstellungen',
   'shell.version': 'Version {version}',
   'shell.language': 'Sprache',
+  'shell.theme': 'Design',
+  'shell.theme.light': 'Hell',
+  'shell.theme.dark': 'Dunkel',
+  'shell.theme.system': 'System',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Start',
@@ -95,6 +99,14 @@ export const de: Record<string, string> = {
   'custody.autolock.hint': 'Die Wallet wird nach dieser Anzahl an Minuten Inaktivität gesperrt. Jede Wallet-Aktivität setzt den Timer zurück. Zulässiger Bereich: {min}–{max} Minuten.',
   'custody.autolock.save': 'Automatische Sperre speichern',
   'custody.autolock.saved': 'Gespeichert',
+  'custody.network.label': 'Netzwerk',
+  'custody.network.hint': 'Wähle das Chia-Netzwerk für deine Guthaben, Aktivitäten und Lesevorgänge. Das Hauptnetz enthält echtes Geld.',
+  'custody.network.mainnet': 'Hauptnetz',
+  'custody.network.testnet': 'Testnetz',
+  'custody.network.confirmPrompt': 'Zu {network} wechseln? Dadurch ändert sich die Chain, die in deinen Guthaben und Aktivitäten angezeigt wird.',
+  'custody.network.confirmProceed': 'Netzwerk wechseln',
+  'custody.network.confirmCancel': 'Abbrechen',
+  'custody.network.saved': 'Gespeichert',
   'custody.soon.activity': 'Der Aktivitätsverlauf wird mit dem Senden in Eigenverwahrung eingeführt.',
   'custody.soon.trade': 'Der Handel wird mit der Signatur in Eigenverwahrung eingeführt.',
 
@@ -318,6 +330,14 @@ export const de: Record<string, string> = {
   'control.install.cta': 'dig-node herunterladen',
   'control.openFull': 'Vollständige Systemsteuerung öffnen',
   'control.getBrowser': 'DIG Browser herunterladen',
+  'control.stats': 'Gehostete Stores: {hosted} · Zwischengespeichert: {cached}',
+  'control.note.default': 'Dein dig-node läuft — du hast das vollständige DIG-Erlebnis: chia://-Inhalte werden lokal auf deinem Gerät aufgelöst (schneller, privater, funktioniert offline, sobald zwischengespeichert). Für die vollständige Node-Verwaltung nutze den nativen DIG Browser.',
+  'control.note.authRequired': 'Dein dig-node läuft — du hast das vollständige DIG-Erlebnis: chia://-Inhalte werden lokal auf deinem Gerät aufgelöst. Die vollständige Node-Verwaltung (Stores hosten, Cache-Obergrenze festlegen, Synchronisierung auslösen) erfordert den nativen DIG Browser, der die Node-Steuerung auf deinem Gerät autorisieren kann.',
+  'control.readFallback.local': 'Lesevorgänge werden lokal über deinen dig-node aufgelöst — privat und schnell.',
+  'control.readFallback.hosted': 'Kein lokaler dig-node erkannt — die Erweiterung läuft im schreibgeschützten Modus über das gehostete Netzwerk ({endpoint}). Installiere dig-node für das vollständige Erlebnis.',
+  'control.install.title': 'Installiere dig-node für das vollständige Erlebnis',
+  'control.install.body': 'Die DIG-Erweiterung funktioniert am besten, wenn dig-node auf deinem Gerät installiert ist und LÄUFT — das schaltet das vollständige Erlebnis frei: chia://-Inhalte werden lokal aufgelöst (schneller, privater, funktioniert offline, sobald zwischengespeichert), und du kannst deine eigenen Stores hosten und verwalten. Die Installation erfolgt in einem Schritt unter Windows, macOS und Linux. Ohne ihn funktioniert die Erweiterung weiterhin, aber nur im schreibgeschützten Modus über das gehostete Netzwerk (rpc.dig.net) — du kannst nicht hosten, und jeder Lesevorgang läuft über die Server von DIG.',
+  'network.views.ariaLabel': 'Netzwerkansichten',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Sammlerstücke",

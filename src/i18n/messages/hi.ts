@@ -11,6 +11,10 @@ export const hi: Record<string, string> = {
   'shell.settings': 'DIG सेटिंग्स',
   'shell.version': 'वर्शन {version}',
   'shell.language': 'भाषा',
+  'shell.theme': 'थीम',
+  'shell.theme.light': 'हल्की',
+  'shell.theme.dark': 'गहरी',
+  'shell.theme.system': 'सिस्टम के अनुसार',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'होम',
@@ -95,6 +99,14 @@ export const hi: Record<string, string> = {
   'custody.autolock.hint': 'इतने मिनट तक कोई गतिविधि न होने पर वॉलेट लॉक हो जाएगा। कोई भी वॉलेट गतिविधि टाइमर को रीसेट कर देती है। मान्य सीमा: {min}–{max} मिनट।',
   'custody.autolock.save': 'ऑटो-लॉक सेव करें',
   'custody.autolock.saved': 'सेव हो गया',
+  'custody.network.label': 'नेटवर्क',
+  'custody.network.hint': 'वह Chia नेटवर्क चुनें जिसका उपयोग आपके बैलेंस, गतिविधि और रीड में होता है। मेननेट में असली फंड होते हैं।',
+  'custody.network.mainnet': 'मेननेट',
+  'custody.network.testnet': 'टेस्टनेट',
+  'custody.network.confirmPrompt': '{network} पर स्विच करें? इससे वह चेन बदल जाएगी जो आपके बैलेंस और गतिविधि में दिखती है।',
+  'custody.network.confirmProceed': 'नेटवर्क स्विच करें',
+  'custody.network.confirmCancel': 'रद्द करें',
+  'custody.network.saved': 'सेव हो गया',
   'custody.soon.activity': 'सेल्फ-कस्टडी सेंडिंग के साथ एक्टिविटी हिस्ट्री जल्द आ रही है।',
   'custody.soon.trade': 'सेल्फ-कस्टडी साइनिंग के साथ ट्रेडिंग जल्द आ रही है।',
 
@@ -318,6 +330,14 @@ export const hi: Record<string, string> = {
   'control.install.cta': 'dig-node डाउनलोड करें',
   'control.openFull': 'पूरा कंट्रोल पैनल खोलें',
   'control.getBrowser': 'DIG ब्राउज़र प्राप्त करें',
+  'control.stats': 'होस्ट किए गए स्टोर: {hosted} · कैश किए गए: {cached}',
+  'control.note.default': 'आपका dig-node चल रहा है — आपके पास पूरा DIG अनुभव है: chia:// कंटेंट आपकी मशीन पर स्थानीय रूप से रिज़ॉल्व होता है (तेज़, निजी, कैश होने के बाद ऑफ़लाइन भी काम करता है)। पूर्ण नोड प्रबंधन के लिए, नेटिव DIG Browser का उपयोग करें।',
+  'control.note.authRequired': 'आपका dig-node चल रहा है — आपके पास पूरा DIG अनुभव है: chia:// कंटेंट आपकी मशीन पर स्थानीय रूप से रिज़ॉल्व होता है। पूर्ण नोड प्रबंधन (स्टोर होस्ट करना, कैश सीमा सेट करना, सिंक ट्रिगर करना) के लिए नेटिव DIG Browser चाहिए, जो आपकी मशीन पर नोड नियंत्रण अधिकृत कर सकता है।',
+  'control.readFallback.local': 'रीड आपके dig-node के ज़रिए स्थानीय रूप से रिज़ॉल्व होते हैं — निजी और तेज़।',
+  'control.readFallback.hosted': 'कोई स्थानीय dig-node नहीं मिला — एक्सटेंशन होस्ट किए गए नेटवर्क ({endpoint}) के ज़रिए केवल-पठन मोड में चल रहा है। पूर्ण अनुभव के लिए dig-node इंस्टॉल करें।',
+  'control.install.title': 'पूर्ण अनुभव के लिए dig-node इंस्टॉल करें',
+  'control.install.body': 'DIG एक्सटेंशन तब सबसे अच्छा काम करता है जब आपकी मशीन पर dig-node इंस्टॉल और चालू हो — यही पूरा अनुभव अनलॉक करता है: यह chia:// कंटेंट को स्थानीय रूप से रिज़ॉल्व करता है (तेज़, निजी, कैश होने के बाद ऑफ़लाइन भी काम करता है) और आपको अपने स्टोर होस्ट व प्रबंधित करने देता है। यह Windows, macOS और Linux पर एक ही चरण में इंस्टॉल हो जाता है। इसके बिना भी एक्सटेंशन काम करता है, लेकिन केवल होस्ट किए गए नेटवर्क (rpc.dig.net) के ज़रिए केवल-पठन मोड में — आप होस्ट नहीं कर सकते, और हर रीड DIG के सर्वर से होकर गुज़रता है।',
+  'network.views.ariaLabel': 'नेटवर्क दृश्य',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "संग्रहणीय",

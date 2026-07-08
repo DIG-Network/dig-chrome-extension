@@ -26,6 +26,7 @@ import { WalletSwitcher } from '@/features/wallet/custody/WalletSwitcher';
 import { IndexNavigator } from '@/features/wallet/custody/IndexNavigator';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
+import { NetworkSetting } from '@/features/wallet/custody/NetworkSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
 import { SendPanel } from '@/features/wallet/custody/SendPanel';
 import { CoinControlPanel } from '@/features/wallet/custody/CoinControlPanel';
@@ -284,6 +285,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
 
           {advanced && (
             <>
+              <NetworkSetting />
               <ChainNodeSetting />
               <AutoLockSetting />
               <ConnectedSites />

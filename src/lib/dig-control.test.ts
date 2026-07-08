@@ -172,6 +172,12 @@ test('decideControlView honours a custom hosted fallback (options-page override)
 });
 
 // ---- The Control Panel view model (what the popup renders) ----
+//
+// #82: the view model returns react-intl MESSAGE IDS (+ interpolation values) for every piece of
+// prose, not raw English strings — ControlTab.tsx is the sole FormattedMessage consumer, so the
+// actual copy lives in the message catalogs (14-locale translated). The CONTENT-quality assertions
+// that used to run against raw strings here (jargon-free, "full experience", honest read-fallback
+// wording) now run against the English catalog directly — see `dig-control-copy.test.ts`.
 
 test('controlPanelViewModel: an open node that returned control.status → manage + node stats', () => {
   const vm = controlPanelViewModel({
@@ -193,11 +199,10 @@ test('controlPanelViewModel: an open node that returned control.status → manag
   assert.equal(vm.upstream, 'https://rpc.dig.net');
   // Even an open node deep-links full (mutating) management to the native browser.
   assert.equal(vm.deepLinkBrowser, true);
-  // CLARITY (#131): in manage mode reads resolve LOCALLY — the line must not claim hosted reads.
-  assert.match(vm.readFallbackLine, /local/i);
-  assert.ok(!/hosted network/i.test(vm.readFallbackLine), 'manage mode must not say reads use the hosted network');
-  // The manage note affirms the full experience.
-  assert.match(vm.note, /full/i);
+  // CLARITY (#131): in manage mode reads resolve LOCALLY — the id must be the "local" variant.
+  assert.equal(vm.readFallback.id, 'control.readFallback.local');
+  // The default (non-auth-required) manage note.
+  assert.equal(vm.noteId, 'control.note.default');
 });
 
 test('controlPanelViewModel: a token-gated node (UNAUTHORIZED) → manage, node-present, no stats', () => {
@@ -211,8 +216,8 @@ test('controlPanelViewModel: a token-gated node (UNAUTHORIZED) → manage, node-
   assert.equal(vm.hasStats, false, 'no control.status payload → no stat grid');
   assert.equal(vm.authRequired, true);
   assert.equal(vm.deepLinkBrowser, true);
-  // The honest note explains full management needs the native browser.
-  assert.match(vm.note, /DIG Browser|native/i);
+  // The auth-required note (explains full management needs the native browser).
+  assert.equal(vm.noteId, 'control.note.authRequired');
 });
 
 test('controlPanelViewModel: no node → install landing with the honest read-fallback line', () => {
@@ -223,25 +228,16 @@ test('controlPanelViewModel: no node → install landing with the honest read-fa
   assert.equal(vm.mode, 'install');
   assert.equal(vm.nodeOnline, false);
   assert.equal(vm.install.installUrl, 'https://github.com/DIG-Network/dig-installer/releases');
-  assert.match(vm.readFallbackLine, /rpc\.dig\.net|hosted/i);
+  assert.equal(vm.readFallback.id, 'control.readFallback.hosted');
+  assert.equal(vm.readFallback.values?.endpoint, 'https://rpc.dig.net/');
 });
 
 // ---- The install prompt copy ----
 
-test('controlInstallPrompt is plain-language, names the dig-node + installer, no jargon', () => {
+test('controlInstallPrompt names the dig-node + installer via message ids (no raw prose)', () => {
   const p = controlInstallPrompt();
-  assert.equal(typeof p.title, 'string');
-  assert.equal(typeof p.body, 'string');
-  assert.equal(typeof p.installLabel, 'string');
-  assert.match(p.body, /dig-node/i, 'should name the dig-node');
-  assert.match(p.title + ' ' + p.body, /install|download|run/i);
-  // Honest about the hosted fallback: reads keep working without a node.
-  assert.match(p.body, /hosted|rpc\.dig\.net|without/i);
-  // CLARITY (#131): the copy must make clear the node is needed for the FULL experience + running.
-  assert.match(p.title + ' ' + p.body, /full experience/i, 'should sell the full experience');
-  assert.match(p.body, /read-only|running/i, 'should say the node must run / without it is read-only');
-  // No protocol jargon leaking into the default copy.
-  assert.ok(!/retrieval[_\s-]?key|merkle|singleton|CHIP-?0035/i.test(p.title + ' ' + p.body));
+  assert.equal(p.titleId, 'control.install.title');
+  assert.equal(p.bodyId, 'control.install.body');
   // The installer URL is the universal installer releases page (same as dig-node-status.mjs).
   assert.equal(p.installUrl, 'https://github.com/DIG-Network/dig-installer/releases');
 });

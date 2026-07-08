@@ -20,6 +20,8 @@ describe('NetworkScreen (groups resolver/shield/control)', () => {
     renderWithProviders(<NetworkScreen />, { store });
     expect(screen.getByTestId('network-panel')).toBeInTheDocument();
     expect(await screen.findByTestId('resolver-panel')).toBeInTheDocument();
+    // #82 — the segmented control's aria-label is now sourced from react-intl, not a hardcoded literal.
+    expect(screen.getByRole('tablist', { name: 'Network views' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('seg-shield'));
     expect(await screen.findByTestId('shield-panel')).toBeInTheDocument();

@@ -19,9 +19,17 @@ function tagForEpochKey(key: string): string | null {
  * slice; a SW cache-epoch bump turns into an RTK Query `invalidateTags` so both documents re-fetch
  * one shared result rather than diverging. Returns an unsubscribe fn.
  */
+/** The persisted settings shape as read from storage (mirrors `uiSlice`'s `PersistedSettings`). */
+interface StoredSettings {
+  locale?: string;
+  advanced?: boolean;
+  theme?: string;
+  network?: string;
+}
+
 export async function installStorageSync(store: AppStore): Promise<() => void> {
   // Initial hydration of durable settings.
-  const initial = await storageGet<{ [SETTINGS_KEY]: { locale?: string; advanced?: boolean } }>(SETTINGS_KEY);
+  const initial = await storageGet<{ [SETTINGS_KEY]: StoredSettings }>(SETTINGS_KEY);
   store.dispatch(settingsHydrated(initial[SETTINGS_KEY]));
 
   if (typeof chrome === 'undefined' || !chrome.storage?.onChanged) {
@@ -35,9 +43,7 @@ export async function installStorageSync(store: AppStore): Promise<() => void> {
     if (area !== 'local' && area !== 'session') return;
     for (const key of Object.keys(changes)) {
       if (key === SETTINGS_KEY) {
-        store.dispatch(
-          settingsHydrated(changes[key].newValue as { locale?: string; advanced?: boolean } | undefined),
-        );
+        store.dispatch(settingsHydrated(changes[key].newValue as StoredSettings | undefined));
       } else {
         const tag = tagForEpochKey(key);
         if (tag) store.dispatch(api.util.invalidateTags([tag as never]));
