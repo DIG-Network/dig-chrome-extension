@@ -7,6 +7,11 @@
 // Content script to intercept all chia:// protocol requests
 // Handles: images, scripts, stylesheets, AJAX/fetch, and any other resource requests
 
+// The hardened wallet-bridge primitives (#73) — esbuild inlines this pure module into content.js,
+// so the bundled classic script stays self-contained. The wallet bridge (wireWalletBridge, below)
+// is the ONLY consumer; the rest of this file is the chia:// resource-interception shim.
+import { parseInboundRequest, buildResponse, postTargetOrigin } from '../lib/provider-channel';
+
 // Suppress console errors for chia:// scheme errors in content script context
 (function() {
   const originalConsoleError = console.error;
@@ -1746,31 +1751,27 @@ function injectWalletProvider() {
 // only relays. window.location.origin is the committed page origin (the content script
 // runs in the isolated world of the same document), so it is trustworthy for gating.
 function wireWalletBridge() {
+  // Both worlds share this document's origin; every inbound request is validated against it and
+  // every reply is posted back with it as the targetOrigin (#73). A cross-origin/foreign-frame
+  // message is dropped by parseInboundRequest; a malformed payload is dropped, never thrown on.
+  const selfOrigin = window.location.origin;
+  const target = postTargetOrigin(selfOrigin);
   window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
-    const d = event.data;
-    if (!d || d.type !== 'DIG_WALLET_REQUEST' || !d.id) return;
+    if (event.source !== window) return; // frame guard: only same-window messages
+    const req = parseInboundRequest(event.data, event.origin, selfOrigin);
+    if (!req) return;
 
     const reply = (envelope) => {
-      window.postMessage(
-        {
-          type: 'DIG_WALLET_RESPONSE',
-          id: d.id,
-          status: envelope && envelope.status,
-          body: envelope && envelope.body,
-          error: envelope && envelope.error,
-        },
-        '*'
-      );
+      window.postMessage(buildResponse(req.id, envelope), target);
     };
 
     try {
       chrome.runtime.sendMessage(
         {
           action: 'walletRpc',
-          method: d.method,
-          params: d.params || {},
-          origin: window.location.origin,
+          method: req.method,
+          params: req.params,
+          origin: selfOrigin,
         },
         (response) => {
           if (chrome.runtime.lastError) {

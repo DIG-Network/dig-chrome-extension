@@ -16,6 +16,15 @@
  * Injected into the page's MAIN world at document_start by the content script.
  */
 import { buildProvider, type BridgeCall, type ChiaProvider } from '@dignetwork/chia-provider';
+import {
+  buildRequest,
+  newRequestId,
+  parseInboundResponse,
+  postTargetOrigin,
+  PendingRegistry,
+  MAX_INFLIGHT,
+  type WalletEnvelope,
+} from '../lib/provider-channel';
 
 declare global {
   interface Window {
@@ -23,22 +32,20 @@ declare global {
   }
 }
 
-/** The wallet envelope the bridge resolves (the non-nullish shape of {@link BridgeCall}'s result). */
-type WalletEnvelope = { status: number; body?: { data?: unknown; error?: string }; error?: string };
-
-/** A response message posted back from the content-script bridge. */
-interface WalletResponseMessage {
-  type?: string;
-  id?: string;
-  status?: number;
-  body?: { data?: unknown; error?: string };
-  error?: string;
-}
-
 (function () {
   if (window.chia) return; // never clobber an already-present provider
 
-  const pending: Record<string, { resolve: (v: WalletEnvelope) => void; timer: ReturnType<typeof setTimeout> }> = {};
+  // The page's own origin: every request/response on the bridge is posted with — and validated
+  // against — this origin end to end (#73), so a cross-origin/foreign-frame message is never
+  // processed. An opaque (sandboxed/data:) document falls back to '*' since 'null' is not a valid
+  // postMessage targetOrigin.
+  const selfOrigin = window.location.origin;
+  const target = postTargetOrigin(selfOrigin);
+
+  // Bounded, CSPRNG-id-correlated registry of in-flight requests (#73): a response settles its
+  // request EXACTLY once (a forged/duplicate/unknown-id reply is dropped, concurrent requests never
+  // cross) and a request flood cannot grow the pending map without bound.
+  const pending = new PendingRegistry<WalletEnvelope>(MAX_INFLIGHT);
 
   // Extension version, read from the manifest at injection time (best-effort; the page world has
   // chrome.runtime.getManifest on Chromium MV3). Reported as window.chia.version.
@@ -52,29 +59,29 @@ interface WalletResponseMessage {
   }
 
   // One round-trip to the content-script bridge. Resolves with the wallet's `{status, body}`
-  // envelope; on timeout it resolves a synthetic status-0 envelope so the package maps it to a
+  // envelope; on timeout it settles a synthetic status-0 envelope so the package maps it to a
   // DISCONNECTED (4900) error rather than an unhandled rejection.
   const bridgeCall: BridgeCall = (method, params, timeoutMs) =>
     new Promise<WalletEnvelope>((resolve) => {
-      const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const id = newRequestId();
       const timer = setTimeout(() => {
-        delete pending[id];
         // status 0 → mapEnvelopeToError → DISCONNECTED (4900): "not reachable".
-        resolve({ status: 0, body: { error: 'DIG wallet request timed out' } });
+        pending.settle(id, { status: 0, body: { error: 'DIG wallet request timed out' } });
       }, timeoutMs || 120000);
-      pending[id] = { resolve, timer };
-      window.postMessage({ type: 'DIG_WALLET_REQUEST', id, method, params: params || {} }, '*');
+      // Refuse (rather than overwrite/grow unbounded) when the registry is saturated.
+      if (!pending.add(id, { resolve, cleanup: () => clearTimeout(timer) })) {
+        clearTimeout(timer);
+        resolve({ status: 0, body: { error: 'DIG wallet is busy (too many pending requests)' } });
+        return;
+      }
+      window.postMessage(buildRequest(id, method, (params as Record<string, unknown>) || {}), target);
     });
 
   window.addEventListener('message', (event: MessageEvent) => {
-    if (event.source !== window) return;
-    const d = event.data as WalletResponseMessage | null;
-    if (!d || d.type !== 'DIG_WALLET_RESPONSE' || d.id === undefined) return;
-    const p = pending[d.id];
-    if (!p) return;
-    delete pending[d.id];
-    clearTimeout(p.timer);
-    p.resolve({ status: d.status ?? 0, body: d.body, error: d.error });
+    if (event.source !== window) return; // frame guard: only same-window messages
+    const res = parseInboundResponse(event.data, event.origin, selfOrigin);
+    if (!res) return; // malformed / cross-origin / wrong-channel → dropped, never thrown on
+    pending.settle(res.id, { status: res.status, body: res.body, error: res.error });
   });
 
   // Build the canonical provider from the shared package + this extension's transport.
