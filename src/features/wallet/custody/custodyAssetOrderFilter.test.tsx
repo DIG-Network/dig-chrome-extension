@@ -14,7 +14,9 @@ import { DIG_ASSET_ID } from '@/lib/links';
  * Playwright spec (`e2e/sw/asset-list-order-filter.spec.ts`) proves the same behavior end-to-end.
  *
  * #202 revised the pinned order: XCH first, $DIG ALWAYS second (regardless of value), then the
- * remaining CATs by descending USD value.
+ * remaining CATs by descending USD value. #204 additionally moved XCH + $DIG ABOVE the filter input
+ * and excluded them from the filter predicate entirely — typing in the filter narrows only the
+ * other CATs; XCH and $DIG never disappear or reorder.
  */
 
 const CAT_A = 'a'.repeat(64); // registry: ticker "AAA" — ends up the highest-value row
@@ -100,17 +102,41 @@ describe('CustodyWallet — value-ordered + filterable Assets list (#167, pin or
     expect(testids).toEqual(['asset-xch', 'asset-dig', `asset-cat-${CAT_A}`, `asset-cat-${CAT_B}`, `asset-cat-${CAT_C}`]);
   });
 
-  it('narrows the list live as the user types (ticker or name), leaving XCH visible', async () => {
+  // #204 — XCH + $DIG are PINNED above the filter input and are never removed/reordered by it; only
+  // the other CATs (here AAA/BBB) are ever narrowed.
+  it('narrows the list live as the user types (ticker or name), leaving XCH AND $DIG visible (#204)', async () => {
     const user = userEvent.setup();
     renderWithProviders(<CustodyWallet />);
     await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
 
     await user.type(screen.getByTestId('asset-filter-input'), 'alpha');
 
-    expect(screen.getByTestId('asset-xch')).toBeInTheDocument(); // hero row unaffected by the filter
+    expect(screen.getByTestId('asset-xch')).toBeInTheDocument(); // pinned row unaffected by the filter
+    expect(screen.getByTestId('asset-dig')).toBeInTheDocument(); // pinned row unaffected by the filter (#204)
     expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument();
-    expect(screen.queryByTestId('asset-dig')).not.toBeInTheDocument();
     expect(screen.queryByTestId(`asset-cat-${CAT_B}`)).not.toBeInTheDocument();
+  });
+
+  it('#204 renders XCH then $DIG ABOVE the filter input, with the filterable CATs below it', async () => {
+    renderWithProviders(<CustodyWallet />);
+    await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
+
+    const children = [...screen.getByTestId('custody-assets').children];
+    const testids = children.map((el) => el.getAttribute('data-testid'));
+    // Pinned XCH, pinned $DIG, THEN the filter field, THEN the filterable (value-sorted) CATs.
+    expect(testids).toEqual(['asset-xch', 'asset-dig', 'asset-filter', `asset-cat-${CAT_A}`, `asset-cat-${CAT_B}`, `asset-cat-${CAT_C}`]);
+  });
+
+  it('#204 a filter query matching nothing still leaves XCH + $DIG visible (only the CAT list empties)', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CustodyWallet />);
+    await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
+
+    await user.type(screen.getByTestId('asset-filter-input'), 'nonexistent-token-zzz');
+
+    expect(screen.getByTestId('asset-xch')).toBeInTheDocument();
+    expect(screen.getByTestId('asset-dig')).toBeInTheDocument();
+    expect(await screen.findByTestId('custody-assets-filter-empty')).toBeInTheDocument();
   });
 
   it('shows a clear empty state when nothing matches, and restores the list on Clear', async () => {

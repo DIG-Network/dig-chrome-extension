@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orderAssetsByValue } from '@/features/wallet/custody/assetOrder';
+import { orderAssetsByValue, splitPinnedAssets } from '@/features/wallet/custody/assetOrder';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { AssetDescriptor } from '@/lib/wallet-assets';
 import type { PriceMap } from '@/features/wallet/priceTypes';
@@ -100,5 +100,35 @@ describe('orderAssetsByValue', () => {
   it('handles a list with no $DIG row (nothing to pin, no crash)', () => {
     const ordered = orderAssetsByValue([xchRow(1), catRow(CAT_A, 'AAA', 1)], {});
     expect(ordered.map((r) => r.descriptor.key)).toEqual(['xch', 'cat']);
+  });
+});
+
+// #204 — pin XCH + $DIG ABOVE the token filter, excluded from filtering entirely. splitPinnedAssets
+// is the single source of truth both the filter predicate and the rendering order rely on.
+describe('splitPinnedAssets (#204)', () => {
+  it('puts XCH then $DIG in `pinned`, and every other CAT (value-sorted) in `filterable`', () => {
+    const prices: PriceMap = { xch: { usd: 10, change24h: null }, [CAT_A]: { usd: 1000, change24h: null } };
+    const { pinned, filterable } = splitPinnedAssets([catRow(CAT_A, 'AAA', 5_000_000), digRow(1), xchRow(1)], prices);
+    expect(pinned.map((r) => r.descriptor.key)).toEqual(['xch', 'dig']);
+    expect(filterable.map((r) => r.descriptor.ticker)).toEqual(['AAA']);
+  });
+
+  it('never puts XCH or $DIG in `filterable`, regardless of value ordering', () => {
+    const prices: PriceMap = { xch: { usd: 1, change24h: null }, [CAT_A]: { usd: 1_000_000, change24h: null } };
+    const { filterable } = splitPinnedAssets([xchRow(1), catRow(CAT_A, 'AAA', 1), digRow(1)], prices);
+    expect(filterable.some((r) => r.descriptor.key === 'xch' || r.descriptor.key === 'dig')).toBe(false);
+  });
+
+  it('handles a list with neither XCH nor $DIG (empty pinned, no crash)', () => {
+    const { pinned, filterable } = splitPinnedAssets([catRow(CAT_A, 'AAA', 1)], {});
+    expect(pinned).toEqual([]);
+    expect(filterable.map((r) => r.descriptor.ticker)).toEqual(['AAA']);
+  });
+
+  it('is a pure reorder: same total length, no row dropped or duplicated', () => {
+    const rows = [xchRow(1), digRow(10), catRow(CAT_A, 'AAA', 5), catRow(CAT_B, 'BBB', 2)];
+    const { pinned, filterable } = splitPinnedAssets(rows, {});
+    expect(pinned.length + filterable.length).toBe(rows.length);
+    expect(new Set([...pinned, ...filterable])).toEqual(new Set(rows));
   });
 });
