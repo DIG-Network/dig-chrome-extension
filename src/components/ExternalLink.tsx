@@ -12,14 +12,22 @@ export function ExternalLink({
   className = 'dig-link',
   testid,
   closePopup = false,
+  role,
+  onClick: onClickProp,
 }: {
   href: string;
   children: ReactNode;
   className?: string;
   testid?: string;
   closePopup?: boolean;
+  /** Optional ARIA role override (e.g. `menuitem` when rendered inside a `role="menu"` popover). */
+  role?: string;
+  /** Optional extra handler fired on every click (e.g. closing a parent menu) — runs unconditionally,
+   * before the tab-opening logic below. */
+  onClick?: () => void;
 }) {
   const onClick = (e: React.MouseEvent) => {
+    onClickProp?.();
     if (hasRuntime() && chrome.tabs?.create) {
       e.preventDefault();
       void chrome.tabs.create({ url: href });
@@ -33,7 +41,7 @@ export function ExternalLink({
     }
   };
   return (
-    <a href={href} target="_blank" rel="noreferrer noopener" className={className} data-testid={testid} onClick={onClick}>
+    <a href={href} target="_blank" rel="noreferrer noopener" className={className} data-testid={testid} role={role} onClick={onClick}>
       {children}
     </a>
   );

@@ -13,6 +13,8 @@ import { OpenByUrnInput } from '@/features/home/OpenByUrnInput';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance } from '@/features/wallet/portfolio';
 import { assetUsdValue } from '@/features/wallet/portfolioValue';
+import { resolveFiatValue } from '@/features/wallet/fiatValue';
+import { useFiatPreference } from '@/features/wallet/useFiatPreference';
 import { activityRows, type ActivityRow } from '@/features/wallet/custody/activityRows';
 import {
   BALANCE_UNIT_STORAGE_KEY,
@@ -72,7 +74,9 @@ export function HomeScreen() {
  * survives popup reopen. The price-dependent slot renders one of three honest states — a shimmer
  * skeleton while the price fetch is in flight, the real value once it resolves, or a subtle
  * "price unavailable" note on genuine failure — NEVER a fabricated `$—`, and never "unavailable"
- * during the loading window (`heroBalanceDisplay` resolves which).
+ * during the loading window (`heroBalanceDisplay` resolves which). The $ value renders in the
+ * user's chosen fiat currency (#112, `useFiatPreference` — the SAME preference the wallet's
+ * portfolio card reads, so Home and Wallet never disagree on currency, §6.1).
  */
 function BalanceWidget() {
   const dispatch = useAppDispatch();
@@ -86,17 +90,22 @@ function BalanceWidget() {
   const balances = useGetCustodyBalancesQuery(undefined, { skip: !unlocked });
   const registry = useGetCatRegistryQuery(undefined, { skip: !unlocked });
   const prices = useGetPricesQuery(undefined, { skip: !unlocked });
+  // Skip the exchange-rate fetch entirely while locked — nothing to convert.
+  const { fiat, fx } = useFiatPreference(!unlocked);
+  const fxLoading = fiat !== 'usd' && fx.isLoading;
   const assets = custodyAssetBalances(balances.data?.balances, watchedCats, { registry: registry.data, hidden: hiddenCats });
   const hero = pickHeroBalance(assets);
   const usd = hero.asset ? assetUsdValue(hero.asset, prices.data ?? {}) : null;
+  const fiatState = usd != null ? resolveFiatValue({ usd, fiat, fxRates: fx.data, fxLoading }) : null;
   const display = heroBalanceDisplay({
     unit,
     amountLabel: hero.amountLabel,
     ticker: hero.ticker,
-    usd,
+    usd: fiatState?.kind === 'value' ? fiatState.amount : null,
     hasAsset: hero.asset != null,
-    pricesLoading: prices.isLoading,
-    formatUsd: (n) => intl.formatNumber(n, { style: 'currency', currency: 'USD' }),
+    pricesLoading: prices.isLoading || fiatState?.kind === 'loading',
+    formatUsd: (n) =>
+      intl.formatNumber(n, { style: 'currency', currency: (fiatState?.kind === 'value' ? fiatState.currency : 'usd').toUpperCase() }),
   });
 
   return (

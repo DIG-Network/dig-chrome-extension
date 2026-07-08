@@ -124,6 +124,12 @@ export const hi: Record<string, string> = {
   'wallet.assets.filter.clear': 'फ़िल्टर हटाएं',
   'wallet.assets.filter.empty': '"{query}" से मेल खाने वाला कोई टोकन नहीं है',
   'wallet.getdig': '$DIG प्राप्त करें',
+  'wallet.getdig.open': 'और देखें',
+  'wallet.getdig.hint.tibetswap': 'XCH ↔ DIG AMM',
+  'wallet.getdig.hint.dexie': 'dexie DEX पर DIG / XCH',
+  'wallet.getdig.hint.9mm': '9mm.pro पर DIG टोकन',
+  'wallet.currency.label': 'प्रदर्शन मुद्रा',
+  'wallet.currency.hint': 'वॉलेट में $ मान दिखाने के लिए उपयोग होने वाली मुद्रा चुनें।',
   'wallet.recent.title': 'हालिया गतिविधि',
   'wallet.recent.seeall': 'सभी देखें',
 

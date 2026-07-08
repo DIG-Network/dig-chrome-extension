@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { FormattedMessage } from 'react-intl';
 
 /**
@@ -18,6 +18,7 @@ export function AssetRow({
   iconUrl,
   priceLoading = false,
   testid,
+  action,
 }: {
   ticker: string;
   name: string;
@@ -29,12 +30,18 @@ export function AssetRow({
   /** True while the price feed is loading and no value is known yet. */
   priceLoading?: boolean;
   testid?: string;
+  /** Optional per-row affordance rendered beside the ticker (e.g. the $DIG "Get more" venue menu,
+   * #202); omitted entirely when not supplied. */
+  action?: ReactNode;
 }) {
   return (
     <div className="dig-asset" data-testid={testid}>
       <AssetBadge ticker={ticker} iconUrl={iconUrl} testid={testid} />
       <div className="dig-asset-main">
-        <div className="dig-asset-name">{ticker}</div>
+        <div className="dig-asset-name-row">
+          <div className="dig-asset-name">{ticker}</div>
+          {action}
+        </div>
         <div className="dig-asset-sub">{name}</div>
       </div>
       <div>

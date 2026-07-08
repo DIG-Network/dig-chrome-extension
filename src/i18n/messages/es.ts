@@ -124,6 +124,12 @@ export const es: Record<string, string> = {
   'wallet.assets.filter.clear': 'Borrar filtro',
   'wallet.assets.filter.empty': 'Ningún token coincide con "{query}"',
   'wallet.getdig': 'Obtener $DIG',
+  'wallet.getdig.open': 'Más',
+  'wallet.getdig.hint.tibetswap': 'AMM XCH ↔ DIG',
+  'wallet.getdig.hint.dexie': 'DIG / XCH en el DEX dexie',
+  'wallet.getdig.hint.9mm': 'Token DIG en 9mm.pro',
+  'wallet.currency.label': 'Moneda de visualización',
+  'wallet.currency.hint': 'Elige la moneda usada para los valores en $ de la cartera.',
   'wallet.recent.title': 'Actividad reciente',
   'wallet.recent.seeall': 'Ver todo',
 

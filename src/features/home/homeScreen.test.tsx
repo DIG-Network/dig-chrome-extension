@@ -4,6 +4,8 @@ import { renderWithProviders } from '@/test/harness';
 import { createStore } from '@/app/store';
 import { HomeScreen } from '@/features/home/HomeScreen';
 import { BALANCE_UNIT_STORAGE_KEY } from '@/features/wallet/balanceUnit';
+import { FIAT_CURRENCY_STORAGE_KEY } from '@/features/wallet/fiatCurrency';
+import { COINGECKO_FX_URL } from '@/features/wallet/fxRates';
 
 const CATALOG = { apps: [{ slug: 'chia-offer', name: 'Chia-Offer', icon: 'https://explore.dig.net/catalog/chia-offer/icon-512.png', link: 'https://chia-offer.on.dig.net/', category: 'tools', featured: true }] };
 
@@ -226,5 +228,25 @@ describe('HomeScreen balance-unit swap (#156)', () => {
     resolveCoingecko();
     await waitFor(() => expect(screen.getByTestId('home-balance-value')).toHaveTextContent('$25.10'));
     expect(screen.queryByTestId('home-balance-value-loading')).not.toBeInTheDocument();
+  });
+});
+
+describe('HomeScreen balance widget — fiat currency preference (#112)', () => {
+  it('applies a persisted non-USD currency preference to the $ balance', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = String(url);
+        if (u === COINGECKO_FX_URL) return { ok: true, json: async () => ({ chia: { usd: 10, eur: 9 } }) };
+        if (u.includes('coingecko')) return { ok: true, json: async () => XCH_PRICE_JSON };
+        if (u.includes('dexie')) return { ok: true, json: async () => DEXIE_JSON };
+        return { ok: true, json: async () => CATALOG };
+      }),
+    );
+    mockStorage({ [BALANCE_UNIT_STORAGE_KEY]: 'usd', [FIAT_CURRENCY_STORAGE_KEY]: 'eur' });
+    renderWithProviders(<HomeScreen />);
+
+    // 2.51 XCH × $10 = $25.10 → × 0.9 eur/usd = €22.59.
+    await waitFor(() => expect(screen.getByTestId('home-balance-value')).toHaveTextContent('€22.59'));
   });
 });

@@ -124,6 +124,12 @@ export const ko: Record<string, string> = {
   'wallet.assets.filter.clear': '필터 지우기',
   'wallet.assets.filter.empty': '"{query}"와 일치하는 토큰이 없습니다',
   'wallet.getdig': '$DIG 구매하기',
+  'wallet.getdig.open': '더 보기',
+  'wallet.getdig.hint.tibetswap': 'XCH ↔ DIG AMM',
+  'wallet.getdig.hint.dexie': 'dexie의 DIG / XCH',
+  'wallet.getdig.hint.9mm': '9mm.pro의 DIG 토큰',
+  'wallet.currency.label': '표시 통화',
+  'wallet.currency.hint': '지갑 전체에서 $ 값을 표시할 통화를 선택하세요.',
   'wallet.recent.title': '최근 활동',
   'wallet.recent.seeall': '전체 보기',
 

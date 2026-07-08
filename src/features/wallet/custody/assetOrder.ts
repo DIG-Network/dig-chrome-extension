@@ -1,16 +1,19 @@
 /**
- * Asset-list ordering (#167) — a pure VIEW selector over the already-resolved `AssetBalance[]` from
- * `custodyAssetBalances`. It does NOT touch the scan/derivation: given the same rows, it only
- * reorders them for display, highest value first, so the Assets list reads like a portfolio rather
- * than raw discovery order.
+ * Asset-list ordering (#167, pinned order revised by #202) — a pure VIEW selector over the
+ * already-resolved `AssetBalance[]` from `custodyAssetBalances`. It does NOT touch the
+ * scan/derivation: given the same rows, it only reorders them for display so the Assets list reads
+ * like a portfolio rather than raw discovery order.
  *
- * XCH is the hero/prominent balance (`pickHeroBalance`) and always sorts first, unmoved. Every other
- * row — $DIG + discovered/watched CATs — sorts beneath it in two tiers:
- *   1. Rows with a KNOWN USD value (`assetUsdValue`), highest value first.
- *   2. Rows with NO known price, sorted after every priced row: a "known" token ($DIG, or a CAT
- *      whose ticker resolved via the registry — see `resolveCatMeta`) outranks a generic-unknown
- *      one, then within a tier by held amount (normalized by decimals), descending. A null/unknown
- *      balance sinks to the bottom of its tier.
+ * The order is:
+ *   1. **XCH** — the hero/prominent balance (`pickHeroBalance`), always first, unmoved.
+ *   2. **$DIG** — always second, UNCONDITIONALLY (regardless of its own or any other row's USD
+ *      value) — it's the network's own token, not just another CAT (#202).
+ *   3. **Every other CAT**, sorted beneath those two in two tiers:
+ *      a. Rows with a KNOWN USD value (`assetUsdValue`), highest value first.
+ *      b. Rows with NO known price, sorted after every priced row: a CAT whose ticker resolved via
+ *         the registry (see `resolveCatMeta`) outranks the generic-unknown "CAT" fallback, then
+ *         within a tier by held amount (normalized by decimals), descending. A null/unknown balance
+ *         sinks to the bottom of its tier.
  * Ties preserve the original (discovery) order — a stable sort.
  */
 
@@ -25,12 +28,12 @@ function normalizedAmount(row: AssetBalance): number {
 }
 
 /**
- * A "known" token for the no-price fallback tier: $DIG (always a named, built-in row) or a CAT
- * whose ticker resolved against the registry (i.e. NOT the generic "CAT" fallback `resolveCatMeta`
- * emits for an unrecognized TAIL).
+ * A "known" CAT for the no-price fallback tier: one whose ticker resolved against the registry
+ * (i.e. NOT the generic "CAT" fallback `resolveCatMeta` emits for an unrecognized TAIL). $DIG is
+ * pinned separately (see {@link orderAssetsByValue}) so it never reaches this tie-break.
  */
 function isKnownAsset(row: AssetBalance): boolean {
-  return row.descriptor.key === 'dig' || row.descriptor.ticker !== 'CAT';
+  return row.descriptor.ticker !== 'CAT';
 }
 
 /** Sort key used to order the non-XCH rows; keeps the comparator itself simple/readable. */
@@ -53,13 +56,14 @@ function compareScored(a: ScoredRow, b: ScoredRow): number {
 }
 
 /**
- * Order `rows` for the Assets list: XCH first (untouched), then every other row sorted by value,
- * highest first, per the tiered rule above. Pure + total — returns a NEW array with the same rows,
- * never dropping or duplicating one.
+ * Order `rows` for the Assets list: XCH first, $DIG pinned second (both untouched by value), then
+ * every remaining CAT sorted by value, highest first, per the tiered rule above (#202). Pure +
+ * total — returns a NEW array with the same rows, never dropping or duplicating one.
  */
 export function orderAssetsByValue(rows: AssetBalance[], prices: PriceMap): AssetBalance[] {
   const xch = rows.filter((r) => r.descriptor.key === 'xch');
-  const rest = rows.filter((r) => r.descriptor.key !== 'xch');
+  const dig = rows.filter((r) => r.descriptor.key === 'dig');
+  const rest = rows.filter((r) => r.descriptor.key !== 'xch' && r.descriptor.key !== 'dig');
 
   const scored: ScoredRow[] = rest.map((row, index) => ({
     row,
@@ -70,5 +74,5 @@ export function orderAssetsByValue(rows: AssetBalance[], prices: PriceMap): Asse
   }));
   scored.sort(compareScored);
 
-  return [...xch, ...scored.map((s) => s.row)];
+  return [...xch, ...dig, ...scored.map((s) => s.row)];
 }

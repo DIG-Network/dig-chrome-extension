@@ -124,6 +124,12 @@ export const id: Record<string, string> = {
   'wallet.assets.filter.clear': 'Hapus filter',
   'wallet.assets.filter.empty': 'Tidak ada token yang cocok dengan "{query}"',
   'wallet.getdig': 'Dapatkan $DIG',
+  'wallet.getdig.open': 'Selengkapnya',
+  'wallet.getdig.hint.tibetswap': 'AMM XCH ↔ DIG',
+  'wallet.getdig.hint.dexie': 'DIG / XCH di dexie DEX',
+  'wallet.getdig.hint.9mm': 'Token DIG di 9mm.pro',
+  'wallet.currency.label': 'Mata uang tampilan',
+  'wallet.currency.hint': 'Pilih mata uang yang digunakan untuk nilai $ di seluruh dompet.',
   'wallet.recent.title': 'Aktivitas terbaru',
   'wallet.recent.seeall': 'Lihat semua',
 

@@ -17,6 +17,10 @@ import { ManageTokens } from '@/features/wallet/custody/ManageTokens';
 import { pickHeroBalance, balancesAreEmpty } from '@/features/wallet/portfolio';
 import { PortfolioHero } from '@/features/wallet/PortfolioHero';
 import { assetUsdValue, portfolioValue } from '@/features/wallet/portfolioValue';
+import { resolveFiatValue } from '@/features/wallet/fiatValue';
+import { useFiatPreference } from '@/features/wallet/useFiatPreference';
+import { GetDigMenu } from '@/features/wallet/GetDigMenu';
+import { FiatCurrencySetting } from '@/features/wallet/custody/FiatCurrencySetting';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { WalletSwitcher } from '@/features/wallet/custody/WalletSwitcher';
 import { IndexNavigator } from '@/features/wallet/custody/IndexNavigator';
@@ -71,6 +75,9 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
   const receive = useGetReceiveAddressQuery();
   const prices = useGetPricesQuery();
   const registry = useGetCatRegistryQuery();
+  // #112 — the user's chosen display currency + its exchange-rate table (only fetched once a
+  // non-USD currency is picked).
+  const { fiat, setFiat, fx } = useFiatPreference();
   // #152 — pending clawbacks: the fullscreen-only management panel + the popup's "open full screen"
   // hint (rendered whenever at least one is pending, regardless of surface).
   const clawbacks = useGetClawbacksQuery();
@@ -99,25 +106,38 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
     [tokenRows, registry.data, assetFilter],
   );
 
-  /** Format a row's fiat value as `≈ $x.xx`, or null when it can't be priced. */
-  const fiatLabelFor = (row: (typeof assets)[number]): string | null => {
+  // The fx rate fetch is only "in flight" in a way that should gate a row's fiat display when the
+  // user picked a non-USD currency — USD never needs it (#112/#158).
+  const fxLoading = fiat !== 'usd' && fx.isLoading;
+
+  /** A row's resolved fiat state in the chosen currency (#112), or null when it can't be priced at
+   * all yet (no balance/USD price known — a separate, upstream concern from currency conversion). */
+  const fiatStateFor = (row: (typeof assets)[number]) => {
     const usd = assetUsdValue(row, priceMap);
-    return usd == null ? null : `≈ ${intl.formatNumber(usd, { style: 'currency', currency: 'USD' })}`;
+    return usd == null ? null : resolveFiatValue({ usd, fiat, fxRates: fx.data, fxLoading });
   };
 
   /** Render one Assets-list row (shared by the pinned XCH row and the sorted/filtered token rows). */
-  const renderAssetRow = (a: (typeof assets)[number]) => (
-    <AssetRow
-      key={a.descriptor.key + (a.descriptor.assetId ?? '')}
-      ticker={a.descriptor.ticker}
-      name={a.descriptor.name}
-      amountLabel={a.label}
-      fiatLabel={fiatLabelFor(a)}
-      iconUrl={a.descriptor.iconUrl}
-      priceLoading={prices.isLoading}
-      testid={a.descriptor.key === 'cat' ? `asset-cat-${a.descriptor.assetId}` : `asset-${a.descriptor.key}`}
-    />
-  );
+  const renderAssetRow = (a: (typeof assets)[number]) => {
+    const fiatState = fiatStateFor(a);
+    const fiatLabel =
+      fiatState?.kind === 'value'
+        ? `≈ ${intl.formatNumber(fiatState.amount, { style: 'currency', currency: fiatState.currency.toUpperCase() })}`
+        : null;
+    return (
+      <AssetRow
+        key={a.descriptor.key + (a.descriptor.assetId ?? '')}
+        ticker={a.descriptor.ticker}
+        name={a.descriptor.name}
+        amountLabel={a.label}
+        fiatLabel={fiatLabel}
+        iconUrl={a.descriptor.iconUrl}
+        priceLoading={prices.isLoading || fiatState?.kind === 'loading'}
+        testid={a.descriptor.key === 'cat' ? `asset-cat-${a.descriptor.assetId}` : `asset-${a.descriptor.key}`}
+        action={a.descriptor.key === 'dig' ? <GetDigMenu /> : undefined}
+      />
+    );
+  };
 
   // #166 — Receive is a dedicated, full-replace screen (mirrors the NFT/DID-detail pattern): its
   // sticky ViewHeader + QR/address are the WHOLE body, with none of the shared wallet chrome above
@@ -140,15 +160,21 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
       <PrivacyNote />
 
       <section className="dig-card" aria-labelledby="custody-portfolio-title">
-        <p className="dig-muted" id="custody-portfolio-title" style={{ marginTop: 0 }}>
-          <FormattedMessage id="wallet.portfolio.total" />
-        </p>
+        <div className="dig-toggle-row" style={{ justifyContent: 'space-between', marginBottom: 0 }}>
+          <p className="dig-muted" id="custody-portfolio-title" style={{ margin: 0 }}>
+            <FormattedMessage id="wallet.portfolio.total" />
+          </p>
+          <FiatCurrencySetting value={fiat} onChange={setFiat} />
+        </div>
         <PortfolioHero
           total={total}
           hero={hero}
           pricesLoading={prices.isLoading}
           pricesError={prices.isError}
           onRetry={() => void prices.refetch()}
+          fiat={fiat}
+          fxRates={fx.data}
+          fxLoading={fxLoading}
         />
         {cached && (
           <p className="dig-muted" role="status" data-testid="balances-cached" style={{ marginBottom: 0 }}>
