@@ -167,8 +167,17 @@ import { DIG_ERR } from './error-codes';
  * broadcast path exactly like the existing single-NFT `confirmNftTransfer`); confirmation polls via
  * the shared `sendStatus`. A burn is irreversible once confirmed — the caller MUST gate it behind an
  * explicit, distinct user confirmation and must NEVER auto-invoke the confirm step.
+ *
+ * v24 (#105/#106/#107 send/receive trio): `prepareSend` gained an optional `memo` — a plain-text
+ * note attached to the recipient's CREATE_COIN (PUBLIC on chain), decoded back from the built spend
+ * into `summary.memoText`; mutually exclusive with `clawbackSeconds` and capped at 512 UTF-8 bytes
+ * (both BAD_REQUEST). Added `listDerivedAddresses` — derive a page of the active wallet's addresses
+ * (both HD schemes, indexes `0..count-1`) for VIEWING/COPYING only, never a balance scan (#165 stays
+ * intact: no multi-index scan is introduced). #107 (QR camera scanner) is client-side only (no new
+ * message action) — it decodes a QR frame in the popup/fullscreen UI and fills the existing
+ * `send.recipient`/offer fields.
  */
-export const MESSAGE_PROTOCOL_VERSION = 23;
+export const MESSAGE_PROTOCOL_VERSION = 24;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -476,9 +485,9 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: "{ balances:{ xch:number, cats:{ [assetId]:number } }, cached?:boolean } | { success:false, code, message }",
   },
   [ACTIONS.prepareSend]: {
-    summary: 'Build (not sign/broadcast) an XCH or CAT send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve. A CAT send carries the token TAIL as assetId (omitted / "xch" = native XCH); the vault routes on assetId (#121). An optional coinIds hand-picks which coins fund the send, overriding auto-selection (#91). An optional clawbackSeconds (#152, XCH only) sends WITH a reclaimable timelock instead of a plain send — an absolute unix timestamp after which the receiver may claim; strictly before it, only the sender may claw back.',
-    request: '{ action, recipient:string /* xch1… */, amount:string /* base units */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */, coinIds?:string[] /* hex; hand-picked funding coins */, clawbackSeconds?:string /* absolute unix timestamp; XCH only */ }',
-    response: "{ pendingId:string, summary:{ asset:'XCH'|<assetId>, sent, change, fee, recipientPuzzleHashHex, coinCount }, clawbackInfo?:{ senderPuzzleHashHex, receiverPuzzleHashHex, seconds, amount } } | { success:false, code, message }",
+    summary: 'Build (not sign/broadcast) an XCH or CAT send in the offscreen vault; hold it under a pending id and return the decoded (tamper-resistant) summary to approve. A CAT send carries the token TAIL as assetId (omitted / "xch" = native XCH); the vault routes on assetId (#121). An optional coinIds hand-picks which coins fund the send, overriding auto-selection (#91). An optional clawbackSeconds (#152, XCH only) sends WITH a reclaimable timelock instead of a plain send — an absolute unix timestamp after which the receiver may claim; strictly before it, only the sender may claw back. An optional memo (#105) attaches a plain-text note to the recipient\'s CREATE_COIN — PUBLIC on chain, capped at 512 UTF-8 bytes, and mutually exclusive with clawbackSeconds (both reject with BAD_REQUEST).',
+    request: '{ action, recipient:string /* xch1… */, amount:string /* base units */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */, coinIds?:string[] /* hex; hand-picked funding coins */, clawbackSeconds?:string /* absolute unix timestamp; XCH only */, memo?:string /* ≤512 UTF-8 bytes; public on chain */ }',
+    response: "{ pendingId:string, summary:{ asset:'XCH'|<assetId>, sent, change, fee, recipientPuzzleHashHex, coinCount, memoText?:string }, clawbackInfo?:{ senderPuzzleHashHex, receiverPuzzleHashHex, seconds, amount } } | { success:false, code, message }",
   },
   [ACTIONS.confirmSend]: {
     summary: 'Sign + BROADCAST a previously-prepared send (the approved step — the only place a real spend is pushed). Returns an input coin id to poll, plus a #154 activityHint (asset/amount/counterparty captured at prepare time) the SW logs to the local activity log as a `sent` entry — absent a counterparty (a self-only split/combine reusing this path), nothing is logged.',

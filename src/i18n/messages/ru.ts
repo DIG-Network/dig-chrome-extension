@@ -181,6 +181,9 @@ export const ru: Record<string, string> = {
   'send.review.fee': 'Комиссия сети',
   'send.review.recipient': 'Кому',
   'send.sending': 'Отправка… транзакция передаётся в сеть.',
+  'send.memo.label': 'Заметка (необязательно)',
+  'send.memo.hint': 'Заметки публично видны в блокчейне — никогда не указывайте в них конфиденциальную информацию.',
+  'send.review.memo': 'Заметка',
   'send.confirmed': 'Подтверждено — ваша транзакция окончательна.',
   'send.failed': 'Не подтверждено — транзакция не была принята. Ваш баланс не изменился; попробуйте снова.',
   // clawback (#152) — an advanced, fullscreen-only send option

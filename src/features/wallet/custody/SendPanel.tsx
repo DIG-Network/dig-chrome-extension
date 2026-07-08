@@ -55,6 +55,8 @@ export function SendPanel({
   const [poisonAck, setPoisonAck] = useState(false);
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('0');
+  // #105 — an optional plain-text memo attached to the send. Memos are PUBLIC on chain (send.memo.hint).
+  const [memo, setMemo] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<PreparedSend | null>(null);
   const [spentCoinId, setSpentCoinId] = useState<string | null>(null);
@@ -143,6 +145,7 @@ export function SendPanel({
       ...(assetId ? { assetId } : {}),
       ...(coinIds ? { coinIds } : {}),
       ...(clawbackSeconds ? { clawbackSeconds } : {}),
+      ...(memo.trim() ? { memo: memo.trim() } : {}),
     });
     if ('data' in res && res.data?.pendingId) {
       setPrepared(res.data);
@@ -274,6 +277,23 @@ export function SendPanel({
             <input data-testid="send-fee" className="dig-input" value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />
           </label>
 
+          {/* #105 — an optional plain-text memo/note attached to the send. Memos are PUBLIC on
+              chain, so the hint below the field says so explicitly — never sensitive info. */}
+          <label className="dig-field">
+            <span><FormattedMessage id="send.memo.label" /></span>
+            <input
+              data-testid="send-memo"
+              className="dig-input"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              maxLength={200}
+              autoComplete="off"
+            />
+          </label>
+          <p className="dig-muted" style={{ margin: '-6px 0 8px', fontSize: '0.85em' }}>
+            <FormattedMessage id="send.memo.hint" />
+          </p>
+
           {/* Coin control (#91): optionally hand-pick which coins fund the send. */}
           <div style={{ margin: '4px 0 12px' }}>
             <button
@@ -388,6 +408,12 @@ export function SendPanel({
                 <span className="dig-mono">{recipient}</span>
               )}
             </dd>
+            {prepared.summary.memoText && (
+              <>
+                <dt><FormattedMessage id="send.review.memo" /></dt>
+                <dd data-testid="review-memo">{prepared.summary.memoText}</dd>
+              </>
+            )}
           </dl>
           {prepared.clawbackInfo && (
             <p className="dig-muted" data-testid="review-clawback" style={{ margin: '0 0 8px' }}>

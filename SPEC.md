@@ -536,7 +536,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `23`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `24`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -601,6 +601,12 @@ action/shape changed.
 `prepareNftBulkTransfer` + `confirmNftBulkTransfer` and `prepareNftBulkBurn` +
 `confirmNftBulkBurn` (§18.11a) — each confirm reusing the `confirmSend` broadcast path. Purely
 additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `24` (#105/#106 send/receive trio) added an optional `memo` on
+`prepareSend` (§18.8b) and an optional `memoText` on its response summary, plus the
+`listDerivedAddresses` action (§18.5a) — a read-only page of the active wallet's derived addresses
+for viewing/copying. Purely additive — no existing action/shape changed. (#107's QR camera scanner
+is client-side only and adds no message action.)
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1453,6 +1459,31 @@ picker (1h/1d/3d/7d presets) render ONLY in the fullscreen `SendPanel` (`full` p
 clawback management list (`ClawbackPanel`, claim/claw-back actions) is fullscreen-only, reachable
 from the Assets view's "Clawback pending (N)" link; the popup shows a lighter "N pending
 clawback(s) — open full screen" hint instead of the management UI.
+
+### 18.8b Memo — an optional note on a send (#105)
+
+`prepareSend` accepts an optional `memo` (plain UTF-8 text, ≤512 bytes) attached to the recipient's
+CREATE_COIN as a SINGLE-atom memo list — built via `clvm.alloc([bytes])` against the SAME `Clvm`
+instance the send driver allocates internally (`send.ts`'s `buildMemos` hook, the same seam
+§18.8a's clawback memo uses). **Memos are PUBLIC on chain** — the UI states this next to the field;
+it is a payment reference, never a place for secrets.
+
+- **Mutually exclusive with `clawbackSeconds` in v1** — a clawback send's memo slot already carries
+  `[receiverPuzzleHash, clawback.memo()]` (the reconstruction params); combining the two is rejected
+  `BAD_REQUEST` rather than silently dropped or merged.
+- **Decoded back from the built spend, never echoed from caller input** (§5.5): `send.ts`'s
+  `decodePlainMemo` reads the recipient's actual CREATE_COIN memo list and requires it be EXACTLY
+  ONE atom (the shape this feature builds) before decoding it as UTF-8 — a clawback's 2-element list
+  is structurally distinct and never mistaken for a plain memo. The decoded value is
+  `summary.memoText`, shown in the review step so the user sees exactly what will land on chain.
+  CAT sends echo `opts.memo` directly into `summary.memoText` instead (matching that path's existing
+  echo-not-decode rigor for `sent`/`change`).
+- **Gotcha:** `TextEncoder().encode(...)` output can fail the wasm boundary's `instanceof
+  Uint8Array` check under Vitest/jsdom (a cross-realm typed array) — always normalize with
+  `Uint8Array.from(...)` before passing bytes to `chia-wallet-sdk-wasm` (`sendFlow.ts`'s
+  `buildPlainMemo`).
+- Available in BOTH the popup and fullscreen `SendPanel` (not gated behind `full`, unlike clawback)
+  — an optional note is basic functionality, not an advanced/rare operation.
 
 ### 18.9 Activity — the LOCAL activity log (#154, MetaMask-style)
 

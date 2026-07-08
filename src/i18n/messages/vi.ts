@@ -181,6 +181,9 @@ export const vi: Record<string, string> = {
   'send.review.fee': 'Phí mạng',
   'send.review.recipient': 'Đến',
   'send.sending': 'Đang gửi… đang phát giao dịch của bạn lên mạng.',
+  'send.memo.label': 'Ghi chú (tùy chọn)',
+  'send.memo.hint': 'Ghi chú được công khai trên blockchain — không bao giờ đưa thông tin nhạy cảm vào đây.',
+  'send.review.memo': 'Ghi chú',
   'send.confirmed': 'Đã xác nhận — giao dịch của bạn đã hoàn tất.',
   'send.failed': 'Không được xác nhận — giao dịch không được chấp nhận. Số dư của bạn không thay đổi; hãy thử lại.',
   // clawback (#152) — an advanced, fullscreen-only send option

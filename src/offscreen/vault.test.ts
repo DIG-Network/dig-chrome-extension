@@ -433,6 +433,43 @@ describe('Vault send ops', () => {
     expect(res.code).toBe('BAD_REQUEST');
   });
 
+  // #105 — an optional plain-text memo attached to the recipient's CREATE_COIN, decoded back from
+  // the built spend (never merely echoed) so the caller's review UI shows what will actually land
+  // on chain.
+  it('prepareSend forwards an optional memo, decoded back from the built spend (#105)', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const prep = await v.handle({ op: 'prepareSend', recipient, amount: '1000', fee: '0', memo: 'thanks!' }, { ...deps, chia, chain });
+    expect(prep.success).toBe(true);
+    expect(prep.summary?.memoText).toBe('thanks!');
+  });
+
+  it('prepareSend omits memoText when no memo is given', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const prep = await v.handle({ op: 'prepareSend', recipient, amount: '1000', fee: '0' }, { ...deps, chia, chain });
+    expect(prep.summary?.memoText).toBeUndefined();
+  });
+
+  it('rejects a memo combined with a clawback send (v1)', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const res = await v.handle(
+      { op: 'prepareSend', recipient, amount: '1000', fee: '0', memo: 'note', clawbackSeconds: '999999999999' },
+      { ...deps, chia, chain },
+    );
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('BAD_REQUEST');
+  });
+
+  it('rejects a memo longer than the max byte length', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const res = await v.handle({ op: 'prepareSend', recipient, amount: '1000', fee: '0', memo: 'x'.repeat(600) }, { ...deps, chia, chain });
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('BAD_REQUEST');
+  });
+
   // #154 — confirmSend hands back the activity-log hint captured at prepare time (asset/amount/
   // counterparty) so the SW can log a LOCAL 'sent' entry without any on-chain reconstruction.
   it('confirmSend returns the #154 activityHint captured at prepareSend time', async () => {

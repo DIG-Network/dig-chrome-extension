@@ -148,6 +148,40 @@ describe('SendPanel', () => {
     expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareSend', coinIds: [COIN] }), expect.any(Function));
   });
 
+  /**
+   * #105 — an optional memo/note on a send: forwarded to prepareSend, and the review step shows
+   * back whatever the vault decoded FROM THE BUILT SPEND (never the raw form text directly).
+   */
+  describe('memo (#105)', () => {
+    it('forwards a typed memo to prepareSend and shows it in review', async () => {
+      const sw = mockSw((m) =>
+        m.action === 'prepareSend' ? { pendingId: 'p1', summary: { ...SUMMARY, memoText: 'thanks!' } } : { success: true },
+      );
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+      fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+      fireEvent.change(screen.getByTestId('send-memo'), { target: { value: 'thanks!' } });
+      fireEvent.click(screen.getByTestId('send-review'));
+
+      await screen.findByTestId('send-review-panel');
+      expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareSend', memo: 'thanks!' }), expect.any(Function));
+      expect(screen.getByTestId('review-memo')).toHaveTextContent('thanks!');
+    });
+
+    it('omits memo from prepareSend when the field is left blank', async () => {
+      const sw = mockSw((m) => (m.action === 'prepareSend' ? { pendingId: 'p1', summary: SUMMARY } : { success: true }));
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+      fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+      fireEvent.click(screen.getByTestId('send-review'));
+
+      await screen.findByTestId('send-review-panel');
+      const call = sw.mock.calls.find(([m]) => (m as { action: string }).action === 'prepareSend');
+      expect(call?.[0]).not.toHaveProperty('memo');
+      expect(screen.queryByTestId('review-memo')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the terminal failure state when the broadcast is rejected', async () => {
     mockSw((m) => {
       if (m.action === 'prepareSend') return { pendingId: 'p1', summary: SUMMARY };

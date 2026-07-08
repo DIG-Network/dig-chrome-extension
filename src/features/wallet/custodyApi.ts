@@ -57,7 +57,17 @@ export interface CustodyBalances {
 /** A prepared (unsigned) send: the pending id + the decoded summary to approve. */
 export interface PreparedSend {
   pendingId: string;
-  summary: { asset: string; sent: string; change: string; fee: string; recipientPuzzleHashHex: string; coinCount: number };
+  summary: {
+    asset: string;
+    sent: string;
+    change: string;
+    fee: string;
+    recipientPuzzleHashHex: string;
+    coinCount: number;
+    /** #105 — the plain-text memo attached to the send, decoded back from the built spend; absent
+     * when no memo was sent. */
+    memoText?: string;
+  };
   /** #152 — present iff sent WITH a clawback window; persist it (the local activity log carries it
    * automatically once confirmed) so the pending clawback can later be listed/claimed/clawed back. */
   clawbackInfo?: WireClawbackInfo;
@@ -229,7 +239,9 @@ export const custodyApi = api.injectEndpoints({
     // Build (not broadcast) a send → returns the decoded summary to approve. An optional `assetId`
     // routes a CAT send (#121); an optional `coinIds` hand-picks the funding coins (#91). An optional
     // `clawbackSeconds` (#152, XCH only) sends WITH a reclaimable timelock instead of a plain send.
-    prepareSend: build.mutation<PreparedSend, { recipient: string; amount: string; fee?: string; assetId?: string; coinIds?: string[]; clawbackSeconds?: string }>({
+    // An optional `memo` (#105) attaches a plain-text note to the recipient's CREATE_COIN — PUBLIC
+    // on chain, and mutually exclusive with `clawbackSeconds` (the vault rejects combining them).
+    prepareSend: build.mutation<PreparedSend, { recipient: string; amount: string; fee?: string; assetId?: string; coinIds?: string[]; clawbackSeconds?: string; memo?: string }>({
       query: (arg) => ({ action: ACTIONS.prepareSend, ...arg }),
     }),
     // Sign + BROADCAST a prepared send / split / combine (the approved step). Invalidates the caches.

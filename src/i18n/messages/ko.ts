@@ -181,6 +181,9 @@ export const ko: Record<string, string> = {
   'send.review.fee': '네트워크 수수료',
   'send.review.recipient': '받는 사람',
   'send.sending': '보내는 중… 거래를 네트워크에 전송하고 있습니다.',
+  'send.memo.label': '메모 (선택 사항)',
+  'send.memo.hint': '메모는 블록체인에 공개적으로 기록됩니다 — 민감한 정보는 절대 포함하지 마세요.',
+  'send.review.memo': '메모',
   'send.confirmed': '확인됨 — 거래가 최종 확정되었습니다.',
   'send.failed': '확인되지 않음 — 거래가 승인되지 않았습니다. 잔액에는 변동이 없으니 다시 시도해 주십시오.',
   // clawback (#152) — an advanced, fullscreen-only send option

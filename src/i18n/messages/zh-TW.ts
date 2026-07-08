@@ -181,6 +181,9 @@ export const zhTW: Record<string, string> = {
   'send.review.fee': '網路手續費',
   'send.review.recipient': '收款方',
   'send.sending': '發送中……正在廣播您的交易。',
+  'send.memo.label': '備註（選填）',
+  'send.memo.hint': '備註會公開顯示在區塊鏈上——請勿包含敏感資訊。',
+  'send.review.memo': '備註',
   'send.confirmed': '已確認——您的交易已最終完成。',
   'send.failed': '未確認——交易未被接受。您的餘額未發生變化，請再試一次。',
   // clawback (#152) — an advanced, fullscreen-only send option

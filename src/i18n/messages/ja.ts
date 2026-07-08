@@ -181,6 +181,9 @@ export const ja: Record<string, string> = {
   'send.review.fee': 'ネットワーク手数料',
   'send.review.recipient': '送り先',
   'send.sending': '送信しています… トランザクションをネットワークに送信中です。',
+  'send.memo.label': 'メモ（任意）',
+  'send.memo.hint': 'メモはブロックチェーン上で公開されます — 機密情報は絶対に含めないでください。',
+  'send.review.memo': 'メモ',
   'send.confirmed': '確認済み — トランザクションは確定しました。',
   'send.failed': '未確認 — トランザクションは承認されませんでした。残高に変更はありません。もう一度お試しください。',
   // clawback (#152) — an advanced, fullscreen-only send option

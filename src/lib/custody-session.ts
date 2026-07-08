@@ -180,6 +180,9 @@ export interface PrepareSendMessage {
   /** Send WITH a clawback window (#152, XCH only) — an absolute unix timestamp (decimal string)
    * after which the receiver may claim; strictly before it, only the sender may claw back. */
   clawbackSeconds?: string;
+  /** An optional plain-text memo/note attached to the recipient's CREATE_COIN (#105) — PUBLIC on
+   * chain. Mutually exclusive with `clawbackSeconds` (the vault rejects combining them). */
+  memo?: string;
 }
 
 /** The `prepareSend` request the SW forwards to the offscreen vault. */
@@ -191,6 +194,7 @@ export interface PrepareSendVaultRequest {
   assetId?: string;
   coinIds?: string[];
   clawbackSeconds?: string;
+  memo?: string;
   coinsetUrl: string;
 }
 
@@ -212,6 +216,7 @@ export function prepareSendVaultRequest(
     assetId: message.assetId,
     ...(message.coinIds && message.coinIds.length ? { coinIds: message.coinIds } : {}),
     ...(message.clawbackSeconds ? { clawbackSeconds: message.clawbackSeconds } : {}),
+    ...(message.memo ? { memo: message.memo } : {}),
     coinsetUrl,
   };
 }

@@ -120,6 +120,17 @@ test('prepareSendVaultRequest forwards clawbackSeconds (#152)', () => {
   assert.equal(req.clawbackSeconds, '1751200000');
 });
 
+// #105 — an optional memo/note must reach the vault so it lands in the recipient's CREATE_COIN.
+test('prepareSendVaultRequest forwards an optional memo (#105)', () => {
+  const req = prepareSendVaultRequest({ recipient: 'xch1r', amount: '5', fee: '0', memo: 'thanks!' }, DEFAULT_COINSET_URL);
+  assert.equal(req.memo, 'thanks!');
+});
+
+test('prepareSendVaultRequest omits memo for a plain send', () => {
+  const req = prepareSendVaultRequest({ recipient: 'xch1r', amount: '1', fee: '0' }, DEFAULT_COINSET_URL);
+  assert.equal(req.memo, undefined);
+});
+
 test('prepareSendVaultRequest omits clawbackSeconds for a plain send', () => {
   const req = prepareSendVaultRequest({ recipient: 'xch1r', amount: '1', fee: '0' }, DEFAULT_COINSET_URL);
   assert.equal(req.clawbackSeconds, undefined);

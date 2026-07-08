@@ -111,6 +111,18 @@ describe('custodyApi endpoints', () => {
     expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareSend', coinIds: ['coinA'] }), expect.any(Function));
   });
 
+  it('prepareSend forwards an optional memo and returns the decoded memoText (#105)', async () => {
+    const sw = mockSw((m) =>
+      m.action === 'prepareSend'
+        ? { pendingId: 'p4', summary: { asset: 'XCH', sent: '1', change: '0', fee: '0', recipientPuzzleHashHex: 'ab', coinCount: 1, memoText: 'thanks!' } }
+        : {},
+    );
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.prepareSend.initiate({ recipient: 'xch1r', amount: '1', memo: 'thanks!' }));
+    expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareSend', memo: 'thanks!' }), expect.any(Function));
+    expect(res.data?.summary.memoText).toBe('thanks!');
+  });
+
   it('revealPhrase returns the phrase on the right password and errors otherwise', async () => {
     mockSw((m) =>
       m.action === 'revealPhrase' && m.password === 'pw'

@@ -69,6 +69,53 @@ describe('buildXchSend', () => {
     ).toThrow(/MISSING_KEY/);
   });
 
+  /**
+   * #105 — an optional memo attached to a send is decoded back FROM THE BUILT SPEND (never just
+   * echoed from caller input, §5.5) so the review step shows exactly what will land on chain. A
+   * plain-text memo is a SINGLE-atom CREATE_COIN memo list — distinct from clawback's 2-element
+   * `[receiverPuzzleHash, clawback.memo()]` list, so the two never get cross-decoded.
+   */
+  it('decodes an optional memo back from the built CREATE_COIN (#105)', () => {
+    const sim = new chia.Simulator();
+    const pair = sim.bls(1_000_000_000_000n);
+    const dest = new Uint8Array(32).fill(9);
+    const memoText = 'for pizza \u{1F355}';
+    // #105 gotcha: `TextEncoder().encode()` can fail the wasm boundary's `instanceof Uint8Array`
+    // check under Vitest/jsdom (a cross-realm typed array) — normalize with `Uint8Array.from`.
+    const memoBytes = Uint8Array.from(new TextEncoder().encode(memoText));
+    const built = buildXchSend(asSend(), {
+      coins: [pair.coin as never],
+      keyByPuzzleHash: keyMap(pair),
+      destPuzzleHash: dest,
+      amount: 250_000_000_000n,
+      fee: 0n,
+      changePuzzleHash: pair.puzzleHash,
+      buildMemos: (clvm) => (clvm as { alloc(items: unknown[]): unknown }).alloc([memoBytes]),
+    });
+    expect(built.summary.memoText).toBe(memoText);
+
+    const sig = signCoinSpends(asSig(), built.coinSpends, [pair.sk], TESTNET11_AGG_SIG_ME);
+    const bundle = new chia.SpendBundle(built.coinSpends, sig);
+    expect(() => {
+      sim.newTransaction(bundle);
+      sim.createBlock();
+    }).not.toThrow();
+  });
+
+  it('omits memoText when no memo was built', () => {
+    const sim = new chia.Simulator();
+    const pair = sim.bls(1_000_000_000_000n);
+    const built = buildXchSend(asSend(), {
+      coins: [pair.coin as never],
+      keyByPuzzleHash: keyMap(pair),
+      destPuzzleHash: new Uint8Array(32).fill(9),
+      amount: 1000n,
+      fee: 0n,
+      changePuzzleHash: pair.puzzleHash,
+    });
+    expect(built.summary.memoText).toBeUndefined();
+  });
+
   it('handles a send with no change (exact amount minus fee)', () => {
     const sim = new chia.Simulator();
     const pair = sim.bls(1_000_000_000_000n);

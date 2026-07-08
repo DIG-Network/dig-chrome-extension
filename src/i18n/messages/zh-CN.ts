@@ -181,6 +181,9 @@ export const zhCN: Record<string, string> = {
   'send.review.fee': '网络手续费',
   'send.review.recipient': '收款方',
   'send.sending': '发送中……正在广播您的交易。',
+  'send.memo.label': '备注（选填）',
+  'send.memo.hint': '备注会公开显示在区块链上——请勿包含敏感信息。',
+  'send.review.memo': '备注',
   'send.confirmed': '已确认——您的交易已最终完成。',
   'send.failed': '未确认——交易未被接受。您的余额未发生变化，请重试。',
   // clawback (#152) — an advanced, fullscreen-only send option

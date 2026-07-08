@@ -181,6 +181,9 @@ export const hi: Record<string, string> = {
   'send.review.fee': 'नेटवर्क फ़ीस',
   'send.review.recipient': 'प्राप्तकर्ता',
   'send.sending': 'भेजा जा रहा है… आपका ट्रांज़ैक्शन ब्रॉडकास्ट हो रहा है।',
+  'send.memo.label': 'मेमो (वैकल्पिक)',
+  'send.memo.hint': 'मेमो ब्लॉकचेन पर सार्वजनिक होते हैं — इसमें कभी भी संवेदनशील जानकारी न डालें।',
+  'send.review.memo': 'मेमो',
   'send.confirmed': 'कन्फ़र्म हो गया — आपका ट्रांज़ैक्शन अंतिम है।',
   'send.failed': 'कन्फ़र्म नहीं हुआ — ट्रांज़ैक्शन स्वीकार नहीं किया गया। आपका बैलेंस अपरिवर्तित है; फिर से कोशिश करें।',
   // clawback (#152) — an advanced, fullscreen-only send option

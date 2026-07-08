@@ -181,6 +181,9 @@ export const ptBR: Record<string, string> = {
   'send.review.fee': 'Taxa de rede',
   'send.review.recipient': 'Para',
   'send.sending': 'Enviando… transmitindo sua transação.',
+  'send.memo.label': 'Memo (opcional)',
+  'send.memo.hint': 'Memos são públicos na blockchain — nunca inclua informações sensíveis.',
+  'send.review.memo': 'Memo',
   'send.confirmed': 'Confirmado — sua transação é definitiva.',
   'send.failed': 'Não confirmado — a transação não foi aceita. Seu saldo não foi alterado; tente novamente.',
   // clawback (#152) — an advanced, fullscreen-only send option

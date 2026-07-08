@@ -181,6 +181,9 @@ export const id: Record<string, string> = {
   'send.review.fee': 'Biaya jaringan',
   'send.review.recipient': 'Kepada',
   'send.sending': 'Mengirim… menyiarkan transaksi Anda ke jaringan.',
+  'send.memo.label': 'Memo (opsional)',
+  'send.memo.hint': 'Memo bersifat publik di blockchain — jangan pernah menyertakan informasi sensitif.',
+  'send.review.memo': 'Memo',
   'send.confirmed': 'Terkonfirmasi — transaksi Anda telah final.',
   'send.failed': 'Tidak terkonfirmasi — transaksi tidak diterima. Saldo Anda tidak berubah; coba lagi.',
   // clawback (#152) — an advanced, fullscreen-only send option

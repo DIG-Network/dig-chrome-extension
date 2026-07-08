@@ -181,6 +181,9 @@ export const tr: Record<string, string> = {
   'send.review.fee': 'Ağ ücreti',
   'send.review.recipient': 'Alıcı',
   'send.sending': 'Gönderiliyor… işleminiz ağa yayılıyor.',
+  'send.memo.label': 'Not (isteğe bağlı)',
+  'send.memo.hint': 'Notlar blok zincirinde herkese açıktır — asla hassas bilgi eklemeyin.',
+  'send.review.memo': 'Not',
   'send.confirmed': 'Onaylandı — işleminiz kesinleşti.',
   'send.failed': 'Onaylanmadı — işlem kabul edilmedi. Bakiyeniz değişmedi; tekrar deneyin.',
   // clawback (#152) — an advanced, fullscreen-only send option

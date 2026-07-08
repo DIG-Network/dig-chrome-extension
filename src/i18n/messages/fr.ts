@@ -181,6 +181,9 @@ export const fr: Record<string, string> = {
   'send.review.fee': 'Frais de réseau',
   'send.review.recipient': 'À',
   'send.sending': 'Envoi en cours… diffusion de votre transaction.',
+  'send.memo.label': 'Mémo (facultatif)',
+  'send.memo.hint': 'Les mémos sont publics sur la blockchain — n’incluez jamais d’informations sensibles.',
+  'send.review.memo': 'Mémo',
   'send.confirmed': 'Confirmée — votre transaction est définitive.',
   'send.failed': "Non confirmée — la transaction n'a pas été acceptée. Votre solde reste inchangé ; réessayez.",
   // clawback (#152) — an advanced, fullscreen-only send option
