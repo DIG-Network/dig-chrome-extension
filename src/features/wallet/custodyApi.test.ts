@@ -111,6 +111,38 @@ describe('custodyApi endpoints', () => {
     expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareSend', coinIds: ['coinA'] }), expect.any(Function));
   });
 
+  it('prepareSend forwards an optional memo and returns the decoded memoText (#105)', async () => {
+    const sw = mockSw((m) =>
+      m.action === 'prepareSend'
+        ? { pendingId: 'p4', summary: { asset: 'XCH', sent: '1', change: '0', fee: '0', recipientPuzzleHashHex: 'ab', coinCount: 1, memoText: 'thanks!' } }
+        : {},
+    );
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.prepareSend.initiate({ recipient: 'xch1r', amount: '1', memo: 'thanks!' }));
+    expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareSend', memo: 'thanks!' }), expect.any(Function));
+    expect(res.data?.summary.memoText).toBe('thanks!');
+  });
+
+  it('getDerivedAddresses forwards an optional count and returns the derived page (#106)', async () => {
+    const addresses = [
+      { index: 0, scheme: 'unhardened', address: 'xch1a' },
+      { index: 0, scheme: 'hardened', address: 'xch1b' },
+    ];
+    const sw = mockSw((m) => (m.action === 'listDerivedAddresses' ? { addresses } : {}));
+    const store = createStore();
+    const res = await store.dispatch(custodyApi.endpoints.getDerivedAddresses.initiate({ count: 10 }));
+    expect(res.data?.addresses).toEqual(addresses);
+    expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'listDerivedAddresses', count: 10 }), expect.any(Function));
+  });
+
+  it('getDerivedAddresses omits count when not given', async () => {
+    const sw = mockSw((m) => (m.action === 'listDerivedAddresses' ? { addresses: [] } : {}));
+    const store = createStore();
+    await store.dispatch(custodyApi.endpoints.getDerivedAddresses.initiate());
+    const call = sw.mock.calls.find(([m]) => (m as { action: string }).action === 'listDerivedAddresses');
+    expect(call?.[0]).not.toHaveProperty('count');
+  });
+
   it('revealPhrase returns the phrase on the right password and errors otherwise', async () => {
     mockSw((m) =>
       m.action === 'revealPhrase' && m.password === 'pw'

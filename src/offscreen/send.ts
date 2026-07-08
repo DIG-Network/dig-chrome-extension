@@ -21,7 +21,8 @@ interface WasmCoin {
 interface WasmProgram {
   run(solution: WasmProgram, maxCost: bigint, mempoolMode: boolean): { value: WasmProgram };
   toList(): WasmProgram[] | undefined;
-  parseCreateCoin(): { puzzleHash: Uint8Array; amount: bigint } | undefined;
+  toAtom(): Uint8Array | undefined;
+  parseCreateCoin(): { puzzleHash: Uint8Array; amount: bigint; memos?: WasmProgram } | undefined;
 }
 interface WasmSpend {
   free?(): void;
@@ -99,6 +100,14 @@ export interface SpendSummary {
   fee: string;
   recipientPuzzleHashHex: string;
   coinCount: number;
+  /**
+   * #105 — an optional memo/note attached to the send, decoded back FROM THE BUILT CREATE_COIN
+   * (never merely echoed from caller input, §5.5) so the review step shows exactly what will land
+   * on chain. Present only when the recipient's CREATE_COIN carries a memo list with EXACTLY ONE
+   * atom (a plain-text memo's shape) — a clawback's 2-element `[receiverPuzzleHash, memo]` list is
+   * never mistaken for a plain memo. Absent (not empty string) when no memo was built.
+   */
+  memoText?: string;
 }
 
 /** The built (unsigned) spend: the coin spends to sign + a summary derived from them. */
@@ -134,18 +143,40 @@ export function buildXchSend(chia: SendWasm, opts: XchSendOpts): BuiltSpend {
   return { coinSpends, summary: decodeXchSummary(chia, clvm, coinSpends, opts) };
 }
 
+/**
+ * Decode a plain-text memo from a CREATE_COIN's memo list — ONLY when it is EXACTLY one atom (the
+ * shape {@link buildXchSend}'s optional `memo` builds, via `clvm.alloc([bytes])`). A clawback's
+ * `[receiverPuzzleHash, clawback.memo()]` list has two elements and is never touched here.
+ */
+function decodePlainMemo(memos: WasmProgram | undefined): string | undefined {
+  const list = memos?.toList();
+  if (!list || list.length !== 1) return undefined;
+  const atom = list[0].toAtom();
+  if (!atom) return undefined;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(atom);
+  } catch {
+    return undefined; // not valid UTF-8 text — not a plain memo we understand, decode nothing
+  }
+}
+
 /** Decode sent (to the recipient) + change (everything else) from the built coin spends. */
 function decodeXchSummary(chia: SendWasm, clvm: WasmClvm, coinSpends: SigCoinSpend[], opts: XchSendOpts): SpendSummary {
   const destHex = strip0x(chia.toHex(opts.destPuzzleHash));
   let sent = 0n;
   let change = 0n;
+  let memoText: string | undefined;
   for (const cs of coinSpends) {
     const conds = clvm.deserialize(cs.puzzleReveal).run(clvm.deserialize(cs.solution), MAX_COST, false).value.toList() ?? [];
     for (const c of conds) {
       const cc = c.parseCreateCoin();
       if (!cc) continue;
-      if (strip0x(chia.toHex(cc.puzzleHash)) === destHex) sent += cc.amount;
-      else change += cc.amount;
+      if (strip0x(chia.toHex(cc.puzzleHash)) === destHex) {
+        sent += cc.amount;
+        if (memoText === undefined) memoText = decodePlainMemo(cc.memos);
+      } else {
+        change += cc.amount;
+      }
     }
   }
   return {
@@ -155,5 +186,6 @@ function decodeXchSummary(chia: SendWasm, clvm: WasmClvm, coinSpends: SigCoinSpe
     fee: opts.fee.toString(),
     recipientPuzzleHashHex: destHex,
     coinCount: coinSpends.length,
+    ...(memoText !== undefined ? { memoText } : {}),
   };
 }

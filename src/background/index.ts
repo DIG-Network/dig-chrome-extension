@@ -1198,6 +1198,11 @@ async function handleCustodyActionInner(message) {
       if (res && typeof res.address === 'string') await cachePreviewAddressIfNeeded(activeIndex, res.address);
       return res;
     }
+    case ACTIONS.listDerivedAddresses: {
+      // #106 — a read-only page of BOTH-scheme addresses (indexes 0..count-1) for viewing/copying;
+      // pure local derivation, independent of the active index (#165 is unaffected).
+      return callVault({ op: 'listDerivedAddresses', count: message.count });
+    }
     case ACTIONS.getCustodyBalances: {
       const settings = await readWalletSettings();
       const coinsetUrl = resolveCoinsetUrl(settings);

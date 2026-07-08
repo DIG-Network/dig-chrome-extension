@@ -365,6 +365,64 @@ describe('Vault balance + address ops', () => {
     const res = await v.handle({ op: 'scanBalances' }, { ...deps, chia });
     expect(res.code).toBe('CHAIN_UNAVAILABLE');
   });
+
+  // #106 — a read-only page of BOTH-scheme derived addresses (indexes 0..count-1) for VIEWING/
+  // COPYING only: pure local derivation, no chain query, and NOT a multi-index balance scan (#165
+  // stays intact — this never feeds into balances/activity, only display).
+  describe('listDerivedAddresses (#106)', () => {
+    it('derives both schemes for indexes 0..count-1, matching the golden vectors', async () => {
+      const v = await unlockedZerosWallet();
+      const res = await v.handle({ op: 'listDerivedAddresses', count: 3 }, { ...deps, chia });
+      expect(res.success).toBe(true);
+      expect(res.addresses).toHaveLength(6); // 3 indexes × 2 schemes
+      const unhardened = res.addresses!.filter((a) => a.scheme === 'unhardened');
+      const hardened = res.addresses!.filter((a) => a.scheme === 'hardened');
+      expect(unhardened.map((a) => a.address)).toEqual([golden.unhardened[0].address, golden.unhardened[1].address, golden.unhardened[2].address]);
+      expect(hardened.map((a) => a.address)).toEqual([golden.hardened[0].address, golden.hardened[1].address, golden.hardened[2].address]);
+      expect(unhardened.map((a) => a.index)).toEqual([0, 1, 2]);
+    });
+
+    it('defaults to a small page when count is omitted', async () => {
+      const v = await unlockedZerosWallet();
+      const res = await v.handle({ op: 'listDerivedAddresses' }, { ...deps, chia });
+      expect(res.success).toBe(true);
+      expect(res.addresses!.length).toBeGreaterThan(0);
+      expect(res.addresses!.length).toBeLessThanOrEqual(20); // sane default page, not unbounded
+    });
+
+    it('caps an oversized count rather than deriving unboundedly', async () => {
+      const v = await unlockedZerosWallet();
+      const res = await v.handle({ op: 'listDerivedAddresses', count: 100000 }, { ...deps, chia });
+      expect(res.success).toBe(true);
+      expect(res.addresses!.length).toBeLessThanOrEqual(200); // 2 schemes × the server-side cap
+    });
+
+    it('returns LOCKED when no key is held', async () => {
+      const res = await new Vault().handle({ op: 'listDerivedAddresses' }, { ...deps, chia });
+      expect(res.code).toBe('LOCKED');
+    });
+
+    it('returns WASM_UNAVAILABLE without chia', async () => {
+      const v = await unlockedZerosWallet();
+      const res = await v.handle({ op: 'listDerivedAddresses' }, deps);
+      expect(res.code).toBe('WASM_UNAVAILABLE');
+    });
+
+    it('never queries the chain — pure local derivation', async () => {
+      const v = await unlockedZerosWallet();
+      let called = false;
+      const spyChain: ChainClient = {
+        totalUnspent: async () => { called = true; return 0; },
+        unspentCoins: async () => { called = true; return []; },
+        pushSpendBundle: async () => ({ success: true }),
+        coinConfirmed: async () => false,
+        getCoinSpend: async () => null,
+        coinRecords: async () => [],
+      };
+      await v.handle({ op: 'listDerivedAddresses', count: 5 }, { ...deps, chia, chain: spyChain });
+      expect(called).toBe(false);
+    });
+  });
 });
 
 describe('Vault send ops', () => {
@@ -430,6 +488,43 @@ describe('Vault send ops', () => {
     const v = await unlockedZerosWallet();
     const { chain } = sendChain();
     const res = await v.handle({ op: 'prepareSend', amount: '1000' }, { ...deps, chia, chain });
+    expect(res.code).toBe('BAD_REQUEST');
+  });
+
+  // #105 — an optional plain-text memo attached to the recipient's CREATE_COIN, decoded back from
+  // the built spend (never merely echoed) so the caller's review UI shows what will actually land
+  // on chain.
+  it('prepareSend forwards an optional memo, decoded back from the built spend (#105)', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const prep = await v.handle({ op: 'prepareSend', recipient, amount: '1000', fee: '0', memo: 'thanks!' }, { ...deps, chia, chain });
+    expect(prep.success).toBe(true);
+    expect(prep.summary?.memoText).toBe('thanks!');
+  });
+
+  it('prepareSend omits memoText when no memo is given', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const prep = await v.handle({ op: 'prepareSend', recipient, amount: '1000', fee: '0' }, { ...deps, chia, chain });
+    expect(prep.summary?.memoText).toBeUndefined();
+  });
+
+  it('rejects a memo combined with a clawback send (v1)', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const res = await v.handle(
+      { op: 'prepareSend', recipient, amount: '1000', fee: '0', memo: 'note', clawbackSeconds: '999999999999' },
+      { ...deps, chia, chain },
+    );
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('BAD_REQUEST');
+  });
+
+  it('rejects a memo longer than the max byte length', async () => {
+    const v = await unlockedZerosWallet();
+    const { chain, recipient } = sendChain();
+    const res = await v.handle({ op: 'prepareSend', recipient, amount: '1000', fee: '0', memo: 'x'.repeat(600) }, { ...deps, chia, chain });
+    expect(res.success).toBe(false);
     expect(res.code).toBe('BAD_REQUEST');
   });
 

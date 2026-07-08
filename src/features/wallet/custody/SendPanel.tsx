@@ -8,6 +8,7 @@ import { useContacts } from '@/features/contacts/useContacts';
 import { assessRecipient } from '@/features/contacts/address-poisoning';
 import { ViewHeader } from '@/components/ViewHeader';
 import { isFullpageSurface } from '@/features/collectibles/surface';
+import { QrScanner } from '@/features/wallet/custody/QrScanner';
 
 const XCH_DECIMALS = 12;
 
@@ -55,6 +56,8 @@ export function SendPanel({
   const [poisonAck, setPoisonAck] = useState(false);
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('0');
+  // #105 — an optional plain-text memo attached to the send. Memos are PUBLIC on chain (send.memo.hint).
+  const [memo, setMemo] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<PreparedSend | null>(null);
   const [spentCoinId, setSpentCoinId] = useState<string | null>(null);
@@ -64,6 +67,9 @@ export function SendPanel({
   // Clawback (#152): fullscreen-only ADVANCED send option — send WITH a reclaimable timelock.
   const [clawback, setClawback] = useState(false);
   const [clawbackWindow, setClawbackWindow] = useState<(typeof CLAWBACK_PRESETS)[number]['value']>('1d');
+  // QR camera scanner (#107): fullscreen-only (a live camera preview needs more room than the
+  // compact popup, and the OS permission prompt can steal focus and close a popup).
+  const [scanning, setScanning] = useState(false);
 
   const [prepareSend, prep] = usePrepareSendMutation();
   const [confirmSend, conf] = useConfirmSendMutation();
@@ -143,6 +149,7 @@ export function SendPanel({
       ...(assetId ? { assetId } : {}),
       ...(coinIds ? { coinIds } : {}),
       ...(clawbackSeconds ? { clawbackSeconds } : {}),
+      ...(memo.trim() ? { memo: memo.trim() } : {}),
     });
     if ('data' in res && res.data?.pendingId) {
       setPrepared(res.data);
@@ -202,7 +209,16 @@ export function SendPanel({
         titleId="send-title"
       />
       <section className="dig-card" aria-labelledby="send-title">
-      {phase === 'form' && (
+      {phase === 'form' && scanning && (
+        <QrScanner
+          onScan={(text) => {
+            updateRecipient(text);
+            setScanning(false);
+          }}
+          onClose={() => setScanning(false)}
+        />
+      )}
+      {phase === 'form' && !scanning && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -230,7 +246,17 @@ export function SendPanel({
           </label>
           <label className="dig-field">
             <span><FormattedMessage id="send.recipient" /></span>
-            <input data-testid="send-recipient" className="dig-input dig-mono" value={recipient} onChange={(e) => updateRecipient(e.target.value)} autoComplete="off" spellCheck={false} placeholder="xch1…" />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input data-testid="send-recipient" className="dig-input dig-mono" value={recipient} onChange={(e) => updateRecipient(e.target.value)} autoComplete="off" spellCheck={false} placeholder="xch1…" style={{ flex: 1 }} />
+              {/* #107 — QR camera scanner: fullscreen-only (a live camera preview needs more room
+                  than the compact popup, and the OS permission prompt can steal focus and close a
+                  popup). */}
+              {isFull && (
+                <button type="button" className="dig-btn" data-testid="send-scan-qr" onClick={() => setScanning(true)}>
+                  <FormattedMessage id="send.scan.button" />
+                </button>
+              )}
+            </div>
           </label>
           <ContactPicker onPick={updateRecipient} onManage={onManageContacts} />
           {recipientLabel && (
@@ -273,6 +299,23 @@ export function SendPanel({
             <span><FormattedMessage id="send.fee" /></span>
             <input data-testid="send-fee" className="dig-input" value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />
           </label>
+
+          {/* #105 — an optional plain-text memo/note attached to the send. Memos are PUBLIC on
+              chain, so the hint below the field says so explicitly — never sensitive info. */}
+          <label className="dig-field">
+            <span><FormattedMessage id="send.memo.label" /></span>
+            <input
+              data-testid="send-memo"
+              className="dig-input"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              maxLength={200}
+              autoComplete="off"
+            />
+          </label>
+          <p className="dig-muted" style={{ margin: '-6px 0 8px', fontSize: '0.85em' }}>
+            <FormattedMessage id="send.memo.hint" />
+          </p>
 
           {/* Coin control (#91): optionally hand-pick which coins fund the send. */}
           <div style={{ margin: '4px 0 12px' }}>
@@ -388,6 +431,12 @@ export function SendPanel({
                 <span className="dig-mono">{recipient}</span>
               )}
             </dd>
+            {prepared.summary.memoText && (
+              <>
+                <dt><FormattedMessage id="send.review.memo" /></dt>
+                <dd data-testid="review-memo">{prepared.summary.memoText}</dd>
+              </>
+            )}
           </dl>
           {prepared.clawbackInfo && (
             <p className="dig-muted" data-testid="review-clawback" style={{ margin: '0 0 8px' }}>
