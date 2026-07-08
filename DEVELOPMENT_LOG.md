@@ -357,7 +357,11 @@ grep :4173` shows many `LISTENING` PIDs when it happens. The harness is explicit
 should never block a PR; verify the underlying concern (e.g. popup horizontal-overflow risk from a
 new header control) by design/inspection or via the `e2e/sw/` built-extension harness instead
 (`playwright.sw.config.ts`, no static server / no shared port), and retry the dist-web harness later
-when sibling lanes have quieted down.
+when sibling lanes have quieted down. A faster local workaround when you DO need this harness NOW
+(e.g. to actually run/inspect new e2e specs, not just design-review): temporarily `sed` all three
+`4173` occurrences in `playwright.config.ts` to an unlikely-to-collide port, run + verify, then
+revert the file to the original port before committing (git-diff the file to confirm it's back to
+exactly the committed state — the port itself must never land in a real commit).
 
 ## A `position: fixed` modal nested in a mobile screen can be silently trapped — portal it (#170)
 
