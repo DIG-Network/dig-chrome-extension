@@ -157,6 +157,12 @@ export const es: Record<string, string> = {
   'activity.receipt.to': 'Para',
   'activity.receipt.status': 'Estado',
   'activity.receipt.coin': 'ID de la moneda',
+  'activity.receipt.amount': 'Importe',
+  'activity.receipt.timestamp': 'Hora',
+  'activity.receipt.fee': 'Comisión de red',
+  'activity.receipt.memo': 'Memo',
+  'activity.viewAddressOnSpaceScan': 'Ver dirección en SpaceScan',
+  'activity.viewTokenOnSpaceScan': 'Ver token en SpaceScan',
 
   // ── wallet: send ──
   'send.title': 'Enviar',

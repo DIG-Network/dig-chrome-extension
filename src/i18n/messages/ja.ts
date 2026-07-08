@@ -157,6 +157,12 @@ export const ja: Record<string, string> = {
   'activity.receipt.to': '宛先',
   'activity.receipt.status': 'ステータス',
   'activity.receipt.coin': 'コインID',
+  'activity.receipt.amount': '金額',
+  'activity.receipt.timestamp': '日時',
+  'activity.receipt.fee': 'ネットワーク手数料',
+  'activity.receipt.memo': 'メモ',
+  'activity.viewAddressOnSpaceScan': 'SpaceScanでアドレスを表示',
+  'activity.viewTokenOnSpaceScan': 'SpaceScanでトークンを表示',
 
   // ── wallet: send ──
   'send.title': '送る',

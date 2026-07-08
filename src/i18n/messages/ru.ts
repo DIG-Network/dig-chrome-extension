@@ -157,6 +157,12 @@ export const ru: Record<string, string> = {
   'activity.receipt.to': 'Кому',
   'activity.receipt.status': 'Статус',
   'activity.receipt.coin': 'ID монеты',
+  'activity.receipt.amount': 'Сумма',
+  'activity.receipt.timestamp': 'Время',
+  'activity.receipt.fee': 'Комиссия сети',
+  'activity.receipt.memo': 'Заметка',
+  'activity.viewAddressOnSpaceScan': 'Посмотреть адрес на SpaceScan',
+  'activity.viewTokenOnSpaceScan': 'Посмотреть токен на SpaceScan',
 
   // ── wallet: send ──
   'send.title': 'Отправить',

@@ -80,4 +80,54 @@ describe('activityRows (#154 — local log entries, not on-chain events)', () =>
     expect(row.spaceScanUrl).toBeNull();
     expect(row.coinId).toBeNull();
   });
+
+  // #113 — transaction detail view fields: fee/memo are additive + never fabricated; a full
+  // (unshortened) counterparty address link and a CAT token-page link are precomputed for #114.
+  it('#113 exposes a null feeLabel/memo when the entry carries neither (never fabricated)', () => {
+    const [row] = activityRows([ev({ kind: 'sent', counterparty: 'xch1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzz' })]);
+    expect(row.feeLabel).toBeNull();
+    expect(row.memo).toBeNull();
+  });
+
+  it('#113 formats a recorded fee in XCH, independent of the transferred asset\'s own decimals', () => {
+    const [row] = activityRows([ev({ kind: 'sent', asset: DIG_ASSET_ID, amount: '1500', fee: '1000000000' })]);
+    expect(row.feeLabel).toBe('0.001'); // 1_000_000_000 mojos = 0.001 XCH, NOT $DIG's 3-decimal math
+  });
+
+  it('#113 passes a recorded memo through verbatim', () => {
+    const [row] = activityRows([ev({ kind: 'sent', memo: 'thanks!' })]);
+    expect(row.memo).toBe('thanks!');
+  });
+
+  it('#114 builds a SpaceScan address link for the FULL (unshortened) counterparty address', () => {
+    const full = 'xch1qqqqexampleaddressqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzz';
+    const [row] = activityRows([ev({ kind: 'sent', counterparty: full })]);
+    expect(row.counterpartyUrl).toBe(`https://www.spacescan.io/address/${full}`);
+    expect(row.counterparty).not.toBe(full); // display value stays shortened
+  });
+
+  it('#114 has no counterparty link when there is no counterparty', () => {
+    const [row] = activityRows([ev({ kind: 'received', counterparty: null })]);
+    expect(row.counterpartyUrl).toBeNull();
+  });
+
+  it('#114 builds a SpaceScan token link for a CAT-class asset', () => {
+    const tail = 'c'.repeat(64);
+    const [row] = activityRows([ev({ asset: tail })]);
+    expect(row.tokenUrl).toBe(`https://www.spacescan.io/token/${tail}`);
+  });
+
+  it('#114 omits the token link for XCH and the synthetic NFT/DID labels', () => {
+    const [xchRow] = activityRows([ev({ asset: 'XCH' })]);
+    expect(xchRow.tokenUrl).toBeNull();
+    const [nftRow] = activityRows([ev({ kind: 'mint', asset: 'NFT' })]);
+    expect(nftRow.tokenUrl).toBeNull();
+    const [didRow] = activityRows([ev({ kind: 'did', asset: 'DID' })]);
+    expect(didRow.tokenUrl).toBeNull();
+  });
+
+  it('#114 builds a token link for $DIG too (it is a CAT under the hood)', () => {
+    const [row] = activityRows([ev({ asset: DIG_ASSET_ID })]);
+    expect(row.tokenUrl).toBe(`https://www.spacescan.io/token/${DIG_ASSET_ID}`);
+  });
 });

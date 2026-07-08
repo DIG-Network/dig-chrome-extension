@@ -18,6 +18,10 @@ import { existsSync, readFileSync } from 'node:fs';
  * but genuinely unpriced — must still sort LAST). Expected order beneath XCH: $DIG, AAA, BBB,
  * unregistered.
  *
+ * #204 additionally pins XCH + $DIG in a fixed header block ABOVE the filter input, excluded from
+ * the filter predicate entirely — asserted below (both stay visible under any filter query, and
+ * the DOM order is pinned-block → filter input → filterable CATs).
+ *
  * Run: `npm run build && npm run test:sw`.
  */
 
@@ -127,15 +131,24 @@ test('the Assets list sorts: XCH first, $DIG ALWAYS second, then AAA ($50) > BBB
   await page.close();
 });
 
-test('typing in the filter narrows the list to matching tickers/names, leaving XCH visible', async () => {
+test('typing in the filter narrows the list to matching tickers/names, leaving XCH AND $DIG visible (#204)', async () => {
   const page = await openWallet();
   await page.getByTestId(`asset-cat-${CAT_A}`).waitFor({ timeout: 25_000 });
 
   await page.getByTestId('asset-filter-input').fill('alpha');
   await expect(page.getByTestId('asset-xch')).toBeVisible();
+  await expect(page.getByTestId('asset-dig')).toBeVisible(); // pinned — never hidden by the filter (#204)
   await expect(page.getByTestId(`asset-cat-${CAT_A}`)).toBeVisible();
-  await expect(page.getByTestId('asset-dig')).toHaveCount(0);
   await expect(page.getByTestId(`asset-cat-${CAT_B}`)).toHaveCount(0);
+  await page.close();
+});
+
+test('#204: XCH + $DIG render ABOVE the filter input, with the filterable CATs below it', async () => {
+  const page = await openWallet();
+  await page.getByTestId(`asset-cat-${CAT_A}`).waitFor({ timeout: 25_000 });
+
+  const testids = await page.getByTestId('custody-assets').locator(':scope > *').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
+  expect(testids).toEqual(['asset-xch', 'asset-dig', 'asset-filter', `asset-cat-${CAT_A}`, `asset-cat-${CAT_B}`, `asset-cat-${CAT_U}`]);
   await page.close();
 });
 
@@ -159,6 +172,9 @@ test('a query matching nothing shows the clear empty state, and Clear restores t
   await page.getByTestId('asset-filter-input').fill('nonexistent-token-zzz');
   await expect(page.getByTestId('custody-assets-filter-empty')).toBeVisible();
   await expect(page.getByTestId(`asset-cat-${CAT_A}`)).toHaveCount(0);
+  // The pinned block (#204) is unaffected even by a query matching nothing in the CAT list.
+  await expect(page.getByTestId('asset-xch')).toBeVisible();
+  await expect(page.getByTestId('asset-dig')).toBeVisible();
 
   await page.getByTestId('asset-filter-clear').click();
   await expect(page.getByTestId('custody-assets-filter-empty')).toHaveCount(0);

@@ -1355,33 +1355,42 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
   serves every asset (XCH, `$DIG`, every CAT), the Receive screen needs no per-asset selector (§2.1a)
   — it shows that single QR/address, full stop.
 
-### 18.6a Assets list — value ordering + live filter (#167)
+### 18.6a Assets list — value ordering + a pinned header block above the live filter (#167, #202, #204)
 
 The Home Assets list is a VIEW transform over `custodyAssetBalances` (§18.6) — it never changes the
-scan/discovery, only how the resolved rows are ordered and which of them are shown:
+scan/discovery, only how the resolved rows are ordered, which are pinned, and which are shown:
 
 - **Ordering (`orderAssetsByValue`).** XCH is the hero/prominent row (`pickHeroBalance`) and always
-  renders first, unmoved. Every other row — the built-in $DIG row + discovered/watched CATs — sorts
-  beneath it, highest value first, in two tiers:
+  renders first, unmoved. `$DIG` renders second, ALSO unconditionally (#202) — regardless of its own
+  or any other row's USD value, because it is the network's own token, not just another CAT. Every
+  remaining CAT sorts beneath those two, highest value first, in two tiers:
   1. Rows with a KNOWN USD value (`assetUsdValue`, §18.13 pricing) sort by that value, descending.
-  2. Rows with NO known price sort after every priced row: a "known" token ($DIG, or a CAT whose
-     ticker resolved via the registry — i.e. NOT the generic `CAT` fallback, §18.6) outranks a
+  2. Rows with NO known price sort after every priced row: a "known" token (a CAT whose ticker
+     resolved via the registry — i.e. NOT the generic `CAT` fallback, §18.6) outranks a
      generic-unknown one, then within a tier by held amount (normalized by decimals), descending. A
      null/unknown balance sorts last within its tier. Ties preserve the original discovery order
      (a stable sort) — never a re-shuffle on every render for equal-value rows.
-- **Live filter (`filterAssetsByQuery` + `AssetFilterField`).** A search field renders directly above
-  the token rows (below the pinned XCH row): it narrows the $DIG + CAT rows live by a case-insensitive
-  substring match against EITHER the ticker or the display name; XCH itself is never filtered out. A
-  blank query shows every row unchanged; a query matching nothing shows a dedicated empty-state line
-  (`wallet.assets.filter.empty`) rather than silently rendering nothing — Clear restores the full list.
+- **Pinned header block (`splitPinnedAssets`, #204).** XCH and $DIG (in that order, whichever are
+  held) render as a FIXED block ABOVE the filter input — `splitPinnedAssets` partitions
+  `orderAssetsByValue`'s output into `{ pinned, filterable }`, where `pinned` is exactly `[xch?,
+  dig?]` and `filterable` is every other CAT. The filter predicate is applied ONLY to `filterable`;
+  `pinned` is rendered unconditionally before the `AssetFilterField` and is NEVER hidden or reordered
+  by a filter query, including a query that matches nothing in the CAT list (the CAT-list empty state
+  renders beneath the still-visible pinned block, never replacing it).
+- **Live filter (`filterAssetsByQuery` + `AssetFilterField`).** The search field renders directly
+  below the pinned XCH+$DIG block: it narrows the filterable CAT rows live by a case-insensitive
+  substring match against EITHER the ticker or the display name. A blank query shows every filterable
+  row unchanged; a query matching nothing shows a dedicated empty-state line
+  (`wallet.assets.filter.empty`) rather than silently rendering nothing — Clear restores the full
+  filterable list (the pinned block was never affected either way).
 - **Autocomplete (`assetAutocompleteSuggestions`).** The filter field's native `<datalist>` suggests
-  candidates from BOTH the currently-held rows AND the full known-CAT registry (so a recognized
-  name/ticker not currently held still autocompletes — filtering on it then honestly shows the empty
-  state, never a silent no-op). Deduped by ticker (a held row wins over a registry duplicate), a
-  prefix match ranks above a mere substring match, capped to 8 suggestions.
+  candidates from BOTH the currently-held FILTERABLE rows AND the full known-CAT registry (so a
+  recognized name/ticker not currently held still autocompletes — filtering on it then honestly shows
+  the empty state, never a silent no-op). Deduped by ticker (a held row wins over a registry
+  duplicate), a prefix match ranks above a mere substring match, capped to 8 suggestions.
 - **Scope.** Every other consumer of `custodyAssetBalances` (`SendPanel`'s asset picker,
-  `ManageTokens`, `CoinControlPanel`, `TradePanel`) receives the UNSORTED, UNFILTERED array — this
-  ordering/filtering is local to the Home Assets list's own render.
+  `ManageTokens`, `CoinControlPanel`, `TradePanel`) receives the UNSORTED, UNFILTERED, UNPINNED array
+  — this ordering/pinning/filtering is local to the Home Assets list's own render.
 
 ### 18.7 Spend signing
 
@@ -1491,7 +1500,7 @@ at 200 per scope (`MAX_ACTIVITY_LOG_ENTRIES`, `src/lib/activity-log.ts`). Unlike
 navigation (`clearActiveWalletCaches`) — per-wallet/index isolation comes from the composite key
 alone, so switching back to a wallet/index later reads exactly the slice that scope wrote.
 
-**Entry shape:** `{ id, kind, asset, amount, counterparty, coinId, timestamp, status, clawback? }` —
+**Entry shape:** `{ id, kind, asset, amount, counterparty, coinId, timestamp, status, clawback?, fee?, memo? }` —
 - `kind` ∈ `sent | received | mint | did | offer | trade | clawback | melt`. `sent` / `received` /
   `mint` / `did` / `trade` / `clawback` (#152) are EMITTED; `offer` (making one has no coin spent yet
   to poll for confirmation — the spend happens only if/when a counterparty takes it) and `melt` (no
@@ -1510,6 +1519,11 @@ alone, so switching back to a wallet/index later reads exactly the slice that sc
   confirm-poll saw it on-chain); a `received` entry is logged straight to `confirmed` (a balance delta
   is already-settled by the time it's observed) with `coinId: null` (best-effort — no specific coin is
   attributed to a bare balance delta).
+- `fee` (#113) — the network fee paid, in XCH mojos (fees are ALWAYS paid in XCH regardless of the
+  transferred asset). `memo` (#113) — an optional user-supplied note. Both are ADDITIVE + OPTIONAL:
+  absent on a `received` entry and on any entry logged before these fields existed; the detail view
+  (below) renders each only when present, never fabricating a fee/memo for an entry that recorded
+  none.
 
 **Write path — an action performed BY the extension:**
 - `confirmSend` / `confirmTrade` (the ONLY places a real spend broadcasts, §18.8/§18.10) return an
@@ -1547,8 +1561,35 @@ fixed; the built-in $DIG TAIL keeps its canonical `$DIG` branding; the synthetic
 render as whole-unit tickers (never through CAT decimal math); every other TAIL resolves against the
 dexie registry (real ticker + decimals on a hit), degrading to the generic short-form fallback ONLY
 when the registry has no entry (or hasn't loaded) — never a hardcoded/generic ticker for a token the
-registry actually knows. A row's SpaceScan link is shown ONLY once `status === 'confirmed'` (a
-still-pending or coinId-less coin may not resolve on the block explorer yet).
+registry actually knows.
+
+**Transaction detail view (#113).** Tapping an activity row expands it in place
+(`data-testid="activity-receipt-<id>"`) into a full receipt built purely from the row's own
+already-formatted fields (`activityRows.ts`, no new wasm, no on-chain reconstruction): amount +
+ticker, the counterparty (when one exists), status (`Confirmed`/`Pending` — a local-log entry carries
+no block height, so status IS the confirmation signal; there is no separate confirmation COUNT),
+timestamp (locale-formatted via `intl.formatDate`), the recorded fee (formatted in XCH — ALWAYS XCH,
+independent of the transferred asset's own decimals) and memo, each shown ONLY when the entry
+actually recorded one (§5.1-style additive honesty — never a fabricated fee/memo), and the coin id.
+
+**Block-explorer link coverage (#114).** Every explorer link in the extension is built from the ONE
+centralized set of `lib/links.ts` SpaceScan URL builders — `spaceScanCoinUrl` (a coin/transaction),
+`spaceScanAddressUrl` (a bech32 `xch1…` address), `spaceScanTokenUrl` (a CAT's `/token/<TAIL>` page,
+accepts an id with or without a `0x` prefix), and `spaceScanNftUrl` (an NFT's `/nft/<nft1…>` page) —
+each opened via the shared `ExternalLink` component (a real `<a target="_blank">`, `chrome.tabs.create`
+inside the extension) so link behavior is consistent everywhere. The Activity receipt surfaces up to
+THREE distinct links, each only when applicable:
+  - the per-spend coin/transaction link (`spaceScanCoinUrl`) — shown ONLY once `status === 'confirmed'`
+    (a still-pending or coinId-less coin may not resolve on the block explorer yet);
+  - a counterparty ADDRESS link (`spaceScanAddressUrl`, built from the entry's FULL, unshortened
+    address — distinct from the row's own shortened DISPLAY text) — shown whenever a counterparty
+    exists, independent of the spend's own confirmation state (an address is valid to look up
+    regardless);
+  - a CAT TOKEN link (`spaceScanTokenUrl`) — shown for any CAT-class asset (excludes `XCH` and the
+    synthetic `NFT`/`DID` labels; $DIG counts too, since it is a CAT under the hood).
+`spaceScanNftUrl` is defined for ecosystem-wide reuse (e.g. a future Collectibles NFT-detail view)
+but is not yet wired into any surface — Activity has no NFT-asset rows to link today (a mint/transfer
+entry uses the synthetic `NFT` label, not a specific token id).
 
 ### 18.10 Trade offers
 

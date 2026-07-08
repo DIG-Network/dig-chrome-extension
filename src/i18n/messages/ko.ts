@@ -157,6 +157,12 @@ export const ko: Record<string, string> = {
   'activity.receipt.to': '받는 사람',
   'activity.receipt.status': '상태',
   'activity.receipt.coin': '코인 ID',
+  'activity.receipt.amount': '금액',
+  'activity.receipt.timestamp': '시간',
+  'activity.receipt.fee': '네트워크 수수료',
+  'activity.receipt.memo': '메모',
+  'activity.viewAddressOnSpaceScan': 'SpaceScan에서 주소 보기',
+  'activity.viewTokenOnSpaceScan': 'SpaceScan에서 토큰 보기',
 
   // ── wallet: send ──
   'send.title': '보내기',

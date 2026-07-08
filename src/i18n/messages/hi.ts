@@ -157,6 +157,12 @@ export const hi: Record<string, string> = {
   'activity.receipt.to': 'प्राप्तकर्ता',
   'activity.receipt.status': 'स्थिति',
   'activity.receipt.coin': 'कॉइन ID',
+  'activity.receipt.amount': 'राशि',
+  'activity.receipt.timestamp': 'समय',
+  'activity.receipt.fee': 'नेटवर्क शुल्क',
+  'activity.receipt.memo': 'मेमो',
+  'activity.viewAddressOnSpaceScan': 'SpaceScan पर पता देखें',
+  'activity.viewTokenOnSpaceScan': 'SpaceScan पर टोकन देखें',
 
   // ── wallet: send ──
   'send.title': 'भेजें',

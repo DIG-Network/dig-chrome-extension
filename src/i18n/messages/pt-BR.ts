@@ -157,6 +157,12 @@ export const ptBR: Record<string, string> = {
   'activity.receipt.to': 'Para',
   'activity.receipt.status': 'Status',
   'activity.receipt.coin': 'ID da moeda',
+  'activity.receipt.amount': 'Valor',
+  'activity.receipt.timestamp': 'Hora',
+  'activity.receipt.fee': 'Taxa de rede',
+  'activity.receipt.memo': 'Memo',
+  'activity.viewAddressOnSpaceScan': 'Ver endereço no SpaceScan',
+  'activity.viewTokenOnSpaceScan': 'Ver token no SpaceScan',
 
   // ── wallet: send ──
   'send.title': 'Enviar',

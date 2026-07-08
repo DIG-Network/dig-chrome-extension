@@ -157,6 +157,12 @@ export const zhTW: Record<string, string> = {
   'activity.receipt.to': '收款方',
   'activity.receipt.status': '狀態',
   'activity.receipt.coin': '幣 ID',
+  'activity.receipt.amount': '金額',
+  'activity.receipt.timestamp': '時間',
+  'activity.receipt.fee': '網路費用',
+  'activity.receipt.memo': '備註',
+  'activity.viewAddressOnSpaceScan': '在 SpaceScan 上檢視地址',
+  'activity.viewTokenOnSpaceScan': '在 SpaceScan 上檢視代幣',
 
   // ── wallet: send ──
   'send.title': '發送',
