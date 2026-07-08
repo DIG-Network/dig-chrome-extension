@@ -737,4 +737,8 @@ export const de: Record<string, string> = {
   'wallet.index.next': 'Nächster Index',
   'wallet.index.jump': 'Zu Index springen',
   'wallet.index.error': 'Index konnte nicht gewechselt werden. Bitte erneut versuchen.',
+  'send.poison.title': 'Diese Adresse ähnelt einem gespeicherten Kontakt',
+  'send.poison.body': 'Sie hat denselben Anfang und dasselbe Ende wie {label}, unterscheidet sich aber in der Mitte – ein bekannter Address-Poisoning-Betrug. Prüfen Sie jedes Zeichen vor dem Senden.',
+  'send.poison.ack': 'Ich habe jedes Zeichen dieser Adresse überprüft',
+  'send.firstTime': 'Erstmals an diese Adresse senden.',
 };

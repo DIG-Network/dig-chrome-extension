@@ -210,6 +210,31 @@ test('reject: the user-rejection status maps to CHIP-0002 4002 USER_REJECTED (no
   assert.notEqual(err.code, PROVIDER_ERROR_CODES.UNAUTHORIZED); // not 4001
 });
 
+test('#75 — a decode-failed spend is NEVER signed on approve (SW hard gate + explicit refusal)', async () => {
+  // The spend cannot be decoded for review (decodeError). Even if Approve is somehow invoked, the
+  // vault sign op must never run — the request is refused with an explicit error, not silently signed.
+  const { m, calls } = makeManager({
+    vault: {
+      decodeDappSpend: () => ({ success: false, message: 'BAD_COIN_SPEND: undecodable' }),
+      signDappSpend: () => ({ success: true, signature: 'f'.repeat(192) }),
+    },
+  });
+  const p = m.route({ method: 'signCoinSpends', params: { coinSpends: WIRE_COIN_SPENDS }, origin: ORIGIN });
+  await Promise.resolve();
+  await m.enrich(); // decode fails → the entry is flagged decodeError
+  const item = m.list()[0];
+  assert.equal(item.decodeError, true);
+
+  const ack = await m.resolve(item.id, true);
+  assert.equal(ack.code, 'DECODE_ERROR');
+  // The vault signer was NEVER invoked for this entry.
+  assert.equal(calls.vault.some((c) => c.op === 'signDappSpend'), false);
+  // The dApp promise resolves to an error envelope (not a signature), draining the queue.
+  const env = await p;
+  assert.ok(env.status >= 400, 'decode-failed request rejected with a 4xx');
+  assert.equal(m.size(), 0);
+});
+
 test('sign: enrich marks a locked wallet as needing unlock (no summary, not auto-signed)', async () => {
   const { m } = makeManager({ vault: { decodeDappSpend: () => ({ success: false, code: 'LOCKED' }) } });
   m.route({ method: 'signCoinSpends', params: { coinSpends: WIRE_COIN_SPENDS }, origin: ORIGIN });

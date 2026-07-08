@@ -737,4 +737,8 @@ export const ja: Record<string, string> = {
   'wallet.index.next': '次のインデックス',
   'wallet.index.jump': 'インデックスに移動',
   'wallet.index.error': 'インデックスを切り替えられませんでした。もう一度お試しください。',
+  'send.poison.title': 'このアドレスは保存済みの連絡先に似ています',
+  'send.poison.body': '{label} と先頭と末尾が同じですが、中間が異なります — 既知のアドレスポイズニング詐欺です。送信前にすべての文字を確認してください。',
+  'send.poison.ack': 'このアドレスのすべての文字を確認しました',
+  'send.firstTime': 'このアドレスへの送金は初めてです。',
 };

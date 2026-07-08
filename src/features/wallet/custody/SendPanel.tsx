@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { toBaseUnits, formatBaseUnits, validateSendForm, shortenAddress, isChiaAddress } from '@/lib/wallet-view';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery, useGetCoinsQuery, type PreparedSend } from '@/features/wallet/custodyApi';
 import { ContactPicker } from '@/features/contacts/ContactPicker';
 import { useContacts } from '@/features/contacts/useContacts';
+import { assessRecipient } from '@/features/contacts/address-poisoning';
 import { ViewHeader } from '@/components/ViewHeader';
 import { isFullpageSurface } from '@/features/collectibles/surface';
 
@@ -49,6 +50,9 @@ export function SendPanel({
   const [phase, setPhase] = useState<Phase>('form');
   const [assetIdx, setAssetIdx] = useState(0);
   const [recipient, setRecipient] = useState('');
+  // #74: the user must acknowledge a confusable-lookalike warning before an address-poisoning
+  // recipient can be sent to. Reset whenever the recipient changes so a new address re-requires it.
+  const [poisonAck, setPoisonAck] = useState(false);
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('0');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -65,8 +69,22 @@ export function SendPanel({
   const [confirmSend, conf] = useConfirmSendMutation();
   const [pollStatus] = useLazySendStatusQuery();
 
-  const { labelForAddress, recordRecent, add: addContact } = useContacts();
+  const { contacts, recents, labelForAddress, recordRecent, add: addContact } = useContacts();
   const recipientLabel = labelForAddress(recipient);
+
+  // #74 — classify the recipient against saved contacts + recent recipients: a confusable lookalike
+  // (same start+end as a known address, different middle) is the address-poisoning signature.
+  const assessment = useMemo(() => assessRecipient(recipient, contacts, recents), [recipient, contacts, recents]);
+  const topLookalike = assessment.lookalikes[0] ?? null;
+  const lookalikeName = topLookalike ? (topLookalike.label ?? shortenAddress(topLookalike.address)) : '';
+  // A lookalike recipient blocks the build until the user explicitly acknowledges the warning.
+  const poisonBlocked = assessment.kind === 'lookalike' && !poisonAck;
+
+  // Update the recipient and reset the poison acknowledgement so a new address re-requires it.
+  function updateRecipient(value: string) {
+    setRecipient(value);
+    setPoisonAck(false);
+  }
 
   const selected = assets[assetIdx] ?? assets[0];
   const decimals = selected?.descriptor.decimals ?? XCH_DECIMALS;
@@ -96,6 +114,9 @@ export function SendPanel({
   }
 
   async function doPrepare() {
+    // #74 — never build a spend to a confusable lookalike until the warning is acknowledged (guards
+    // an Enter-key submit that bypasses the disabled button).
+    if (poisonBlocked) return;
     const v = validateSendForm({ address: recipient, amount, fee });
     if (!v.ok) {
       setLocalError(v.errors.address || v.errors.amount || v.errors.fee || intl.formatMessage({ id: 'send.error.amount' }));
@@ -209,12 +230,34 @@ export function SendPanel({
           </label>
           <label className="dig-field">
             <span><FormattedMessage id="send.recipient" /></span>
-            <input data-testid="send-recipient" className="dig-input dig-mono" value={recipient} onChange={(e) => setRecipient(e.target.value)} autoComplete="off" spellCheck={false} placeholder="xch1…" />
+            <input data-testid="send-recipient" className="dig-input dig-mono" value={recipient} onChange={(e) => updateRecipient(e.target.value)} autoComplete="off" spellCheck={false} placeholder="xch1…" />
           </label>
-          <ContactPicker onPick={setRecipient} onManage={onManageContacts} />
+          <ContactPicker onPick={updateRecipient} onManage={onManageContacts} />
           {recipientLabel && (
             <p className="dig-muted" data-testid="send-recipient-contact" style={{ margin: '2px 0 8px' }}>
               <FormattedMessage id="send.recipient.sendingTo" values={{ label: <strong>{recipientLabel}</strong> }} />
+            </p>
+          )}
+          {/* #74 — address-poisoning defense: a confusable lookalike of a known recipient raises a
+              blocking warning the user must acknowledge; a valid never-seen address gets a subtle
+              first-time notice. An exact contact ('known') / prior recipient ('seen') shows neither. */}
+          {assessment.kind === 'lookalike' && (
+            <div className="dig-state" data-state="error" role="alert" data-testid="send-poison-warning" style={{ margin: '4px 0 10px' }}>
+              <p style={{ margin: '0 0 6px', fontWeight: 600 }}>
+                <FormattedMessage id="send.poison.title" />
+              </p>
+              <p style={{ margin: '0 0 8px' }}>
+                <FormattedMessage id="send.poison.body" values={{ label: <strong>{lookalikeName}</strong> }} />
+              </p>
+              <label className="dig-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: 0 }}>
+                <input type="checkbox" className="dig-check" data-testid="send-poison-ack" checked={poisonAck} onChange={(e) => setPoisonAck(e.target.checked)} />
+                <span><FormattedMessage id="send.poison.ack" /></span>
+              </label>
+            </div>
+          )}
+          {assessment.kind === 'firstTime' && (
+            <p className="dig-muted" data-testid="send-firsttime" style={{ margin: '2px 0 8px' }}>
+              <FormattedMessage id="send.firstTime" />
             </p>
           )}
           <label className="dig-field">
@@ -318,7 +361,7 @@ export function SendPanel({
           )}
 
           {localError && <p className="dig-error-text" role="alert" data-testid="send-error">{localError}</p>}
-          <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-review" disabled={busy}>
+          <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-review" disabled={busy || poisonBlocked}>
             <FormattedMessage id={busy ? 'custody.working' : 'send.submit'} />
           </button>
         </form>

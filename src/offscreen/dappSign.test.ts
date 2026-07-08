@@ -97,6 +97,18 @@ describe('dappSign — decode summary (tamper-resistant, from the built spend)',
     expect(s.requiredSigners).toHaveLength(1);
     expect(s.requiredSigners[0]).toBe(ownPk[0]);
     expect(s.ownedSigners).toBe(1);
+    // #75 — the required signer maps to a wallet-derived key, so none is unaccounted.
+    expect(s.unaccountedSigners).toEqual([]);
+  });
+
+  it('surfaces a required signer the wallet cannot account for as unaccounted (#75)', () => {
+    // Decode with NO owned public keys → the required signer is foreign/over-broad (unaccounted).
+    const { wire } = selfSpend();
+    const ownPh = ['deadbeef'];
+    const s = decodeDappSpend(dw(), wire, ownPh, TESTNET11_AGG_SIG_ME, []);
+    expect(s.requiredSigners).toHaveLength(1);
+    expect(s.ownedSigners).toBe(0);
+    expect(s.unaccountedSigners).toEqual(s.requiredSigners);
   });
 
   it('classifies an outgoing send: output to a stranger is not self, fee = inputs − outputs', () => {

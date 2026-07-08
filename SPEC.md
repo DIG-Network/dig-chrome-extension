@@ -665,13 +665,28 @@ There is no `cached` field — the response never reflects a cache hit, because 
 
 ### 7.3 Page↔extension provider bridge (`BRIDGE`)
 
-The injected MAIN-world provider talks to the content script over `window.postMessage`:
+The injected MAIN-world provider talks to the content script over `window.postMessage`. Because that
+pipe is observable by any script on the page, the channel is hardened (the shared, unit-tested
+`provider-channel` module both sides use):
 
-- `DIG_WALLET_REQUEST` (page → content): `{ type, id, method, params }`.
-- `DIG_WALLET_RESPONSE` (content → page): `{ type, id, status, body, error }`.
+- `DIG_WALLET_REQUEST` (page → content): `{ channel:'dig-wallet/1', type, id, method, params }`.
+- `DIG_WALLET_RESPONSE` (content → page): `{ channel:'dig-wallet/1', type, id, status, body, error }`.
 
-The content script forwards requests to the service worker (`walletRpc`), which routes them to the
-self-custody wallet — connect + reads to the offscreen vault, sign/message to the SW-summoned
+Both sides MUST:
+- ignore any message whose `channel` tag or `type` direction does not match (unrelated postMessage
+  traffic is dropped, not mis-parsed);
+- validate the delivered `MessageEvent.origin` equals the document's own origin AND
+  `event.source === window` — a cross-origin / foreign-frame message is never processed;
+- drop a malformed payload (missing/oversized `id`/`method`, non-object body) WITHOUT throwing;
+- mint request `id`s from the CSPRNG (`crypto.getRandomValues`), never a predictable source;
+- correlate a response to its request through a BOUNDED registry that settles each `id` EXACTLY once
+  — a forged reply for an unknown `id` is dropped, a duplicate/replayed reply is a no-op, concurrent
+  multiplexed requests never cross, and a request flood cannot grow the pending map past its cap.
+
+An opaque (sandboxed / `data:`) document reports origin `"null"`; a reply is then posted with
+targetOrigin `"*"` (`"null"` is an invalid targetOrigin), the same-window `event.source` guard still
+applying. The content script forwards requests to the service worker (`walletRpc`), which routes them
+to the self-custody wallet — connect + reads to the offscreen vault, sign/message to the SW-summoned
 approval window (§18.12). `status` is HTTP-like: `200` ok, `202` pending consent, `4xx`/`5xx` error.
 A timeout or missing bridge MUST resolve as a disconnected-class envelope (mapped by the provider to
 error `4900`).
@@ -1862,16 +1877,29 @@ gates every request.
   page-supplied text: `decodeDappSpend` (offscreen) reconstructs the coin spends, runs each
   puzzle+solution, and reports the inputs/outputs (classified self-vs-external against the wallet's own
   HD puzzle-hash set), the reserved fee (Σ inputs − Σ outputs; trustworthy when every input is the
-  wallet's own standard XCH), and the required signers (+ how many the wallet can satisfy). A message
-  request shows the exact bytes to be signed. A locked wallet is flagged `needsUnlock` (the window shows
-  the unlock gate, never a fabricated summary); an undecodable request is flagged `decodeError` (only
-  Reject is offered).
+  wallet's own standard XCH), and the required signers — both how many the wallet can satisfy
+  (`ownedSigners`) AND the enumerated `unaccountedSigners` (required public keys that map to NO
+  wallet-derived key, raw or synthetic). A message request shows the exact bytes to be signed. A locked
+  wallet is flagged `needsUnlock` (the window shows the unlock gate, never a fabricated summary); an
+  undecodable request is flagged `decodeError` (only Reject is offered — see the hard gate below).
+- **Signer accountability (#75).** Every required signer MUST map to a wallet-derived key; any that does
+  not is surfaced in the approval window as an unaccountable (foreign / over-broad) signer. The
+  self-custody signer is all-or-nothing — `signDappCoinSpends` refuses (`MISSING_KEY`) to contribute a
+  partial signature to a bundle it cannot fully sign — so a spend requiring a signer the wallet cannot
+  account for is either a failed request or an over-broad authorization; it is flagged HIGH-risk
+  (`CANNOT_SIGN`) and requires explicit acknowledgement, never a one-click approve.
+- **Never authorize a decode-failed request (#75).** A `decodeError` entry MUST NOT be signed or
+  broadcast: the approval window hides Approve (offers only Reject), AND the SW `resolve` enforces the
+  same gate (defense in depth) — approving a `decodeError` entry returns an explicit refusal
+  (`400`, code `DECODE_ERROR`) and never calls the vault. A user can never authorize a spend they could
+  not see decoded.
 - **Anti-drainer risk layer (P0-3).** Before the user approves a coin-spend request, `assessSpendRisk`
   (`src/lib/spend-risk.ts`, pure) inspects the decoded summary and flags high-risk patterns with stable
   machine codes: `DRAIN_ALL` (value leaves the wallet with ≤1% kept back as change — the drainer
-  pattern), `HIGH_FEE` (reserved fee exceeds the amount sent, or ≥ 0.1 XCH absolute), `CANNOT_SIGN` (a
-  required signer the wallet cannot satisfy), `FOREIGN_INPUTS` (the spend mixes in coins the wallet does
-  not own, so the mojo amounts are untrusted). Mojo-based flags (`DRAIN_ALL`/`HIGH_FEE`) are computed
+  pattern), `HIGH_FEE` (reserved fee exceeds the amount sent, or ≥ 0.1 XCH absolute), `CANNOT_SIGN`
+  (HIGH — a required signer the wallet cannot account for; over-broad / foreign signer, #75),
+  `FOREIGN_INPUTS` (the spend mixes in coins the wallet does not own, so the mojo amounts are
+  untrusted — a caution). Mojo-based flags (`DRAIN_ALL`/`HIGH_FEE`) are computed
   ONLY when every input is the wallet's own (`allInputsSelf`) — the only case the amounts are
   trustworthy; otherwise `FOREIGN_INPUTS` is raised instead. The assessment is `none` / `caution` /
   `high`; a `high` assessment renders a red risk banner (`role="alert"`) and GATES Approve behind an
@@ -1991,10 +2019,22 @@ lookalike-warning on this same store; the record shape is additive so #74 extend
 - **Add-on-send.** In the Send review step, when the recipient is a valid address that is NOT already
   saved, an inline "save this recipient" (name + Save) writes it to the address book without affecting
   the send itself.
-- **Purity + tests.** All types + validation + CRUD-on-array + recent-tracking + the label lookup live
-  in a pure `contacts` module (no DOM/`chrome.*`); the `useContacts` hook is the storage seam and the
-  UI is thin glue. Unit tests cover the module + hook + components; an end-user Playwright e2e drives
-  the built popup (add a contact, pick it in Send, add-on-send, edit/delete).
+- **Address-poisoning defense (#74).** On the Send form, the entered recipient is classified against the
+  saved contacts + recent recipients by the pure `address-poisoning` module: `known` / `seen` (an exact
+  saved contact / prior recipient), `firstTime` (a valid, never-seen address), or `lookalike`. A
+  `lookalike` is an address that is NOT a known one yet shares its first `CONFUSABLE_PREFIX = 10` AND
+  last `CONFUSABLE_SUFFIX = 8` characters — the exact `shortenAddress` truncation the user reads — so it
+  renders identically in the UI while differing in the middle (the address-poisoning signature). The
+  form MUST raise a blocking `role="alert"` warning naming the resembled entry and REQUIRE an explicit
+  acknowledgement before the spend can be built (Review disabled + the build guarded against an
+  Enter-key bypass; the acknowledgement resets when the recipient changes). A `firstTime` recipient
+  gets a subtle first-time notice; `known`/`seen` show neither. The classifier is Chia-native and
+  evaluated on-device.
+- **Purity + tests.** All types + validation + CRUD-on-array + recent-tracking + the label lookup +
+  the address-poisoning classifier live in pure modules (no DOM/`chrome.*`); the `useContacts` hook is
+  the storage seam and the UI is thin glue. Unit tests cover the modules + hook + components; an
+  end-user Playwright e2e drives the built popup (add a contact, pick it in Send, add-on-send,
+  edit/delete).
 
 ### 18.15 Coin control (#91)
 

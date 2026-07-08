@@ -737,4 +737,8 @@ export const ko: Record<string, string> = {
   'wallet.index.next': '다음 인덱스',
   'wallet.index.jump': '인덱스로 이동',
   'wallet.index.error': '인덱스를 전환할 수 없습니다. 다시 시도해 주세요.',
+  'send.poison.title': '이 주소는 저장된 연락처와 비슷합니다',
+  'send.poison.body': '{label}와(과) 시작과 끝이 같지만 가운데가 다릅니다 — 알려진 주소 오염 사기입니다. 보내기 전에 모든 문자를 확인하세요.',
+  'send.poison.ack': '이 주소의 모든 문자를 확인했습니다',
+  'send.firstTime': '이 주소로 처음 보냅니다.',
 };
