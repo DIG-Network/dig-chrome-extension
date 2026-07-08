@@ -231,6 +231,22 @@ describe('CollectiblesPanel', () => {
       expect(screen.getByTestId('bulk-burn-warning')).toHaveTextContent('permanent and cannot be undone');
     });
 
+    it('the Assign DID action-bar button opens the bulk assign-DID flow (#99)', async () => {
+      mockSw((m) => {
+        if (m.action === 'listNfts') return { nfts: [NFT_A, NFT_B] };
+        if (m.action === 'listDids') return { dids: [] };
+        return { success: true };
+      });
+      renderWithProviders(<CollectiblesPanel full />);
+      await screen.findByTestId('nft-grid');
+      fireEvent.click(screen.getByTestId('collectibles-select-enter'));
+      expect(screen.queryByTestId('collectibles-selection-assign')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_A.launcherId}`));
+      fireEvent.click(screen.getByTestId(`nft-tile-${NFT_B.launcherId}`));
+      fireEvent.click(screen.getByTestId('collectibles-selection-assign'));
+      expect(await screen.findByTestId('bulk-nft-assign')).toBeInTheDocument();
+    });
+
     it('Cancel exits selection mode and clears the selection', async () => {
       mockSw((m) => (m.action === 'listNfts' ? { nfts: [NFT_A, NFT_B] } : { success: true }));
       renderWithProviders(<CollectiblesPanel full />);

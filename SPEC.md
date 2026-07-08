@@ -546,7 +546,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `24`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `25`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -616,6 +616,11 @@ additive — no existing action/shape changed.
 off-chain CHIP-0007 metadata document a `metadataUri` points at, handled directly by the service
 worker (not the offscreen vault) since the target host is arbitrary and not enumerable in the
 extension-pages CSP `connect-src` allowlist. Purely additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `25` (#99) added the Collectibles bulk assign-DID actions —
+`prepareNftBulkDidAssign` + `confirmNftBulkDidAssign` (§18.11a) — assigning the wallet's DID as the
+owner of MULTIPLE selected NFTs in one spend bundle, each confirm reusing the `confirmSend` broadcast
+path. Purely additive — no existing action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -1737,18 +1742,18 @@ decrypted key never leaves the offscreen vault.
   assigning the new NFT to a DID owner at mint requires owning + co-spending that DID and is a follow-up
   with DID management (#93).
 
-### 18.11a Collectibles multi-select — bulk transfer & destructive burn (#171)
+### 18.11a Collectibles multi-select — bulk transfer, assign-DID & destructive burn (#171, #99)
 
-The Collectibles grid supports selecting MULTIPLE NFTs at once and moving or destroying all of them in
-ONE spend bundle (one broadcast, one aggregated signature) — the same discovery/reconstruction/
-same-allocator rules as §18.11 apply to every selected NFT.
+The Collectibles grid supports selecting MULTIPLE NFTs at once and moving, re-owning, or destroying all
+of them in ONE spend bundle (one broadcast, one aggregated signature) — the same discovery/
+reconstruction/same-allocator rules as §18.11 apply to every selected NFT.
 
 - **Fullscreen-only, mirroring mint/assign (§6.1/#145).** Selection mode (`CollectiblesPanel.tsx`)
   exists ONLY on the fullscreen surface — a "Select" control toggles it, tapping a tile in selection
   mode toggles membership instead of opening the detail view, and a selection bar shows the live count
-  + select-all/clear + Transfer/Burn actions once ≥1 NFT is selected. The popup surface stays
-  view-only: it NEVER enters selection mode, offering an "open full screen" link instead, exactly like
-  the existing mint/assign popup affordances.
+  + select-all/clear + Transfer / Assign DID / Burn actions once ≥1 NFT is selected. The popup surface
+  stays view-only: it NEVER enters selection mode, offering an "open full screen" link instead, exactly
+  like the existing mint/assign popup affordances.
 - **Bulk PREPARE** (`prepareNftBulkTransfer` / `prepareNftBulkBurn`, no broadcast): reconstruct EVERY
   selected NFT (by launcher id, deduped) in the SAME driver `Clvm`/`Spends`, add XCH coins for the fee
   once (not per NFT), then emit ONE `Action.send(Id.existing(launcherId), destPuzzleHash, 1, memo)` per
@@ -1785,6 +1790,19 @@ same-allocator rules as §18.11 apply to every selected NFT.
   DISTINCT `burn` kind (asset `'NFT'`, amount = NFT count, counterparty `null` — the burn destination
   has no spending key, so it is not a real "sent to" counterparty) so the ledger never conflates an
   irreversible burn with an ordinary transfer.
+- **Bulk assign-DID (#99, `prepareNftBulkDidAssign` / `confirmNftBulkDidAssign`).** Generalizes the
+  single-NFT §18.11 assign-owner CHIP-0011 handshake to the whole selected set in ONE spend bundle:
+  each selected NFT emits its own `TransferNft` condition and its own
+  `assignment_puzzle_announcement_id`, and the wallet's chosen DID is spent EXACTLY ONCE — asserting
+  every NFT's announcement id and creating one puzzle announcement per NFT launcher id in return, so
+  all N handshakes settle atomically (`src/offscreen/didAssign.ts`, Simulator-validated in
+  `didAssign.test.ts`). Neither the NFTs' nor the DID's custody changes; only each NFT's on-chain
+  `currentOwner` is set to the DID. `launcherIds` is deduped + MUST be non-empty (`NO_NFTS_SELECTED`);
+  any selected NFT the wallet does not hold fails the WHOLE prepare (`NFT_NOT_FOUND`) — builds
+  completely or not at all. A fee is paid ONCE from a separate wallet-owned XCH coin. The UI
+  (`BulkNftActions.tsx` `assign` mode) is a pick-DID → review → confirm flow with the four states;
+  `confirmNftBulkDidAssign` reuses the vault's `confirmSend` broadcast path and is logged as the
+  `did` activity kind.
 
 ### 18.11b NFT picker — XL modal multi-select grid (#170)
 

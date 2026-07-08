@@ -179,8 +179,13 @@ import { DIG_ERR } from './error-codes';
  * an empirically-discovered gotcha (`DEVELOPMENT_LOG.md`) showed a background service worker's own
  * `fetch()` IS still subject to `connect-src` in this Chromium build. Read-only, capped (size +
  * timeout); the caller's own cache (keyed by URI) is what avoids re-fetching, not this handler.
+ *
+ * v25 (#99 Collectibles bulk assign-DID): added `prepareNftBulkDidAssign` (assign the wallet's DID
+ * as the owner of MULTIPLE selected NFTs in ONE spend bundle — generalizing the single-NFT
+ * `prepareNftDidAssign`) + `confirmNftBulkDidAssign` (reuses the shared `confirmSend` broadcast
+ * path). Purely additive — no existing action/shape changed.
  */
-export const MESSAGE_PROTOCOL_VERSION = 24;
+export const MESSAGE_PROTOCOL_VERSION = 25;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -270,6 +275,9 @@ export const ACTIONS = Object.freeze({
   // ── assign a wallet-owned DID as an NFT's owner (#93; confirm reuses confirmSend) ──
   prepareNftDidAssign: 'prepareNftDidAssign',
   confirmNftDidAssign: 'confirmNftDidAssign',
+  // ── bulk-assign a wallet-owned DID as MULTIPLE NFTs' owner in one spend (#99; confirm reuses confirmSend) ──
+  prepareNftBulkDidAssign: 'prepareNftBulkDidAssign',
+  confirmNftBulkDidAssign: 'confirmNftBulkDidAssign',
   // ── coin control (#91): per-asset coin listing + split / combine (confirmed via confirmSend) ──
   listCoins: 'listCoins',
   prepareSplit: 'prepareSplit',
@@ -621,6 +629,16 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.confirmNftDidAssign]: {
     summary: 'Sign + BROADCAST a previously-prepared NFT↔DID assignment (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareNftBulkDidAssign]: {
+    summary: "Build (not sign/broadcast) assigning the wallet's DID as the OWNER of MULTIPLE selected NFTs in ONE spend bundle (#99 — Collectibles multi-select assign-DID). Generalizes prepareNftDidAssign: each NFT emits its own CHIP-0011 TransferNft + announcement, the DID is spent ONCE asserting every one of them. launcherIds is deduped + MUST be non-empty (NO_NFTS_SELECTED); any NFT not held fails the whole prepare (NFT_NOT_FOUND) — builds completely or not at all. Neither NFT nor DID custody changes; a fee is paid once from a separate XCH coin.",
+    request: '{ action, launcherIds:string[] /* the NFTs, hex, ≥1 */, didLauncherId:string /* hex */, fee?:string /* mojos */ }',
+    response: '{ pendingId:string, nftBulkDidAssignSummary:{ nftLauncherIds, didLauncherId, fee, coinCount } } | { success:false, code:\'NO_NFTS_SELECTED\'|\'NFT_NOT_FOUND\'|\'DID_NOT_FOUND\'|..., message }',
+  },
+  [ACTIONS.confirmNftBulkDidAssign]: {
+    summary: 'Sign + BROADCAST a previously-prepared bulk NFT↔DID assignment (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },

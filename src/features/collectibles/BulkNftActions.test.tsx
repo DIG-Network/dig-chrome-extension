@@ -207,3 +207,79 @@ describe('BulkNftActions — destructive burn (#171)', () => {
     expect((await axe(container, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([]);
   });
 });
+
+const DID_A = { launcherId: 'd1'.repeat(32), p2PuzzleHash: 'ef'.repeat(32), profileName: 'Alice', coinId: 'c1'.repeat(32) };
+
+describe('BulkNftActions — assign DID (#99)', () => {
+  it('lists the wallet DIDs, and pick → review → confirm → sending → confirmed assigns the DID over the whole set', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const sw = mockSw((m) => {
+      if (m.action === 'listDids') return { dids: [DID_A] };
+      if (m.action === 'prepareNftBulkDidAssign') {
+        return { pendingId: 'p1', nftBulkDidAssignSummary: { nftLauncherIds: [NFT_A.launcherId, NFT_B.launcherId], didLauncherId: DID_A.launcherId, fee: '0', coinCount: 3 } };
+      }
+      if (m.action === 'confirmNftBulkDidAssign') return { spentCoinId: 'coin1' };
+      if (m.action === 'sendStatus') return { confirmed: true };
+      return { success: true };
+    });
+    const onDone = vi.fn();
+    renderWithProviders(<BulkNftActions nfts={[NFT_A, NFT_B]} mode="assign" onDone={onDone} pollMs={50} />);
+
+    // Pick the DID.
+    fireEvent.click(await screen.findByTestId(`bulk-assign-did-${DID_A.launcherId}`));
+    fireEvent.click(screen.getByTestId('bulk-assign-review'));
+
+    expect(await screen.findByTestId('bulk-assign-review-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-assign-review-list')).toHaveTextContent(NFT_A.launcherId.slice(0, 6));
+    expect(screen.getByTestId('bulk-assign-review-list')).toHaveTextContent(NFT_B.launcherId.slice(0, 6));
+
+    fireEvent.click(screen.getByTestId('bulk-assign-confirm'));
+    expect(await screen.findByTestId('bulk-assign-sending')).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(60);
+    expect(await screen.findByTestId('bulk-assign-confirmed')).toBeInTheDocument();
+
+    expect(sw).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'prepareNftBulkDidAssign', launcherIds: [NFT_A.launcherId, NFT_B.launcherId], didLauncherId: DID_A.launcherId }),
+      expect.any(Function),
+    );
+    expect(onDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('bulk-assign-done'));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires a DID selection before building — never calls prepareNftBulkDidAssign', async () => {
+    const sw = mockSw((m) => (m.action === 'listDids' ? { dids: [DID_A] } : { success: true }));
+    renderWithProviders(<BulkNftActions nfts={[NFT_A]} mode="assign" onDone={() => {}} />);
+    await screen.findByTestId(`bulk-assign-did-${DID_A.launcherId}`);
+    fireEvent.click(screen.getByTestId('bulk-assign-review')); // no DID picked yet
+    expect(await screen.findByTestId('bulk-assign-error')).toBeInTheDocument();
+    expect(sw).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'prepareNftBulkDidAssign' }), expect.any(Function));
+  });
+
+  it('shows the empty state when the wallet holds no DIDs', async () => {
+    mockSw((m) => (m.action === 'listDids' ? { dids: [] } : { success: true }));
+    renderWithProviders(<BulkNftActions nfts={[NFT_A]} mode="assign" onDone={() => {}} />);
+    expect(await screen.findByTestId('bulk-assign-dids-empty')).toBeInTheDocument();
+  });
+
+  it('shows the terminal failure state when the broadcast is rejected', async () => {
+    mockSw((m) => {
+      if (m.action === 'listDids') return { dids: [DID_A] };
+      if (m.action === 'prepareNftBulkDidAssign') return { pendingId: 'p1', nftBulkDidAssignSummary: { nftLauncherIds: [NFT_A.launcherId], didLauncherId: DID_A.launcherId, fee: '0', coinCount: 2 } };
+      if (m.action === 'confirmNftBulkDidAssign') return { success: false, code: 'PUSH_FAILED' };
+      return { success: true };
+    });
+    renderWithProviders(<BulkNftActions nfts={[NFT_A]} mode="assign" onDone={() => {}} />);
+    fireEvent.click(await screen.findByTestId(`bulk-assign-did-${DID_A.launcherId}`));
+    fireEvent.click(screen.getByTestId('bulk-assign-review'));
+    fireEvent.click(await screen.findByTestId('bulk-assign-confirm'));
+    expect(await screen.findByTestId('bulk-assign-failed')).toBeInTheDocument();
+  });
+
+  it('has no WCAG violations (assign pick form)', async () => {
+    mockSw((m) => (m.action === 'listDids' ? { dids: [DID_A] } : { success: true }));
+    const { container } = renderWithProviders(<BulkNftActions nfts={[NFT_A, NFT_B]} mode="assign" onDone={() => {}} />);
+    await screen.findByTestId(`bulk-assign-did-${DID_A.launcherId}`);
+    expect((await axe(container, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([]);
+  });
+});

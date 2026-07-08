@@ -1402,6 +1402,21 @@ async function handleCustodyActionInner(message) {
       }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft did assign failed' };
     }
+    case ACTIONS.prepareNftBulkDidAssign: {
+      // Build (not broadcast) a bulk NFT↔DID assignment over the selected set (#99) — held for approval.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareNftBulkDidAssign', launcherIds: message.launcherIds, didLauncherId: message.didLauncherId, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
+    }
+    case ACTIONS.confirmNftBulkDidAssign: {
+      // The ONLY place a prepared bulk NFT↔DID assignment is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('did', res.activityHint, res.spentCoinId);
+      }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft bulk did assign failed' };
+    }
     case ACTIONS.listCoins: {
       // Read-only per-asset coin listing (coin control #91). Routed on assetId (#121).
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());

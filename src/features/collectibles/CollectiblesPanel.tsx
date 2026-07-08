@@ -44,7 +44,7 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
   const [minting, setMinting] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
-  const [bulkMode, setBulkMode] = useState<'transfer' | 'burn' | null>(null);
+  const [bulkMode, setBulkMode] = useState<'transfer' | 'burn' | 'assign' | null>(null);
 
   const nfts = list.data?.nfts ?? [];
   const selectedNfts = nfts.filter((n) => selectedIds.has(n.launcherId));
@@ -141,6 +141,9 @@ export function CollectiblesPanel({ full }: { full?: boolean } = {}) {
               <>
                 <button type="button" className="dig-btn dig-btn--primary" data-testid="collectibles-selection-transfer" onClick={() => setBulkMode('transfer')}>
                   <FormattedMessage id="collectibles.select.transfer" />
+                </button>
+                <button type="button" className="dig-btn" data-testid="collectibles-selection-assign" onClick={() => setBulkMode('assign')}>
+                  <FormattedMessage id="collectibles.select.assign" />
                 </button>
                 <button type="button" className="dig-btn dig-btn--danger" data-testid="collectibles-selection-burn" onClick={() => setBulkMode('burn')}>
                   <FormattedMessage id="collectibles.select.burn" />
