@@ -337,6 +337,20 @@ export const en: Record<string, string> = {
   'control.install.cta': 'Download the dig-node',
   'control.openFull': 'Open the full Control Panel',
   'control.getBrowser': 'Get the DIG Browser',
+  // Control-tab prose, externalized (#82) — was hardcoded in dig-control.ts / ControlTab.tsx.
+  'control.stats': 'Hosted stores: {hosted} · Cached: {cached}',
+  'control.note.default':
+    'Your dig-node is running — you have the full DIG experience: chia:// content resolves locally on your machine (faster, private, works offline once cached). For full node management, use the native DIG Browser.',
+  'control.note.authRequired':
+    'Your dig-node is running — you have the full DIG experience: chia:// content resolves locally on your machine. Full node management (host stores, set the cache cap, trigger sync) needs the native DIG Browser, which can authorize node control on your machine.',
+  'control.readFallback.local': 'Reads resolve locally through your dig-node — private and fast.',
+  'control.readFallback.hosted':
+    'No local dig-node detected — the extension is running in read-only mode through the hosted network ({endpoint}). Install the dig-node for the full experience.',
+  'control.install.title': 'Install the dig-node for the full experience',
+  'control.install.body':
+    'The DIG extension works best with the dig-node installed and RUNNING on your machine — that is what unlocks the full experience: it resolves chia:// content locally (faster, private, works offline once cached) and lets you host and manage your own stores. It installs in one step on Windows, macOS, and Linux. Without it the extension still works, but only in read-only mode through the hosted network (rpc.dig.net) — you can’t host, and every read goes through DIG’s servers.',
+  // Network screen's segmented control aria-label (#82) — was a hardcoded literal in NetworkScreen.tsx.
+  'network.views.ariaLabel': 'Network views',
 
   // ── collectibles (NFTs) ──
   'collectibles.title': 'Collectibles',

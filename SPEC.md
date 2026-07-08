@@ -923,6 +923,13 @@ byte-mirror of the native browser's shields ledger.
   control RPC contract.
 - When only the hosted read tier is reachable, the view falls back honestly (no fabricated
   manage state).
+- **`controlPanelViewModel` returns react-intl message ids, not prose (#82).** The view model stays
+  a plain, DOM-free ES module (no `react-intl`/JSX dependency) importable by the background script;
+  every piece of copy it selects is a `{ id, values? }` pair (`noteId`, `readFallback`,
+  `install.titleId`/`install.bodyId`) that `ControlTab.tsx` — the sole `<FormattedMessage>`
+  consumer — renders. The actual English source lives in `src/i18n/messages/en.ts` (content-quality
+  guarded by `dig-control-copy.test.ts`) and is translated across all 14 locales (completeness
+  guarded by `locales.test.ts`).
 
 ---
 

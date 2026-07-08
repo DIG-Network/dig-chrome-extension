@@ -330,6 +330,14 @@ export const tr: Record<string, string> = {
   'control.install.cta': "dig-node'u indirin",
   'control.openFull': 'Tam Kontrol Panelini aç',
   'control.getBrowser': 'DIG Tarayıcısını edinin',
+  'control.stats': 'Barındırılan mağazalar: {hosted} · Önbelleğe alınan: {cached}',
+  'control.note.default': "dig-node'unuz çalışıyor — tam DIG deneyimine sahipsiniz: chia:// içeriği cihazınızda yerel olarak çözümlenir (daha hızlı, gizli, önbelleğe alındıktan sonra çevrimdışı çalışır). Tam düğüm yönetimi için yerel DIG Browser'ı kullanın.",
+  'control.note.authRequired': "dig-node'unuz çalışıyor — tam DIG deneyimine sahipsiniz: chia:// içeriği cihazınızda yerel olarak çözümlenir. Tam düğüm yönetimi (mağaza barındırma, önbellek sınırını ayarlama, senkronizasyonu tetikleme) cihazınızda düğüm kontrolünü yetkilendirebilen yerel DIG Browser'ı gerektirir.",
+  'control.readFallback.local': "Okumalar dig-node'unuz üzerinden yerel olarak çözümlenir — gizli ve hızlı.",
+  'control.readFallback.hosted': "Yerel dig-node algılanmadı — uzantı, barındırılan ağ ({endpoint}) üzerinden salt okunur modda çalışıyor. Tam deneyim için dig-node'u yükleyin.",
+  'control.install.title': "Tam deneyim için dig-node'u yükleyin",
+  'control.install.body': "DIG uzantısı, dig-node cihazınıza yüklenmiş ve ÇALIŞIR durumdayken en iyi şekilde çalışır — tam deneyimin kilidini açan şey budur: chia:// içeriğini yerel olarak çözümler (daha hızlı, gizli, önbelleğe alındıktan sonra çevrimdışı çalışır) ve kendi mağazalarınızı barındırıp yönetmenizi sağlar. Windows, macOS ve Linux'ta tek adımda kurulur. Onsuz uzantı yine çalışır, ancak yalnızca barındırılan ağ (rpc.dig.net) üzerinden salt okunur modda — barındıramazsınız ve her okuma DIG'in sunucularından geçer.",
+  'network.views.ariaLabel': 'Ağ görünümleri',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Koleksiyon",

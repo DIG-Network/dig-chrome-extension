@@ -330,6 +330,14 @@ export const ko: Record<string, string> = {
   'control.install.cta': 'dig-node 다운로드',
   'control.openFull': '전체 제어판 열기',
   'control.getBrowser': 'DIG Browser 다운로드',
+  'control.stats': '호스팅된 스토어: {hosted} · 캐시됨: {cached}',
+  'control.note.default': 'dig-node가 실행 중입니다 — 이제 완전한 DIG 경험을 이용할 수 있습니다: chia:// 콘텐츠가 사용자의 기기에서 로컬로 해석됩니다(더 빠르고, 더 사적이며, 캐시된 후에는 오프라인에서도 작동). 전체 노드 관리를 하려면 네이티브 DIG Browser를 사용하세요.',
+  'control.note.authRequired': 'dig-node가 실행 중입니다 — 이제 완전한 DIG 경험을 이용할 수 있습니다: chia:// 콘텐츠가 사용자의 기기에서 로컬로 해석됩니다. 전체 노드 관리(스토어 호스팅, 캐시 상한 설정, 동기화 실행)는 사용자의 기기에서 노드 제어를 승인할 수 있는 네이티브 DIG Browser가 필요합니다.',
+  'control.readFallback.local': '읽기는 사용자의 dig-node를 통해 로컬로 해석됩니다 — 사적이고 빠릅니다.',
+  'control.readFallback.hosted': '로컬 dig-node가 감지되지 않았습니다 — 확장 프로그램이 호스팅 네트워크({endpoint})를 통해 읽기 전용 모드로 실행 중입니다. 완전한 경험을 위해 dig-node를 설치하세요.',
+  'control.install.title': '완전한 경험을 위해 dig-node를 설치하세요',
+  'control.install.body': 'DIG 확장 프로그램은 dig-node가 사용자의 기기에 설치되어 실행 중일 때 가장 잘 작동합니다 — 이것이 완전한 경험을 여는 열쇠입니다: chia:// 콘텐츠를 로컬로 해석하고(더 빠르고, 더 사적이며, 캐시된 후에는 오프라인에서도 작동), 자신의 스토어를 호스팅하고 관리할 수 있게 해줍니다. Windows, macOS, Linux에서 한 번에 설치됩니다. 이것이 없어도 확장 프로그램은 계속 작동하지만, 호스팅 네트워크(rpc.dig.net)를 통한 읽기 전용 모드로만 작동합니다 — 호스팅할 수 없으며, 모든 읽기가 DIG의 서버를 거칩니다.',
+  'network.views.ariaLabel': '네트워크 보기',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "컬렉션",

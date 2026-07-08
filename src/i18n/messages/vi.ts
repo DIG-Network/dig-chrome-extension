@@ -330,6 +330,14 @@ export const vi: Record<string, string> = {
   'control.install.cta': 'Tải xuống dig-node',
   'control.openFull': 'Mở Bảng điều khiển đầy đủ',
   'control.getBrowser': 'Tải Trình duyệt DIG',
+  'control.stats': 'Kho lưu trữ được host: {hosted} · Đã lưu đệm: {cached}',
+  'control.note.default': 'dig-node của bạn đang chạy — bạn có trải nghiệm DIG đầy đủ: nội dung chia:// được phân giải cục bộ trên máy của bạn (nhanh hơn, riêng tư, hoạt động ngoại tuyến sau khi lưu đệm). Để quản lý node đầy đủ, hãy dùng DIG Browser gốc.',
+  'control.note.authRequired': 'dig-node của bạn đang chạy — bạn có trải nghiệm DIG đầy đủ: nội dung chia:// được phân giải cục bộ trên máy của bạn. Quản lý node đầy đủ (host kho lưu trữ, đặt giới hạn bộ đệm, kích hoạt đồng bộ) cần DIG Browser gốc, ứng dụng có thể ủy quyền kiểm soát node trên máy của bạn.',
+  'control.readFallback.local': 'Việc đọc được phân giải cục bộ qua dig-node của bạn — riêng tư và nhanh.',
+  'control.readFallback.hosted': 'Không phát hiện dig-node cục bộ — tiện ích mở rộng đang chạy ở chế độ chỉ đọc qua mạng được host ({endpoint}). Cài đặt dig-node để có trải nghiệm đầy đủ.',
+  'control.install.title': 'Cài đặt dig-node để có trải nghiệm đầy đủ',
+  'control.install.body': 'Tiện ích mở rộng DIG hoạt động tốt nhất khi dig-node được cài đặt và ĐANG CHẠY trên máy của bạn — đó chính là điều mở khóa trải nghiệm đầy đủ: nó phân giải nội dung chia:// cục bộ (nhanh hơn, riêng tư, hoạt động ngoại tuyến sau khi lưu đệm) và cho phép bạn host cũng như quản lý kho lưu trữ của riêng mình. Cài đặt chỉ trong một bước trên Windows, macOS và Linux. Nếu không có nó, tiện ích mở rộng vẫn hoạt động, nhưng chỉ ở chế độ chỉ đọc qua mạng được host (rpc.dig.net) — bạn không thể host, và mọi lượt đọc đều đi qua máy chủ của DIG.',
+  'network.views.ariaLabel': 'Chế độ xem mạng',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Bộ sưu tập",

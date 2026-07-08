@@ -330,6 +330,14 @@ export const ptBR: Record<string, string> = {
   'control.install.cta': 'Baixar o dig-node',
   'control.openFull': 'Abrir o Painel de Controle completo',
   'control.getBrowser': 'Baixar o Navegador DIG',
+  'control.stats': 'Armazenamentos hospedados: {hosted} · Em cache: {cached}',
+  'control.note.default': 'Seu dig-node está em execução — você tem a experiência DIG completa: o conteúdo chia:// é resolvido localmente no seu dispositivo (mais rápido, privado, funciona offline depois de armazenado em cache). Para o gerenciamento completo do nó, use o Navegador DIG nativo.',
+  'control.note.authRequired': 'Seu dig-node está em execução — você tem a experiência DIG completa: o conteúdo chia:// é resolvido localmente no seu dispositivo. O gerenciamento completo do nó (hospedar armazenamentos, definir o limite de cache, acionar a sincronização) requer o Navegador DIG nativo, que pode autorizar o controle do nó no seu dispositivo.',
+  'control.readFallback.local': 'As leituras são resolvidas localmente pelo seu dig-node — privado e rápido.',
+  'control.readFallback.hosted': 'Nenhum dig-node local detectado — a extensão está sendo executada em modo somente leitura pela rede hospedada ({endpoint}). Instale o dig-node para a experiência completa.',
+  'control.install.title': 'Instale o dig-node para a experiência completa',
+  'control.install.body': 'A extensão DIG funciona melhor com o dig-node instalado e EM EXECUÇÃO no seu dispositivo — é isso que desbloqueia a experiência completa: ela resolve o conteúdo chia:// localmente (mais rápido, privado, funciona offline depois de armazenado em cache) e permite que você hospede e gerencie seus próprios armazenamentos. Instala-se em uma única etapa no Windows, macOS e Linux. Sem ele, a extensão ainda funciona, mas apenas em modo somente leitura pela rede hospedada (rpc.dig.net) — você não pode hospedar, e toda leitura passa pelos servidores da DIG.',
+  'network.views.ariaLabel': 'Visualizações de rede',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Colecionáveis",

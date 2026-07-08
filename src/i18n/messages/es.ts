@@ -330,6 +330,14 @@ export const es: Record<string, string> = {
   'control.install.cta': 'Descargar el dig-node',
   'control.openFull': 'Abrir el Panel de Control completo',
   'control.getBrowser': 'Descargar el Navegador DIG',
+  'control.stats': 'Almacenes alojados: {hosted} · En caché: {cached}',
+  'control.note.default': 'Tu dig-node está en funcionamiento — tienes la experiencia completa de DIG: el contenido chia:// se resuelve localmente en tu equipo (más rápido, privado, funciona sin conexión una vez almacenado en caché). Para la gestión completa del nodo, usa el Navegador DIG nativo.',
+  'control.note.authRequired': 'Tu dig-node está en funcionamiento — tienes la experiencia completa de DIG: el contenido chia:// se resuelve localmente en tu equipo. La gestión completa del nodo (alojar almacenes, establecer el límite de caché, activar la sincronización) requiere el Navegador DIG nativo, que puede autorizar el control del nodo en tu equipo.',
+  'control.readFallback.local': 'Las lecturas se resuelven localmente a través de tu dig-node — privado y rápido.',
+  'control.readFallback.hosted': 'No se detectó ningún dig-node local — la extensión funciona en modo de solo lectura a través de la red alojada ({endpoint}). Instala dig-node para la experiencia completa.',
+  'control.install.title': 'Instala dig-node para la experiencia completa',
+  'control.install.body': 'La extensión DIG funciona mejor con dig-node instalado y EN EJECUCIÓN en tu equipo — eso es lo que desbloquea la experiencia completa: resuelve el contenido chia:// localmente (más rápido, privado, funciona sin conexión una vez en caché) y te permite alojar y gestionar tus propios almacenes. Se instala en un solo paso en Windows, macOS y Linux. Sin él, la extensión sigue funcionando, pero solo en modo de solo lectura a través de la red alojada (rpc.dig.net) — no puedes alojar, y cada lectura pasa por los servidores de DIG.',
+  'network.views.ariaLabel': 'Vistas de red',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Coleccionables",

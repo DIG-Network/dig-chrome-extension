@@ -330,6 +330,14 @@ export const id: Record<string, string> = {
   'control.install.cta': 'Unduh dig-node',
   'control.openFull': 'Buka Panel Kontrol lengkap',
   'control.getBrowser': 'Dapatkan Browser DIG',
+  'control.stats': 'Store yang dihosting: {hosted} · Di-cache: {cached}',
+  'control.note.default': 'dig-node Anda sedang berjalan — Anda mendapatkan pengalaman DIG lengkap: konten chia:// diselesaikan secara lokal di perangkat Anda (lebih cepat, privat, berfungsi offline setelah di-cache). Untuk manajemen node lengkap, gunakan DIG Browser native.',
+  'control.note.authRequired': 'dig-node Anda sedang berjalan — Anda mendapatkan pengalaman DIG lengkap: konten chia:// diselesaikan secara lokal di perangkat Anda. Manajemen node lengkap (menghosting store, mengatur batas cache, memicu sinkronisasi) memerlukan DIG Browser native, yang dapat mengotorisasi kontrol node di perangkat Anda.',
+  'control.readFallback.local': 'Pembacaan diselesaikan secara lokal melalui dig-node Anda — privat dan cepat.',
+  'control.readFallback.hosted': 'Tidak ada dig-node lokal yang terdeteksi — ekstensi berjalan dalam mode baca-saja melalui jaringan yang dihosting ({endpoint}). Instal dig-node untuk pengalaman lengkap.',
+  'control.install.title': 'Instal dig-node untuk pengalaman lengkap',
+  'control.install.body': 'Ekstensi DIG bekerja paling baik dengan dig-node terinstal dan BERJALAN di perangkat Anda — itulah yang membuka pengalaman lengkap: ekstensi ini menyelesaikan konten chia:// secara lokal (lebih cepat, privat, berfungsi offline setelah di-cache) dan memungkinkan Anda menghosting serta mengelola store Anda sendiri. Instalasi hanya satu langkah di Windows, macOS, dan Linux. Tanpanya, ekstensi tetap berfungsi, tetapi hanya dalam mode baca-saja melalui jaringan yang dihosting (rpc.dig.net) — Anda tidak dapat menghosting, dan setiap pembacaan melewati server DIG.',
+  'network.views.ariaLabel': 'Tampilan jaringan',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Koleksi",

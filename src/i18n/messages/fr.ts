@@ -330,6 +330,14 @@ export const fr: Record<string, string> = {
   'control.install.cta': 'Télécharger le dig-node',
   'control.openFull': 'Ouvrir le panneau de contrôle complet',
   'control.getBrowser': 'Obtenir le DIG Browser',
+  'control.stats': 'Stores hébergés : {hosted} · En cache : {cached}',
+  'control.note.default': "Votre dig-node est en cours d'exécution — vous bénéficiez de l'expérience DIG complète : le contenu chia:// est résolu localement sur votre appareil (plus rapide, privé, fonctionne hors ligne une fois mis en cache). Pour une gestion complète du nœud, utilisez le DIG Browser natif.",
+  'control.note.authRequired': "Votre dig-node est en cours d'exécution — vous bénéficiez de l'expérience DIG complète : le contenu chia:// est résolu localement sur votre appareil. La gestion complète du nœud (héberger des stores, définir la limite de cache, déclencher la synchronisation) nécessite le DIG Browser natif, qui peut autoriser le contrôle du nœud sur votre appareil.",
+  'control.readFallback.local': 'Les lectures sont résolues localement via votre dig-node — privé et rapide.',
+  'control.readFallback.hosted': "Aucun dig-node local détecté — l'extension fonctionne en mode lecture seule via le réseau hébergé ({endpoint}). Installez dig-node pour l'expérience complète.",
+  'control.install.title': "Installez dig-node pour l'expérience complète",
+  'control.install.body': "L'extension DIG fonctionne mieux avec dig-node installé et EN COURS D'EXÉCUTION sur votre appareil — c'est ce qui débloque l'expérience complète : elle résout le contenu chia:// localement (plus rapide, privé, fonctionne hors ligne une fois en cache) et vous permet d'héberger et de gérer vos propres stores. Il s'installe en une seule étape sur Windows, macOS et Linux. Sans lui, l'extension fonctionne toujours, mais uniquement en mode lecture seule via le réseau hébergé (rpc.dig.net) — vous ne pouvez pas héberger, et chaque lecture passe par les serveurs de DIG.",
+  'network.views.ariaLabel': 'Vues réseau',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "Objets de collection",

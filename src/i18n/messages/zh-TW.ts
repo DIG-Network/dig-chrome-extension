@@ -330,6 +330,14 @@ export const zhTW: Record<string, string> = {
   'control.install.cta': '下載 dig-node',
   'control.openFull': '開啟完整控制面板',
   'control.getBrowser': '取得 DIG 瀏覽器',
+  'control.stats': '託管的存儲：{hosted} · 已快取：{cached}',
+  'control.note.default': '您的 dig-node 正在運行 — 您已擁有完整的 DIG 體驗：chia:// 內容會在您的電腦上本地解析（更快、更私密，快取後可離線使用）。如需完整的節點管理，請使用原生 DIG 瀏覽器。',
+  'control.note.authRequired': '您的 dig-node 正在運行 — 您已擁有完整的 DIG 體驗：chia:// 內容會在您的電腦上本地解析。完整的節點管理（託管儲存、設定快取上限、觸發同步）需要原生 DIG 瀏覽器，它可以在您的電腦上授權節點控制。',
+  'control.readFallback.local': '讀取透過您的 dig-node 在本地解析 — 私密且快速。',
+  'control.readFallback.hosted': '未偵測到本地 dig-node — 擴充功能正透過託管網路（{endpoint}）以唯讀模式運行。安裝 dig-node 以獲得完整體驗。',
+  'control.install.title': '安裝 dig-node 以獲得完整體驗',
+  'control.install.body': 'DIG 擴充功能在您的電腦上安裝並運行 dig-node 時效果最佳 — 這正是解鎖完整體驗的關鍵：它會在本地解析 chia:// 內容（更快、更私密，快取後可離線使用），並讓您託管與管理自己的儲存。它可在 Windows、macOS 與 Linux 上一步完成安裝。沒有它，擴充功能仍可使用，但只能透過託管網路（rpc.dig.net）以唯讀模式運行 — 您無法託管，且每次讀取都要經過 DIG 的伺服器。',
+  'network.views.ariaLabel': '網路檢視',
 
   // ── collectibles (NFTs) ──
   "wallet.view.collectibles": "收藏品",
