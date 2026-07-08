@@ -485,7 +485,8 @@ async function rpcCall(endpoint, method, params) {
  * POST a CONTROL/admin method (control.*) to a local dig-node's JSON-RPC root and return the
  * FULL parsed JSON-RPC envelope ({ result } | { error: { code, message, data } }) — unlike
  * rpcCall which unwraps to result and throws on error. The Control Panel needs the raw error
- * code to distinguish the expected UNAUTHORIZED (-32020) reply (node present but the mutating
+ * code to distinguish the expected UNAUTHORIZED (-32030 — CONTROL_ERR.UNAUTHORIZED in
+ * dig-control.ts; -32020 is retired/reserved, see #130) reply (node present but the mutating
  * control surface is token-gated, and the extension can't read the on-disk control token) from
  * a real failure.
  *
@@ -2211,7 +2212,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let authRequired = false;
         if (view.mode === 'manage' && view.controlEndpoint) {
           // Try control.status. An open node answers it; a token-gated node answers
-          // UNAUTHORIZED (-32020) — the expected outcome for the token-less extension.
+          // UNAUTHORIZED (-32030, CONTROL_ERR.UNAUTHORIZED) — the expected outcome for the
+          // token-less extension. (-32020 is retired/reserved for onion — see #130.)
           const resp = await controlRpc(view.controlEndpoint, 'control.status', {}).catch(() => null);
           if (resp && resp.result) {
             status = resp.result;
