@@ -19,6 +19,8 @@ export default defineConfig({
     '**/wallet-switcher.spec.ts',
     '**/home-balance.spec.ts',
     '**/did-create-errors.spec.ts',
+    '**/send-receive-trio.spec.ts',
+    '**/qr-scanner-camera.spec.ts',
   ],
   fullyParallel: true,
   reporter: 'list',
