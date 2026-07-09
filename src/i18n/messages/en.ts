@@ -60,6 +60,16 @@ export const en: Record<string, string> = {
   'custody.onboarding.import': 'Import a recovery phrase',
   'custody.onboarding.createSubmit': 'Create wallet',
   'custody.onboarding.importSubmit': 'Import wallet',
+  // Phishing-education nudge before Create/Import (#79) — a scam site asking for the phrase is a scam.
+  'custody.onboarding.security.title': 'Before you continue',
+  'custody.onboarding.security.neverAsk': 'DIG will never ask you to enter your recovery phrase anywhere — not by email, chat, pop-up, or website.',
+  'custody.onboarding.security.phishing': 'If any site or message asks for your recovery phrase, close it immediately. It is a scam trying to steal your funds.',
+  'custody.onboarding.security.neverShare': "Never share your recovery phrase or password with anyone, including someone claiming to be DIG support.",
+  'custody.onboarding.security.continue': 'Continue',
+  // Backup reminder after a new wallet's phrase is confirmed (#79) — nudge a second recovery method.
+  'custody.onboarding.backup.title': 'Keep a second backup',
+  'custody.onboarding.backup.body': 'Your recovery phrase is the only way to restore this wallet if you lose access. You can also export an encrypted backup file anytime from the wallet switcher — a second way back in if you ever forget your password.',
+  'custody.onboarding.backup.finish': 'Finish',
   'custody.password': 'Password',
   'custody.passwordConfirm': 'Confirm password',
   'custody.strongPreset': 'Extra-strong encryption (slower unlock; for high-value wallets)',
@@ -103,6 +113,10 @@ export const en: Record<string, string> = {
   'custody.autolock.hint': 'Lock the wallet after this many minutes of inactivity. Any wallet activity resets the timer. Allowed range: {min}–{max} minutes.',
   'custody.autolock.save': 'Save auto-lock',
   'custody.autolock.saved': 'Saved',
+  // Visible session countdown + explicit Lock now (#76 P1-4), alongside the auto-lock setting above.
+  'custody.session.remaining': 'Auto-locks in {minutes} min',
+  'custody.session.remaining.unknown': 'Session timing unavailable',
+  'custody.session.lockNow': 'Lock now',
   // network switcher (#108) — mainnet is real funds, so switching requires an explicit confirm
   'custody.network.label': 'Network',
   'custody.network.hint': 'Choose which Chia network your balances, activity, and reads use. Mainnet holds real funds.',
@@ -651,6 +665,7 @@ export const en: Record<string, string> = {
   'dapp.approval.outputs.title': 'Outputs ({count})',
   'dapp.approval.output.self': 'your wallet',
   'dapp.approval.output.external': 'external',
+  'dapp.approval.raw.title': 'View raw request details',
   'dapp.approval.message.label': 'Message',
   'dapp.approval.message.signedAs': 'Signed as {key}',
   'dapp.approval.queueCount': '{count} more request(s) pending',

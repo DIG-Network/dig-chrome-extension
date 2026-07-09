@@ -150,6 +150,8 @@ describe('Onboarding (create flow)', () => {
     renderWithProviders(<CustodyGate><div data-testid="wallet-body">done</div></CustodyGate>);
 
     fireEvent.click(await screen.findByTestId('onboarding-create'));
+    // #79 — the phishing-education nudge appears before the create form; Continue proceeds to it.
+    fireEvent.click(screen.getByTestId('onboarding-security-continue'));
     fireEvent.change(screen.getByTestId('onboarding-password'), { target: { value: 'password1' } });
     fireEvent.change(screen.getByTestId('onboarding-password-confirm'), { target: { value: 'password1' } });
     fireEvent.click(screen.getByTestId('onboarding-submit'));
@@ -160,6 +162,9 @@ describe('Onboarding (create flow)', () => {
     fireEvent.change(await screen.findByTestId('confirm-word'), { target: { value: 'alpha' } });
     fireEvent.click(screen.getByTestId('confirm-submit'));
 
+    // #79 — a backup reminder appears before the gate proceeds to the wallet; Finish completes it.
+    fireEvent.click(await screen.findByTestId('onboarding-backup-reminder-finish'));
+
     expect(await screen.findByTestId('wallet-body')).toBeInTheDocument();
     expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'createWallet', password: 'password1' }), expect.any(Function));
   });
@@ -169,6 +174,7 @@ describe('Onboarding (create flow)', () => {
     const sw = mockSw((m) => (m.action === 'getLockState' ? { lockState: 'none' } : {}));
     renderWithProviders(<CustodyGate><div /></CustodyGate>);
     fireEvent.click(await screen.findByTestId('onboarding-create'));
+    fireEvent.click(screen.getByTestId('onboarding-security-continue'));
     fireEvent.change(screen.getByTestId('onboarding-password'), { target: { value: 'password1' } });
     fireEvent.change(screen.getByTestId('onboarding-password-confirm'), { target: { value: 'different' } });
     fireEvent.click(screen.getByTestId('onboarding-submit'));
@@ -181,10 +187,14 @@ describe('Onboarding (create flow)', () => {
     mockSwStateful();
     renderWithProviders(<CustodyGate><div data-testid="wallet-body">done</div></CustodyGate>);
     fireEvent.click(await screen.findByTestId('onboarding-import'));
+    // #79 — the SAME phishing-education nudge appears before the import form.
+    fireEvent.click(screen.getByTestId('onboarding-security-continue'));
     fireEvent.change(screen.getByTestId('import-phrase'), { target: { value: WORDS24 } });
     fireEvent.change(screen.getByTestId('onboarding-password'), { target: { value: 'password1' } });
     fireEvent.change(screen.getByTestId('onboarding-password-confirm'), { target: { value: 'password1' } });
     fireEvent.click(screen.getByTestId('onboarding-submit'));
+    // Import skips the backup reminder (an existing phrase is already backed up by definition) —
+    // straight to the wallet.
     expect(await screen.findByTestId('wallet-body')).toBeInTheDocument();
   });
 });

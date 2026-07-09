@@ -65,3 +65,5 @@ export const selectIsUnlocked = (s: { wallet: WalletState }): boolean => s.walle
 export const selectHasWallet = (s: { wallet: WalletState }): boolean => s.wallet.lockState !== 'none';
 export const selectActiveWalletId = (s: { wallet: WalletState }): string | null => s.wallet.activeWalletId;
 export const selectActiveDerivationIndex = (s: { wallet: WalletState }): number => s.wallet.activeIndex;
+/** The non-secret unlock-expiry timestamp (ms), for the visible session countdown (#76). */
+export const selectUnlockExpiry = (s: { wallet: WalletState }): number | null => s.wallet.unlockExpiry;

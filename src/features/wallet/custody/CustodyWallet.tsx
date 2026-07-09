@@ -29,6 +29,7 @@ import { IndexNavigator } from '@/features/wallet/custody/IndexNavigator';
 import { ExportPrivateKey } from '@/features/wallet/custody/ExportPrivateKey';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
+import { SessionStatus } from '@/features/wallet/custody/SessionStatus';
 import { NetworkSetting } from '@/features/wallet/custody/NetworkSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
 import { DerivedAddressList } from '@/features/wallet/custody/DerivedAddressList';
@@ -312,6 +313,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
               <NetworkSetting />
               <ChainNodeSetting />
               <AutoLockSetting />
+              <SessionStatus />
               <ConnectedSites />
               <DerivedAddressList />
               {/* Private-key export (#96, §18.20) — fullscreen-only + never for a watch-only wallet
