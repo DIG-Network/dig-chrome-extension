@@ -8,6 +8,12 @@ import { test, expect, type Page } from '@playwright/test';
  * send) are answered by a canned `chrome.runtime.sendMessage`. This exercises the real RTK store +
  * the real contacts module/hook/components — only the SW + chain are stubbed.
  *
+ * Also covers #207 — the recipient picker is now the XL Android-style contacts modal
+ * (`contacts-xl-modal`): sticky A–Z sections, a search box, and a fast-scroll index, portaled to
+ * `document.body` (#200). `pick-contact-<id>` / `pick-recent-<address>` test ids are unchanged from
+ * the old inline picker, so most of the existing flows below needed no changes beyond the modal's
+ * own container id.
+ *
  * Run: `npm run build:web && npx playwright test e2e/contacts.spec.ts`.
  */
 
@@ -82,6 +88,20 @@ async function addContact(page: Page, label: string, address: string) {
   await expect(page.getByTestId('contacts-list').getByText(label)).toBeVisible();
 }
 
+/** From the wallet Home, open the manager ONCE and add several contacts in the same visit (the
+ * manager stays open between adds — `addContact` re-opens it from Home each time, which only works
+ * for a single contact per Home visit). */
+async function addContacts(page: Page, entries: Array<[label: string, address: string]>) {
+  await page.getByTestId('action-contacts').click();
+  await expect(page.getByTestId('contacts-manager')).toBeVisible();
+  for (const [label, address] of entries) {
+    await page.getByTestId('contact-add-label').fill(label);
+    await page.getByTestId('contact-add-address').fill(address);
+    await page.getByTestId('contact-add-submit').click();
+    await expect(page.getByTestId('contacts-list').getByText(label)).toBeVisible();
+  }
+}
+
 test.describe('#88 address book / contacts', () => {
   test('add a contact, pick it in Send → address + label populate', async ({ page }) => {
     await openWallet(page);
@@ -123,7 +143,7 @@ test.describe('#88 address book / contacts', () => {
     // It is now a saved contact: the picker (after going back) offers Bob by label.
     await page.getByTestId('send-back').click();
     await page.getByTestId('contact-picker-toggle').click();
-    await expect(page.getByTestId('contact-picker-panel').getByText('Bob')).toBeVisible();
+    await expect(page.getByTestId('contacts-xl-modal').getByText('Bob')).toBeVisible();
   });
 
   test('manager edit + delete', async ({ page }) => {
@@ -166,9 +186,56 @@ test.describe('#88 address book / contacts', () => {
       await page.getByTestId('contacts-close').click();
       await page.getByTestId('action-send').click();
       await page.getByTestId('contact-picker-toggle').click();
-      await expect(page.getByTestId('contact-picker-panel')).toBeVisible();
+      await expect(page.getByTestId('contacts-xl-modal')).toBeVisible();
       await page.waitForTimeout(200);
       await page.screenshot({ path: `e2e/__screenshots__/contacts-send-picker-${label}.png` });
+    });
+  }
+});
+
+test.describe('#207 XL Android-style contacts modal', () => {
+  test('open the picker, search narrows the list, and selecting a result fills the recipient', async ({ page }) => {
+    await openWallet(page, 'app.html');
+    await addContacts(page, [
+      ['Alice', ALICE_ADDR],
+      ['Bob', BOB_ADDR],
+    ]);
+    await page.getByTestId('contacts-close').click();
+    await page.getByTestId('action-send').click();
+
+    await page.getByTestId('contact-picker-toggle').click();
+    await expect(page.getByTestId('contacts-xl-modal')).toBeVisible();
+    // Both are alphabetized under their own letter section.
+    await expect(page.getByTestId('contacts-xl-section-A')).toBeVisible();
+    await expect(page.getByTestId('contacts-xl-section-B')).toBeVisible();
+
+    await page.getByTestId('contacts-xl-search').fill('ali');
+    await expect(page.locator('[data-testid^="pick-contact-"]')).toHaveCount(1);
+    await page.locator('[data-testid^="pick-contact-"]').first().click();
+
+    await expect(page.getByTestId('contacts-xl-modal')).toHaveCount(0);
+    await expect(page.getByTestId('send-recipient')).toHaveValue(ALICE_ADDR);
+  });
+
+  // Visual capture (§6.5) — the XL modal itself at phone (popup, near-full-viewport) + tablet
+  // (fullscreen, true XL) widths.
+  for (const [label, file, size] of [
+    ['popup', 'popup.html', { width: 372, height: 640 }],
+    ['fullscreen', 'app.html', { width: 1200, height: 860 }],
+  ] as const) {
+    test(`screenshot: XL contacts modal (${label})`, async ({ page }) => {
+      await page.setViewportSize(size);
+      await openWallet(page, file);
+      await addContacts(page, [
+        ['Alice', ALICE_ADDR],
+        ['Bob', BOB_ADDR],
+      ]);
+      await page.getByTestId('contacts-close').click();
+      await page.getByTestId('action-send').click();
+      await page.getByTestId('contact-picker-toggle').click();
+      await expect(page.getByTestId('contacts-xl-modal')).toBeVisible();
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: `e2e/__screenshots__/contacts-xl-modal-${label}.png` });
     });
   }
 });

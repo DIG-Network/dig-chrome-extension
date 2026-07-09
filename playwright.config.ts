@@ -16,6 +16,7 @@ export default defineConfig({
     '**/screenshots.spec.ts',
     '**/prices.spec.ts',
     '**/contacts.spec.ts',
+    '**/fee-estimate.spec.ts',
     '**/wallet-switcher.spec.ts',
     '**/home-balance.spec.ts',
     '**/did-create-errors.spec.ts',

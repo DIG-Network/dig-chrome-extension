@@ -13,6 +13,8 @@ import {
   recordRecent,
   recentEntries,
   normalizeAddress,
+  sectionLetter,
+  groupContactsByLetter,
   MAX_RECENTS,
   MAX_LABEL_LEN,
   MAX_NOTE_LEN,
@@ -186,5 +188,44 @@ describe('contacts — recent recipients', () => {
     const entries = recentEntries(recents, contacts);
     expect(entries.map((e) => e.label)).toEqual([null, 'Alice']);
     expect(entries.map((e) => e.address)).toEqual([normalizeAddress(ADDR_B), normalizeAddress(ADDR_A)]);
+  });
+});
+
+// #207 — the XL Android-style contacts modal groups saved contacts into sticky A–Z sections.
+describe('contacts — A–Z section grouping (#207)', () => {
+  it('sectionLetter uppercases the label\'s first alphabetic character', () => {
+    expect(sectionLetter('alice')).toBe('A');
+    expect(sectionLetter('Bob')).toBe('B');
+    expect(sectionLetter('  charlie')).toBe('C');
+  });
+
+  it('sectionLetter groups a leading digit/symbol under "#"', () => {
+    expect(sectionLetter('123 Exchange')).toBe('#');
+    expect(sectionLetter('$treasury')).toBe('#');
+    expect(sectionLetter('')).toBe('#');
+  });
+
+  it('groupContactsByLetter groups already-sorted contacts into ordered letter sections', () => {
+    const list = sortContacts([
+      contact({ id: 'c1', label: 'Bob', address: normalizeAddress(ADDR_A) }),
+      contact({ id: 'c2', label: 'alice', address: normalizeAddress(ADDR_B) }),
+      contact({ id: 'c3', label: 'Ben', address: normalizeAddress(ADDR_A) }),
+    ]);
+    const sections = groupContactsByLetter(list);
+    expect(sections.map((s) => s.letter)).toEqual(['A', 'B']);
+    expect(sections[1].contacts.map((c) => c.label)).toEqual(['Ben', 'Bob']);
+  });
+
+  it('sorts a "#" (non-alphabetic) section last, after every lettered section', () => {
+    const list = [
+      contact({ id: 'c1', label: '99 Pool', address: normalizeAddress(ADDR_A) }),
+      contact({ id: 'c2', label: 'Alice', address: normalizeAddress(ADDR_B) }),
+    ];
+    const sections = groupContactsByLetter(list);
+    expect(sections.map((s) => s.letter)).toEqual(['A', '#']);
+  });
+
+  it('an empty contact list groups to no sections', () => {
+    expect(groupContactsByLetter([])).toEqual([]);
   });
 });
