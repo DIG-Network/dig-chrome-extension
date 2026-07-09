@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.77.1] - 2026-07-09
+
+### Testing
+- **a11y:** Axe-check the wallet-data source switch (#217) (#108)
+
 ## [1.77.0] - 2026-07-09
 
 ### Features
