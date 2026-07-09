@@ -11,7 +11,7 @@
  * the active index (§6: one wallet = one balance, scoped to the currently-viewed index).
  */
 
-import { deriveAccounts, deriveAccount, masterFromSeed, type ChiaWasm } from '@/lib/keystore/derive';
+import { deriveAccounts, deriveAccount, masterFromSeed, deriveWatchAccounts, deriveWatchAccount, masterPublicKeyFromHex, type ChiaWasm, type WatchWasm } from '@/lib/keystore/derive';
 import type { ChainClient } from '@/offscreen/chain';
 import { discoverCats, type CatDiscoveryWasm } from '@/offscreen/catDiscovery';
 
@@ -95,4 +95,51 @@ export function receiveAddress(chia: ChiaWasm, seed: Uint8Array, index = 0, pref
   } finally {
     master.free?.();
   }
+}
+
+// ── Watch-only (public-key-only) reads (#96) ──
+//
+// A watch-only wallet holds no seed — every read derives from a master PUBLIC key instead, UNHARDENED
+// ONLY (see derive.ts's module doc for why hardened is unreachable from a public key alone). There is
+// no CAT hint-auto-discovery here: `discoverCats` reconstructs lineage using the wallet's own secret
+// key material, which a watch-only wallet never has — the manual/watched-CAT path (a direct puzzle-
+// hash query, needing no secret) still works exactly as it does for a full custody wallet.
+
+/** The watch wallet's receive address for the ACTIVE index (default 0), unhardened — the public-key
+ * mirror of {@link receiveAddress}. */
+export function receiveAddressFromPublicKey(chia: WatchWasm, masterPublicKeyHex: string, index = 0, prefix = 'xch'): string {
+  const masterPk = masterPublicKeyFromHex(chia, masterPublicKeyHex);
+  try {
+    return deriveWatchAccount(chia, masterPk, index, prefix).address;
+  } finally {
+    masterPk.free?.();
+  }
+}
+
+/**
+ * Scan balances for a watch-only wallet (a master PUBLIC key, no seed) AT ONE active index — the
+ * public-key mirror of {@link scanBalances}. XCH is summed at the unhardened inner puzzle hash only
+ * (there is no hardened chain to see); CATs are ONLY the explicit watched/built-in list (no
+ * hint-based auto-discovery — that needs the seed).
+ */
+export async function scanWatchBalances(
+  chia: ScanWasm & WatchWasm,
+  chain: ChainClient,
+  opts: { masterPublicKeyHex: string; watchedCats?: string[]; activeIndex?: number },
+): Promise<BalanceScan> {
+  const activeIndex = opts.activeIndex ?? 0;
+  const [account] = deriveWatchAccounts(chia, opts.masterPublicKeyHex, { start: activeIndex, count: 1 });
+  const innerPh = account.puzzleHashHex;
+
+  const xch = await chain.totalUnspent([innerPh]);
+
+  const cats: Record<string, number> = {};
+  for (const rawTail of opts.watchedCats ?? []) {
+    const tail = strip0x(rawTail);
+    const assetIdBytes = chia.fromHex(tail);
+    const catPh = strip0x(chia.toHex(chia.catPuzzleHash(assetIdBytes, chia.fromHex(innerPh))));
+    cats[tail] = await chain.totalUnspent([catPh]);
+  }
+
+  return { xch, cats };
 }

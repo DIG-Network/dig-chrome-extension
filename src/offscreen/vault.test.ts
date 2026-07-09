@@ -10,6 +10,7 @@ import { signDappCoinSpends, type WireCoinSpend } from '@/offscreen/dappSign';
 import { buildKeyring, prepareXchSend, signAndBundle, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { TESTNET11_AGG_SIG_ME } from '@/offscreen/signing';
 import { prepareClawbackAction, type ClawbackInfo, type ClawbackWasm } from '@/offscreen/clawback';
+import { masterFromSeed, deriveWalletSecretKeyHex } from '@/lib/keystore/derive';
 import golden from '@/lib/keystore/derive.golden.json';
 
 // Fast, deterministic Argon2 stand-in so the vault's create/unlock cycle doesn't pay the 64 MiB KDF
@@ -422,6 +423,126 @@ describe('Vault balance + address ops', () => {
       await v.handle({ op: 'listDerivedAddresses', count: 5 }, { ...deps, chia, chain: spyChain });
       expect(called).toBe(false);
     });
+  });
+
+  // #96 — watch-only wallets carry NO seed at all; every read derives from a supplied master
+  // PUBLIC key (`watchPublicKeyHex`) instead of the held entropy. No unlock, no password, ever.
+  describe('watch-only (public-key-only) reads (#96)', () => {
+    const masterPkHex = golden.masterPkHex;
+
+    it('getReceiveAddress derives from watchPublicKeyHex with NO wallet held at all', async () => {
+      const res = await new Vault().handle({ op: 'getReceiveAddress', watchPublicKeyHex: masterPkHex }, { ...deps, chia });
+      expect(res.success).toBe(true);
+      expect(res.address).toBe(golden.unhardened[0].address);
+    });
+
+    it('also returns the key fingerprint (a human-shareable id) for a watch-only read', async () => {
+      const res = await new Vault().handle({ op: 'getReceiveAddress', watchPublicKeyHex: masterPkHex }, { ...deps, chia });
+      expect(Number.isInteger(res.fingerprint)).toBe(true);
+    });
+
+    it('respects activeIndex (#165 stays a single active index, even for watch-only)', async () => {
+      const res = await new Vault().handle({ op: 'getReceiveAddress', watchPublicKeyHex: masterPkHex, activeIndex: 1 }, { ...deps, chia });
+      expect(res.address).toBe(golden.unhardened[1].address);
+    });
+
+    it('rejects a malformed watch public key', async () => {
+      const res = await new Vault().handle({ op: 'getReceiveAddress', watchPublicKeyHex: 'not-hex' }, { ...deps, chia });
+      expect(res.success).toBe(false);
+      expect(res.code).toBe('INVALID_PUBLIC_KEY');
+    });
+
+    it('scanBalances derives the watch wallet\'s XCH balance at the active index (unhardened only)', async () => {
+      const res = await new Vault().handle(
+        { op: 'scanBalances', watchPublicKeyHex: masterPkHex, activeIndex: 0 },
+        { ...deps, chia, chain: chain({ [golden.unhardened[0].puzzleHashHex]: 5_000_000_000_000 }) },
+      );
+      expect(res.success).toBe(true);
+      expect(res.balances?.xch).toBe(5_000_000_000_000);
+    });
+
+    it('scanBalances for a watch wallet still honours an explicit watched-CAT list', async () => {
+      const assetId = 'aa'.repeat(32);
+      const chainWithCat: ChainClient = {
+        ...chain({}),
+        totalUnspent: async (phs) => phs.reduce((s) => s + 7, 0), // any CAT-puzzle-hash query resolves to a fixed nonzero amount
+      };
+      const res = await new Vault().handle(
+        { op: 'scanBalances', watchPublicKeyHex: masterPkHex, activeIndex: 0, watchedCats: [assetId] },
+        { ...deps, chia, chain: chainWithCat },
+      );
+      expect(res.balances?.cats[assetId]).toBeGreaterThan(0);
+    });
+
+    it('listDerivedAddresses for a watch wallet returns UNHARDENED-only rows', async () => {
+      const res = await new Vault().handle({ op: 'listDerivedAddresses', watchPublicKeyHex: masterPkHex, count: 3 }, { ...deps, chia });
+      expect(res.success).toBe(true);
+      expect(res.addresses).toHaveLength(3); // unhardened only, not 6 — hardened is not derivable from a pubkey
+      expect(res.addresses!.every((a) => a.scheme === 'unhardened')).toBe(true);
+      expect(res.addresses!.map((a) => a.address)).toEqual(golden.unhardened.slice(0, 3).map((g) => g.address));
+    });
+  });
+});
+
+// #96 — private-key export: derives the RAW (pre-synthetic) account secret key at the active index,
+// for BOTH schemes, requiring the FULL password re-auth (never from the cached unlock window) —
+// exactly the same re-auth discipline `revealPhrase` already uses for the mnemonic.
+describe('Vault exportPrivateKey (#96)', () => {
+  let chia: ScanWasm;
+  beforeAll(async () => {
+    chia = (await loadChiaWasmNode()) as ScanWasm;
+  });
+
+  it('requires password + record like revealPhrase', async () => {
+    const res = await new Vault().handle({ op: 'exportPrivateKey', record: {} as never }, { ...deps, chia });
+    expect(res.code).toBe('BAD_REQUEST');
+  });
+
+  it('exports BOTH schemes\' raw secret keys at the active index, matching deriveWalletSecretKeyHex', async () => {
+    const created = await new Vault().handle({ op: 'createWallet', password: PW }, deps);
+    const res = await new Vault().handle(
+      { op: 'exportPrivateKey', password: PW, record: created.record!, activeIndex: 0 },
+      { ...deps, chia },
+    );
+    expect(res.success).toBe(true);
+    expect(res.privateKeys).toHaveLength(2);
+    const schemes = res.privateKeys!.map((k) => k.scheme).sort();
+    expect(schemes).toEqual(['hardened', 'unhardened']);
+    for (const k of res.privateKeys!) expect(k.hex).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('exports the golden mnemonic\'s known key at index 0 (cross-checked against derive.ts directly)', async () => {
+    const imported = await new Vault().handle({ op: 'importWallet', password: PW, mnemonic: golden.mnemonic }, deps);
+    const res = await new Vault().handle(
+      { op: 'exportPrivateKey', password: PW, record: imported.record!, activeIndex: 0 },
+      { ...deps, chia },
+    );
+    const unhardened = res.privateKeys!.find((k) => k.scheme === 'unhardened')!;
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const master = masterFromSeed(chia, seed);
+    const expected = deriveWalletSecretKeyHex(chia, master, 0, 'unhardened');
+    master.free?.();
+    expect(unhardened.hex).toBe(expected);
+  });
+
+  it('respects the active index', async () => {
+    const created = await new Vault().handle({ op: 'importWallet', password: PW, mnemonic: golden.mnemonic }, deps);
+    const res0 = await new Vault().handle({ op: 'exportPrivateKey', password: PW, record: created.record!, activeIndex: 0 }, { ...deps, chia });
+    const res1 = await new Vault().handle({ op: 'exportPrivateKey', password: PW, record: created.record!, activeIndex: 1 }, { ...deps, chia });
+    expect(res0.privateKeys![0].hex).not.toBe(res1.privateKeys![0].hex);
+  });
+
+  it('fails opaquely on a wrong password (same UNLOCK_FAILED as revealPhrase)', async () => {
+    const created = await new Vault().handle({ op: 'createWallet', password: PW }, deps);
+    const res = await new Vault().handle({ op: 'exportPrivateKey', password: 'wrong', record: created.record! }, { ...deps, chia });
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('UNLOCK_FAILED');
+  });
+
+  it('returns WASM_UNAVAILABLE without chia', async () => {
+    const created = await new Vault().handle({ op: 'createWallet', password: PW }, deps);
+    const res = await new Vault().handle({ op: 'exportPrivateKey', password: PW, record: created.record! }, deps);
+    expect(res.code).toBe('WASM_UNAVAILABLE');
   });
 });
 

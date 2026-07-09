@@ -140,7 +140,52 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'listClawbacks',
   'prepareClawbackAction',
   'confirmClawbackAction',
+  // Private-key export (#96): the raw account secret key at the active index, both schemes.
+  'exportPrivateKey',
+  // Watch-only wallets (#96): add a spend-less wallet from a public key only.
+  'importWatchWallet',
+  // Named accounts (#95): distinct derivation indices under one wallet's seed/key.
+  'addAccount',
+  'renameAccount',
+  'removeAccount',
+  // Encrypted keystore file backup/restore (#115): move a wallet's own DIGWX1 record as a file.
+  'exportWalletBackup',
+  'importWalletBackup',
 ] as const);
+
+/**
+ * Actions that require the ACTIVE wallet's own signing key — refused with `WATCH_ONLY` (§96) before
+ * ever reaching the vault when the active wallet is a spend-less watch-only entry (no secret at
+ * all). Read-only actions (balances/addresses/lists) are deliberately NOT here — they route to the
+ * public-key derivation path instead (`getReceiveAddress`/`scanBalances`/`listDerivedAddresses`
+ * accept `watchPublicKeyHex`); only an action that would need to SIGN or reveal a secret belongs in
+ * this set.
+ */
+export const SIGNING_REQUIRED_ACTIONS = Object.freeze([
+  'revealPhrase',
+  'exportPrivateKey',
+  'prepareSend',
+  'prepareSplit',
+  'prepareCombine',
+  'makeOffer',
+  'prepareTrade',
+  'prepareNftTransfer',
+  'prepareNftBulkTransfer',
+  'prepareNftBulkBurn',
+  'prepareNftMint',
+  'prepareDidCreate',
+  'prepareDidTransfer',
+  'prepareDidProfileUpdate',
+  'prepareNftDidAssign',
+  'prepareNftBulkDidAssign',
+  'prepareClawbackAction',
+] as const);
+
+/** True if `action` requires the active wallet's own secret key (refused `WATCH_ONLY` for a
+ * watch-only active wallet, #96). */
+export function requiresSigningKey(action: unknown): boolean {
+  return typeof action === 'string' && (SIGNING_REQUIRED_ACTIONS as readonly string[]).includes(action);
+}
 
 /** True if `action` is a custody action the SW routes to the offscreen vault. */
 export function isCustodyAction(action: unknown): boolean {
@@ -319,14 +364,30 @@ export function computeLockSnapshot({
   activeWalletId = null,
   unlockExpiry = null,
   activeIndex = 0,
+  isWatchActive = false,
   now,
 }: {
   hasKeystore: boolean;
   activeWalletId?: string | null;
   unlockExpiry?: number | null;
   activeIndex?: number;
+  /**
+   * #96 — true when the ACTIVE wallet is a watch-only entry (imported from a public key only). A
+   * watch-only wallet holds no encrypted keystore at all and is never "locked" (there is nothing to
+   * decrypt), so it reports UNCONDITIONALLY `unlocked` regardless of `hasKeystore`/`unlockExpiry`
+   * (which reflect the SEPARATE `wallet.keystore` mirror, empty while a watch wallet is active).
+   */
+  isWatchActive?: boolean;
   now: number;
 }): LockSnapshot {
+  if (isWatchActive) {
+    return {
+      lockState: LOCK_STATE.UNLOCKED,
+      activeWalletId: activeWalletId || null,
+      unlockExpiry: null,
+      activeIndex: activeIndex || 0,
+    };
+  }
   const lockState: LockStateValue = !hasKeystore
     ? LOCK_STATE.NONE
     : isUnlockExpired(unlockExpiry, now)

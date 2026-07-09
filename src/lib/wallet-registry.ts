@@ -25,6 +25,9 @@ export const WALLETS_KEY = 'wallet.registry';
 /** Maximum label length (a friendly cap for a display name; longer is silently clamped). */
 export const MAX_LABEL_LEN = 40;
 
+/** Maximum account label length (#95 — same friendly cap as a wallet label). */
+export const MAX_ACCOUNT_LABEL_LEN = 40;
+
 /**
  * Upper bound on a persisted active derivation index (#165) — a sanity clamp, not a scan gap limit
  * (the single-active-index model derives exactly ONE index at a time, never a range). Generous
@@ -32,14 +35,33 @@ export const MAX_LABEL_LEN = 40;
  */
 export const MAX_DERIVATION_INDEX = 1_000_000;
 
+/**
+ * One named sub-account (#95) — a user-friendly label BOOKMARKING a single HD derivation index
+ * within one wallet's seed/key. Accounts do NOT introduce a second derivation dimension or a
+ * multi-index scan (#165 stays the single-active-index model intact): switching to an account is
+ * just `setWalletActiveIndex(wallet, account.index)` under a friendly name. Purely local metadata —
+ * never persisted or read by the vault, never touches key material.
+ */
+export interface AccountEntry {
+  /** Stable opaque id (a uuid) — the rename/remove key. */
+  id: string;
+  /** User-facing display name (e.g. "Savings"). */
+  label: string;
+  /** The HD derivation index (§165 semantics — `m/12381/8444/2/{index}`) this account bookmarks. */
+  index: number;
+}
+
 /** One wallet in the registry: identity + display label + its own encrypted record (SW-only). */
 export interface WalletEntry {
   /** Stable opaque id (a uuid) — the switch/rename/remove key and the vault's per-wallet key slot. */
   id: string;
   /** User-facing display name. */
   label: string;
-  /** This wallet's OWN encrypted DIGWX1 record (the only at-rest secret; never decrypted here). */
-  record: Digwx1Record;
+  /**
+   * This wallet's OWN encrypted DIGWX1 record (the only at-rest secret; never decrypted here).
+   * Absent ONLY for a watch-only entry (#96 — {@link kind} `'watch'`), which holds no secret at all.
+   */
+  record?: Digwx1Record;
   /** Creation timestamp (ms). */
   createdAt: number;
   /**
@@ -56,6 +78,26 @@ export interface WalletEntry {
    * entry persisted before #176 has no `previewAddress` field at all).
    */
   previewAddress?: string;
+  /**
+   * Named sub-accounts (#95) under this one seed/key — distinct derivation indices with a friendly
+   * label. Optional so a pre-#95 persisted entry has none yet; {@link ensureAccounts} synthesizes a
+   * single default account (at the wallet's current `activeIndex`) on read.
+   */
+  accounts?: AccountEntry[];
+  /**
+   * `'watch'` for a spend-less watch-only wallet imported from a public key only (#96); absent or
+   * `'custody'` for an ordinary self-custody wallet holding its own encrypted seed. A watch wallet
+   * has NO `record`, NO password, and is never "locked" — every derived view instead reads
+   * {@link watchPublicKeyHex} directly, unhardened-scheme only (public-key derivation cannot reach
+   * the hardened chain).
+   */
+  kind?: 'custody' | 'watch';
+  /** The watch wallet's master/root BLS public key (hex, 48 bytes / 96 hex chars). Present ONLY
+   * when `kind === 'watch'`; every address/balance for this wallet derives from it. */
+  watchPublicKeyHex?: string;
+  /** The watch wallet's Chia-convention key fingerprint (see `publicKeyFingerprint` in derive.ts) —
+   * a short, human-shareable numeric id shown alongside the wallet, cached at import time. */
+  watchFingerprint?: number;
 }
 
 /** Record-FREE wallet metadata for the UI switcher — the encrypted record is deliberately absent. */
@@ -69,6 +111,12 @@ export interface WalletMeta {
   activeIndex: number;
   /** Cached canonical receive address (#176), or absent if never yet cached. */
   previewAddress?: string;
+  /** This wallet's named accounts (#95) — always populated (defaulted via {@link ensureAccounts}). */
+  accounts: AccountEntry[];
+  /** `'watch'` for a spend-less watch-only wallet (#96); absent/`'custody'` for an ordinary wallet. */
+  kind?: 'custody' | 'watch';
+  /** The watch wallet's key fingerprint (#96), when `kind === 'watch'`. */
+  watchFingerprint?: number;
 }
 
 /** The normalized registry snapshot the SW persists: the entries, the active id, and the mirror. */
@@ -138,9 +186,16 @@ export function removeWallet(wallets: WalletEntry[], id: string): WalletEntry[] 
   return wallets.filter((w) => w.id !== id);
 }
 
-/** The active wallet's record (for the legacy `wallet.keystore` mirror): active → first → null. */
+/** The active wallet's record (for the legacy `wallet.keystore` mirror): active → first → null.
+ * `null` for a watch-only active wallet too (it has no record) — callers must not treat that as
+ * "no wallet" on its own; check {@link isWatchOnly} first. */
 export function activeRecord(wallets: WalletEntry[], activeId: string | null): Digwx1Record | null {
   return (findWallet(wallets, activeId) ?? wallets[0])?.record ?? null;
+}
+
+/** True for a spend-less watch-only wallet (#96) — imported from a public key only, no secret. */
+export function isWatchOnly(wallet: WalletEntry | undefined | null): boolean {
+  return wallet?.kind === 'watch';
 }
 
 /** Pick the next active id: keep the preferred id if it still exists, else the first wallet, else null. */
@@ -149,7 +204,9 @@ export function nextActiveId(wallets: WalletEntry[], preferred: string | null): 
   return wallets[0]?.id ?? null;
 }
 
-/** Project the registry to record-FREE metadata for the UI, flagging the active wallet. */
+/** Project the registry to record-FREE metadata for the UI, flagging the active wallet. Every
+ * entry's `accounts` is defaulted via {@link ensureAccounts} so the UI never has to special-case a
+ * pre-#95 wallet with none persisted yet. */
 export function toMeta(wallets: WalletEntry[], activeId: string | null): WalletMeta[] {
   return wallets.map((w) => ({
     id: w.id,
@@ -158,7 +215,83 @@ export function toMeta(wallets: WalletEntry[], activeId: string | null): WalletM
     active: w.id === activeId,
     activeIndex: w.activeIndex ?? 0,
     previewAddress: w.previewAddress,
+    accounts: ensureAccounts(w),
+    ...(w.kind === 'watch' ? { kind: w.kind as 'watch', watchFingerprint: w.watchFingerprint } : {}),
   }));
+}
+
+// ── Named accounts (#95 — distinct derivation indices under one seed) ──
+
+/** The default display name for the Nth account (1-based) — mirrors {@link defaultLabel}. */
+export function defaultAccountLabel(n: number): string {
+  return `Account ${n}`;
+}
+
+/**
+ * A wallet's accounts, defaulting to ONE synthesized entry at its current `activeIndex` when none
+ * are persisted yet (a pre-#95 wallet, or the very first account of a freshly created/imported one).
+ * The synthesized id is DETERMINISTIC (`${wallet.id}-acct-0`) rather than random so repeated reads
+ * (e.g. every `toMeta` call) are stable — a random id would churn the account's identity every poll.
+ */
+export function ensureAccounts(wallet: WalletEntry): AccountEntry[] {
+  if (wallet.accounts && wallet.accounts.length > 0) return wallet.accounts;
+  return [{ id: `${wallet.id}-acct-0`, label: defaultAccountLabel(1), index: wallet.activeIndex ?? 0 }];
+}
+
+/**
+ * Append a new named account to `walletId`, immutably. The new account's index is one above the
+ * HIGHEST index any of the wallet's existing accounts already bookmarks (never just the account
+ * COUNT — an account may have been removed, or a prior account may sit at a high index), so a fresh
+ * account never collides with one still in use. No-op (returns `wallets` unchanged) for an unknown
+ * wallet id.
+ */
+export function addAccount(wallets: WalletEntry[], walletId: string, label?: string): WalletEntry[] {
+  const target = findWallet(wallets, walletId);
+  if (!target) return wallets;
+  const existing = ensureAccounts(target);
+  const nextIndex = Math.max(...existing.map((a) => a.index)) + 1;
+  const account: AccountEntry = {
+    id: crypto.randomUUID(),
+    label: normalizeLabel(label, defaultAccountLabel(existing.length + 1)),
+    index: nextIndex,
+  };
+  return wallets.map((w) => (w.id === walletId ? { ...w, accounts: [...existing, account] } : w));
+}
+
+/** Rename one account immutably (metadata only). No-op for an unknown wallet/account id. */
+export function renameAccount(wallets: WalletEntry[], walletId: string, accountId: string, label: string): WalletEntry[] {
+  return wallets.map((w) => {
+    if (w.id !== walletId) return w;
+    const accounts = ensureAccounts(w).map((a) => (a.id === accountId ? { ...a, label: normalizeLabel(label, a.label) } : a));
+    return { ...w, accounts };
+  });
+}
+
+/**
+ * Remove one account immutably, refusing to drop a wallet's LAST remaining account (returns
+ * `wallets` unchanged — a wallet must always have at least one named account). When the removed
+ * account was the wallet's currently ACTIVE one (its index === `activeIndex`), re-homes
+ * `activeIndex` to the first remaining account so the wallet is never left pointed at a
+ * just-deleted account's index with nothing named there anymore.
+ */
+export function removeAccount(wallets: WalletEntry[], walletId: string, accountId: string): WalletEntry[] {
+  const target = findWallet(wallets, walletId);
+  if (!target) return wallets;
+  const existing = ensureAccounts(target);
+  if (existing.length <= 1) return wallets;
+  const removed = existing.find((a) => a.id === accountId);
+  const accounts = existing.filter((a) => a.id !== accountId);
+  if (!removed || accounts.length === existing.length) return wallets; // accountId not found
+  const wasActive = removed.index === (target.activeIndex ?? 0);
+  return wallets.map((w) =>
+    w.id === walletId ? { ...w, accounts, activeIndex: wasActive ? accounts[0].index : w.activeIndex } : w,
+  );
+}
+
+/** The account (if any) matching the wallet's current `activeIndex`, else `null` — the wallet is
+ * pointed at an arbitrary index (via the index navigator) that no named account bookmarks. */
+export function activeAccountId(wallet: WalletEntry): string | null {
+  return ensureAccounts(wallet).find((a) => a.index === (wallet.activeIndex ?? 0))?.id ?? null;
 }
 
 /** Set one wallet's cached preview address immutably (#176 — other wallets untouched). */

@@ -1,22 +1,25 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { scanBalances, receiveAddress, type ScanWasm } from './scan';
+import { scanBalances, receiveAddress, scanWatchBalances, receiveAddressFromPublicKey, type ScanWasm } from './scan';
 import { buildKeyring, type SendFlowWasm } from './sendFlow';
 import { type SigningWasm } from './signing';
 import { DEFAULT_COINSET_URL, COINSET_BATCH, type ChainClient } from './chain';
 import { mnemonicToSeed } from '@/lib/keystore/bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
 import { simChain, issueCatTo, transferCatHinted, type CatSimWasm } from '@/test/catSim';
+import type { WatchWasm } from '@/lib/keystore/derive';
 import golden from '@/lib/keystore/derive.golden.json';
 
 // A CAT asset id (TAIL) — any valid 32-byte hex; catPuzzleHash is deterministic over it.
 const TAIL = 'a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81';
 const toHex = (u: Uint8Array): string => Array.from(u, (b) => b.toString(16).padStart(2, '0')).join('');
 
-let chia: ScanWasm;
+// The real wasm module also satisfies WatchWasm (#96 public-key derivation) beyond ScanWasm's own
+// narrower surface — widened once here rather than cast at every watch-only call site below.
+let chia: ScanWasm & WatchWasm;
 let seed: Uint8Array;
 
 beforeAll(async () => {
-  chia = (await loadChiaWasmNode()) as ScanWasm;
+  chia = (await loadChiaWasmNode()) as ScanWasm & WatchWasm;
   seed = await mnemonicToSeed(golden.mnemonic);
 });
 
@@ -130,5 +133,51 @@ describe('scanBalances (single active index, #165)', () => {
   it('exposes the coinset defaults', () => {
     expect(DEFAULT_COINSET_URL).toMatch(/coinset/);
     expect(COINSET_BATCH).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * #96 — watch-only wallets scan from a master PUBLIC key only: UNHARDENED addresses (the only chain
+ * public-key derivation can reach) plus the explicit watched-CAT list. There is deliberately no
+ * hint-based CAT auto-discovery here (that reconstruction needs the seed) — see the module doc.
+ */
+describe('scanWatchBalances / receiveAddressFromPublicKey (#96 — watch-only)', () => {
+  it('derives the active-index UNHARDENED receive address from the public key alone', () => {
+    expect(receiveAddressFromPublicKey(chia, golden.masterPkHex, 0)).toBe(golden.unhardened[0].address);
+    expect(receiveAddressFromPublicKey(chia, golden.masterPkHex, 1)).toBe(golden.unhardened[1].address);
+  });
+
+  it('sums UNHARDENED-only XCH at the active index (no hardened chain to see)', async () => {
+    const map = {
+      [golden.unhardened[0].puzzleHashHex]: 5_000_000_000_000,
+      [golden.hardened[0].puzzleHashHex]: 3_000_000_000_000, // must be invisible — not derivable from a pubkey
+    };
+    const res = await scanWatchBalances(chia, fakeChain(map), { masterPublicKeyHex: golden.masterPkHex, activeIndex: 0 });
+    expect(res.xch).toBe(5_000_000_000_000);
+  });
+
+  it('honours the active index (#165 — single active index, watch-only included)', async () => {
+    const map = { [golden.unhardened[1].puzzleHashHex]: 2_000_000_000_000 };
+    const atIndex0 = await scanWatchBalances(chia, fakeChain(map), { masterPublicKeyHex: golden.masterPkHex, activeIndex: 0 });
+    const atIndex1 = await scanWatchBalances(chia, fakeChain(map), { masterPublicKeyHex: golden.masterPkHex, activeIndex: 1 });
+    expect(atIndex0.xch).toBe(0);
+    expect(atIndex1.xch).toBe(2_000_000_000_000);
+  });
+
+  it('still resolves an explicit watched CAT (no seed needed for a direct puzzle-hash query)', async () => {
+    const innerPh0 = golden.unhardened[0].puzzleHashHex;
+    const catPh0 = toHex(chia.catPuzzleHash(chia.fromHex(TAIL), chia.fromHex(innerPh0)));
+    const res = await scanWatchBalances(chia, fakeChain({ [catPh0]: 1234 }), {
+      masterPublicKeyHex: golden.masterPkHex,
+      watchedCats: [TAIL],
+      activeIndex: 0,
+    });
+    expect(res.cats[TAIL]).toBe(1234);
+  });
+
+  it('returns zeros for an empty watch wallet', async () => {
+    const res = await scanWatchBalances(chia, fakeChain({}), { masterPublicKeyHex: golden.masterPkHex, activeIndex: 0 });
+    expect(res.xch).toBe(0);
+    expect(res.cats).toEqual({});
   });
 });

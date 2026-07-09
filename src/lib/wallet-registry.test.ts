@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   WALLETS_KEY,
   MAX_DERIVATION_INDEX,
+  MAX_ACCOUNT_LABEL_LEN,
   migrateRegistry,
   addWallet,
   renameWallet,
@@ -16,6 +17,13 @@ import {
   setWalletActiveIndex,
   setWalletPreviewAddress,
   shouldCachePreviewAddress,
+  ensureAccounts,
+  defaultAccountLabel,
+  addAccount,
+  renameAccount,
+  removeAccount,
+  activeAccountId,
+  isWatchOnly,
   type WalletEntry,
 } from '@/lib/wallet-registry';
 import type { Digwx1Record } from '@/lib/keystore/digwx1';
@@ -102,11 +110,106 @@ describe('wallet-registry pure helpers (#90)', () => {
     const w = [entry('a', 'A', 1, 0), entry('b', 'B', 2, 7)];
     const meta = toMeta(w, 'b');
     expect(meta).toEqual([
-      { id: 'a', label: 'A', createdAt: 1, active: false, activeIndex: 0 },
-      { id: 'b', label: 'B', createdAt: 2, active: true, activeIndex: 7 },
+      { id: 'a', label: 'A', createdAt: 1, active: false, activeIndex: 0, accounts: [{ id: 'a-acct-0', label: 'Account 1', index: 0 }] },
+      { id: 'b', label: 'B', createdAt: 2, active: true, activeIndex: 7, accounts: [{ id: 'b-acct-0', label: 'Account 1', index: 7 }] },
     ]);
     // Metadata must NEVER carry the encrypted record.
     expect(meta[0]).not.toHaveProperty('record');
+  });
+});
+
+describe('accounts (#95 — named derivation accounts under one seed)', () => {
+  it('ensureAccounts synthesizes ONE default account at the wallet\'s current activeIndex when none exist', () => {
+    const w = entry('a', 'A', 1, 3);
+    const accounts = ensureAccounts(w);
+    expect(accounts).toEqual([{ id: expect.any(String), label: 'Account 1', index: 3 }]);
+  });
+
+  it('ensureAccounts passes an existing accounts array through untouched', () => {
+    const w = { ...entry('a', 'A'), accounts: [{ id: 'x', label: 'Savings', index: 0 }] };
+    expect(ensureAccounts(w)).toEqual([{ id: 'x', label: 'Savings', index: 0 }]);
+  });
+
+  it('defaultAccountLabel names the Nth account', () => {
+    expect(defaultAccountLabel(1)).toBe('Account 1');
+    expect(defaultAccountLabel(2)).toBe('Account 2');
+  });
+
+  it('addAccount appends a new account at the next unused index above the wallet\'s existing accounts', () => {
+    const w = [{ ...entry('a', 'A'), accounts: [{ id: 'x', label: 'Account 1', index: 0 }] }];
+    const r = addAccount(w, 'a');
+    const accounts = findWallet(r, 'a')?.accounts ?? [];
+    expect(accounts).toHaveLength(2);
+    expect(accounts[1]).toMatchObject({ label: 'Account 2', index: 1 });
+  });
+
+  it('addAccount picks an index above the HIGHEST existing account index, not just the count', () => {
+    const w = [{ ...entry('a', 'A'), accounts: [{ id: 'x', label: 'One', index: 0 }, { id: 'y', label: 'Five', index: 5 }] }];
+    const r = addAccount(w, 'a');
+    const accounts = findWallet(r, 'a')?.accounts ?? [];
+    expect(accounts[2].index).toBe(6);
+  });
+
+  it('addAccount accepts an explicit label, normalized', () => {
+    const w = [{ ...entry('a', 'A'), accounts: [{ id: 'x', label: 'Account 1', index: 0 }] }];
+    const r = addAccount(w, 'a', '  Savings  ');
+    expect(findWallet(r, 'a')?.accounts?.[1].label).toBe('Savings');
+  });
+
+  it('addAccount on an unknown wallet id is a no-op', () => {
+    const w = [entry('a', 'A')];
+    expect(addAccount(w, 'zzz')).toEqual(w);
+  });
+
+  it('renameAccount updates only the target account, immutably', () => {
+    const w = [{ ...entry('a', 'A'), accounts: [{ id: 'x', label: 'Account 1', index: 0 }, { id: 'y', label: 'Account 2', index: 1 }] }];
+    const r = renameAccount(w, 'a', 'y', 'Trading');
+    expect(findWallet(r, 'a')?.accounts?.find((acc) => acc.id === 'y')?.label).toBe('Trading');
+    expect(findWallet(r, 'a')?.accounts?.find((acc) => acc.id === 'x')?.label).toBe('Account 1');
+  });
+
+  it('removeAccount drops the target account, immutably, refusing the last one', () => {
+    const w = [{ ...entry('a', 'A'), accounts: [{ id: 'x', label: 'Account 1', index: 0 }, { id: 'y', label: 'Account 2', index: 1 }] }];
+    const r = removeAccount(w, 'a', 'y');
+    expect(findWallet(r, 'a')?.accounts).toEqual([{ id: 'x', label: 'Account 1', index: 0 }]);
+
+    const single = [{ ...entry('a', 'A'), accounts: [{ id: 'x', label: 'Account 1', index: 0 }] }];
+    expect(removeAccount(single, 'a', 'x')).toEqual(single); // last account survives, no-op
+  });
+
+  it('removeAccount re-homes the wallet activeIndex to a remaining account when the ACTIVE account is removed', () => {
+    const w = [{ ...entry('a', 'A', 1, 5), accounts: [{ id: 'x', label: 'Account 1', index: 0 }, { id: 'y', label: 'Account 2', index: 5 }] }];
+    const r = removeAccount(w, 'a', 'y');
+    expect(findWallet(r, 'a')?.activeIndex).toBe(0);
+  });
+
+  it('removeAccount leaves activeIndex untouched when a NON-active account is removed', () => {
+    const w = [{ ...entry('a', 'A', 1, 5), accounts: [{ id: 'x', label: 'Account 1', index: 0 }, { id: 'y', label: 'Account 2', index: 5 }] }];
+    const r = removeAccount(w, 'a', 'x');
+    expect(findWallet(r, 'a')?.activeIndex).toBe(5);
+  });
+
+  it('activeAccountId finds the account matching the wallet\'s activeIndex, else null', () => {
+    const w = { ...entry('a', 'A', 1, 5), accounts: [{ id: 'x', label: 'Account 1', index: 0 }, { id: 'y', label: 'Account 2', index: 5 }] };
+    expect(activeAccountId(w)).toBe('y');
+    expect(activeAccountId({ ...w, activeIndex: 99 })).toBeNull();
+  });
+
+  it('MAX_ACCOUNT_LABEL_LEN clamps a too-long account label', () => {
+    const w = [{ ...entry('a', 'A'), accounts: [{ id: 'x', label: 'Account 1', index: 0 }] }];
+    const r = addAccount(w, 'a', 'x'.repeat(200));
+    expect(findWallet(r, 'a')?.accounts?.[1].label).toHaveLength(MAX_ACCOUNT_LABEL_LEN);
+  });
+});
+
+describe('watch-only wallets (#96)', () => {
+  it('isWatchOnly is false for an ordinary custody wallet (no kind field, pre-#96)', () => {
+    expect(isWatchOnly(entry('a', 'A'))).toBe(false);
+  });
+
+  it('isWatchOnly is true for a wallet explicitly marked kind: "watch"', () => {
+    const w: WalletEntry = { ...entry('a', 'A'), kind: 'watch', watchPublicKeyHex: 'aa'.repeat(48), record: undefined };
+    expect(isWatchOnly(w)).toBe(true);
   });
 });
 
