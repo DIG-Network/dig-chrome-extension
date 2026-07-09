@@ -13,12 +13,15 @@ import { existsSync, readFileSync } from 'node:fs';
  * Proves, on a fresh profile with NO wallet:
  *   1. the popup (compact) shows the no-wallet CTA card that opens fullscreen onboarding;
  *   2. the fullscreen welcome offers all four entry paths (create / import / restore / watch);
- *   3. IMPORT lands unlocked end-to-end — paste the golden BIP39 phrase + a password → the gate
- *      proceeds to the real wallet body (`custody-wallet`);
- *   4. CREATE runs the REAL vault: welcome → set password → the recovery phrase is generated +
- *      revealed → the confirm gate rejects a wrong word (`confirm-error`) — a genuine end-to-end
- *      create through the verification gate. (The correct-word confirm isn't automatable: the phrase
- *      renders inside a CLOSED shadow root by design, so it can't be DOM-scraped.)
+ *   3. IMPORT lands unlocked end-to-end — through the #79 phishing-education nudge, then paste the
+ *      golden BIP39 phrase + a password → the gate proceeds to the real wallet body
+ *      (`custody-wallet`), skipping the backup reminder (an imported phrase is already backed up);
+ *   4. CREATE runs the REAL vault: welcome → the #79 nudge → set password → the recovery phrase is
+ *      generated + revealed → the confirm gate rejects a wrong word (`confirm-error`) — a genuine
+ *      end-to-end create through the verification gate. (The correct-word confirm isn't
+ *      automatable: the phrase renders inside a CLOSED shadow root by design, so it can't be
+ *      DOM-scraped — the backup-reminder step that would follow a correct confirm is unit-tested
+ *      instead, `onboardingSecurity.test.tsx`.)
  *
  * Each onboarding case uses its OWN fresh persistent context so no earlier wallet leaks in.
  *
@@ -92,6 +95,11 @@ test('IMPORT the golden phrase → the gate proceeds to the real wallet (unlocke
   try {
     const page = await openFullscreenOnboarding(context, extensionId);
     await page.getByTestId('onboarding-import').click();
+    // #79 — the phishing-education nudge appears before the import form.
+    await expect(page.getByTestId('onboarding-security')).toBeVisible();
+    await page.waitForTimeout(120);
+    await page.screenshot({ path: 'e2e/__screenshots__/onboarding-security-nudge-fullscreen.png' });
+    await page.getByTestId('onboarding-security-continue').click();
     await page.getByTestId('import-phrase').fill(GOLDEN.mnemonic);
     await page.getByTestId('onboarding-password').fill(PASSWORD);
     await page.getByTestId('onboarding-password-confirm').fill(PASSWORD);
@@ -111,6 +119,9 @@ test('CREATE runs the real vault: password → recovery reveal → confirm gate 
   try {
     const page = await openFullscreenOnboarding(context, extensionId);
     await page.getByTestId('onboarding-create').click();
+    // #79 — the SAME phishing-education nudge appears before the create form.
+    await expect(page.getByTestId('onboarding-security')).toBeVisible();
+    await page.getByTestId('onboarding-security-continue').click();
     await page.getByTestId('onboarding-password').fill(PASSWORD);
     await page.getByTestId('onboarding-password-confirm').fill(PASSWORD);
     await page.getByTestId('onboarding-submit').click();
@@ -131,6 +142,46 @@ test('CREATE runs the real vault: password → recovery reveal → confirm gate 
     await page.getByTestId('confirm-submit').click();
     await expect(page.getByTestId('confirm-error')).toBeVisible();
     await expect(page.getByTestId('custody-wallet')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('CREATE with the CORRECT confirm word reaches the #79 backup reminder before the wallet', async () => {
+  const { context, extensionId } = await freshExtension();
+  try {
+    const page = await openFullscreenOnboarding(context, extensionId);
+    await page.getByTestId('onboarding-create').click();
+    await page.getByTestId('onboarding-security-continue').click();
+    await page.getByTestId('onboarding-password').fill(PASSWORD);
+    await page.getByTestId('onboarding-password-confirm').fill(PASSWORD);
+    await page.getByTestId('onboarding-submit').click();
+    await expect(page.getByTestId('recovery-reveal')).toBeVisible({ timeout: 30_000 });
+
+    // The phrase renders behind a closed shadow root (un-scrapable by design, §5.6) — fetch the
+    // SAME real phrase via `revealPhrase` (the officially-supported export path) so the test can
+    // answer the confirm gate with the actual correct word, never a DOM-scrape workaround.
+    const revealed = await page.evaluate(
+      (password) => new Promise<{ mnemonic?: string }>((res) => chrome.runtime.sendMessage({ action: 'revealPhrase', password }, res as (r: unknown) => void)),
+      PASSWORD,
+    );
+    const words = (revealed.mnemonic ?? '').trim().split(/\s+/);
+    expect(words.length).toBe(24);
+
+    await page.getByTestId('reveal-continue').click();
+    const promptText = (await page.getByTestId('onboarding-confirm-form').locator('.dig-field span').first().textContent()) ?? '';
+    const n = Number(promptText.match(/#(\d+)/)?.[1]);
+    expect(n).toBeGreaterThan(0);
+    await page.getByTestId('confirm-word').fill(words[n - 1]);
+    await page.getByTestId('confirm-submit').click();
+
+    await expect(page.getByTestId('onboarding-backup-reminder')).toBeVisible();
+    await expect(page.getByTestId('custody-wallet')).toHaveCount(0); // not finished yet
+    await page.waitForTimeout(120);
+    await page.screenshot({ path: 'e2e/__screenshots__/onboarding-backup-reminder-fullscreen.png' });
+
+    await page.getByTestId('onboarding-backup-reminder-finish').click();
+    await expect(page.getByTestId('custody-wallet')).toBeVisible({ timeout: 30_000 });
   } finally {
     await context.close();
   }
