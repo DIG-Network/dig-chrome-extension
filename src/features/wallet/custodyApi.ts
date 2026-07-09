@@ -5,7 +5,8 @@ import type { LockState } from '@/features/wallet/walletSlice';
 import type { LocalActivityEntry } from '@/lib/activity-log';
 import type { OfferLogEntry } from '@/lib/offer-log';
 import type { DexieOfferSummary } from '@/lib/dexie';
-import type { WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
+import type { WireOfferLeg, WireOfferSummary, WireCatIssuanceParams } from '@/offscreen/vault';
+import type { CatIssuanceSummary } from '@/offscreen/catIssuance';
 import type { AccountEntry, WalletMeta } from '@/lib/wallet-registry';
 
 /** The record-free registry snapshot the switcher reads (#90): every wallet's metadata + the active id. */
@@ -410,6 +411,18 @@ export const custodyApi = api.injectEndpoints({
       providesTags: ['Offers'],
     }),
 
+    // ── CAT issuance (#97) — mint a brand-new CAT; fullscreen-only advanced op ──
+    // Build (not broadcast) an issuance → held under a pending id + the new asset id + summary to
+    // approve. Broadcast via confirmCatIssuance.
+    prepareCatIssuance: build.mutation<{ pendingId: string; assetId: string; catIssuanceSummary: CatIssuanceSummary }, { catIssuance: WireCatIssuanceParams }>({
+      query: (arg) => ({ action: ACTIONS.prepareCatIssuance, ...arg }),
+    }),
+    // Sign + BROADCAST a prepared CAT issuance (the approved step). Invalidates balances/activity.
+    confirmCatIssuance: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
+      query: (arg) => ({ action: ACTIONS.confirmCatIssuance, ...arg }),
+      invalidatesTags: ['Balances', 'Activity', 'Coins'],
+    }),
+
     // ── dexie marketplace integration (#102) — NOT custody actions (no wallet key involved) ──
     // POST an already-built offer to dexie so other wallets can discover it.
     postOfferToDexie: build.mutation<{ dexieId: string; known: boolean }, { offer: string }>({
@@ -467,4 +480,6 @@ export const {
   usePostOfferToDexieMutation,
   useBrowseDexieOffersQuery,
   useResolveDexieOfferMutation,
+  usePrepareCatIssuanceMutation,
+  useConfirmCatIssuanceMutation,
 } = custodyApi;

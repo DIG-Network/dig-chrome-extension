@@ -1591,6 +1591,22 @@ async function handleCustodyActionInner(message) {
       }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft mint failed' };
     }
+    case ACTIONS.prepareCatIssuance: {
+      // Build (not broadcast) a brand-new CAT issuance (#97): single fixed-supply or multi
+      // signature-gated TAIL; held for approval.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareCatIssuance', catIssuance: message.catIssuance, activeIndex: await activeDerivationIndex(), coinsetUrl });
+    }
+    case ACTIONS.confirmCatIssuance: {
+      // The ONLY place a prepared CAT issuance is broadcast — reuses the vault confirmSend path.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('mint', res.activityHint, res.spentCoinId);
+      }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'cat issuance failed' };
+    }
     case ACTIONS.listDids: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       return callVault({ op: 'listDids', activeIndex: await activeDerivationIndex(), coinsetUrl });

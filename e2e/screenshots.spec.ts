@@ -56,6 +56,17 @@ const STUB = `
       offered: [{ asset: { kind: 'xch' }, amount: '100000000000' }],
       requested: [{ asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: '250', toPuzzleHashHex: 'ab' }],
     } };
+    // CAT issuance (#97): a brand-new token's decoded (tamper-resistant) pre-sign summary + its
+    // freshly-minted asset id, echoing the mode/amount/fee the form actually submitted.
+    if (a === 'prepareCatIssuance') return { pendingId: 'issue-pending-1', assetId: 'ab'.repeat(32), catIssuanceSummary: {
+      assetId: 'ab'.repeat(32),
+      mode: (msg.catIssuance && msg.catIssuance.mode) || 'single',
+      amount: (msg.catIssuance && msg.catIssuance.amount) || '1000000000',
+      fee: (msg.catIssuance && msg.catIssuance.fee) || '0',
+      coinCount: 1,
+    } };
+    if (a === 'confirmCatIssuance') return { spentCoinId: 'issue-coin-1' };
+    if (a === 'sendStatus') return { confirmed: true };
     if (a === 'getDigNodeStatus') return { reachable: true, base: 'https://dig.local' };
     if (a === 'getControlStatus') return { mode: 'manage', localNode: true, base: 'https://dig.local', status: null, controlMethods: [] };
     if (a === 'getConnection') return { connected: false };
@@ -474,4 +485,49 @@ test('popup app-view blocked (embed fails → open-in-tab note)', async ({ page 
   await page.getByTestId('app-tile-chia-offer').click();
   await page.getByTestId('appview-blocked').waitFor({ timeout: 9000 });
   await page.screenshot({ path: 'e2e/__screenshots__/popup-appview-blocked.png' });
+});
+
+// CAT issuance (#97): a destructive/advanced spend-construction op — fullscreen-ONLY (§6.4), the
+// popup never offers the "Issue" tab at all (no view-only stub — nothing pending to view before a
+// mint is built).
+test('popup trade never shows the Issue tab (advanced → fullscreen-only)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet/trade');
+  await page.getByTestId('trade-make-form').waitFor();
+  await expect(page.getByTestId('trade-mode-issue')).toHaveCount(0);
+});
+
+test('fullscreen trade — Issue tab (CAT issuance form)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-issue').click();
+  await page.getByTestId('issue-form').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-issue-form.png' });
+});
+
+test('fullscreen trade — Issue review shows the decoded summary (supply + asset id + fee)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-issue').click();
+  await page.getByTestId('issue-supply').fill('1000000');
+  await page.getByTestId('issue-mode-multi').click();
+  await page.getByTestId('issue-review').click();
+  await page.getByTestId('issue-review-panel').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-issue-review.png' });
+});
+
+test('fullscreen trade — Issue confirm → confirmed (the new asset id is shown + copyable)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-issue').click();
+  await page.getByTestId('issue-supply').fill('1000000');
+  await page.getByTestId('issue-review').click();
+  await page.getByTestId('issue-confirm').waitFor();
+  await page.getByTestId('issue-confirm').click();
+  await page.getByTestId('issue-confirmed').waitFor();
+  await page.getByTestId('issue-confirmed-asset-id').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-issue-confirmed.png' });
 });

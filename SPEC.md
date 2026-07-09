@@ -648,6 +648,11 @@ wallet's existing encrypted DIGWX1 record as a downloadable JSON file (§18.21) 
 it either way; restoring lands the wallet LOCKED (no password was ever supplied) so the normal unlock
 screen gates it. Purely additive — no existing action/shape changed.
 
+`MESSAGE_PROTOCOL_VERSION` `28` (#97 CAT issuance) added `prepareCatIssuance` / `confirmCatIssuance`
+(§18.22) — mint a brand-new CAT (single fixed-supply genesis-by-coin-id TAIL, or multi
+signature-gated TAIL curried with the wallet's own synthetic key). `confirmCatIssuance` reuses the
+vault's existing `confirmSend` broadcast path. Purely additive — no existing action/shape changed.
+
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
 
@@ -2808,3 +2813,40 @@ import, so this feature never touches the wallet's secret key.
   "Restore from backup file" — taking a file picker (`<input type="file">`, read via `.text()`) next
   to "Create new" and "Import from recovery phrase". Both are fullscreen-only (§2.1), alongside the
   other advanced/security-sensitive onboarding paths. Four states + react-intl across the 14 locales.
+
+### 18.22 CAT issuance / minting (#97)
+
+Mint a BRAND-NEW CAT (create its asset id for the first time) from the wallet's own coins, via the
+`chia-wallet-sdk-wasm` `Action` system already used by NFT mint (§18.11) — no new wasm surface.
+`prepareCatIssuance` (§7) builds the spend and holds it under a pending id; `confirmCatIssuance`
+signs + broadcasts it, reusing the vault's shared `confirmSend` path exactly like an NFT mint.
+
+- **Two issuance modes** (`mode`, request field on `catIssuance`):
+  - `'single'` (default) — `Action.singleIssueCat(undefined, amount)`: a genesis-by-coin-id TAIL
+    bound to one specific funding coin. Fixed supply from the moment of mint; this asset id can
+    NEVER be re-minted, by anyone, under any circumstance.
+  - `'multi'` — `Action.issueCat(tailSpend, undefined, amount)` with a hand-curried TAIL: the
+    standard "everything with signature" TAIL (`Clvm.everythingWithSignature()`), curried with the
+    wallet's OWN synthetic public key at the active index. Only that same key can ever authorize a
+    future re-mint/melt of this asset id (via `Action.runTail` — not yet exposed as its own action;
+    a tracked follow-up). The TAIL's `AGG_SIG_ME` condition is signed through the SAME generic
+    `signing.ts` machinery every other spend uses — no bespoke signing path.
+- **Supply + change routing.** The newly-minted CAT and any XCH change both auto-route to the
+  active index's own p2 puzzle hash (the `Spends` driver's default for an unrouted new asset — the
+  same behavior `Action.mintNft` relies on, §18.11). The minted asset id is read back from
+  `FinishedSpends.spend()`'s `Outputs.cats()`/`cat(id)` — the wasm's OWN decode of what it just
+  built, independent of any hand tree-hash math on this side.
+- **UI (fullscreen-only, §6.4).** A `Trade` tab, "Issue" — a plain-language form (whole-token total
+  supply at the ecosystem's standard 3-decimal CAT convention, §18.9's `CAT_DECIMALS` — issuance
+  type toggle, optional network fee) → a pre-sign review decoded FROM the built spend (supply, mode,
+  the new asset id, fee) → confirm (sign + broadcast) → poll to confirmed/retry (`sendStatus`, an
+  issuance is a coin spend like any other). The popup omits the tab entirely — an issuance is a
+  destructive/advanced spend-construction op with nothing pending to view before it is built.
+- **Registering the new token.** The minted asset id is shown (+ copyable) on the confirmed screen;
+  adding it to "Manage tokens" (§18.9) so it renders with a friendly name/ticker is a separate,
+  already-existing "add a custom token" action — issuance does not auto-register it (a user may
+  choose never to add a ticker for a token they only ever hold at the raw asset-id level).
+- **Simulator-proven.** `catIssuance.test.ts` mints both modes against the wasm Simulator, asserts
+  the resulting asset id is well-formed and — for the single-issuance case — that the wallet's own
+  CAT-lineage reconstruction (§18.9's `reconstructCats`) finds the minted coin post-broadcast. Never
+  broadcasts to mainnet in CI.

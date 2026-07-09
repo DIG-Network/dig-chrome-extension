@@ -206,8 +206,13 @@ import { DIG_ERR } from './error-codes';
  * schemes) behind the same full-password re-auth as `revealPhrase`. `exportWalletBackup`/
  * `importWalletBackup` move a wallet's existing encrypted DIGWX1 record as a downloadable file
  * (#115) — the SW never decrypts it either way.
+ *
+ * v28 (#97 CAT issuance): added `prepareCatIssuance` (build + hold a brand-new CAT issuance — single
+ * fixed-supply genesis-by-coin-id TAIL, or multi signature-gated TAIL curried with the wallet's own
+ * key — for approval) and `confirmCatIssuance` (sign + broadcast the approved issuance — reuses the
+ * vault's `confirmSend` broadcast path).
  */
-export const MESSAGE_PROTOCOL_VERSION = 27;
+export const MESSAGE_PROTOCOL_VERSION = 28;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -301,6 +306,9 @@ export const ACTIONS = Object.freeze({
   // ── NFT minting (#92): build a new NFT + broadcast (confirm reuses the confirmSend path) ──
   prepareNftMint: 'prepareNftMint',
   confirmNftMint: 'confirmNftMint',
+  // ── CAT issuance (#97): mint a brand-new CAT + broadcast (confirm reuses the confirmSend path) ──
+  prepareCatIssuance: 'prepareCatIssuance',
+  confirmCatIssuance: 'confirmCatIssuance',
   // ── DID management (#93): create/list/transfer/profile a self-custody identity (confirm reuses confirmSend) ──
   listDids: 'listDids',
   prepareDidCreate: 'prepareDidCreate',
@@ -678,6 +686,16 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.confirmNftMint]: {
     summary: 'Sign + BROADCAST a previously-prepared NFT mint (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareCatIssuance]: {
+    summary: "Build (not sign/broadcast) the ISSUANCE of a brand-new CAT owned by the wallet (#97) — mode:'single' (default) mints a fixed-supply genesis-by-coin-id TAIL that can never be re-minted; mode:'multi' mints an \"everything with signature\" TAIL curried with the wallet's OWN synthetic public key at the active index, so only it can authorize a future re-mint/melt. The minted supply + any XCH change return to the wallet. Held under a pending id; returns the decoded (tamper-resistant) summary + the new asset id to approve. Broadcast via confirmCatIssuance.",
+    request: '{ action, catIssuance:{ amount:string /* mojos, base units */, mode?:\'single\'|\'multi\', fee?:string } }',
+    response: '{ pendingId:string, assetId:string, catIssuanceSummary:{ assetId, mode, amount, fee, coinCount } } | { success:false, code:\'BAD_REQUEST\'|\'NO_XCH_COINS\'|..., message }',
+  },
+  [ACTIONS.confirmCatIssuance]: {
+    summary: 'Sign + BROADCAST a previously-prepared CAT issuance (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
   },
