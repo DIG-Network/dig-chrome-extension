@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { createStore } from '@/app/store';
-import { setWalletView, setAdvanced } from '@/features/ui/uiSlice';
+import { setWalletView } from '@/features/ui/uiSlice';
 import { CustodyWallet } from '@/features/wallet/custody/CustodyWallet';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
@@ -101,36 +101,28 @@ describe('CustodyWallet', () => {
     expect(await screen.findByTestId('custody-trade')).toBeInTheDocument();
   });
 
-  it('hides the chain-node, auto-lock, and derived-address settings by default (everyday tier)', async () => {
+  it('hides the chain-node, network, auto-lock, and derived-address settings in the popup (§145)', async () => {
     mockSw((m) => (m.action === 'getReceiveAddress' ? { address: 'xch1receive' } : { balances: { xch: 0, cats: {} } }));
-    renderWithProviders(<CustodyWallet />);
+    renderWithProviders(<CustodyWallet full={false} />);
     await screen.findByTestId('custody-wallet');
     expect(screen.queryByTestId('chain-node-setting')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('network-setting')).not.toBeInTheDocument();
     expect(screen.queryByTestId('auto-lock-setting')).not.toBeInTheDocument();
     expect(screen.queryByTestId('derived-addresses')).not.toBeInTheDocument();
   });
 
-  it('shows the chain-node, auto-lock, and derived-address list in advanced mode (#106)', async () => {
+  it('shows the chain-node, network, auto-lock, and derived-address list on fullscreen (§109, §145, #106, #108)', async () => {
     mockSw((m) => {
       if (m.action === 'getReceiveAddress') return { address: 'xch1receive' };
       if (m.action === 'listDerivedAddresses') return { addresses: [{ index: 0, scheme: 'unhardened', address: 'xch1derived' }] };
       return { balances: { xch: 0, cats: {} } };
     });
-    const store = createStore();
-    store.dispatch(setAdvanced(true));
-    renderWithProviders(<CustodyWallet />, { store });
+    renderWithProviders(<CustodyWallet full />);
     expect(await screen.findByTestId('chain-node-setting')).toBeInTheDocument();
+    expect(await screen.findByTestId('network-setting')).toBeInTheDocument();
     expect(await screen.findByTestId('auto-lock-setting')).toBeInTheDocument();
     expect(await screen.findByTestId('derived-addresses')).toBeInTheDocument();
     expect(await screen.findByTestId('derived-address-unhardened-0')).toBeInTheDocument();
-  });
-
-  it('shows the network switcher in advanced mode (#108)', async () => {
-    mockSw((m) => (m.action === 'getReceiveAddress' ? { address: 'xch1receive' } : { balances: { xch: 0, cats: {} } }));
-    const store = createStore();
-    store.dispatch(setAdvanced(true));
-    renderWithProviders(<CustodyWallet />, { store });
-    expect(await screen.findByTestId('network-setting')).toBeInTheDocument();
   });
 });
 

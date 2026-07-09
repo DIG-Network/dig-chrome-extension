@@ -9,7 +9,7 @@ function emitChange(changes: Record<string, { newValue?: unknown }>, area = 'loc
 
 describe('installStorageSync', () => {
   it('hydrates settings on install and follows later changes', async () => {
-    await chrome.storage.local.set({ 'wallet.settings': { locale: 'fr', advanced: true } });
+    await chrome.storage.local.set({ 'wallet.settings': { locale: 'fr' } });
     const store = createStore();
     const cleanup = await installStorageSync(store);
     expect(store.getState().ui.locale).toBe('fr');

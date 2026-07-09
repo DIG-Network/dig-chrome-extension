@@ -115,3 +115,24 @@ test('custom upstream RPC endpoint persists and normalizes, and resets to the de
   await expect.poll(() => readStorage<string>(page, 'digRpcEndpoint')).toBe('https://rpc.dig.net/');
   await page.close();
 });
+
+/**
+ * #212 — the settings page carries the same §6.7 build attribution as the main shell: a real
+ * (non-placeholder) semver in the on-page footer + `<meta name="app-version">` + the
+ * `window.__APP_VERSION__` global, and the shared `<BugReportButton>` mounted so a user filing an
+ * options-page bug report gets the standard screenshot/console-capture flow.
+ */
+test('#212 exposes the real app version (footer + meta + window global) and mounts the bug-report widget', async () => {
+  const page = await openOptions();
+
+  const version = await page.evaluate(() => (window as unknown as { __APP_VERSION__?: string }).__APP_VERSION__);
+  expect(version).toBeTruthy();
+  expect(version).not.toBe('__APP_VERSION__');
+
+  await expect(page.getByTestId('app-version')).toHaveText(`v${version}`);
+  const metaContent = await page.locator('meta[name="app-version"]').getAttribute('content');
+  expect(metaContent).toBe(version);
+
+  await expect(page.getByTestId('bugreport-launcher')).toBeVisible();
+  await page.close();
+});

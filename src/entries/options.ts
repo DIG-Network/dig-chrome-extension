@@ -5,16 +5,25 @@
  * DOM glue, built by Vite as a standalone extension page under `src/entries/`; the shared
  * parser/resolver come from `#shared/*` so the background read path and these keys can never
  * disagree on the default port.
+ *
+ * §6.7 (#212): also carries the same build-attribution contract as the popup/fullscreen shell — a
+ * footer version label + `<meta name="app-version">` (build.js) + `window.__APP_VERSION__`, and the
+ * shared `<BugReportButton>` mounted into its own tiny React root (this page has no React app of its
+ * own, so it gets one just for the widget) so a settings-page bug report carries the real build.
  */
 // Vendored DIG product type (`font-src 'self'`) so this page actually renders in Space Grotesk like
 // the popup + full-screen shell — its CSS names `--font-display`, but without the @fontsource import
 // the family never loaded and headings silently fell back to the system stack.
 import '@/styles/fonts';
+import { createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BugReportButton } from '@dignetwork/components';
 import { DIG_BROWSER_URL } from '@/lib/links';
 import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from '@/lib/server-config';
 import { digNodeInstallPrompt } from '@/lib/dig-node-status';
 import { readWalletSettings, updateWalletSettings, type WalletSettings } from '@/features/wallet/custody/settings';
 import { DEFAULT_THEME_MODE, isThemeMode, resolveEffectiveTheme, type ThemeMode } from '@/lib/theme';
+import { versionLabel, publishVersionGlobal } from '@/lib/version';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.getElementById(id) as T | null;
@@ -135,10 +144,22 @@ function debounce(fn: () => void, ms: number): () => void {
   };
 }
 
+/** §6.7 build attribution: the footer version label + the shared bug-report widget. This page is
+ *  vanilla DOM (no React app mounted here), so the widget gets its own tiny root. */
+function mountBugReportAndVersion(): void {
+  const label = $('appVersionLabel');
+  if (label) label.textContent = versionLabel();
+  publishVersionGlobal();
+
+  const root = $('bugreport-root');
+  if (root) createRoot(root).render(createElement(BugReportButton, { repo: 'dig-chrome-extension' }));
+}
+
 function init(): void {
   void loadTheme();
   void loadCompanion();
   void loadRpc();
+  mountBugReportAndVersion();
 
   $<HTMLSelectElement>('themeSelect')?.addEventListener('change', () => void saveTheme());
 
