@@ -310,8 +310,12 @@ It renders THREE states, and NEVER leaves a blank frame:
 The shared `@dignetwork/components` `<BugReportButton>` (the full reporting flow — challenge/honeypot/
 timing anti-spam + screenshot + console/network capture, filing to `api.bugreport.dig.net` against
 `repo="dig-chrome-extension"`) is surfaced as a **quiet inline "Report a bug" item in the footer**, not
-a floating overlay: the component's floating launcher FAB is hidden (`.digbr-launcher { display:none }`)
-and the inline item opens the same panel by programmatically clicking the (still-mounted) launcher.
+a floating overlay, on the popup/fullscreen shell (`AppFooter`/`BugReportLink`): the component's
+floating launcher FAB is hidden (`.digbr-launcher { display:none }`) and the inline item opens the
+same panel by programmatically clicking the (still-mounted) launcher. The settings page
+(`options.html`, #212) is not space-constrained the way the shell footer is, so it mounts the SAME
+component as its normal, VISIBLE floating launcher (no hide-and-forward) — a separate tiny React root
+just for the widget, since `options.html` otherwise has no React app of its own.
 
 ### 2.4c Apps-tab personalization — reorder + hide/show (#164)
 
