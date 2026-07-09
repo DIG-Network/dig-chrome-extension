@@ -137,6 +137,7 @@ export const ja: Record<string, string> = {
   'wallet.assets.filter.empty': '"{query}" に一致するトークンがありません',
   'wallet.getdig': '$DIGを購入',
   'wallet.getdig.open': 'もっと見る',
+  'wallet.getxch': 'もっと見る',
   'wallet.getdig.hint.tibetswap': 'XCH ↔ DIG AMM',
   'wallet.getdig.hint.dexie': 'dexie上のDIG / XCH',
   'wallet.getdig.hint.9mm': '9mm.pro上のDIGトークン',

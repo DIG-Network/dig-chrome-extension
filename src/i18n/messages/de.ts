@@ -137,6 +137,7 @@ export const de: Record<string, string> = {
   'wallet.assets.filter.empty': 'Keine Token stimmen mit "{query}" überein',
   'wallet.getdig': '$DIG erhalten',
   'wallet.getdig.open': 'Mehr',
+  'wallet.getxch': 'Mehr',
   'wallet.getdig.hint.tibetswap': 'XCH ↔ DIG AMM',
   'wallet.getdig.hint.dexie': 'DIG / XCH auf der dexie-DEX',
   'wallet.getdig.hint.9mm': 'DIG-Token auf 9mm.pro',

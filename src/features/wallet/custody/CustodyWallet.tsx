@@ -20,6 +20,7 @@ import { assetUsdValue, portfolioValue } from '@/features/wallet/portfolioValue'
 import { resolveFiatValue } from '@/features/wallet/fiatValue';
 import { useFiatPreference } from '@/features/wallet/useFiatPreference';
 import { GetDigMenu } from '@/features/wallet/GetDigMenu';
+import { GetXchLink } from '@/features/wallet/GetXchLink';
 import { FiatCurrencySetting } from '@/features/wallet/custody/FiatCurrencySetting';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { WalletSwitcher } from '@/features/wallet/custody/WalletSwitcher';
@@ -141,7 +142,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
         iconUrl={a.descriptor.iconUrl}
         priceLoading={prices.isLoading || fiatState?.kind === 'loading'}
         testid={a.descriptor.key === 'cat' ? `asset-cat-${a.descriptor.assetId}` : `asset-${a.descriptor.key}`}
-        action={a.descriptor.key === 'dig' ? <GetDigMenu /> : undefined}
+        action={a.descriptor.key === 'dig' ? <GetDigMenu /> : a.descriptor.key === 'xch' ? <GetXchLink /> : undefined}
       />
     );
   };

@@ -137,6 +137,7 @@ export const id: Record<string, string> = {
   'wallet.assets.filter.empty': 'Tidak ada token yang cocok dengan "{query}"',
   'wallet.getdig': 'Dapatkan $DIG',
   'wallet.getdig.open': 'Selengkapnya',
+  'wallet.getxch': 'Selengkapnya',
   'wallet.getdig.hint.tibetswap': 'AMM XCH ↔ DIG',
   'wallet.getdig.hint.dexie': 'DIG / XCH di dexie DEX',
   'wallet.getdig.hint.9mm': 'Token DIG di 9mm.pro',

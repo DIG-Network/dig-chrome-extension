@@ -137,6 +137,7 @@ export const vi: Record<string, string> = {
   'wallet.assets.filter.empty': 'Không có token nào khớp với "{query}"',
   'wallet.getdig': 'Nhận $DIG',
   'wallet.getdig.open': 'Thêm',
+  'wallet.getxch': 'Thêm',
   'wallet.getdig.hint.tibetswap': 'AMM XCH ↔ DIG',
   'wallet.getdig.hint.dexie': 'DIG / XCH trên dexie DEX',
   'wallet.getdig.hint.9mm': 'Token DIG trên 9mm.pro',

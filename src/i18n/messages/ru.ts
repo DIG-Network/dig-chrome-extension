@@ -137,6 +137,7 @@ export const ru: Record<string, string> = {
   'wallet.assets.filter.empty': 'Нет токенов, соответствующих "{query}"',
   'wallet.getdig': 'Получить $DIG',
   'wallet.getdig.open': 'Ещё',
+  'wallet.getxch': 'Ещё',
   'wallet.getdig.hint.tibetswap': 'AMM XCH ↔ DIG',
   'wallet.getdig.hint.dexie': 'DIG / XCH на DEX dexie',
   'wallet.getdig.hint.9mm': 'Токен DIG на 9mm.pro',

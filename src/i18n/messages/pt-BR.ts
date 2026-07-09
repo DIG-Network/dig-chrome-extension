@@ -137,6 +137,7 @@ export const ptBR: Record<string, string> = {
   'wallet.assets.filter.empty': 'Nenhum token corresponde a "{query}"',
   'wallet.getdig': 'Obter $DIG',
   'wallet.getdig.open': 'Mais',
+  'wallet.getxch': 'Mais',
   'wallet.getdig.hint.tibetswap': 'AMM XCH ↔ DIG',
   'wallet.getdig.hint.dexie': 'DIG / XCH na DEX dexie',
   'wallet.getdig.hint.9mm': 'Token DIG na 9mm.pro',
