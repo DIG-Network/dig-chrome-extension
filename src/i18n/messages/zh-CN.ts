@@ -9,6 +9,7 @@ export const zhCN: Record<string, string> = {
   'shell.wallet.title': 'DIG 钱包',
   'shell.popout': '在完整窗口中打开',
   'shell.settings': 'DIG 设置',
+  'shell.nav.label': '侧边栏导航',
   'shell.version': '版本 {version}',
   'shell.language': '语言',
   'shell.theme': '主题',

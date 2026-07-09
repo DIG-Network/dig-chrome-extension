@@ -119,10 +119,9 @@ test.describe('Background prefetch on unlock (#168)', () => {
     await expect.poll(() => callCount(page, 'listNfts')).toBeGreaterThanOrEqual(1);
     const afterUnlock = await callCount(page, 'listNfts');
 
-    // Now navigate to Collectibles via the real UI (Wallet tab → Collectibles segmented tab).
-    await page.getByTestId('tab-wallet').click();
-    await page.getByTestId('custody-wallet').waitFor();
-    await page.getByTestId('seg-collectibles').click();
+    // Now navigate to Collectibles via the real UI. app.html at the default (wide) viewport renders
+    // the desktop workspace (#85), whose sidebar IS the wallet-view nav — one click routes there.
+    await page.getByTestId('nav-collectibles').click();
     await expect(page.getByTestId('collectibles-panel')).toBeVisible();
 
     // Rendered from the already-warmed cache — no additional `listNfts` round-trip on nav.

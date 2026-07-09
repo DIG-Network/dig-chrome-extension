@@ -402,16 +402,21 @@ h2.dig-heading {
   transition: transform 0.15s ease;
 }
 
-/* ── sidebar (expanded app.html) ── */
+/* ── desktop wallet workspace (expanded app.html ≥960px, #85) ── */
 .dig-shell-expanded {
   display: grid;
-  grid-template-columns: 236px 1fr;
+  grid-template-columns: 272px minmax(0, 1fr);
   min-height: 100vh;
 }
 .dig-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  box-sizing: border-box;
   border-right: 1px solid var(--dig-border);
   background: var(--dig-bg-raised);
-  padding: 20px 14px;
+  padding: 22px 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -420,29 +425,120 @@ h2.dig-heading {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 10px 18px;
+  padding: 4px 10px 16px;
   font-weight: 700;
   font-size: 16px;
+  letter-spacing: -0.01em;
 }
-.dig-sidebar .dig-tab {
-  flex-direction: row;
-  justify-content: flex-start;
+.dig-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dig-sidebar-fill {
+  flex: 1;
+}
+.dig-sidebar-badge {
+  padding: 8px 6px 10px;
+}
+/* Sidebar nav item: a full-width row with a leading glyph — active row uses the accent wash + rail. */
+.dig-navitem {
+  display: flex;
+  align-items: center;
   gap: 12px;
-  font-size: 13px;
-  padding: 11px 12px;
-  border-radius: var(--dig-radius-sm);
   width: 100%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--dig-radius-sm);
+  background: transparent;
+  color: var(--dig-text-dim);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
-.dig-sidebar .dig-tab[aria-selected='true'] {
+.dig-navitem:hover {
+  background: var(--dig-bg-elev);
+  color: var(--dig-text);
+}
+.dig-navitem:focus-visible {
+  outline: 2px solid var(--dig-accent);
+  outline-offset: 2px;
+}
+.dig-navitem[aria-current='page'] {
   background: var(--dig-accent-soft);
+  color: var(--dig-accent-ink);
+  border-color: color-mix(in srgb, var(--dig-accent) 22%, transparent);
+}
+.dig-navitem-glyph {
+  font-size: 17px;
+  line-height: 1;
+  width: 20px;
+  text-align: center;
+}
+.dig-navitem-label {
+  flex: 1;
+}
+.dig-navitem--muted {
+  color: var(--dig-text-faint);
+  font-weight: 500;
+}
+
+/* Content column: the app-bar, the width-using main pane, and the footer stacked vertically. */
+.dig-workspace {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-width: 0;
+}
+.dig-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 40px;
+  border-bottom: 1px solid var(--dig-border);
+  background: color-mix(in srgb, var(--dig-bg) 86%, transparent);
+  backdrop-filter: blur(10px);
+}
+.dig-topbar-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 .dig-content-wide {
-  padding: 30px 36px;
-  max-width: 780px;
+  padding: 28px 40px 36px;
+  max-width: 1040px;
   width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--dig-gap);
+}
+/* Let the main pane grow so the footer anchors to the bottom on short content (no mid-page float). */
+.dig-shell-expanded .dig-content-wide {
+  flex: 1 1 auto;
+}
+/* The shared footer sits flush at the workspace bottom with a divider (§6.5 rhythm). */
+.dig-shell-expanded .dig-footer {
+  margin-top: auto;
+  padding: 14px 40px;
+  border-top: 1px solid var(--dig-border);
+}
+/* On the desktop workspace the persistent sidebar IS the wallet-view nav, so the in-content wallet
+   segmented control (the popup's nav) is redundant — hide it here only. */
+.dig-shell-expanded .dig-wallet-seg-row {
+  display: none;
+}
+/* Desktop density: the wallet portfolio card gets more breathing room + a wider hero. */
+.dig-shell-expanded .dig-content-wide .dig-card {
+  padding: 22px 24px;
 }
 
 /* ── asset rows ── */

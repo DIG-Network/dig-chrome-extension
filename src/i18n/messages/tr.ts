@@ -9,6 +9,7 @@ export const tr: Record<string, string> = {
   'shell.wallet.title': 'DIG Cüzdanı',
   'shell.popout': 'Tam pencerede aç',
   'shell.settings': 'DIG ayarları',
+  'shell.nav.label': 'Kenar çubuğu gezinmesi',
   'shell.version': 'Sürüm {version}',
   'shell.language': 'Dil',
   'shell.theme': 'Tema',

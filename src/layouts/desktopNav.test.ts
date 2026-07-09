@@ -1,0 +1,38 @@
+import { describe, it, expect } from 'vitest';
+import { DESKTOP_NAV, activeNavKey } from '@/layouts/desktopNav';
+import { TABS, WALLET_VIEWS } from '@/app/tabs';
+
+describe('desktopNav model (#85)', () => {
+  it('exposes a flat, wallet-centric sidebar model that flattens the wallet sub-views', () => {
+    const keys = DESKTOP_NAV.map((i) => i.key);
+    // Every wallet sub-view is a first-class sidebar entry (the flat IA the desktop workspace wants).
+    for (const view of WALLET_VIEWS) {
+      const item = DESKTOP_NAV.find((i) => i.tab === 'wallet' && i.walletView === view);
+      expect(item, `missing wallet/${view}`).toBeTruthy();
+    }
+    // Plus the non-wallet top-level tabs (home / apps / network) — no duplicate keys.
+    expect(keys).toContain('home');
+    expect(keys).toContain('apps');
+    expect(keys).toContain('network');
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('carries a stable label id + glyph for every item (labels reuse the existing catalog)', () => {
+    for (const item of DESKTOP_NAV) {
+      expect(item.labelId).toMatch(/\./); // namespaced id
+      expect(item.glyph.length).toBeGreaterThan(0);
+      expect((TABS as readonly string[]).includes(item.tab)).toBe(true);
+    }
+  });
+
+  it('resolves the active item from the route: wallet sub-views match walletView, other tabs match tab', () => {
+    expect(activeNavKey('wallet', 'home')).toBe('wallet');
+    expect(activeNavKey('wallet', 'activity')).toBe('activity');
+    expect(activeNavKey('wallet', 'trade')).toBe('trade');
+    expect(activeNavKey('wallet', 'collectibles')).toBe('collectibles');
+    expect(activeNavKey('wallet', 'did')).toBe('did');
+    expect(activeNavKey('home', 'home')).toBe('home');
+    expect(activeNavKey('apps', 'home')).toBe('apps');
+    expect(activeNavKey('network', 'home')).toBe('network');
+  });
+});

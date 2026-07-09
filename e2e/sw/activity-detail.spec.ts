@@ -48,7 +48,13 @@ async function openActivity(file: 'popup.html' | 'app.html' = 'popup.html', size
     await page.getByTestId('unlock-submit').click();
   }
   await page.getByTestId('custody-wallet').waitFor({ timeout: 20_000 });
-  await page.getByTestId('seg-activity').click();
+  // Compact (popup): the in-content segmented control is the wallet-view nav. Expanded (#85 desktop
+  // workspace, e.g. the fullscreen screenshot width): the segmented control is hidden and the
+  // persistent sidebar is the nav — pick whichever this surface renders.
+  const seg = page.getByTestId('seg-activity');
+  if (await seg.isVisible().catch(() => false)) await seg.click();
+  else await page.getByTestId('nav-activity').click();
+  await page.getByTestId('custody-activity').waitFor({ timeout: 20_000 });
   return page;
 }
 

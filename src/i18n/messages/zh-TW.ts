@@ -9,6 +9,7 @@ export const zhTW: Record<string, string> = {
   'shell.wallet.title': 'DIG 錢包',
   'shell.popout': '在完整視窗中開啟',
   'shell.settings': 'DIG 設定',
+  'shell.nav.label': '側邊欄導覽',
   'shell.version': '版本 {version}',
   'shell.language': '語言',
   'shell.theme': '主題',

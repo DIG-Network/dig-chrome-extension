@@ -9,6 +9,7 @@ export const vi: Record<string, string> = {
   'shell.wallet.title': 'Ví DIG',
   'shell.popout': 'Mở trong cửa sổ đầy đủ',
   'shell.settings': 'Cài đặt DIG',
+  'shell.nav.label': 'Điều hướng thanh bên',
   'shell.version': 'Phiên bản {version}',
   'shell.language': 'Ngôn ngữ',
   'shell.theme': 'Giao diện',

@@ -9,6 +9,7 @@ export const ru: Record<string, string> = {
   'shell.wallet.title': 'Кошелёк DIG',
   'shell.popout': 'Открыть в полном окне',
   'shell.settings': 'Настройки DIG',
+  'shell.nav.label': 'Боковая навигация',
   'shell.version': 'Версия {version}',
   'shell.language': 'Язык',
   'shell.theme': 'Тема',

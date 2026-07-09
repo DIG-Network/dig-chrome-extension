@@ -115,7 +115,8 @@ test('renders correctly in edit mode on the fullscreen (tablet-width) surface to
   await page.route('**/store.json', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(CATALOG) }));
   await page.setViewportSize({ width: 1200, height: 860 });
   await page.goto(`chrome-extension://${extensionId}/app.html`);
-  await page.getByTestId('tab-apps').click();
+  // The desktop workspace (#85) nav lives in the sidebar (`nav-apps`), not a bottom tab bar.
+  await page.getByTestId('nav-apps').click();
   await page.getByTestId('apps-launcher').waitFor();
 
   await page.getByTestId('apps-edit-toggle').click();

@@ -3,6 +3,27 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## The SW e2e harness has NO default viewport, so `app.html` runs in the EXPANDED desktop layout (#85)
+
+`playwright.sw.config.ts` sets no `use.viewport`, so pages get Playwright's default 1280×720 — which
+is ≥ `EXPANDED_MIN_WIDTH` (960). Any `e2e/sw/*` spec that opens `app.html` WITHOUT calling
+`setViewportSize` to a phone size is therefore driving the **expanded** (desktop workspace) layout,
+not the compact popup. Consequences that bite: the bottom `TabBar` (`tab-*` testids) does NOT render
+in expanded, and after #85 the in-content wallet **segmented control (`seg-*`) is CSS-hidden** on the
+expanded surface (the sidebar `nav-*` is the wallet-view nav there). So navigate expanded `app.html`
+via `nav-<key>` (or a `#wallet/<view>` hash), never `tab-*`/`seg-*`. The compact popup keeps `tab-*`
++ `seg-*`. (Bit #85's `background-prefetch`/`apps-personalization`/`activity-detail` specs.)
+
+## `CompactLayout` (popup) and the desktop `ExpandedLayout` share the same route + feature containers, only the chrome differs (#85)
+
+The fullscreen `app.html` desktop workspace and the compact popup render the SAME `ActiveTabPanel` →
+feature containers from ONE RTK store; the sidebar/app-bar is just different chrome. A sidebar item
+maps to `(tab + walletView)` and dispatches the existing `setTab`/`setWalletView` — do NOT fork a
+second nav model or hoist per-view local state. The wallet's home sub-panels (send/receive/coins/
+contacts) stay page-level actions on the wallet overview (reached via `action-*`), identical on both
+surfaces. New shell copy must go through the 14-locale catalog (a bare literal fails the completeness
+gate only if it is a *new id*; reuse existing ids to avoid 13 translations).
+
 ## Watch-only wallets can only ever see the UNHARDENED chain; private-key export must be PRE-synthetic (#96)
 
 Two BLS-HD facts drive the whole #96 design, both non-obvious:
