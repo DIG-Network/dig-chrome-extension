@@ -20,6 +20,7 @@ import {
   NINEMM_DIG_URL,
   DIG_ASSET_ID,
   GET_DIG_SOURCES,
+  GET_XCH_URL,
   DISCORD_URL,
   DIG_BROWSER_URL,
   RESOURCE_LINKS,
@@ -110,6 +111,12 @@ test('GET_DIG_SOURCES lists the three canonical venues in order (mirrors hub)', 
     assert.equal(new URL(s.url).protocol, 'https:', `${s.url} must be https`);
     assert.ok(s.hint && s.hint.length > 0, `${s.name} should have a hint`);
   }
+});
+
+// #210 — XCH's single canonical acquisition destination (no multi-venue menu, unlike $DIG).
+test('Get-XCH URL points at chia.net/buy-xch', () => {
+  assert.equal(GET_XCH_URL, 'https://www.chia.net/buy-xch/');
+  assert.equal(new URL(GET_XCH_URL).protocol, 'https:');
 });
 
 // Canonical org Discord (matches SYSTEM.md + dig.net + docs.dig.net + hub).

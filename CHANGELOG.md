@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.72.1] - 2026-07-09
+
+### Features
+- **wallet:** "Get more" link on the XCH row -> chia.net/buy-xch (#210) (#100)
+
+## [1.72.0] - 2026-07-09
+
+### Features
+- **wallet:** Fee estimate/presets + XL contacts modal (#99)
+
+## [1.71.1] - 2026-07-09
+
+### Bug Fixes
+- **theme:** Default to light + theme switcher in DIG Settings (#211) (#97)
+
 ## [1.71.0] - 2026-07-09
 
 ### Features

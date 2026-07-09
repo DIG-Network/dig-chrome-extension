@@ -16,22 +16,30 @@ function seedContact(over: Partial<Contact> = {}): Contact {
 beforeEach(async () => {
   await chrome.storage.local.remove(CONTACTS_KEY);
   await chrome.storage.local.remove(RECENTS_KEY);
+  Element.prototype.scrollIntoView = vi.fn();
 });
 
-describe('ContactPicker', () => {
-  it('renders nothing when there are no contacts and no recents', () => {
-    const { container } = renderWithProviders(<ContactPicker onPick={() => {}} />);
-    expect(container.querySelector('[data-testid="contact-picker"]')).toBeNull();
+describe('ContactPicker (#88, upgraded to the #207 XL modal)', () => {
+  it('always shows the trigger, even with an empty address book', () => {
+    renderWithProviders(<ContactPicker onPick={() => {}} />);
+    expect(screen.getByTestId('contact-picker-toggle')).toBeInTheDocument();
   });
 
-  it('lists saved contacts and calls onPick with the address', async () => {
+  it('opens the XL contacts modal on click', async () => {
+    renderWithProviders(<ContactPicker onPick={() => {}} />);
+    fireEvent.click(screen.getByTestId('contact-picker-toggle'));
+    expect(await screen.findByTestId('contacts-xl-modal')).toBeInTheDocument();
+  });
+
+  it('lists saved contacts and calls onPick with the address, then closes the modal', async () => {
     await chrome.storage.local.set({ [CONTACTS_KEY]: [seedContact()] });
     const onPick = vi.fn();
     renderWithProviders(<ContactPicker onPick={onPick} />);
 
-    fireEvent.click(await screen.findByTestId('contact-picker-toggle'));
+    fireEvent.click(screen.getByTestId('contact-picker-toggle'));
     fireEvent.click(await screen.findByTestId('pick-contact-c1'));
     expect(onPick).toHaveBeenCalledWith(normalizeAddress(ADDR_A));
+    expect(screen.queryByTestId('contacts-xl-modal')).not.toBeInTheDocument();
   });
 
   it('lists recent recipients that are not already saved contacts', async () => {
@@ -39,7 +47,7 @@ describe('ContactPicker', () => {
     const onPick = vi.fn();
     renderWithProviders(<ContactPicker onPick={onPick} />);
 
-    fireEvent.click(await screen.findByTestId('contact-picker-toggle'));
+    fireEvent.click(screen.getByTestId('contact-picker-toggle'));
     fireEvent.click(await screen.findByTestId(`pick-recent-${normalizeAddress(ADDR_B)}`));
     expect(onPick).toHaveBeenCalledWith(normalizeAddress(ADDR_B));
   });
@@ -48,8 +56,16 @@ describe('ContactPicker', () => {
     await chrome.storage.local.set({ [CONTACTS_KEY]: [seedContact()] });
     const onManage = vi.fn();
     renderWithProviders(<ContactPicker onPick={() => {}} onManage={onManage} />);
-    fireEvent.click(await screen.findByTestId('contact-picker-toggle'));
+    fireEvent.click(screen.getByTestId('contact-picker-toggle'));
     fireEvent.click(await screen.findByTestId('contact-picker-manage'));
+    expect(onManage).toHaveBeenCalled();
+  });
+
+  it('an empty address book shows the modal empty state with an "Add contact" CTA', async () => {
+    const onManage = vi.fn();
+    renderWithProviders(<ContactPicker onPick={() => {}} onManage={onManage} />);
+    fireEvent.click(screen.getByTestId('contact-picker-toggle'));
+    fireEvent.click(await screen.findByTestId('contacts-xl-add'));
     expect(onManage).toHaveBeenCalled();
   });
 });

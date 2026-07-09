@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <title>DIG settings</title>
 <link rel="icon" type="image/png" href="src/icons/icon-32.png">
 <!--
@@ -27,6 +27,24 @@
         <p class="sub">Configure how this browser resolves the DIG Network.</p>
       </div>
     </header>
+
+    <!-- Appearance / theme (#211) — the discoverable home for the light/dark/system switcher.
+         Persists to wallet.settings.theme (the RTK-backed key), so the choice applies live to the
+         popup + full-screen wallet via the storage→store bridge, and to this settings page itself. -->
+    <section class="card">
+      <h2>Appearance</h2>
+      <p class="desc">Choose the theme for the DIG wallet (popup + full screen) and this settings
+        page. New installs use the light theme; pick Dark, or System to follow your operating
+        system.</p>
+      <label class="lbl" for="themeSelect">Theme</label>
+      <div class="row">
+        <select id="themeSelect" class="select" data-testid="options-theme-select" autocomplete="off">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="system">System</option>
+        </select>
+      </div>
+    </section>
 
     <!-- dig-node -->
     <section class="card">

@@ -79,14 +79,41 @@ test.describe('#111 theme selection', () => {
     await open(page, 'popup.html', '#wallet');
     await expect(page.getByTestId('custody-wallet')).toBeVisible();
 
-    // Defaults to "system" — no explicit light/dark class forced by a persisted choice.
-    await expect(page.getByTestId('theme-select')).toHaveValue('system');
+    // #211: with NO stored preference the default is the original LIGHT theme (not `system`),
+    // and the document paints light out of the box.
+    await expect(page.getByTestId('theme-select')).toHaveValue('light');
+    await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'light');
 
     await page.getByTestId('theme-select').selectOption('dark');
     await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'dark');
 
     await page.getByTestId('theme-select').selectOption('light');
     await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'light');
+  });
+
+  test('#211: theme switcher in DIG Settings (options page) — defaults light, switches, persists', async ({ page }) => {
+    await open(page, 'options.html', '');
+    await expect(page.getByTestId('options-root')).toBeVisible();
+
+    // Discoverable in the gear/⚙ "DIG settings" page; defaults to light with no stored preference,
+    // and this settings page paints light too.
+    const select = page.getByTestId('options-theme-select');
+    await expect(select).toHaveValue('light');
+    await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'light');
+
+    // Switching to dark repaints the settings page AND persists to wallet.settings.theme so the
+    // wallet surfaces pick it up via the storage→store bridge.
+    await select.selectOption('dark');
+    await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'dark');
+    const persistedDark = await page.evaluate(
+      () => new Promise((r) => chrome.storage.local.get('wallet.settings', (o) => r((o['wallet.settings'] || {}).theme))),
+    );
+    expect(persistedDark).toBe('dark');
+
+    // Reopening reflects the saved choice (dark) rather than resetting to light.
+    await open(page, 'options.html', '', { 'wallet.settings': { theme: 'dark' } });
+    await expect(page.getByTestId('options-theme-select')).toHaveValue('dark');
+    await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'dark');
   });
 
   for (const [label, file, size] of [
@@ -100,6 +127,32 @@ test.describe('#111 theme selection', () => {
       await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'dark');
       await page.waitForTimeout(200);
       await page.screenshot({ path: `e2e/__screenshots__/theme-dark-${label}.png` });
+    });
+
+    // #211: the DEFAULT (no stored preference) is the original light theme — captured on both
+    // surfaces so the regression is visually verifiable.
+    test(`screenshot: light default (${label})`, async ({ page }) => {
+      await page.setViewportSize(size);
+      await open(page, file, '#wallet');
+      await expect(page.getByTestId('custody-wallet')).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'light');
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: `e2e/__screenshots__/theme-light-default-${label}.png` });
+    });
+  }
+
+  // #211: the theme switcher's discoverable home — the ⚙ "DIG settings" page, light + dark.
+  for (const [themeLabel, seed] of [
+    ['light', {}],
+    ['dark', { 'wallet.settings': { theme: 'dark' } }],
+  ] as const) {
+    test(`screenshot: DIG settings page (${themeLabel})`, async ({ page }) => {
+      await page.setViewportSize({ width: 760, height: 900 });
+      await open(page, 'options.html', '', seed);
+      await expect(page.getByTestId('options-root')).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute('data-dig-theme', themeLabel);
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: `e2e/__screenshots__/theme-options-${themeLabel}.png` });
     });
   }
 });
