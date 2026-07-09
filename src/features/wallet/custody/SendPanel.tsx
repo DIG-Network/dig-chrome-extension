@@ -4,6 +4,7 @@ import { toBaseUnits, formatBaseUnits, validateSendForm, shortenAddress, isChiaA
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery, useGetCoinsQuery, type PreparedSend } from '@/features/wallet/custodyApi';
 import { ContactPicker } from '@/features/contacts/ContactPicker';
+import { FeeField } from '@/features/wallet/custody/FeeField';
 import { useContacts } from '@/features/contacts/useContacts';
 import { assessRecipient } from '@/features/contacts/address-poisoning';
 import { ViewHeader } from '@/components/ViewHeader';
@@ -295,10 +296,9 @@ export function SendPanel({
               </button>
             </div>
           </label>
-          <label className="dig-field">
-            <span><FormattedMessage id="send.fee" /></span>
-            <input data-testid="send-fee" className="dig-input" value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />
-          </label>
+          {/* #206/#110 — network fee: defaults to the live coinset.org estimate as a read-only line
+              item with fast/normal/slow presets + an "Override" button (bias-to-estimate). */}
+          <FeeField fee={fee} onFee={setFee} />
 
           {/* #105 — an optional plain-text memo/note attached to the send. Memos are PUBLIC on
               chain, so the hint below the field says so explicitly — never sensitive info. */}
