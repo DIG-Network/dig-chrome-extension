@@ -546,7 +546,7 @@ bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `26`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `27`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -627,6 +627,26 @@ path. Purely additive — no existing action/shape changed.
 `listDerivedAddresses` action (§18.1b) — a read-only page of the active wallet's derived addresses
 for viewing/copying. Purely additive — no existing action/shape changed. (#107's QR camera scanner
 is client-side only and adds no message action.)
+
+`MESSAGE_PROTOCOL_VERSION` `27` (#95/#96/#115 — accounts, watch-only wallets + private-key export,
+keystore file backup/restore) added: `addAccount` / `renameAccount` / `removeAccount` — named
+sub-accounts (§18.18) are a friendly LABEL over one HD derivation index within a wallet's existing
+single-active-index model (§165 unchanged — never a second scan dimension); `listWallets`'s per-wallet
+metadata additively gained `accounts` (always populated, defaulted for a pre-existing wallet) and,
+for a watch-only entry, `kind:'watch'` + `watchFingerprint`. `importWatchWallet` adds a spend-less
+watch-only wallet from a master/root BLS public key only — no password, never locked (§18.19);
+`getReceiveAddress` / `scanBalances` / `listDerivedAddresses` additively accept `watchPublicKeyHex` to
+derive from it directly (UNHARDENED ONLY — hardened is unreachable from a public key alone), and
+`getReceiveAddress`'s response additively gained `fingerprint`. Every signing-required action
+(`prepareSend`, `prepareSplit`/`prepareCombine`, `makeOffer`/`prepareTrade`, every NFT/DID prepare
+action, `prepareClawbackAction`, `revealPhrase`, `exportPrivateKey`, `signDappSpend`/`signMessage`)
+rejects a watch-only active wallet with `WATCH_ONLY` (a dApp sign/write request against a watch-only
+wallet also fails closed, via the pre-existing never-cached-key guarantee — §18.19). `exportPrivateKey`
+reveals the raw (pre-synthetic) account secret key at the active index, both HD schemes, behind the
+same full-password re-auth as `revealPhrase` (§18.20). `exportWalletBackup` / `importWalletBackup` move a
+wallet's existing encrypted DIGWX1 record as a downloadable JSON file (§18.21) — the SW never decrypts
+it either way; restoring lands the wallet LOCKED (no password was ever supplied) so the normal unlock
+screen gates it. Purely additive — no existing action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
@@ -2435,16 +2455,20 @@ over the storage keys, driven by the actions in §7 (`listWallets`, `switchWalle
 `removeWallet`); the SW owns the `chrome.storage.*` I/O and the offscreen vault owns every decrypted
 key.
 
-- **Storage model.** `wallet.registry` holds `{ id, label, record, createdAt, activeIndex,
-  previewAddress? }` per wallet (`id` a uuid; `activeIndex` — #165, default 0 — that wallet's own
-  single active HD derivation index, §18.1a; `previewAddress` — #176, optional — that wallet's
-  cached CANONICAL (index-0) receive address); `wallet.activeId` names the active wallet;
-  `wallet.keystore` MIRRORS the active wallet's record so every pre-#90 single-wallet read path
-  (unlock / reveal) works unchanged. The encrypted records live only in the SW — the UI receives
-  record-FREE metadata (`{ id, label, createdAt, active, activeIndex, previewAddress? }`) via
-  `listWallets`. A registry persisted before #165 has entries with no `activeIndex` field; migration
-  normalizes it to 0. A registry persisted before #176 has entries with no `previewAddress` at all —
-  this is fine (the field is fully optional, additive, never required for a read).
+- **Storage model.** `wallet.registry` holds `{ id, label, record?, createdAt, activeIndex,
+  previewAddress?, accounts?, kind?, watchPublicKeyHex?, watchFingerprint? }` per wallet (`id` a uuid;
+  `activeIndex` — #165, default 0 — that wallet's own single active HD derivation index, §18.1a;
+  `previewAddress` — #176, optional — that wallet's cached CANONICAL (index-0) receive address;
+  `accounts` — #95, §18.18, optional, defaulted on read — named labels over derivation indices;
+  `kind`/`watchPublicKeyHex`/`watchFingerprint` — #96, §18.19 — present only for a watch-only entry,
+  which is also the ONE case `record` is absent); `wallet.activeId` names the active wallet;
+  `wallet.keystore` MIRRORS the active wallet's record (absent while a watch-only wallet is active) so
+  every pre-#90 single-wallet read path (unlock / reveal) works unchanged. The encrypted records live
+  only in the SW — the UI receives record-FREE metadata (`{ id, label, createdAt, active, activeIndex,
+  previewAddress?, accounts, kind?, watchFingerprint? }`) via `listWallets`. A registry persisted
+  before #165 has entries with no `activeIndex` field; migration normalizes it to 0. A registry
+  persisted before #176 has entries with no `previewAddress` at all, and before #95/#96 has none of
+  `accounts`/`kind`/`watchPublicKeyHex` — all fully optional/additive, never required for a read.
 - **Preview address caching (#176).** Every `getReceiveAddress` read opportunistically caches the
   result onto the ACTIVE wallet's `previewAddress`, but ONLY when the active wallet's active
   derivation index is 0 (its canonical/default address — never whichever non-zero index the user
@@ -2637,3 +2661,150 @@ mounts the create or transfer form.
   offers "Assign DID owner" (fullscreen only), picking from the wallet's listed DIDs. Four states +
   react-intl across the 14 locales. Assigning a DID as an NFT's owner AT MINT TIME (§18.11, vs. on an
   already-minted NFT, which this section covers) remains a follow-up seam noted on #92.
+
+### 18.18 Named accounts (#95)
+
+An "account" is a user-friendly LABEL bookmarking one HD derivation index (`m/12381/8444/2/{index}`,
+§18.1) within a wallet's existing single-active-index model — it does NOT add a second derivation
+dimension or reintroduce a multi-index scan (§18.1a stays intact: exactly one index is ever
+active/derived/scanned at a time). Switching accounts is simply "set the wallet's active index to
+this account's index" under a friendly name, reusing `setActiveIndex` (§18.1a) verbatim — no new
+vault op, no new crypto.
+
+- **Storage model.** `lib/wallet-registry.ts`'s `WalletEntry.accounts?: { id, label, index }[]` — pure
+  metadata, never touching key material, additive to the existing per-wallet record (a pre-#95 entry
+  simply has none yet). `ensureAccounts` synthesizes ONE default account (`"Account 1"`, at the
+  wallet's current `activeIndex`) on read with a DETERMINISTIC id (`${walletId}-acct-0`) so repeated
+  reads are stable; `listWallets`'s per-wallet metadata (§18.16) always carries the defaulted
+  `accounts` array.
+- **Add** (`addAccount`, §7): appends a new account at one above the HIGHEST index any of the
+  wallet's existing accounts already bookmarks (never just the account count — an account may have
+  been removed, or an existing one may sit at a high index), so a fresh account never collides with
+  one already in use. An optional `label` is normalized (trimmed, capped at 40 chars) or defaults to
+  `"Account N"`.
+- **Rename** (`renameAccount`): metadata only.
+- **Remove** (`removeAccount`): refuses to drop a wallet's LAST remaining account (a wallet always
+  has at least one named account). Removing the account that IS the wallet's current active index
+  re-homes `activeIndex` to the first remaining account (same cache invalidation as `setActiveIndex`)
+  so the wallet is never left pointed at a just-deleted account's index with nothing named there.
+- **No effect on funds.** An account is purely a label — removing one does not affect any funds
+  sitting at that index; the underlying index remains reachable via the index navigator (§18.1a) by
+  number, same as before #95 existed.
+- **UI.** An account switcher lives beside the wallet switcher (§18.16) and the index navigator
+  (§18.1a) in the popup — switching accounts calls `setActiveIndex` with the target account's index;
+  add/rename/remove are inline, mirroring the wallet-manager list's own affordances. Non-destructive
+  (no funds at risk), so it stays in the popup rather than fullscreen-gated. Four states + react-intl
+  across the 14 locales.
+
+### 18.19 Watch-only wallets (#96)
+
+A watch-only wallet is imported from a master/root BLS **public** key only — it holds NO secret
+material, NO password, and is never "locked" (there is nothing to decrypt). It can view addresses
+and balances but can NEVER sign or spend. This is possible because BLS unhardened HD derivation
+(§18.1) commutes with taking the public key first: deriving child index `i` unhardened from a secret
+key and then taking its public key is IDENTICAL to deriving child index `i` unhardened directly from
+the parent's public key (`lib/keystore/derive.ts`'s `deriveWatchAccount`/`masterPublicKeyFromHex`,
+proven against the same golden vectors §18.1's full-custody derivation uses). **Hardened derivation
+has no such property** (it mixes in the parent SECRET key) — a watch-only wallet can derive/scan the
+UNHARDENED chain ONLY. This is a permanent, documented limitation, not a bug: funds held only on the
+hardened chain are invisible to a watch-only import of that same seed.
+
+- **Storage model.** `WalletEntry.kind?: 'custody' | 'watch'` (absent/`'custody'` = an ordinary
+  wallet) + `watchPublicKeyHex` (the imported public key, hex) + `watchFingerprint` (the
+  Chia-convention key fingerprint, `PublicKey.fingerprint()` — a short, human-shareable numeric id,
+  cached at import time). `record` is OPTIONAL on `WalletEntry` for exactly this reason — a watch
+  entry has none. `isWatchOnly(wallet)` is the single predicate every gate below checks.
+- **Import** (`importWatchWallet`, §7): validates the public key strictly (`PublicKey.fromBytes` +
+  `isValid()` — a malformed key is rejected `INVALID_PUBLIC_KEY` and never added), previews its
+  index-0 unhardened address + fingerprint (one offscreen-vault round trip, reusing
+  `getReceiveAddress` with `watchPublicKeyHex` — see below), then adds it to the registry, ACTIVE,
+  with no password step at all.
+- **Reads route on `watchPublicKeyHex`, not the held seed.** `getReceiveAddress`, `scanBalances`, and
+  `listDerivedAddresses` (§18.1b) each accept an optional `watchPublicKeyHex`; when the ACTIVE
+  wallet is watch-only, the SW passes it (instead of relying on an unlocked vault key) and the vault
+  derives directly from the public key — UNHARDENED ONLY. `listDerivedAddresses`'s page is therefore
+  half the size of a custody wallet's (no hardened rows). `scanBalances` sums XCH at the unhardened
+  inner puzzle hash only and supports the explicit watched/built-in CAT list (a direct puzzle-hash
+  query needs no secret) but NOT hint-based CAT auto-discovery (#87, §18.6) — that reconstruction
+  needs the seed, which a watch-only wallet never has.
+- **Never locked, never unlocks.** `computeLockSnapshot` (`lib/custody-session.ts`) treats a
+  watch-only ACTIVE wallet as unconditionally `unlocked` — no keystore blob, no TTL, no password
+  prompt ever applies to it.
+- **Every direct signing-required custody action is refused `WATCH_ONLY`.** Before dispatch, the SW
+  checks whether the ACTIVE wallet is watch-only for: `revealPhrase`, `exportPrivateKey` (§18.20),
+  `prepareSend`, `prepareSplit`/`prepareCombine`, `makeOffer`/`prepareTrade`, every NFT/DID prepare
+  action, and `prepareClawbackAction` — each returns `{ success:false, code:'WATCH_ONLY', message }`
+  before ever reaching the vault. A dApp `window.chia` connect/read against a watch-only active
+  wallet still works (an address IS a valid read); a dApp SIGN/write request
+  (`signDappSpend`/`signMessage`/`sendTransaction`/`createOffer`/…, §18.12) is refused too, but via
+  the PRE-EXISTING guarantee that a watch-only wallet's id is NEVER given a cached key in the vault
+  (§18.19's storage model — it is simply never created/imported/unlocked): `heldKeyring`/`heldSeed`
+  resolve to `null` exactly as they do for a genuinely locked wallet, so the request fails closed with
+  the same `LOCKED`-class rejection rather than the more precise `WATCH_ONLY` code. The SECURITY
+  guarantee (a watch-only wallet can never sign) holds either way; giving the dApp path the sharper
+  `WATCH_ONLY` code is a tracked UX-polish follow-up, not a gap.
+- **UI.** The wallet switcher (§18.16) marks a watch-only entry with a distinct "Watch-only" badge
+  (using its cached fingerprint as a human-shareable identity, since there is no label-worthy address
+  history yet). Import is reached from the same "add wallet" flow as create/import-by-phrase/restore
+  (§18.21), fullscreen-only (§2.1) alongside the other advanced onboarding paths, taking a public-key
+  hex + optional label. Every destructive/spend action's UI (Send, Trade, mint, DID create/transfer,
+  clawback) checks `kind==='watch'` and disables itself with an explanatory message rather than
+  attempting the call and surfacing a raw `WATCH_ONLY` code. Four states + react-intl across the 14
+  locales.
+
+### 18.20 Private-key export (#96)
+
+`exportPrivateKey` (§7) reveals the RAW (pre-synthetic) account secret key at the wallet's ACTIVE HD
+derivation index, for BOTH schemes — `lib/keystore/derive.ts`'s `deriveWalletSecretKeyHex`, the key
+BEFORE `deriveSynthetic()`. This is deliberately the convention `chia-blockchain`/Sage/hardware-
+wallet tooling treats as "the wallet's private key for this address": every one of them re-applies
+the (deterministic, non-secret) synthetic offset internally when signing. Exporting the POST-synthetic
+key instead would silently produce a DIFFERENT effective signing key once re-derived by any tool that
+also applies the offset — it would not actually control the shown address, so this ordering is a
+correctness requirement, not a style choice (proven in `derive.test.ts` by reconstructing the
+synthetic public key FROM the exported raw key and checking it lands on the same golden address §18.1
+already pins).
+
+- **Re-auth exactly like `revealPhrase`.** Requires the FULL password + the persisted record — never
+  served from the cached unlock-window TTL (§18.3) — so an attacker with mere UI access during an
+  unlocked session still cannot exfiltrate the signing key without the password.
+- **Refused for a watch-only active wallet** (`WATCH_ONLY`, §18.19 — it holds no secret to export).
+- **UI (§5.6/§67 P1-5 pattern).** Reached from an explicit, clearly-labeled "Export private key"
+  action (fullscreen-only, alongside the other destructive/advanced custody actions) behind a
+  password prompt and firm warnings (irreversible exposure; never share; DIG will never ask for it).
+  The revealed hex renders inside the SAME closed-shadow-root `SecretPhrase` primitive the recovery
+  phrase reveal uses (§18.5) — un-scrapeable from the light DOM by another extension or an injected
+  page script — tap-to-reveal, auto-hide, and an explicit copy action that auto-clears the clipboard
+  after a short delay. Both schemes are shown, labeled ("Unhardened (primary)" / "Hardened"), since
+  funds may sit on either at the active index (§18.1a). Four states + react-intl across the 14
+  locales.
+
+### 18.21 Encrypted keystore file backup / restore (#115)
+
+A THIRD way to move a wallet between devices, alongside the 24-word mnemonic (create/import, §18.5)
+and nothing else — it introduces NO new crypto: the exported file's embedded record is the wallet's
+OWN existing `DIGWX1` blob (§18.2), copied byte-for-byte. The SW never decrypts it during export or
+import, so this feature never touches the wallet's secret key.
+
+- **Envelope format (`lib/keystore/backup.ts`).** `{ magic:'DIGWBK1', version:1, label, createdAt,
+  exportedAt, record }` — its OWN magic/version, independent of the embedded `Digwx1Record`'s (§18.2),
+  so the FILE format can evolve later without colliding with the record's own versioning (additive
+  only, mirroring the `.dig` format's backwards-compatibility discipline).
+- **Export** (`exportWalletBackup`, §7): builds the envelope for one registry wallet and returns it as
+  `{ filename, json }` — `filename` is `dig-wallet-<slug-of-label>-<yyyy-mm-dd>.json` (falls back to a
+  generic slug when the label has no ASCII-safe characters). The UI downloads it client-side via a
+  plain `<a download>` blob URL — no `chrome.downloads` permission needed. Refused `WATCH_ONLY` for a
+  watch-only wallet (nothing encrypted to export).
+- **Restore** (`importWalletBackup`, §7): parses + validates the envelope's magic/version/label/
+  `createdAt` AND the embedded record's own DIGWX1 structural shape (`isValidDigwx1Record`, §18.2) —
+  BAD_FORMAT for a malformed envelope, BAD_RECORD for a structurally-invalid embedded record — never
+  attempting to decrypt either. Refuses a BYTE-IDENTICAL duplicate already in the registry
+  (`ALREADY_EXISTS`, compared by the record's own ciphertext) to avoid registry clutter from
+  re-importing the same file twice. A valid, novel backup is added to the registry under a FRESH id,
+  ACTIVE, and comes back `locked` (no password was ever seen during restore) — the normal unlock
+  screen (§18.5) then gates it exactly like switching to any not-yet-unlocked wallet (§18.16).
+- **UI.** Export sits on each wallet's row in the manager list (§18.16) as an additional action
+  alongside rename/remove. Restore is a THIRD option on the "add wallet" flow (§18.5/§18.19) —
+  "Restore from backup file" — taking a file picker (`<input type="file">`, read via `.text()`) next
+  to "Create new" and "Import from recovery phrase". Both are fullscreen-only (§2.1), alongside the
+  other advanced/security-sensitive onboarding paths. Four states + react-intl across the 14 locales.

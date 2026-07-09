@@ -30,8 +30,16 @@ import {
   entropyToMnemonic,
   mnemonicToSeed,
 } from '@/lib/keystore/bip39';
-import { scanBalances, receiveAddress, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
-import { deriveAccounts } from '@/lib/keystore/derive';
+import { scanBalances, receiveAddress, scanWatchBalances, receiveAddressFromPublicKey, type ScanWasm, type BalanceScan } from '@/offscreen/scan';
+import {
+  deriveAccounts,
+  deriveWatchAccounts,
+  masterFromSeed,
+  deriveWalletSecretKeyHex,
+  masterPublicKeyFromHex,
+  publicKeyFingerprint,
+  type WatchWasm,
+} from '@/lib/keystore/derive';
 import type { ChainClient, ChainCoin } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
 import { listCoins as buildCoinList, prepareSplit as buildSplit, prepareCombine as buildCombine, type CoinsWasm, type CoinInfo, type CoinOpSummary } from '@/offscreen/coins';
@@ -167,6 +175,9 @@ export type VaultOp =
   | 'unlockWallet'
   | 'lockWallet'
   | 'revealPhrase'
+  // Private-key export (#96): the raw (pre-synthetic) account secret key at the active index, BOTH
+  // schemes — re-auths with the full password exactly like revealPhrase.
+  | 'exportPrivateKey'
   // Multi-wallet switcher (#90): activate an already-unlocked wallet / drop one wallet's cached key.
   | 'switchWallet'
   | 'forgetWallet'
@@ -257,6 +268,13 @@ export interface VaultRequest {
    * derive/scan/send op derives ONLY this index (both schemes) — never a multi-index sweep. Default 0.
    */
   activeIndex?: number;
+  /**
+   * Watch-only (#96): the wallet's master/root BLS public key (hex). When present on
+   * `getReceiveAddress`/`scanBalances`/`listDerivedAddresses`, the vault derives from THIS public key
+   * (unhardened only — hardened is unreachable from a public key alone) instead of the held seed, so
+   * these reads work with NO wallet ever created/unlocked. Absent for an ordinary custody wallet.
+   */
+  watchPublicKeyHex?: string;
   /** Send: recipient bech32m address. */
   recipient?: string;
   /** Send: amount + fee in base units (mojos), as decimal strings. */
@@ -340,8 +358,15 @@ export interface VaultResponse {
   mnemonic?: string;
   /** The pooled receive address (getReceiveAddress). */
   address?: string;
-  /** listDerivedAddresses (#106): the derived page — both schemes, indexes `0..count-1`. */
+  /** getReceiveAddress with `watchPublicKeyHex` (#96): the key's Chia-convention fingerprint — a
+   * short, human-shareable numeric id shown alongside a watch-only wallet. */
+  fingerprint?: number;
+  /** listDerivedAddresses (#106): the derived page — both schemes, indexes `0..count-1` (a watch-only
+   * wallet's page is unhardened-only, #96 — hardened is unreachable from a public key alone). */
   addresses?: { index: number; scheme: 'unhardened' | 'hardened'; address: string }[];
+  /** exportPrivateKey (#96): the raw (pre-synthetic) account secret key at the active index, one
+   * entry per HD scheme — shown once for the user to copy, never stored. */
+  privateKeys?: { scheme: 'unhardened' | 'hardened'; hex: string }[];
   /** The scanned balances (scanBalances). */
   balances?: BalanceScan;
   /** prepareSend: the pending id + the decoded (tamper-resistant) summary to approve. */
@@ -498,6 +523,8 @@ export class Vault {
           return await this.unlockWallet(req, deps);
         case 'revealPhrase':
           return await this.revealPhrase(req, deps);
+        case 'exportPrivateKey':
+          return await this.exportPrivateKey(req, deps);
         case 'lockWallet':
           this.lock();
           return { success: true, hasKey: false };
@@ -673,6 +700,31 @@ export class Vault {
     return { success: true, mnemonic };
   }
 
+  /**
+   * Export the raw (pre-synthetic) account secret key at the ACTIVE index, BOTH schemes (#96) —
+   * "cold wallet" private-key export. Re-runs the FULL password decrypt exactly like
+   * {@link revealPhrase} (never from the cached unlock window); the transient seed/entropy copies
+   * are zeroized. Does not alter the held-key state.
+   */
+  private async exportPrivateKey(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!req.password || !req.record) {
+      return { success: false, code: 'BAD_REQUEST', message: 'password and record required' };
+    }
+    if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'derivation unavailable' };
+    const entropy = await decryptEntropy(req.record, req.password, deps.argon2Fn);
+    const seed = await mnemonicToSeed(entropyToMnemonic(entropy));
+    entropy.fill(0);
+    const master = masterFromSeed(deps.chia, seed);
+    const activeIndex = req.activeIndex ?? 0;
+    const privateKeys: { scheme: 'unhardened' | 'hardened'; hex: string }[] = [
+      { scheme: 'unhardened', hex: deriveWalletSecretKeyHex(deps.chia, master, activeIndex, 'unhardened') },
+      { scheme: 'hardened', hex: deriveWalletSecretKeyHex(deps.chia, master, activeIndex, 'hardened') },
+    ];
+    master.free?.();
+    seed.fill(0);
+    return { success: true, privateKeys };
+  }
+
   /** The active wallet's held entropy (or null when the active wallet is locked / absent). */
   private activeEntropy(): Uint8Array | null {
     return this.activeId ? this.keys.get(this.activeId) ?? null : null;
@@ -685,8 +737,29 @@ export class Vault {
     return mnemonicToSeed(entropyToMnemonic(entropy));
   }
 
+  /**
+   * Parse + validate a watch-only public key, returning `null` (never throwing) on a malformed one
+   * so every caller can uniformly fall back to `INVALID_PUBLIC_KEY` instead of duplicating a
+   * try/catch. Pairs with {@link masterPublicKeyFromHex}'s strict validation.
+   */
+  private parseWatchKey(chia: WatchWasm, hex: string): ReturnType<typeof masterPublicKeyFromHex> | null {
+    try {
+      return masterPublicKeyFromHex(chia, hex);
+    } catch {
+      return null;
+    }
+  }
+
   private async getReceiveAddress(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'derivation unavailable' };
+    if (req.watchPublicKeyHex) {
+      const chia = deps.chia as unknown as WatchWasm;
+      const masterPk = this.parseWatchKey(chia, req.watchPublicKeyHex);
+      if (!masterPk) return { success: false, code: 'INVALID_PUBLIC_KEY', message: 'not a valid BLS public key' };
+      const fingerprint = publicKeyFingerprint(masterPk);
+      masterPk.free?.();
+      return { success: true, address: receiveAddressFromPublicKey(chia, req.watchPublicKeyHex, req.activeIndex ?? 0), fingerprint };
+    }
     const seed = await this.heldSeed();
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     return { success: true, address: receiveAddress(deps.chia, seed, req.activeIndex ?? 0) };
@@ -698,20 +771,41 @@ export class Vault {
    * `deriveAccounts` — no chain query, no balance scan, and NOT a multi-index sweep (#165 stays
    * intact: this never feeds a balance/activity view, only display). `count` defaults to a small
    * page and is clamped to {@link MAX_DERIVED_ADDRESS_COUNT} so a hostile/mistaken huge request
-   * can't derive unboundedly.
+   * can't derive unboundedly. A watch-only wallet's page (#96) is UNHARDENED-only — hardened is
+   * unreachable from a public key alone.
    */
   private async listDerivedAddresses(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'derivation unavailable' };
-    const seed = await this.heldSeed();
-    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const requested = req.count ?? DEFAULT_DERIVED_ADDRESS_COUNT;
     const count = Math.max(1, Math.min(MAX_DERIVED_ADDRESS_COUNT, Math.floor(requested)));
+    if (req.watchPublicKeyHex) {
+      const chia = deps.chia as unknown as WatchWasm;
+      if (!this.parseWatchKey(chia, req.watchPublicKeyHex)) {
+        return { success: false, code: 'INVALID_PUBLIC_KEY', message: 'not a valid BLS public key' };
+      }
+      const accounts = deriveWatchAccounts(chia, req.watchPublicKeyHex, { start: 0, count });
+      return { success: true, addresses: accounts.map((a) => ({ index: a.index, scheme: a.scheme, address: a.address })) };
+    }
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const accounts = deriveAccounts(deps.chia, seed, { schemes: ['unhardened', 'hardened'], start: 0, count });
     return { success: true, addresses: accounts.map((a) => ({ index: a.index, scheme: a.scheme, address: a.address })) };
   }
 
   private async scanBalances(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (req.watchPublicKeyHex) {
+      const chia = deps.chia as unknown as ScanWasm & WatchWasm;
+      if (!this.parseWatchKey(chia, req.watchPublicKeyHex)) {
+        return { success: false, code: 'INVALID_PUBLIC_KEY', message: 'not a valid BLS public key' };
+      }
+      const balances = await scanWatchBalances(chia, deps.chain, {
+        masterPublicKeyHex: req.watchPublicKeyHex,
+        ...(req.watchedCats ? { watchedCats: req.watchedCats } : {}),
+        activeIndex: req.activeIndex ?? 0,
+      });
+      return { success: true, balances };
+    }
     const seed = await this.heldSeed();
     if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
     const balances = await scanBalances(deps.chia, deps.chain, {

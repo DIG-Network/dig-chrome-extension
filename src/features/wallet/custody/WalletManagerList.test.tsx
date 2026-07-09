@@ -24,8 +24,8 @@ function mockRegistry() {
 afterEach(() => vi.restoreAllMocks());
 
 const WALLETS: WalletMeta[] = [
-  { id: 'w1', label: 'Main', createdAt: 1, active: true, activeIndex: 0, previewAddress: 'xch1' + 'a'.repeat(58) },
-  { id: 'w2', label: 'Trading', createdAt: 2, active: false, activeIndex: 0 }, // no previewAddress yet
+  { id: 'w1', label: 'Main', createdAt: 1, active: true, activeIndex: 0, previewAddress: 'xch1' + 'a'.repeat(58), accounts: [{ id: 'w1-acct-0', label: 'Account 1', index: 0 }] },
+  { id: 'w2', label: 'Trading', createdAt: 2, active: false, activeIndex: 0, accounts: [{ id: 'w2-acct-0', label: 'Account 1', index: 0 }] }, // no previewAddress yet
 ];
 
 describe('WalletManagerList (#176)', () => {

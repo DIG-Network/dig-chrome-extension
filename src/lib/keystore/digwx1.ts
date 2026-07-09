@@ -231,17 +231,28 @@ export async function encryptEntropy(
   return { record, usedFallback };
 }
 
+/**
+ * Shallow structural validation of an UNKNOWN value as a DIGWX1 record — checks the magic/version/
+ * kdf/cipher/ciphertext shape only, never touches crypto. Exported (#115) so callers outside this
+ * module — the keystore FILE backup/restore parser — can accept-or-reject a file's embedded record
+ * before it is ever handed to {@link decryptEntropy}, without duplicating the shape check.
+ */
+export function isValidDigwx1Record(value: unknown): value is Digwx1Record {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Partial<Digwx1Record>;
+  return (
+    record.magic === MAGIC &&
+    record.version === VERSION &&
+    !!record.kdf &&
+    !!record.cipher &&
+    record.cipher.id === 'aes-256-gcm' &&
+    typeof record.ciphertext === 'string'
+  );
+}
+
 /** Shallow structural validation of a decoded record before we touch crypto. */
 function assertRecord(record: Digwx1Record): void {
-  if (
-    !record ||
-    record.magic !== MAGIC ||
-    record.version !== VERSION ||
-    !record.kdf ||
-    !record.cipher ||
-    record.cipher.id !== 'aes-256-gcm' ||
-    typeof record.ciphertext !== 'string'
-  ) {
+  if (!isValidDigwx1Record(record)) {
     throw new KeystoreError('BAD_RECORD', 'not a DIGWX1 record');
   }
 }

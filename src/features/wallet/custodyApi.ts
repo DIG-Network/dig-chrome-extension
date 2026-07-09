@@ -6,7 +6,7 @@ import type { LocalActivityEntry } from '@/lib/activity-log';
 import type { OfferLogEntry } from '@/lib/offer-log';
 import type { DexieOfferSummary } from '@/lib/dexie';
 import type { WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
-import type { WalletMeta } from '@/lib/wallet-registry';
+import type { AccountEntry, WalletMeta } from '@/lib/wallet-registry';
 
 /** The record-free registry snapshot the switcher reads (#90): every wallet's metadata + the active id. */
 export interface WalletsResult {
@@ -55,6 +55,25 @@ export interface UnlockResult {
 }
 export interface RevealResult {
   mnemonic: string;
+}
+/** Private-key reveal (#96): the raw account secret key at the active index, one entry per scheme. */
+export interface ExportPrivateKeyResult {
+  privateKeys: { scheme: 'unhardened' | 'hardened'; hex: string }[];
+}
+/** Watch-only import (#96): the new wallet's id + its previewed index-0 address + key fingerprint. */
+export interface ImportWatchResult {
+  activeWalletId: string;
+  address: string;
+  fingerprint: number;
+}
+/** The reply from an account mutation (#95 add/rename/remove): the active wallet's updated accounts. */
+export interface AccountsResult {
+  accounts: AccountEntry[];
+}
+/** Keystore file backup export (#115): the download filename + the JSON envelope text. */
+export interface ExportBackupResult {
+  filename: string;
+  json: string;
 }
 /** A scanned balance snapshot (base units): XCH mojos + per-CAT (asset id → base units). */
 export interface CustodyBalances {
@@ -234,6 +253,53 @@ export const custodyApi = api.injectEndpoints({
       query: (arg) => ({ action: ACTIONS.revealPhrase, ...arg }),
     }),
 
+    // ── Private-key reveal (#96) ──
+    // A mutation (never a cached query) so the sensitive key is never retained in the query cache —
+    // same discipline as revealPhrase. Re-auths with the full password; refused WATCH_ONLY for a
+    // watch-only active wallet.
+    exportPrivateKey: build.mutation<ExportPrivateKeyResult, { password: string }>({
+      query: (arg) => ({ action: ACTIONS.exportPrivateKey, ...arg }),
+    }),
+
+    // ── Watch-only wallet (#96) ──
+    // Add a spend-less wallet from a master/root public key only. Activates it (like create/import),
+    // so wipe the whole cache (#162) exactly like the other identity-changing mutations.
+    importWatchWallet: build.mutation<ImportWatchResult, { publicKeyHex: string; label?: string }>({
+      query: (arg) => ({ action: ACTIONS.importWatchWallet, ...arg }),
+      invalidatesTags: ACTIVE_WALLET_INVALIDATION,
+      onQueryStarted: (_arg, { dispatch, queryFulfilled }) => resetCacheOnIdentityChange(queryFulfilled, dispatch),
+    }),
+
+    // ── Named accounts (#95) ──
+    // Add/rename/remove a named account of the ACTIVE wallet. Only the registry list changes for
+    // add/rename; removing the ACTIVE account re-homes the index server-side, so it invalidates the
+    // index-scoped set too (Balances/Activity/Address/Collectibles/Coins) alongside Wallets.
+    addAccount: build.mutation<AccountsResult, { label?: string }>({
+      query: (arg) => ({ action: ACTIONS.addAccount, ...arg }),
+      invalidatesTags: ['Wallets'],
+    }),
+    renameAccount: build.mutation<AccountsResult, { accountId: string; label: string }>({
+      query: (arg) => ({ action: ACTIONS.renameAccount, ...arg }),
+      invalidatesTags: ['Wallets'],
+    }),
+    removeAccount: build.mutation<AccountsResult, { accountId: string }>({
+      query: (arg) => ({ action: ACTIONS.removeAccount, ...arg }),
+      invalidatesTags: ['Wallets', ...ACTIVE_INDEX_INVALIDATION],
+    }),
+
+    // ── Encrypted keystore file backup/restore (#115) ──
+    // Export a wallet's own encrypted record as a downloadable file — a mutation (never cached), no
+    // cache impact (read-only over the registry).
+    exportWalletBackup: build.mutation<ExportBackupResult, { walletId: string }>({
+      query: (arg) => ({ action: ACTIONS.exportWalletBackup, ...arg }),
+    }),
+    // Restore a wallet from a backup file's JSON — adds it, active + LOCKED. Identity change → reset.
+    importWalletBackup: build.mutation<{ activeWalletId: string; lockState: LockState }, { json: string; label?: string }>({
+      query: (arg) => ({ action: ACTIONS.importWalletBackup, ...arg }),
+      invalidatesTags: ACTIVE_WALLET_INVALIDATION,
+      onQueryStarted: (_arg, { dispatch, queryFulfilled }) => resetCacheOnIdentityChange(queryFulfilled, dispatch),
+    }),
+
     getReceiveAddress: build.query<{ address: string }, void>({
       query: () => ({ action: ACTIONS.getReceiveAddress }),
       providesTags: ['Address'],
@@ -373,6 +439,13 @@ export const {
   useUnlockWalletMutation,
   useLockWalletMutation,
   useRevealPhraseMutation,
+  useExportPrivateKeyMutation,
+  useImportWatchWalletMutation,
+  useAddAccountMutation,
+  useRenameAccountMutation,
+  useRemoveAccountMutation,
+  useExportWalletBackupMutation,
+  useImportWalletBackupMutation,
   useGetReceiveAddressQuery,
   useGetDerivedAddressesQuery,
   useGetCustodyBalancesQuery,
