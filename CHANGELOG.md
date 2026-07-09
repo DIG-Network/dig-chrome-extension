@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.71.1] - 2026-07-09
+
+### Bug Fixes
+- **theme:** Default to light + theme switcher in DIG Settings (#211) (#97)
+
 ## [1.71.0] - 2026-07-09
 
 ### Features
