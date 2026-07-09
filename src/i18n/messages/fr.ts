@@ -137,6 +137,7 @@ export const fr: Record<string, string> = {
   'wallet.assets.filter.empty': 'Aucun jeton ne correspond à "{query}"',
   'wallet.getdig': 'Obtenir des $DIG',
   'wallet.getdig.open': 'Plus',
+  'wallet.getxch': 'Plus',
   'wallet.getdig.hint.tibetswap': 'AMM XCH ↔ DIG',
   'wallet.getdig.hint.dexie': 'DIG / XCH sur le DEX dexie',
   'wallet.getdig.hint.9mm': 'Jeton DIG sur 9mm.pro',

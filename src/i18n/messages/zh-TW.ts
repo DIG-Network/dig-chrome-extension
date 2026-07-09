@@ -137,6 +137,7 @@ export const zhTW: Record<string, string> = {
   'wallet.assets.filter.empty': '沒有與 "{query}" 相符的代幣',
   'wallet.getdig': '取得 $DIG',
   'wallet.getdig.open': '更多',
+  'wallet.getxch': '更多',
   'wallet.getdig.hint.tibetswap': 'XCH ↔ DIG 自動做市商',
   'wallet.getdig.hint.dexie': 'dexie 上的 DIG / XCH',
   'wallet.getdig.hint.9mm': '9mm.pro 上的 DIG 代幣',
