@@ -4,6 +4,7 @@ import {
   decryptEntropy,
   canonicalHeader,
   needsUpgrade,
+  isValidDigwx1Record,
   KeystoreError,
   MAGIC,
   VERSION,
@@ -115,5 +116,31 @@ describe('DIGWX1 keystore', () => {
   it('reports argon2 records as not needing upgrade', async () => {
     const { record } = await encryptEntropy(ENTROPY, PASSWORD, { argon2Fn: fakeArgon2 });
     expect(needsUpgrade(record)).toBe(false);
+  });
+
+  // #115 — the structural validator backup/restore reuses to accept-or-reject a file's embedded
+  // record BEFORE ever attempting to decrypt it (a wrong file must never reach the crypto layer).
+  describe('isValidDigwx1Record (#115 keystore backup validation)', () => {
+    it('accepts a real record produced by encryptEntropy', async () => {
+      const { record } = await encryptEntropy(ENTROPY, PASSWORD, { argon2Fn: fakeArgon2 });
+      expect(isValidDigwx1Record(record)).toBe(true);
+    });
+
+    it('rejects null/undefined/non-object input', () => {
+      expect(isValidDigwx1Record(null)).toBe(false);
+      expect(isValidDigwx1Record(undefined)).toBe(false);
+      expect(isValidDigwx1Record('not an object')).toBe(false);
+      expect(isValidDigwx1Record(42)).toBe(false);
+    });
+
+    it('rejects a record with the wrong magic/version', () => {
+      expect(isValidDigwx1Record({ magic: 'NOPE', version: 1, kdf: {}, cipher: { id: 'aes-256-gcm' }, ciphertext: 'x' })).toBe(false);
+      expect(isValidDigwx1Record({ magic: MAGIC, version: 99, kdf: {}, cipher: { id: 'aes-256-gcm' }, ciphertext: 'x' })).toBe(false);
+    });
+
+    it('rejects a record missing kdf/cipher/ciphertext', () => {
+      expect(isValidDigwx1Record({ magic: MAGIC, version: VERSION })).toBe(false);
+      expect(isValidDigwx1Record({ magic: MAGIC, version: VERSION, kdf: {}, cipher: { id: 'aes-256-gcm' } })).toBe(false);
+    });
   });
 });

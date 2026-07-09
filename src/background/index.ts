@@ -53,6 +53,7 @@ import {
   LOCK_STATE,
   isCustodyAction,
   isSessionRenewingAction,
+  requiresSigningKey,
   shouldApplyRenewal,
   resolveTtlMinutes,
   resolveCoinsetUrl,
@@ -78,7 +79,16 @@ import {
   setWalletActiveIndex,
   setWalletPreviewAddress,
   shouldCachePreviewAddress,
+  // Named accounts (#95) — a friendly label over one HD derivation index, layered on #165.
+  ensureAccounts,
+  addAccount,
+  renameAccount as renameAccountEntry,
+  removeAccount as removeAccountEntry,
+  // Watch-only wallets (#96) — a spend-less wallet imported from a public key only.
+  isWatchOnly,
 } from '@/lib/wallet-registry';
+// Encrypted keystore FILE backup/restore (#115) — the SW never decrypts either direction.
+import { buildBackupFile, parseBackupFile, backupFilename } from '@/lib/keystore/backup';
 // The LOCAL activity log (#154 — MetaMask-style transaction tracking, replacing the old heavy
 // on-chain `includeSpent: true` coinset scan): pure append/confirm/read + balance-delta receive
 // detection over the per-wallet+index `ACTIVITY_LOG_KEY` state.
@@ -1068,6 +1078,21 @@ async function activeDerivationIndex() {
 }
 
 /**
+ * #96 — the ACTIVE wallet's watch-only public key, when it IS a watch-only entry; `undefined` for an
+ * ordinary custody wallet. Read/derive ops pass this straight through to the vault so a watch-only
+ * wallet's addresses/balances derive from the public key instead of relying on an unlocked seed.
+ */
+async function activeWatchPublicKeyHex() {
+  const [active, wl] = await Promise.all([
+    chrome.storage.local.get(ACTIVE_WALLET_KEY),
+    chrome.storage.local.get(WALLETS_KEY),
+  ]);
+  const wallets = Array.isArray(wl[WALLETS_KEY]) ? wl[WALLETS_KEY] : [];
+  const entry = findWallet(wallets, active[ACTIVE_WALLET_KEY] || null);
+  return isWatchOnly(entry) ? entry.watchPublicKeyHex : undefined;
+}
+
+/**
  * Opportunistically cache the active wallet's canonical (index-0) receive address onto its
  * registry entry (#176 — the wallet switcher's per-row address preview). Called after every
  * `getReceiveAddress` read; a no-op unless {@link shouldCachePreviewAddress} says this read is the
@@ -1124,6 +1149,8 @@ async function getLockStateSnapshot() {
     activeWalletId,
     unlockExpiry: sess[UNLOCK_EXPIRY_KEY] || null,
     activeIndex: activeEntry?.activeIndex ?? 0,
+    // #96 — a watch-only active wallet has no keystore blob at all and is never "locked".
+    isWatchActive: isWatchOnly(activeEntry),
     now: Date.now(),
   });
 }
@@ -1159,6 +1186,16 @@ async function handleCustodyAction(message) {
 
 /** The action dispatch table for {@link handleCustodyAction} (SW ↔ offscreen ↔ storage). */
 async function handleCustodyActionInner(message) {
+  // #96 — a signing-required action (send/sign/reveal-a-secret) is refused BEFORE it ever reaches
+  // the vault when the ACTIVE wallet is a spend-less watch-only entry (it holds no secret at all).
+  // Read-only actions (balances/addresses/lists) are unaffected — they route through the public-key
+  // derivation path instead (see the getReceiveAddress/getCustodyBalances/listDerivedAddresses cases).
+  if (requiresSigningKey(message.action)) {
+    const state = await loadRegistry();
+    if (isWatchOnly(findWallet(state.wallets, state.activeId))) {
+      return { success: false, code: 'WATCH_ONLY', message: 'watch-only wallets cannot sign or spend' };
+    }
+  }
   switch (message.action) {
     case ACTIONS.getLockState:
       return getLockStateSnapshot();
@@ -1204,6 +1241,13 @@ async function handleCustodyActionInner(message) {
       const record = await readKeystore();
       if (!record) return { success: false, code: 'NO_WALLET', message: 'no wallet' };
       return callVault({ op: 'revealPhrase', password: message.password, record });
+    }
+    case ACTIONS.exportPrivateKey: {
+      // #96 — the raw (pre-synthetic) account secret key at the active index, both schemes. Watch-only
+      // is already rejected by the top-of-dispatch guard above (it has no record to decrypt anyway).
+      const record = await readKeystore();
+      if (!record) return { success: false, code: 'NO_WALLET', message: 'no wallet' };
+      return callVault({ op: 'exportPrivateKey', password: message.password, record, activeIndex: await activeDerivationIndex() });
     }
     case ACTIONS.listWallets: {
       // Record-FREE metadata + the active id (the encrypted records never leave the SW).
@@ -1260,6 +1304,99 @@ async function handleCustodyActionInner(message) {
       await clearActiveWalletCaches();
       return { success: true, wallets: toMeta(wallets, activeId), activeWalletId: activeId, lockState };
     }
+    case ACTIONS.importWatchWallet: {
+      // Watch-only (#96): add a spend-less wallet from a master/root public key only — NO password,
+      // NO seed. Validate the key + preview its index-0 address/fingerprint in ONE offscreen-vault
+      // round trip (reusing getReceiveAddress's watchPublicKeyHex path) before ever adding it.
+      if (!message.publicKeyHex) return { success: false, code: 'BAD_REQUEST', message: 'publicKeyHex required' };
+      const preview = await callVault({ op: 'getReceiveAddress', watchPublicKeyHex: message.publicKeyHex, activeIndex: 0 });
+      if (!preview || preview.success === false) {
+        return preview || { success: false, code: 'INVALID_PUBLIC_KEY', message: 'not a valid BLS public key' };
+      }
+      const state = await loadRegistry();
+      const walletId = crypto.randomUUID();
+      const label = normalizeLabel(message.label, defaultLabel(state.wallets.length + 1));
+      const entry = {
+        id: walletId,
+        label,
+        createdAt: Date.now(),
+        activeIndex: 0,
+        kind: 'watch',
+        watchPublicKeyHex: message.publicKeyHex,
+        watchFingerprint: preview.fingerprint,
+        previewAddress: preview.address,
+      };
+      // A watch-only wallet has no encrypted record; persist it alongside the others without touching
+      // the `wallet.keystore` legacy mirror (which only ever mirrors a CUSTODY wallet's record).
+      await chrome.storage.local.set({ [WALLETS_KEY]: addWallet(state.wallets, entry), [ACTIVE_WALLET_KEY]: walletId });
+      await clearActiveWalletCaches();
+      return { success: true, activeWalletId: walletId, address: preview.address, fingerprint: preview.fingerprint };
+    }
+    case ACTIONS.exportWalletBackup: {
+      // Keystore file backup (#115): export ONE wallet's own existing encrypted record as a
+      // downloadable JSON envelope. The SW never decrypts it — copied byte-for-byte.
+      const state = await loadRegistry();
+      const target = findWallet(state.wallets, message.walletId);
+      if (!target) return { success: false, code: 'NO_WALLET', message: 'unknown wallet' };
+      if (isWatchOnly(target)) return { success: false, code: 'WATCH_ONLY', message: 'a watch-only wallet has nothing encrypted to export' };
+      const file = buildBackupFile({ label: target.label, createdAt: target.createdAt, record: target.record });
+      return { success: true, filename: backupFilename(target.label), json: JSON.stringify(file) };
+    }
+    case ACTIONS.importWalletBackup: {
+      // Keystore file backup (#115): restore a wallet from a previously-exported backup file's JSON
+      // text. Validates structurally (never decrypts); lands LOCKED (no password was ever supplied).
+      const parsed = parseBackupFile(message.json || '');
+      if (!parsed.ok) return { success: false, code: parsed.code, message: 'not a valid DIG wallet backup file' };
+      const state = await loadRegistry();
+      const alreadyExists = state.wallets.some((w) => w.record && w.record.ciphertext === parsed.backup.record.ciphertext);
+      if (alreadyExists) return { success: false, code: 'ALREADY_EXISTS', message: 'this wallet is already added' };
+      const walletId = crypto.randomUUID();
+      const label = normalizeLabel(message.label || parsed.backup.label, defaultLabel(state.wallets.length + 1));
+      const entry = { id: walletId, label, record: parsed.backup.record, createdAt: parsed.backup.createdAt, activeIndex: 0 };
+      await persistRegistry({ wallets: addWallet(state.wallets, entry), activeId: walletId, keystore: parsed.backup.record });
+      await clearActiveWalletCaches();
+      // No password was ever seen during restore — the vault never cached a key for this wallet id,
+      // so the wallet comes back LOCKED and the normal unlock screen gates it (same as any not-yet-
+      // unlocked wallet in the switcher, §18.16).
+      return { success: true, activeWalletId: walletId, lockState: LOCK_STATE.LOCKED };
+    }
+    case ACTIONS.addAccount: {
+      // Named accounts (#95): append a new account to the ACTIVE wallet at the next unused index.
+      const state = await loadRegistry();
+      if (!state.activeId) return { success: false, code: 'NO_WALLET', message: 'no wallet' };
+      const wallets = addAccount(state.wallets, state.activeId, message.label);
+      await persistRegistry({ wallets, activeId: state.activeId, keystore: activeRecord(wallets, state.activeId) });
+      const entry = findWallet(wallets, state.activeId);
+      return { success: true, accounts: entry ? entry.accounts : [] };
+    }
+    case ACTIONS.renameAccount: {
+      const state = await loadRegistry();
+      if (!state.activeId) return { success: false, code: 'NO_WALLET', message: 'no wallet' };
+      const label = normalizeLabel(message.label, '');
+      if (!label || !message.accountId) return { success: false, code: 'BAD_REQUEST', message: 'accountId + label required' };
+      const wallets = renameAccountEntry(state.wallets, state.activeId, message.accountId, label);
+      await persistRegistry({ wallets, activeId: state.activeId, keystore: activeRecord(wallets, state.activeId) });
+      const entry = findWallet(wallets, state.activeId);
+      return { success: true, accounts: entry ? entry.accounts : [] };
+    }
+    case ACTIONS.removeAccount: {
+      // Removing the currently-ACTIVE account re-homes activeIndex (removeAccountEntry does this
+      // itself), so every index-scoped cache must be dropped exactly like setActiveIndex.
+      const state = await loadRegistry();
+      if (!state.activeId) return { success: false, code: 'NO_WALLET', message: 'no wallet' };
+      if (!message.accountId) return { success: false, code: 'BAD_REQUEST', message: 'accountId required' };
+      const before = findWallet(state.wallets, state.activeId);
+      const beforeAccounts = before ? ensureAccounts(before) : [];
+      if (!beforeAccounts.some((a) => a.id === message.accountId)) {
+        return { success: false, code: 'BAD_REQUEST', message: 'unknown account' };
+      }
+      if (beforeAccounts.length <= 1) return { success: false, code: 'LAST_ACCOUNT', message: 'cannot remove the last account' };
+      const wallets = removeAccountEntry(state.wallets, state.activeId, message.accountId);
+      await persistRegistry({ wallets, activeId: state.activeId, keystore: activeRecord(wallets, state.activeId) });
+      const after = findWallet(wallets, state.activeId);
+      if (before && after && before.activeIndex !== after.activeIndex) await clearActiveWalletCaches();
+      return { success: true, accounts: after ? after.accounts : [] };
+    }
     case ACTIONS.setActiveIndex: {
       // Navigate the ACTIVE wallet's active HD derivation index (#165 — prev/next/jump). A pure SW
       // registry op (like renameWallet) — no vault round-trip, no key involved. Every derived view
@@ -1275,14 +1412,19 @@ async function handleCustodyActionInner(message) {
     }
     case ACTIONS.getReceiveAddress: {
       const activeIndex = await activeDerivationIndex();
-      const res = await callVault({ op: 'getReceiveAddress', activeIndex });
-      if (res && typeof res.address === 'string') await cachePreviewAddressIfNeeded(activeIndex, res.address);
+      const watchPublicKeyHex = await activeWatchPublicKeyHex();
+      const res = await callVault({ op: 'getReceiveAddress', activeIndex, ...(watchPublicKeyHex ? { watchPublicKeyHex } : {}) });
+      // #96 — the preview-address cache is a custody-wallet convenience (§176); skip it for a
+      // watch-only wallet (it has no registry `record` to fold the cache write into).
+      if (!watchPublicKeyHex && res && typeof res.address === 'string') await cachePreviewAddressIfNeeded(activeIndex, res.address);
       return res;
     }
     case ACTIONS.listDerivedAddresses: {
       // #106 — a read-only page of BOTH-scheme addresses (indexes 0..count-1) for viewing/copying;
-      // pure local derivation, independent of the active index (#165 is unaffected).
-      return callVault({ op: 'listDerivedAddresses', count: message.count });
+      // pure local derivation, independent of the active index (#165 is unaffected). A watch-only
+      // wallet's page (#96) is unhardened-only — hardened is unreachable from a public key alone.
+      const watchPublicKeyHex = await activeWatchPublicKeyHex();
+      return callVault({ op: 'listDerivedAddresses', count: message.count, ...(watchPublicKeyHex ? { watchPublicKeyHex } : {}) });
     }
     case ACTIONS.getCustodyBalances: {
       const settings = await readWalletSettings();
@@ -1293,7 +1435,14 @@ async function handleCustodyActionInner(message) {
       const watchedCats = [...new Set([DIG_ASSET_ID.toLowerCase(), ...parseWatchedCats(watchedRaw).map((c) => c.assetId)])];
       // #154 — the PRE-scan snapshot is the receive-delta baseline; read it before it's overwritten.
       const { [BALANCES_CACHE_KEY]: prevCache } = await chrome.storage.local.get(BALANCES_CACHE_KEY);
-      const res = await callVault({ op: 'scanBalances', watchedCats, activeIndex: await activeDerivationIndex(), coinsetUrl });
+      const watchPublicKeyHex = await activeWatchPublicKeyHex();
+      const res = await callVault({
+        op: 'scanBalances',
+        watchedCats,
+        activeIndex: await activeDerivationIndex(),
+        coinsetUrl,
+        ...(watchPublicKeyHex ? { watchPublicKeyHex } : {}),
+      });
       if (res && res.success !== false && res.balances) {
         await logReceivedActivity(prevCache?.balances, res.balances);
         await chrome.storage.local.set({ [BALANCES_CACHE_KEY]: { balances: res.balances, at: Date.now() } });
