@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.77.0] - 2026-07-09
+
+### Features
+- **wallet:** Node-first wallet-data source + Settings switch + Sage-parity get_* reads (#217) (#107)
+
 ## [1.76.1] - 2026-07-09
 
 ### Documentation
