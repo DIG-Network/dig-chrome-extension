@@ -76,6 +76,12 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* Native form controls (checkbox, radio, range, progress) render in the OS default blue, which
+     clashes with the DIG violet across every surface (network resolution toggle, coin-control
+     selection, send-with-clawback, address-poisoning ack). `accent-color` is an INHERITED property,
+     so setting it once here repaints every native control on the popup + fullscreen + approval
+     shells in-brand — and because it reads `--dig-accent`, it re-tints correctly in the dark theme. */
+  accent-color: var(--dig-accent);
 }
 
 .dig-app {
@@ -320,6 +326,13 @@ h2.dig-heading {
 }
 .dig-mono {
   font-family: var(--dig-mono);
+}
+/* The Send flow's "Choose from address book" trigger sits between the recipient field and the
+   amount field. Without its own rhythm the link butted directly against the "Amount" label below
+   (§6.5 no-touching): pull it up snug to the recipient it belongs to, and give a clear gap before
+   the next field. */
+.dig-contact-picker {
+  margin: -6px 0 var(--dig-gap);
 }
 
 /* ── segmented control (wallet Home/Activity/Trade) ── */
