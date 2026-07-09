@@ -60,6 +60,8 @@ import { prepareNftDidAssign, prepareNftBulkDidAssign, type AssignWasm, type Nft
 import { MAINNET_AGG_SIG_ME, type SigCoinSpend, type SigSecretKey } from '@/offscreen/signing';
 import { decodeDappSpend, reconstructCoinSpends, signDappCoinSpends, signMessageCustody, type DappSignWasm, type DappSpendSummary, type WireCoinSpend } from '@/offscreen/dappSign';
 import { makeOffer, inspectOffer, takeOffer, cancelOffer, type OfferWasm, type OfferAsset, type OfferLeg, type OfferSummary } from '@/offscreen/offers';
+import { prepareCatIssuance, type CatIssuanceWasm, type CatIssuanceMode, type CatIssuanceSummary } from '@/offscreen/catIssuance';
+import { prepareOptionMint, prepareOptionExercise, type OptionWasm, type OptionRecord, type OptionMintSummary, type OptionExerciseSummary } from '@/offscreen/optionContracts';
 import type { ChainSpendBundle } from '@/offscreen/chain';
 import {
   discoverIncomingClawbacks,
@@ -200,6 +202,12 @@ export type VaultOp =
   | 'prepareNftBulkBurn'
   // NFT minting (#92): build a new NFT (CHIP-0007 metadata + royalty); broadcast via confirmSend.
   | 'prepareNftMint'
+  // CAT issuance (#97): mint a brand-new CAT (single- or multi-issuance TAIL); broadcast via confirmSend.
+  | 'prepareCatIssuance'
+  // Option contracts (#104): mint a new XCH-denominated option; exercise one this wallet holds.
+  // Both broadcast via confirmSend.
+  | 'prepareOptionMint'
+  | 'prepareOptionExercise'
   // DID management (#93): create/list/transfer/profile-update a self-custody identity; broadcast via confirmSend.
   | 'listDids'
   | 'prepareDidCreate'
@@ -242,6 +250,27 @@ export interface WireNftMintParams {
   editionTotal?: string;
   royaltyBasisPoints?: number;
   royaltyAddress?: string;
+  fee?: string;
+}
+
+/**
+ * Wire-safe (JSON, no bigint) CAT issuance inputs (#97) crossing the SW→vault boundary. `amount`/
+ * `fee` are decimal strings (base units); the vault converts to bigint.
+ */
+export interface WireCatIssuanceParams {
+  amount: string;
+  mode?: CatIssuanceMode;
+  fee?: string;
+}
+
+/**
+ * Wire-safe (JSON, no bigint) option-mint inputs (#104) crossing the SW→vault boundary. Amounts are
+ * decimal strings (base units); `expirationSeconds` is an absolute unix timestamp (decimal string).
+ */
+export interface WireOptionMintParams {
+  underlyingAmount: string;
+  strikeAmount: string;
+  expirationSeconds: string;
   fee?: string;
 }
 
@@ -332,6 +361,13 @@ export interface VaultRequest {
   profileName?: string;
   /** prepareNftMint (#92): the CHIP-0007 metadata + royalty + fee inputs for a new NFT. */
   nftMint?: WireNftMintParams;
+  /** prepareCatIssuance (#97): the amount/mode/fee inputs for a brand-new CAT issuance. */
+  catIssuance?: WireCatIssuanceParams;
+  /** prepareOptionMint (#104): the underlying/strike/expiration/fee inputs for a new option. */
+  optionMint?: WireOptionMintParams;
+  /** prepareOptionExercise (#104): the FULL recorded terms of the option to exercise (from the
+   * caller's local registry — the vault has no other way to recover them, see the module doc). */
+  optionRecord?: OptionRecord;
   /** decodeDappSpend / signDappSpend: the dApp-supplied coin spends (CHIP-0002 wire, hex fields). */
   coinSpends?: WireCoinSpend[];
   /** signMessage: the UTF-8 message a dApp asked the wallet to sign. */
@@ -408,6 +444,17 @@ export interface VaultResponse {
   nftMintSummary?: NftMintSummary;
   /** prepareNftMint (#92): the new NFT's launcher id (hex). */
   launcherId?: string;
+  /** prepareCatIssuance (#97): the decoded (tamper-resistant) issuance summary to approve. */
+  catIssuanceSummary?: CatIssuanceSummary;
+  /** prepareCatIssuance (#97): the newly-minted CAT's asset id (hex). */
+  assetId?: string;
+  /** prepareOptionMint (#104): the decoded (tamper-resistant) mint summary to approve. */
+  optionMintSummary?: OptionMintSummary;
+  /** prepareOptionMint (#104): the FULL minted option's terms — the caller MUST persist this (a
+   * local registry, e.g. #101's offer-log pattern) to ever exercise it later. */
+  optionRecord?: OptionRecord;
+  /** prepareOptionExercise (#104): the decoded (tamper-resistant) exercise summary to approve. */
+  optionExerciseSummary?: OptionExerciseSummary;
   /** listDids (#93): the wallet's DIDs (both HD schemes), wire-safe. */
   dids?: WalletDid[];
   /** prepareDidCreate (#93): the decoded (tamper-resistant) create summary to approve. */
@@ -564,6 +611,12 @@ export class Vault {
           return await this.prepareNftBulkBurn(req, deps);
         case 'prepareNftMint':
           return await this.prepareNftMint(req, deps);
+        case 'prepareCatIssuance':
+          return await this.prepareCatIssuance(req, deps);
+        case 'prepareOptionMint':
+          return await this.prepareOptionMint(req, deps);
+        case 'prepareOptionExercise':
+          return await this.prepareOptionExercise(req, deps);
         case 'listDids':
           return await this.listDids(req, deps);
         case 'prepareDidCreate':
@@ -1117,6 +1170,95 @@ export class Vault {
     const activityHint: ActivityHint = { asset: 'NFT', amount: '1', counterparty: null };
     this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
     return { success: true, pendingId, nftMintSummary: prepared.summary, launcherId: prepared.launcherId };
+  }
+
+  /**
+   * ISSUE a brand-new CAT owned by this wallet (#97) — single (fixed-supply) or multi (signature-
+   * gated) issuance TAIL. Builds + holds the spend under a pending id (broadcast via the shared
+   * `confirmSend`); returns the decoded, tamper-resistant summary + the new asset id. Does NOT sign
+   * or broadcast.
+   */
+  private async prepareCatIssuance(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const m = req.catIssuance;
+    if (!m || !m.amount) return { success: false, code: 'BAD_REQUEST', message: 'amount is required to issue a CAT' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as CatIssuanceWasm;
+    const prepared = await prepareCatIssuance(chia, deps.chain, {
+      seed,
+      amount: BigInt(m.amount),
+      ...(m.mode ? { mode: m.mode } : {}),
+      fee: BigInt(m.fee ?? '0'),
+      activeIndex: req.activeIndex ?? 0,
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    // #154 — an issuance is a self-only spend (no external counterparty); the SW logs it as kind
+    // 'mint' regardless (it knows the action name), so counterparty stays null on purpose.
+    const activityHint: ActivityHint = { asset: prepared.assetId, amount: prepared.summary.amount, counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
+    return { success: true, pendingId, catIssuanceSummary: prepared.summary, assetId: prepared.assetId };
+  }
+
+  /**
+   * MINT a new XCH-denominated option contract owned by this wallet (#104) — writer AND initial
+   * holder. Builds + holds the spend under a pending id (broadcast via the shared `confirmSend`);
+   * returns the decoded, tamper-resistant summary + the FULL {@link OptionRecord} the caller MUST
+   * persist (this vault holds no registry of its own — see `optionContracts.ts`'s module doc).
+   */
+  private async prepareOptionMint(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const m = req.optionMint;
+    if (!m || !m.underlyingAmount || !m.strikeAmount || !m.expirationSeconds) {
+      return { success: false, code: 'BAD_REQUEST', message: 'underlyingAmount + strikeAmount + expirationSeconds are required to mint an option' };
+    }
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as OptionWasm;
+    const prepared = await prepareOptionMint(chia, deps.chain, {
+      seed,
+      underlyingAmount: BigInt(m.underlyingAmount),
+      strikeAmount: BigInt(m.strikeAmount),
+      expirationSeconds: BigInt(m.expirationSeconds),
+      fee: BigInt(m.fee ?? '0'),
+      activeIndex: req.activeIndex ?? 0,
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    // #154 — a mint is a self-only spend (no external counterparty); the SW logs it as kind 'mint'.
+    const activityHint: ActivityHint = { asset: 'OPTION', amount: prepared.record.underlyingAmount, counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
+    return { success: true, pendingId, optionMintSummary: prepared.summary, optionRecord: prepared.record };
+  }
+
+  /**
+   * EXERCISE an option this wallet holds (#104): melt the option singleton, pay the strike to the
+   * creator, unlock the underlying, and claim the released value — all in one bundle. Builds + holds
+   * the spend under a pending id (broadcast via the shared `confirmSend`); returns the decoded,
+   * tamper-resistant summary to approve. `req.optionRecord` (the caller's persisted registry entry)
+   * is REQUIRED — this vault has no registry of its own.
+   */
+  private async prepareOptionExercise(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    if (!req.optionRecord) return { success: false, code: 'BAD_REQUEST', message: 'optionRecord is required to exercise an option' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as OptionWasm;
+    const prepared = await prepareOptionExercise(chia, deps.chain, {
+      seed,
+      record: req.optionRecord,
+      fee: BigInt(req.fee ?? '0'),
+      activeIndex: req.activeIndex ?? 0,
+    });
+    const pendingId = crypto.randomUUID();
+    const toHex = (b: Uint8Array): string => strip0x((deps.chia as unknown as { toHex(b: Uint8Array): string }).toHex(b));
+    const inputCoinIds = prepared.coinSpends.map((cs) => toHex(cs.coin.coinId()));
+    const activityHint: ActivityHint = { asset: 'OPTION', amount: prepared.summary.underlyingAmount, counterparty: null };
+    this.pending.set(pendingId, { coinSpends: prepared.coinSpends, secretKeys: prepared.secretKeys, inputCoinIds, activityHint });
+    return { success: true, pendingId, optionExerciseSummary: prepared.summary };
   }
 
   /** LIST the wallet's DIDs (#93) — both HD schemes, discovered by hint. Read-only. */

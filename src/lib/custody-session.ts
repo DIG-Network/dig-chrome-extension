@@ -37,6 +37,10 @@ export const ACTIVITY_LOG_KEY = 'wallet.activityLog';
  * derived status (open/taken/cancelled). See `src/lib/offer-log.ts`. Same durable-history semantics
  * as {@link ACTIVITY_LOG_KEY} (never cleared on wallet switch or index navigation). */
 export const OFFER_LOG_KEY = 'wallet.offerLog';
+/** `chrome.storage.local` key: the LOCAL option-contract registry (#104) — options this wallet has
+ * MINTED, with derived status (open/exercised). See `src/lib/optionContractLog.ts`. Same durable-
+ * history semantics as {@link ACTIVITY_LOG_KEY} (never cleared on wallet switch or index navigation). */
+export const OPTION_LOG_KEY = 'wallet.optionLog';
 
 /** The default public coinset chain source (extensions bypass its CORS). Mainnet — see `resolveNetwork`. */
 export const DEFAULT_COINSET_URL = 'https://api.coinset.org';

@@ -5,7 +5,10 @@ import type { LockState } from '@/features/wallet/walletSlice';
 import type { LocalActivityEntry } from '@/lib/activity-log';
 import type { OfferLogEntry } from '@/lib/offer-log';
 import type { DexieOfferSummary } from '@/lib/dexie';
-import type { WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
+import type { WireOfferLeg, WireOfferSummary, WireCatIssuanceParams, WireOptionMintParams } from '@/offscreen/vault';
+import type { CatIssuanceSummary } from '@/offscreen/catIssuance';
+import type { OptionRecord, OptionMintSummary, OptionExerciseSummary } from '@/offscreen/optionContracts';
+import type { OptionLogEntry } from '@/lib/optionContractLog';
 import type { AccountEntry, WalletMeta } from '@/lib/wallet-registry';
 
 /** The record-free registry snapshot the switcher reads (#90): every wallet's metadata + the active id. */
@@ -410,6 +413,47 @@ export const custodyApi = api.injectEndpoints({
       providesTags: ['Offers'],
     }),
 
+    // ── CAT issuance (#97) — mint a brand-new CAT; fullscreen-only advanced op ──
+    // Build (not broadcast) an issuance → held under a pending id + the new asset id + summary to
+    // approve. Broadcast via confirmCatIssuance.
+    prepareCatIssuance: build.mutation<{ pendingId: string; assetId: string; catIssuanceSummary: CatIssuanceSummary }, { catIssuance: WireCatIssuanceParams }>({
+      query: (arg) => ({ action: ACTIONS.prepareCatIssuance, ...arg }),
+    }),
+    // Sign + BROADCAST a prepared CAT issuance (the approved step). Invalidates balances/activity.
+    confirmCatIssuance: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
+      query: (arg) => ({ action: ACTIONS.confirmCatIssuance, ...arg }),
+      invalidatesTags: ['Balances', 'Activity', 'Coins'],
+    }),
+
+    // ── Option contracts (#104) — mint a new XCH-denominated option; exercise one held; fullscreen-only ──
+    // Build (not broadcast) a mint → held under a pending id + the FULL optionRecord + summary to
+    // approve. Broadcast via confirmOptionMint (the SW records it into the local registry then).
+    prepareOptionMint: build.mutation<{ pendingId: string; optionMintSummary: OptionMintSummary; optionRecord: OptionRecord }, { optionMint: WireOptionMintParams }>({
+      query: (arg) => ({ action: ACTIONS.prepareOptionMint, ...arg }),
+    }),
+    // Sign + BROADCAST a prepared option mint (the approved step). `optionRecord` (echoed back from
+    // prepareOptionMint) is REQUIRED so the SW can record the full terms locally.
+    confirmOptionMint: build.mutation<{ spentCoinId: string }, { pendingId: string; optionRecord: OptionRecord }>({
+      query: (arg) => ({ action: ACTIONS.confirmOptionMint, ...arg }),
+      invalidatesTags: ['Balances', 'Activity', 'Options'],
+    }),
+    // Build (not broadcast) an exercise of an option this wallet holds → held under a pending id +
+    // summary to approve. Broadcast via confirmOptionExercise.
+    prepareOptionExercise: build.mutation<{ pendingId: string; optionExerciseSummary: OptionExerciseSummary }, { optionRecord: OptionRecord; fee?: string }>({
+      query: (arg) => ({ action: ACTIONS.prepareOptionExercise, ...arg }),
+    }),
+    // Sign + BROADCAST a prepared option exercise (the approved step). Invalidates balances/activity/Options.
+    confirmOptionExercise: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
+      query: (arg) => ({ action: ACTIONS.confirmOptionExercise, ...arg }),
+      invalidatesTags: ['Balances', 'Activity', 'Options'],
+    }),
+    // The LOCAL option registry for the active wallet + index — every option this wallet has
+    // minted, reconciled against the chain (open → exercised once the coin is spent).
+    getOptions: build.query<{ options: OptionLogEntry[] }, void>({
+      query: () => ({ action: ACTIONS.getOptions }),
+      providesTags: ['Options'],
+    }),
+
     // ── dexie marketplace integration (#102) — NOT custody actions (no wallet key involved) ──
     // POST an already-built offer to dexie so other wallets can discover it.
     postOfferToDexie: build.mutation<{ dexieId: string; known: boolean }, { offer: string }>({
@@ -467,4 +511,11 @@ export const {
   usePostOfferToDexieMutation,
   useBrowseDexieOffersQuery,
   useResolveDexieOfferMutation,
+  usePrepareCatIssuanceMutation,
+  useConfirmCatIssuanceMutation,
+  usePrepareOptionMintMutation,
+  useConfirmOptionMintMutation,
+  usePrepareOptionExerciseMutation,
+  useConfirmOptionExerciseMutation,
+  useGetOptionsQuery,
 } = custodyApi;
