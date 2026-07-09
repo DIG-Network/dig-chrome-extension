@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.70.0] - 2026-07-09
+
+### Features
+- **trade:** Offers/trade trio — multi-asset offers, offer management, dexie integration (#93)
+
 ## [1.69.1] - 2026-07-08
 
 ### Testing
