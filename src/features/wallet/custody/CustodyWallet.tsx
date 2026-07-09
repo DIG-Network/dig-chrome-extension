@@ -192,7 +192,10 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
         )}
       </section>
 
-      <div className="dig-toggle-row" style={{ margin: '14px 0' }}>
+      {/* On the desktop workspace (#85) the persistent sidebar IS the wallet-view nav, so this
+          in-content segmented control is redundant and hidden there via CSS (`.dig-shell-expanded`);
+          it remains the primary nav on the compact popup + a narrow app.html. */}
+      <div className="dig-toggle-row dig-wallet-seg-row" style={{ margin: '14px 0' }}>
         <SegmentedControl<WalletView>
           value={walletView}
           options={segOptions}

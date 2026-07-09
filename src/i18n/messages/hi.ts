@@ -9,6 +9,7 @@ export const hi: Record<string, string> = {
   'shell.wallet.title': 'DIG वॉलेट',
   'shell.popout': 'पूरी विंडो में खोलें',
   'shell.settings': 'DIG सेटिंग्स',
+  'shell.nav.label': 'साइडबार नेविगेशन',
   'shell.version': 'वर्शन {version}',
   'shell.language': 'भाषा',
   'shell.theme': 'थीम',

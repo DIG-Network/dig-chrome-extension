@@ -108,9 +108,18 @@ points**, built by Vite into `dist-web/` and copied into `dist/` (§13), present
   horizontally** (§6.6, #163): content fits the fixed 372px shell; a wide inner control (e.g. the
   wallet's segmented view switcher) scrolls WITHIN itself (`overflow-x: auto` on that control alone)
   instead of widening `.dig-main`/`[data-testid="popup-root"]`.
-- **`app.html`** → `App surface="fullpage"` — a **tablet/desktop-OS**: the SAME app + route tree in
-  the expanded sidebar-rail layout at ≥960px (a wider multi-column widget board), degrading to the
-  compact phone in a narrow window (`useLayoutMode`).
+- **`app.html`** → `App surface="fullpage"` — a **desktop wallet workspace**: the SAME app + route
+  tree presented at ≥960px (`useLayoutMode`, `EXPANDED_MIN_WIDTH`) as a persistent left **sidebar**
+  (`WalletSidebar`) beside a content column with a **`WalletTopbar`** app-bar and the width-using main
+  pane; it degrades to the compact phone in a narrow window. The sidebar (`src/layouts/desktopNav.ts`)
+  **flattens the wallet's segmented sub-views into first-class, one-click sections** — Home · Wallet ·
+  Activity · Trade · Collectibles · Identity · Apps · Network — each mapping to the SHARED route
+  (`tab` + optional `walletView`), so it dispatches the same `setTab`/`setWalletView` the popup uses
+  (one store, no forked navigation). Because the sidebar IS the wallet-view nav on this surface, the
+  in-content wallet segmented control is hidden here (CSS-scoped to `.dig-shell-expanded`); the
+  content still renders the SAME `ActiveTabPanel` feature containers as the popup. The app-bar names
+  the active section as the page-level `<h1>`. Copy reuses the shared catalog (one added id,
+  `shell.nav.label`, for the sidebar's accessible name).
 
 The nav is an **ARIA `tablist` of four screens** (`src/app/tabs.ts` is the source of truth for the
 set, order, default, and hash deep-link) following the Fable **Home · Wallet · Apps · Network**
@@ -147,7 +156,9 @@ grouping; the **default landing is Home**. Every surface stays reachable:
      so the compact popup's segmented control renders `Assets | Activity | Trade | Collectibles`
      only — it never shows an "Identity" tab. The DID list remains reachable view-only on the
      popup via a direct `#wallet/did` deep-link (the panel itself is unaffected — only its tab
-     entry is gated); the fullscreen segmented control always shows all five views.
+     entry is gated). On the fullscreen desktop workspace the in-content segmented control is hidden
+     and the **sidebar** carries every section, Identity included (there is no popup sidebar, so the
+     Identity entry stays fullscreen-only).
    Key custody, signing, and coin selection all happen in the offscreen vault — the decrypted key
    never leaves it (§18); a custom node/RPC endpoint is configured on the options page (§8.3).
 2. **Apps** (§2.4) — the curated DIG dApp store as a native in-extension launcher.
