@@ -28,6 +28,7 @@ import { AccountSwitcher } from '@/features/wallet/custody/AccountSwitcher';
 import { IndexNavigator } from '@/features/wallet/custody/IndexNavigator';
 import { ExportPrivateKey } from '@/features/wallet/custody/ExportPrivateKey';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
+import { ChainSourceSetting } from '@/features/wallet/custody/ChainSourceSetting';
 import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
 import { SessionStatus } from '@/features/wallet/custody/SessionStatus';
 import { NetworkSetting } from '@/features/wallet/custody/NetworkSetting';
@@ -315,6 +316,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
           {isFull && (
             <>
               <NetworkSetting />
+              <ChainSourceSetting />
               <ChainNodeSetting />
               <AutoLockSetting />
               <SessionStatus />

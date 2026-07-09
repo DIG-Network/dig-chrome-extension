@@ -34,6 +34,38 @@ describe('makeNodeWalletClient — request wiring', () => {
   });
 });
 
+describe('defensive parsing (missing / non-finite / empty)', () => {
+  it('defaults missing sync-status fields to 0 / synced', async () => {
+    const { fetchImpl } = fakeFetch({ get_sync_status: {} });
+    const client = makeNodeWalletClient('http://n', { fetch: fetchImpl });
+    expect(await client.getSyncStatus()).toEqual({ syncedCoins: 0, totalCoins: 0, synced: true, selectableXch: 0 });
+  });
+
+  it('treats a non-finite Amount as 0 (number) / "0" (string)', async () => {
+    const { fetchImpl } = fakeFetch({
+      get_sync_status: { selectable_balance: 'not-a-number' },
+      get_cats: { cats: [{ asset_id: 'aa', balance: 'NaN' }] },
+    });
+    const client = makeNodeWalletClient('http://n', { fetch: fetchImpl });
+    expect(await client.getBalances()).toEqual({ xch: 0, cats: { aa: 0 } });
+  });
+
+  it('returns empty lists when the node omits the arrays entirely', async () => {
+    const { fetchImpl } = fakeFetch({ get_nfts: {}, get_dids: {}, get_coins: {}, get_transactions: {} });
+    const client = makeNodeWalletClient('http://n', { fetch: fetchImpl });
+    expect((await client.getNfts()).nfts).toEqual([]);
+    expect((await client.getDids()).dids).toEqual([]);
+    expect((await client.getCoins()).coins).toEqual([]);
+    expect((await client.getActivity()).events).toEqual([]);
+  });
+
+  it('defaults a coin with no amount to "0"', async () => {
+    const { fetchImpl } = fakeFetch({ get_coins: { coins: [{ coin_id: 'c' }] } });
+    const client = makeNodeWalletClient('http://n', { fetch: fetchImpl });
+    expect((await client.getCoins()).coins[0]).toEqual({ coinId: 'c', amount: '0', confirmedHeight: 0 });
+  });
+});
+
 describe('getSyncStatus', () => {
   it('derives synced + selectable XCH', async () => {
     const { fetchImpl } = fakeFetch({ get_sync_status: { synced_coins: 3, total_coins: 4, selectable_balance: '1000000000000' } });
@@ -221,6 +253,16 @@ describe('getActivity / transactionToEntries', () => {
       created: [{ coin_id: 'b', amount: 100, address_kind: 'own', asset: { asset_id: null } }],
     });
     expect(entries).toEqual([]);
+  });
+
+  it('ignores transactions with no own legs (all external)', () => {
+    expect(
+      transactionToEntries({
+        height: 1,
+        timestamp: 1,
+        created: [{ coin_id: 'z', amount: 10, address_kind: 'external', asset: { asset_id: null } }],
+      }),
+    ).toEqual([]);
   });
 
   it('getActivity flattens transactions in order', async () => {

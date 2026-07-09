@@ -17,6 +17,10 @@ export interface WalletSettings {
   theme?: string;
   /** Active chain network: mainnet | testnet (#108). Mainnet is real funds. */
   network?: string;
+  /** Wallet-data source mode (#217): auto | node | coinset | custom. Missing → 'auto' (node-first). */
+  chainSourceMode?: string;
+  /** The node RPC base URL used when `chainSourceMode === 'custom'` (#217). */
+  chainSourceUrl?: string;
   [k: string]: unknown;
 }
 

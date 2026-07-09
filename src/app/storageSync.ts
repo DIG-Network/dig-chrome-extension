@@ -24,6 +24,8 @@ interface StoredSettings {
   locale?: string;
   theme?: string;
   network?: string;
+  chainSourceMode?: string;
+  chainSourceUrl?: string;
 }
 
 export async function installStorageSync(store: AppStore): Promise<() => void> {
