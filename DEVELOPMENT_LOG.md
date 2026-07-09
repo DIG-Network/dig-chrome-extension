@@ -3,6 +3,38 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## Watch-only wallets can only ever see the UNHARDENED chain; private-key export must be PRE-synthetic (#96)
+
+Two BLS-HD facts drive the whole #96 design, both non-obvious:
+
+1. **Unhardened derivation commutes with taking the public key; hardened does NOT.** Deriving child
+   index `i` UNHARDENED from a secret key and then taking its public key equals deriving `i`
+   unhardened directly from the parent's PUBLIC key (`PublicKey.deriveUnhardenedPath` in
+   chia-wallet-sdk-wasm). That is the entire mechanism behind a spend-less watch-only wallet — import
+   only the master/root PUBLIC key and you reproduce every unhardened address byte-for-byte with zero
+   secret material. HARDENED derivation mixes in the parent SECRET key, so it is unreachable from a
+   public key alone. Consequence: a watch-only wallet (and `scanWatchBalances`/`deriveWatchAccount`)
+   is UNHARDENED-ONLY by construction — funds sitting on the hardened chain of that same seed are
+   invisible to a watch-only import. This is a permanent limitation, not a bug; the golden parity
+   test proves the watch path lands on the exact same unhardened addresses the full-secret path does.
+
+2. **Private-key export must hand back the PRE-synthetic account key, not the synthetic one.**
+   `deriveWalletSecretKeyHex` returns the account key BEFORE `deriveSynthetic()`. Sage /
+   chia-blockchain / hardware wallets all treat the pre-synthetic key as "the wallet's private key
+   for this address" and re-apply the (deterministic, non-secret) synthetic offset themselves when
+   signing. Exporting the POST-synthetic key would re-derive to a DIFFERENT effective signing key in
+   any tool that also applies the offset — i.e. it would not control the shown address. Verified by
+   reconstructing the synthetic pubkey FROM the exported hex and asserting it matches the golden
+   address's `syntheticPkHex`. GOTCHA the same as `derive.ts`: `standardPuzzleHash` CONSUMES its
+   PublicKey arg — never `.free()` it after.
+
+Watch-only never gets a cached key in the offscreen vault (it is never created/imported/unlocked), so
+even the dApp sign path fails closed the same way a genuinely locked wallet does; the sharper
+`WATCH_ONLY` code is only wired for the direct custody actions (via `requiresSigningKey`, checked
+before dispatch in the SW). An "account" (#95) is purely a label over ONE derivation index — it never
+adds a second scan dimension, so #165's single-active-index model is untouched (switching an account
+is literally `setActiveIndex(account.index)`).
+
 ## `CompactLayout` and `ExpandedLayout` do NOT share a header — a "global" indicator must be added to BOTH (#108)
 
 The popup/narrow-`app.html` surface (`CompactLayout`) renders `AppHeader`; the wide `app.html`

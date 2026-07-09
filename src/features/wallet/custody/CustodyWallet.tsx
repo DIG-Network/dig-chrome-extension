@@ -6,7 +6,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { setWalletView } from '@/features/ui/uiSlice';
 import { useStorageValue } from '@/lib/useStorageValue';
-import { useGetCustodyBalancesQuery, useGetReceiveAddressQuery, useGetClawbacksQuery } from '@/features/wallet/custodyApi';
+import { useGetCustodyBalancesQuery, useGetReceiveAddressQuery, useGetClawbacksQuery, useListWalletsQuery } from '@/features/wallet/custodyApi';
 import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
@@ -23,7 +23,9 @@ import { GetDigMenu } from '@/features/wallet/GetDigMenu';
 import { FiatCurrencySetting } from '@/features/wallet/custody/FiatCurrencySetting';
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { WalletSwitcher } from '@/features/wallet/custody/WalletSwitcher';
+import { AccountSwitcher } from '@/features/wallet/custody/AccountSwitcher';
 import { IndexNavigator } from '@/features/wallet/custody/IndexNavigator';
+import { ExportPrivateKey } from '@/features/wallet/custody/ExportPrivateKey';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
 import { NetworkSetting } from '@/features/wallet/custody/NetworkSetting';
@@ -84,6 +86,10 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
   // hint (rendered whenever at least one is pending, regardless of surface).
   const clawbacks = useGetClawbacksQuery();
   const pendingClawbackCount = clawbacks.data?.clawbacks?.length ?? 0;
+  // #96 — is the active wallet watch-only? It can view balances but never send/sign, so the Send
+  // action is disabled with an explanatory note and the private-key export is hidden entirely.
+  const walletsList = useListWalletsQuery();
+  const isWatchActive = walletsList.data?.wallets?.find((w) => w.active)?.kind === 'watch';
 
   const assets = custodyAssetBalances(balances.data?.balances, watchedCats, { registry: registry.data, hidden: hiddenCats });
   const hero = pickHeroBalance(assets);
@@ -156,6 +162,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
     <div data-testid="custody-wallet">
       <div className="dig-toggle-row" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <WalletSwitcher />
+        <AccountSwitcher />
         <IndexNavigator />
       </div>
       <PrivacyNote />
@@ -217,7 +224,14 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
       {walletView === 'home' && homePanel === 'assets' && (
         <>
           <div className="dig-action-bar" style={{ display: 'flex', gap: 8, margin: '4px 0 14px' }}>
-            <button type="button" className="dig-btn dig-btn--primary" data-testid="action-send" onClick={() => setHomePanel('send')}>
+            <button
+              type="button"
+              className="dig-btn dig-btn--primary"
+              data-testid="action-send"
+              onClick={() => setHomePanel('send')}
+              disabled={isWatchActive}
+              title={isWatchActive ? intl.formatMessage({ id: 'watch.cannotSign' }) : undefined}
+            >
               <FormattedMessage id="wallet.action.send" />
             </button>
             <button type="button" className="dig-btn" data-testid="action-receive" onClick={() => setHomePanel('receive')}>
@@ -227,6 +241,11 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
               <FormattedMessage id="wallet.action.contacts" />
             </button>
           </div>
+          {isWatchActive && (
+            <p className="dig-muted" role="note" data-testid="watch-only-note" style={{ margin: '0 0 12px' }}>
+              <FormattedMessage id="watch.cannotSign" />
+            </p>
+          )}
           {/* Clawback (#152): fullscreen-only management link (§145); the popup shows a lighter
               "open full screen" hint instead when something is pending (below). */}
           {isFull && pendingClawbackCount > 0 && (
@@ -291,6 +310,9 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
               <AutoLockSetting />
               <ConnectedSites />
               <DerivedAddressList />
+              {/* Private-key export (#96, §18.20) — fullscreen-only + never for a watch-only wallet
+                  (it holds no secret to export). */}
+              {isFull && !isWatchActive && <ExportPrivateKey />}
             </>
           )}
         </>

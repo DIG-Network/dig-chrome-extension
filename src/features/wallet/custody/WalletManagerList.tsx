@@ -5,8 +5,10 @@ import {
   useSwitchWalletMutation,
   useRenameWalletMutation,
   useRemoveWalletMutation,
+  useExportWalletBackupMutation,
 } from '@/features/wallet/custodyApi';
 import { shortenAddress } from '@/lib/wallet-view';
+import { downloadTextFile } from '@/lib/download';
 import type { WalletMeta } from '@/lib/wallet-registry';
 
 /** The `data-role` every row's primary switch button carries, for the roving keyboard nav below. */
@@ -67,13 +69,30 @@ function WalletRow({ wallet, canRemove, onDone }: { wallet: WalletMeta; canRemov
   const [switchWallet, switchState] = useSwitchWalletMutation();
   const [renameWallet, renameState] = useRenameWalletMutation();
   const [removeWallet, removeState] = useRemoveWalletMutation();
+  const [exportBackup, exportState] = useExportWalletBackupMutation();
 
   const [mode, setMode] = useState<'idle' | 'rename' | 'confirmRemove' | 'unlock'>('idle');
   const [name, setName] = useState(wallet.label);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [backedUp, setBackedUp] = useState(false);
 
-  const busy = switchState.isLoading || renameState.isLoading || removeState.isLoading;
+  const isWatch = wallet.kind === 'watch';
+  const busy = switchState.isLoading || renameState.isLoading || removeState.isLoading || exportState.isLoading;
+
+  async function doBackup() {
+    setError(null);
+    // #115 — export this wallet's own encrypted DIGWX1 record as a downloadable file. A watch-only
+    // wallet has nothing encrypted to export, so the button is not shown for it.
+    const res = await exportBackup({ walletId: wallet.id });
+    if ('data' in res && res.data) {
+      downloadTextFile(res.data.filename, res.data.json);
+      setBackedUp(true);
+      window.setTimeout(() => setBackedUp(false), 2500);
+    } else {
+      setError(intl.formatMessage({ id: 'backup.export.error' }));
+    }
+  }
 
   async function doSwitch() {
     setError(null);
@@ -173,6 +192,11 @@ function WalletRow({ wallet, canRemove, onDone }: { wallet: WalletMeta; canRemov
                 </span>
               )}
             </span>
+            {isWatch && (
+              <span className="dig-badge" data-testid={`wallet-watch-${wallet.id}`} title={intl.formatMessage({ id: 'watch.cannotSign' })}>
+                <FormattedMessage id="watch.badge" />
+              </span>
+            )}
             {wallet.active && (
               <span className="dig-badge" data-testid={`wallet-active-${wallet.id}`}>
                 <FormattedMessage id="wallet.switcher.active.badge" />
@@ -182,6 +206,11 @@ function WalletRow({ wallet, canRemove, onDone }: { wallet: WalletMeta; canRemov
           <button type="button" className="dig-iconbtn" data-testid={`wallet-rename-${wallet.id}`} aria-label={intl.formatMessage({ id: 'wallet.switcher.rename' })} title={intl.formatMessage({ id: 'wallet.switcher.rename' })} onClick={() => { setName(wallet.label); setMode('rename'); }}>
             ✎
           </button>
+          {!isWatch && (
+            <button type="button" className="dig-iconbtn" data-testid={`wallet-backup-${wallet.id}`} aria-label={intl.formatMessage({ id: 'backup.export' })} title={intl.formatMessage({ id: backedUp ? 'backup.export.done' : 'backup.export' })} disabled={busy} onClick={() => void doBackup()}>
+              {backedUp ? '✓' : '⭳'}
+            </button>
+          )}
           {canRemove && (
             <button type="button" className="dig-iconbtn" data-testid={`wallet-remove-${wallet.id}`} aria-label={intl.formatMessage({ id: 'wallet.switcher.remove' })} title={intl.formatMessage({ id: 'wallet.switcher.remove' })} onClick={() => setMode('confirmRemove')}>
               🗑
