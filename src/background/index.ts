@@ -125,7 +125,14 @@ import { createDigDnsAvailabilityController, isDotDigNavigationFailure, shouldRe
 import {
   parseServerHost as parseDigNodeHost,
   resolveDigNode,
+  probeDigNode,
 } from '@/lib/server-config';
+
+// #217 — the WALLET-DATA source (design D.1/D.2): pick the dig-node's Sage-parity get_* surface
+// (node-first, §5.3 ladder) or coinset, per the persisted 4-state chain-source setting. READ-ONLY —
+// signing stays in the offscreen vault; the node never receives a key.
+import { readChainSourceSetting, resolveWalletSource } from '@/lib/wallet-source';
+import { makeNodeWalletClient } from '@/lib/node-wallet';
 
 // DIG Control Panel decision logic (the dig://control parity surface): detect a local dig-node
 // → manage vs install, the catalogued control.* method names, and the honest hosted-RPC
@@ -251,6 +258,50 @@ async function getRpcEndpoint() {
   const localBase = await resolveLocalDigNode();
   if (localBase) return localBase.endsWith('/') ? localBase : localBase + '/';
   return getHostedRpcEndpoint();
+}
+
+// ─── Wallet-data source (#217, design D.1/D.2) ────────────────────────────────────────────────────
+// Distinct from getRpcEndpoint (content reads): this governs the WALLET reads (balances / tokens /
+// NFTs / DIDs / coins / activity). The pure 4-state decision lives in wallet-source.ts; here we
+// inject the cached §5.3 node resolver + a direct probe for the Custom-URL mode.
+
+/** Resolve the wallet-data source from the persisted chain-source setting + the §5.3 ladder. */
+async function resolveWalletDataSource() {
+  const setting = readChainSourceSetting(await readWalletSettings());
+  return resolveWalletSource(setting, {
+    resolveLadderNode: () => resolveLocalDigNode(),
+    probeNode: async (base) => ((await probeDigNode(base).catch(() => false)) ? base : null),
+  });
+}
+
+/**
+ * Try a wallet-data READ against the dig-node when the resolved source is a node; otherwise tell the
+ * caller to use the existing coinset/vault path. Returns:
+ *  - `{ handled: true, result }` — the node produced a result, OR a user-FORCED (strict node/custom)
+ *    source failed / is unreachable, yielding a `{ success:false, code, message }` the four-state UI
+ *    renders (never a silent coinset downgrade).
+ *  - `{ handled: false }` — use the coinset/vault path: the source is coinset, OR an `auto` node read
+ *    failed and we fall through cleanly.
+ * The node client is READ-ONLY (#217 HARD gate) — it never signs or broadcasts.
+ */
+async function readFromNodeSource(nodeFn) {
+  const source = await resolveWalletDataSource();
+  if (source.kind === 'coinset') return { handled: false };
+  if (source.kind === 'unavailable') {
+    return {
+      handled: true,
+      result: { success: false, code: 'NODE_UNAVAILABLE', message: `dig-node wallet source unavailable (${source.reason})` },
+    };
+  }
+  try {
+    return { handled: true, result: await nodeFn(makeNodeWalletClient(source.base)) };
+  } catch (e) {
+    // A forced (node/custom) source surfaces the error; auto falls through to coinset.
+    if (source.strict) {
+      return { handled: true, result: { success: false, code: 'NODE_READ_FAILED', message: e instanceof Error ? e.message : String(e) } };
+    }
+    return { handled: false };
+  }
 }
 
 // Invalidate the local-node cache whenever the configured host changes so a new value takes
@@ -1510,6 +1561,16 @@ async function handleCustodyActionInner(message) {
       const watchedCats = [...new Set([DIG_ASSET_ID.toLowerCase(), ...parseWatchedCats(watchedRaw).map((c) => c.assetId)])];
       // #154 — the PRE-scan snapshot is the receive-delta baseline; read it before it's overwritten.
       const { [BALANCES_CACHE_KEY]: prevCache } = await chrome.storage.local.get(BALANCES_CACHE_KEY);
+      // #217 — node-first: source balances from the dig-node's Sage-parity get_sync_status/get_cats
+      // when the resolved source is a node; else fall through to the coinset/vault scan below.
+      const nodeBal = await readFromNodeSource((c) => c.getBalances());
+      if (nodeBal.handled) {
+        if (nodeBal.result.success === false) return nodeBal.result;
+        const balances = nodeBal.result; // { xch, cats }
+        await logReceivedActivity(prevCache?.balances, balances);
+        await chrome.storage.local.set({ [BALANCES_CACHE_KEY]: { balances, at: Date.now() } });
+        return { balances, cached: false };
+      }
       const watchPublicKeyHex = await activeWatchPublicKeyHex();
       const res = await callVault({
         op: 'scanBalances',
@@ -1556,8 +1617,11 @@ async function handleCustodyActionInner(message) {
       return res;
     }
     case ACTIONS.getActivity: {
-      // #154 — the local activity log for the ACTIVE wallet + active index (#165): an instant
-      // storage read, NOT an on-chain scan. See src/lib/activity-log.ts.
+      // #217 — when the resolved source is a node, show the node's confirmed on-chain history
+      // (get_transactions, block-time). Else the local activity log (#154): an instant storage read
+      // for the ACTIVE wallet + active index (#165), NOT an on-chain scan. See src/lib/activity-log.ts.
+      const nodeAct = await readFromNodeSource((c) => c.getActivity());
+      if (nodeAct.handled) return nodeAct.result;
       const state = await loadRegistry();
       if (!state.activeId) return { events: [] };
       const index = await activeDerivationIndex();
@@ -1601,6 +1665,9 @@ async function handleCustodyActionInner(message) {
       return { offers: await listOffersReconciled(coinsetUrl) };
     }
     case ACTIONS.listNfts: {
+      // #217 — node-first: the dig-node's get_nfts when a node source is active; else the vault scan.
+      const nodeNfts = await readFromNodeSource((c) => c.getNfts());
+      if (nodeNfts.handled) return nodeNfts.result;
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       return callVault({ op: 'listNfts', activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
@@ -1726,6 +1793,9 @@ async function handleCustodyActionInner(message) {
       return { options: await listOptionsReconciled(coinsetUrl) };
     }
     case ACTIONS.listDids: {
+      // #217 — node-first: the dig-node's get_dids when a node source is active; else the vault scan.
+      const nodeDids = await readFromNodeSource((c) => c.getDids());
+      if (nodeDids.handled) return nodeDids.result;
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       return callVault({ op: 'listDids', activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
@@ -1802,6 +1872,9 @@ async function handleCustodyActionInner(message) {
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'nft bulk did assign failed' };
     }
     case ACTIONS.listCoins: {
+      // #217 — node-first: the dig-node's get_coins when a node source is active; else the vault scan.
+      const nodeCoins = await readFromNodeSource((c) => c.getCoins(message.assetId));
+      if (nodeCoins.handled) return nodeCoins.result;
       // Read-only per-asset coin listing (coin control #91). Routed on assetId (#121).
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       return callVault({ op: 'listCoins', assetId: message.assetId, activeIndex: await activeDerivationIndex(), coinsetUrl });

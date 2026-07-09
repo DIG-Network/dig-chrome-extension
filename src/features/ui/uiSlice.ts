@@ -11,6 +11,13 @@ import {
 import { DEFAULT_LOCALE, isSupportedLocale } from '@/i18n/locales';
 import { DEFAULT_THEME_MODE, isThemeMode, type ThemeMode } from '@/lib/theme';
 import { DEFAULT_NETWORK_ID, isNetworkId, type NetworkId } from '@/lib/network';
+import {
+  DEFAULT_CHAIN_SOURCE_MODE,
+  isChainSourceMode,
+  CHAIN_SOURCE_MODE_KEY,
+  CHAIN_SOURCE_URL_KEY,
+  type ChainSourceMode,
+} from '@/lib/wallet-source';
 
 /** Cross-document client UI state (route + prefs), kept in sync via the storage bridge. */
 export interface UiState {
@@ -24,6 +31,10 @@ export interface UiState {
   theme: ThemeMode;
   /** Active chain network (#108, persisted to `wallet.settings.network`). Mainnet is real funds. */
   network: NetworkId;
+  /** Wallet-data source mode (#217, persisted to `wallet.settings.chainSourceMode`). Default auto. */
+  chainSource: ChainSourceMode;
+  /** The node RPC base URL used when `chainSource === 'custom'` (#217). */
+  chainSourceUrl: string;
   /** The dApp opened in the in-window app-view (mobile-OS "app launch"), else null. Ephemeral. */
   openApp: OpenApp | null;
 }
@@ -40,6 +51,8 @@ interface PersistedSettings {
   locale?: string;
   theme?: string;
   network?: string;
+  chainSourceMode?: string;
+  chainSourceUrl?: string;
 }
 
 function initialState(): UiState {
@@ -51,6 +64,8 @@ function initialState(): UiState {
     locale: DEFAULT_LOCALE,
     theme: DEFAULT_THEME_MODE,
     network: DEFAULT_NETWORK_ID,
+    chainSource: DEFAULT_CHAIN_SOURCE_MODE,
+    chainSourceUrl: '',
     openApp: null,
   };
 }
@@ -87,6 +102,11 @@ const uiSlice = createSlice({
     setChainNetwork(state, action: PayloadAction<NetworkId>) {
       state.network = isNetworkId(action.payload) ? action.payload : DEFAULT_NETWORK_ID;
     },
+    /** Set the wallet-data source (#217): mode (+ custom url). Unknown mode → 'auto'. */
+    setChainSource(state, action: PayloadAction<{ mode: ChainSourceMode; customUrl?: string }>) {
+      state.chainSource = isChainSourceMode(action.payload.mode) ? action.payload.mode : DEFAULT_CHAIN_SOURCE_MODE;
+      if (action.payload.customUrl !== undefined) state.chainSourceUrl = action.payload.customUrl;
+    },
     /** Hydrate route from a `location.hash` (on mount + on hashchange). */
     routeFromHash(state, action: PayloadAction<string>) {
       const route = resolveRoute(action.payload);
@@ -101,6 +121,8 @@ const uiSlice = createSlice({
       if (typeof s.locale === 'string' && isSupportedLocale(s.locale)) state.locale = s.locale;
       if (isThemeMode(s.theme)) state.theme = s.theme;
       if (isNetworkId(s.network)) state.network = s.network;
+      if (isChainSourceMode(s[CHAIN_SOURCE_MODE_KEY])) state.chainSource = s[CHAIN_SOURCE_MODE_KEY];
+      if (typeof s[CHAIN_SOURCE_URL_KEY] === 'string') state.chainSourceUrl = s[CHAIN_SOURCE_URL_KEY];
     },
   },
 });
@@ -114,6 +136,7 @@ export const {
   setLocale,
   setTheme,
   setChainNetwork,
+  setChainSource,
   routeFromHash,
   settingsHydrated,
 } = uiSlice.actions;

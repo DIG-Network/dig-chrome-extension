@@ -126,6 +126,20 @@ export const en: Record<string, string> = {
   'custody.network.confirmProceed': 'Switch network',
   'custody.network.confirmCancel': 'Cancel',
   'custody.network.saved': 'Saved',
+  // wallet-data source switch (#217) — read balances/tokens/NFTs/DIDs/activity from your own
+  // dig-node (private, fast) or the public coinset.org fallback. Signing always stays on this device.
+  'custody.source.label': 'Wallet data source',
+  'custody.source.mode.auto': 'Automatic (node, then coinset.org)',
+  'custody.source.mode.node': 'My dig-node',
+  'custody.source.mode.coinset': 'coinset.org',
+  'custody.source.mode.custom': 'Custom node URL',
+  'custody.source.hint.auto': 'Use your dig-node when it is running (private and fast), otherwise fall back to coinset.org.',
+  'custody.source.hint.node': 'Always read from your local dig-node. Wallet data is unavailable if it is not running.',
+  'custody.source.hint.coinset': 'Always read from the public coinset.org service. Your dig-node is not used for wallet data.',
+  'custody.source.hint.custom': 'Read from a specific dig-node RPC address you enter below.',
+  'custody.source.custom.label': 'dig-node RPC URL',
+  'custody.source.custom.save': 'Save source',
+  'custody.source.saved': 'Saved',
   'custody.soon.activity': 'Activity history is coming with self-custody sending.',
   'custody.soon.trade': 'Trading is coming with self-custody signing.',
 

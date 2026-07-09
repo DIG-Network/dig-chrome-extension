@@ -1511,7 +1511,7 @@ custody requests, owns storage, and enforces auto-lock.
 | `wallet.registry` | `storage.local` | encrypted only | the multi-wallet registry (§18.16) — an array of `{ id, label, record (DIGWX1, §18.2), createdAt }`, one encrypted record per wallet |
 | `wallet.keystore` | `storage.local` | encrypted only | the ACTIVE wallet's DIGWX1 record (§18.2) — a mirror of the active registry entry, so every single-wallet read path keeps working; the only at-rest secret alongside the registry |
 | `wallet.activeId` | `storage.local` | no | active wallet id (multi-wallet switcher, §18.16) |
-| `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, `chainRpcUrl`, `chainPrivacyAck`, `locale`, `theme`, `network`, fee default…) |
+| `wallet.settings` | `storage.local` | no | durable settings (`unlockTtlMinutes`, `chainRpcUrl`, `chainPrivacyAck`, `locale`, `theme`, `network`, `chainSourceMode`, `chainSourceUrl`, fee default…) |
 | `walletCache.balances` | `storage.local` | no | last balance scan (`{ balances, at }`) for cached-first paint AND the #154 receive-delta baseline (§18.9); cleared on wallet/index switch |
 | `wallet.activityLog` | `storage.local` | no | the #154 LOCAL activity log (§18.9) — `{ "<walletId>:<index>": LocalActivityEntry[] }`, ring-buffered at 200/scope; durable history, NEVER cleared on switch |
 | `wallet.contacts` | `storage.local` | no | address book (§18.14) — array of `{ id, label, address, note?, createdAt, updatedAt }` |
@@ -1642,13 +1642,16 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
   renders fully offline with no external fetch (unlike CAT icons, which load from
   `icons.dexie.space`). `custodyAssetBalances` sets it directly on the XCH descriptor, so XCH never
   falls back to the `AssetBadge` monogram.
-- **Chain source.** The wasm coinset `RpcClient` fetches the configured chain endpoint from the
+- **Chain source (coinset tier).** This coinset path is the FALLBACK tier of the wallet-data source
+  abstraction (§18.6c): the wasm coinset `RpcClient` fetches the configured chain endpoint from the
   offscreen document (extensions bypass CORS). Default `https://api.coinset.org`; an explicit
   `wallet.settings.chainRpcUrl` override wins (§5.3 — a user-facing custom node, settable +
   persisted; discoverable via `ChainNodeSetting` in the fullscreen Wallet Settings, §145 — the
   everyday popup never needs it); absent an override, the selected network's default applies
-  (§18.6b). The pooled `dig.local`/`localhost` tiers are NOT used for the wallet chain reads (a DIG
-  node does not expose coinset-shape chain reads today).
+  (§18.6b). When a dig-node is the resolved source (§18.6c), these coinset reads are bypassed in
+  favor of the node's Sage-parity `get_*` — the `dig.local`/`localhost` ladder now DOES feed wallet
+  reads through that node surface (#217), superseding the prior "a DIG node does not expose
+  coinset-shape chain reads" limitation.
 - **Privacy.** The wallet DISCLOSES, once (until acknowledged, `wallet.settings.chainPrivacyAck`),
   that a scan reveals the wallet's full address set to the configured operator, and offers the
   override so a privacy-minded user can point at their own node.
@@ -1726,6 +1729,52 @@ selects which Chia network the wallet's balance/activity/coin reads resolve agai
   therefore fails safely at broadcast (a mainnet-domain signature is simply invalid on testnet) rather
   than at risk of moving real funds. `NETWORKS.testnet.aggSigMeHex`/`.addressPrefix` are already
   defined and tested (`network.test.ts`) — wiring them through is a scoped follow-up, not a design gap.
+
+### 18.6c Wallet-data source — node-first, coinset fallback (#217, phase 3 of #205)
+
+The wallet READS (balances, tokens, NFTs, DIDs, coins, activity) resolve through a **source
+abstraction**: the extension prefers a running **dig-node's Sage-parity `get_*` RPC** (private, fast,
+the user's own machine) and falls back to the coinset path (§18.6) otherwise. Signing is NEVER part
+of this — the dig-node is a **read-only** chain-data source for the extension; every key stays in the
+offscreen DIGWX1 vault and the node never receives one.
+
+- **Source resolution (`src/lib/wallet-source.ts`, pure).** `resolveWalletSource(setting, deps)`
+  maps the persisted 4-state selection to a resolved source over the injected §5.3 ladder:
+  - `auto` (default) — the ladder node when reachable (non-strict: a read error falls back to
+    coinset), else coinset.
+  - `node` — force the ladder node (strict): unreachable ⇒ `unavailable` (surfaced as an error UI),
+    never a silent coinset downgrade.
+  - `coinset` — force the coinset path; the node is not consulted for wallet data.
+  - `custom` — force an explicit node RPC base URL (overrides the ladder entirely, §5.3); blank ⇒
+    `custom-missing`, unreachable ⇒ `custom-unreachable`.
+  Persisted to `wallet.settings.chainSourceMode` + `.chainSourceUrl`; missing ⇒ `auto` (a pre-#217
+  wallet keeps today's node-first-then-coinset behavior with no migration).
+- **Node client (`src/lib/node-wallet.ts`, pure, READ-ONLY).** `makeNodeWalletClient(base)` POSTs the
+  Sage v0.12.11 method surface (`POST {base}/{method}`, snake_case; design
+  `docs/design/dig-node-sage-parity-rpc.md` Part A) to the node's browser-facing plain-HTTP + CORS
+  mirror (port 9778, transport #2) and MAPS each response into the vault's OWN result shapes so the
+  RTK Query layer + UI are source-agnostic:
+  - `get_sync_status.selectable_balance` (XCH) + `get_cats[].balance` → `{ xch, cats }` (§18.6).
+  - `get_nfts` → `WalletNft[]`; `get_dids` → `WalletDid[]`; `get_coins` → `{ coinId, amount,
+    confirmedHeight }[]`; `get_transactions` → confirmed `LocalActivityEntry[]` (block-time net own
+    flow per asset: created-to-own minus spent-from-own → received/sent).
+  - The `WalletNft`/`WalletDid` `p2PuzzleHash` (and `WalletDid.numVerificationsRequired`) have no
+    field in the Sage records and are display-only for the node-sourced list — they are blank/default
+    (the local signing/transfer path re-derives them from chain in the vault; it never trusts a
+    listed value). It follows that the node source reflects the wallet the **node** tracks; the
+    integration premise is that the user's node tracks the user's wallet.
+- **SW wiring (`src/background/index.ts`).** `resolveWalletDataSource()` injects the cached §5.3
+  resolver + a direct probe into the pure resolver; `readFromNodeSource(nodeFn)` runs the node read
+  when the source is a node and returns `{ handled }` so the five read handlers
+  (`getCustodyBalances`/`listNfts`/`listDids`/`listCoins`/`getActivity`) branch node-first and fall
+  through to the existing coinset/vault path when the source is coinset or an `auto` node read fails.
+  A forced (node/custom) source that fails returns `NODE_UNAVAILABLE`/`NODE_READ_FAILED` (four-state
+  error), never a silent downgrade.
+- **Settings switch (`ChainSourceSetting`, fullscreen §145).** The user-facing 4-state control
+  (Auto / My dig-node / coinset.org / Custom node URL), persisted + mirrored into the `ui` slice,
+  react-intl'd across all 14 locales, a11y-labelled, four RTK-Query states; a change invalidates the
+  wallet-data tags so every view re-reads from the new source. Satisfies §5.3's "custom-node config
+  must be user-facing on every client" for the wallet-data path.
 
 ### 18.7 Spend signing
 
