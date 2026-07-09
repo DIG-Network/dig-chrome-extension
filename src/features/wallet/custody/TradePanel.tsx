@@ -420,7 +420,7 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
         {giveKind === 'currency' ? (
           <>
             {giveLegs.map((leg, i) => (
-              <div key={i} className="dig-field" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div key={i} style={{ display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                 <select
                   className="dig-input"
                   data-testid={i === 0 ? 'trade-give-asset' : `trade-give-asset-${i}`}
@@ -446,6 +446,7 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
                     data-testid={`trade-give-remove-asset-${i}`}
                     onClick={() => removeGiveLeg(i)}
                     aria-label={intl.formatMessage({ id: 'wallet.switcher.remove' })}
+                    style={{ flexShrink: 0 }}
                   >
                     ×
                   </button>
@@ -499,7 +500,7 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
       <div className="dig-field">
         <span><FormattedMessage id="trade.get" /></span>
         {getLegs.map((leg, i) => (
-          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <div key={i} style={{ display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 }}>
             <select
               className="dig-input"
               data-testid={i === 0 ? 'trade-get-asset' : `trade-get-asset-${i}`}
@@ -525,6 +526,7 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
                 data-testid={`trade-get-remove-asset-${i}`}
                 onClick={() => removeGetLeg(i)}
                 aria-label={intl.formatMessage({ id: 'wallet.switcher.remove' })}
+                style={{ flexShrink: 0 }}
               >
                 ×
               </button>

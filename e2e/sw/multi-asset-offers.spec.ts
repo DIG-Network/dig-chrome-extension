@@ -102,18 +102,21 @@ test('#100: the popup Make form has NO "add asset" controls (basic single-asset 
 
 test('#100: adding a second GIVE asset composes a 2-leg offer through to the review step', async () => {
   const page = await openTrade('app.html', { width: 1200, height: 860 });
-  await page.getByTestId('trade-give-amount').fill('0.01'); // give row 0: XCH
+  await page.getByTestId('trade-give-amount').fill('0.01'); // give row 0: XCH (asset idx 0)
   await page.getByTestId('trade-give-add-asset').click();
-  await page.getByTestId('trade-give-asset-1').selectOption('1'); // give row 1: $DIG (distinct asset)
-  await page.getByTestId('trade-give-amount-1').fill('10');
+  // give row 1: the 3rd asset (idx 2, the seeded CAT) — the get side's default pick is idx 1 ($DIG,
+  // always listed as a built-in row), so idx 2 is the one guaranteed NOT to collide with it (#100's
+  // generalized SAME_ASSET check rejects any asset appearing on both sides).
+  await page.getByTestId('trade-give-asset-1').selectOption('2');
+  await page.getByTestId('trade-give-amount-1').fill('1');
   await page.getByTestId('trade-get-amount').fill('100');
   await page.getByTestId('trade-make-continue').click();
 
   const review = page.getByTestId('trade-make-review');
   await expect(review).toBeVisible();
   // Both legs' amounts appear in the "You give" summary (#100 — a joined multi-asset label).
-  await expect(page.getByTestId('trade-make-review-give')).toContainText('0.01');
-  await expect(page.getByTestId('trade-make-review-give')).toContainText('10');
+  await expect(page.getByTestId('trade-make-review-give')).toContainText('0.01 XCH');
+  await expect(page.getByTestId('trade-make-review-give')).toContainText('1 CAT');
   await page.close();
 });
 
@@ -122,8 +125,8 @@ test('screenshot: fullscreen Make with a second give-asset row added', async () 
   const page = await openTrade('app.html', { width: 1200, height: 860 });
   await page.getByTestId('trade-give-amount').fill('0.01');
   await page.getByTestId('trade-give-add-asset').click();
-  await page.getByTestId('trade-give-asset-1').selectOption('1');
-  await page.getByTestId('trade-give-amount-1').fill('10');
+  await page.getByTestId('trade-give-asset-1').selectOption('2'); // the 3rd asset — see the test above
+  await page.getByTestId('trade-give-amount-1').fill('1');
   await page.getByTestId('trade-get-amount').fill('100');
   await page.waitForTimeout(250);
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-trade-multi-asset.png' });

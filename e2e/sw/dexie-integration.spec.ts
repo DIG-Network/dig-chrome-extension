@@ -1,6 +1,6 @@
 import { test, expect, chromium, type BrowserContext, type Worker, type Page } from '@playwright/test';
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 /**
  * END-USER e2e for #102 (dexie.space marketplace integration) — driven against the BUILT unpacked
@@ -21,6 +21,8 @@ import { existsSync } from 'node:fs';
  */
 
 const EXT_PATH = resolve(process.cwd(), 'dist');
+const GOLDEN = JSON.parse(readFileSync(resolve(process.cwd(), 'src/lib/keystore/derive.golden.json'), 'utf8')) as { mnemonic: string };
+const PASSWORD = 'e2e-102-not-a-real-secret';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -30,6 +32,24 @@ let worker: Worker;
 
 function swSend<T>(page: Page, message: Record<string, unknown>): Promise<T> {
   return page.evaluate((msg) => new Promise<T>((res) => chrome.runtime.sendMessage(msg, res as (r: unknown) => void)), message);
+}
+
+async function unlockIfNeeded(page: Page): Promise<void> {
+  await page.getByTestId('custody-gate').waitFor({ timeout: 20_000 });
+  if (await page.getByTestId('custody-unlock').isVisible().catch(() => false)) {
+    await page.getByTestId('unlock-password').fill(PASSWORD);
+    await page.getByTestId('unlock-submit').click();
+  }
+  await page.getByTestId('custody-wallet').waitFor({ timeout: 20_000 });
+}
+
+async function openTrade(file: 'popup.html' | 'app.html', size: { width: number; height: number }): Promise<Page> {
+  const page = await context.newPage();
+  await page.setViewportSize(size);
+  await page.goto(`chrome-extension://${extensionId}/${file}#wallet/trade`);
+  await unlockIfNeeded(page);
+  await page.getByTestId('custody-trade').waitFor();
+  return page;
 }
 
 test.beforeAll(async () => {
@@ -42,6 +62,12 @@ test.beforeAll(async () => {
   });
   worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
   extensionId = worker.url().split('/')[2];
+  const anchor = await context.newPage();
+  await anchor.goto(`chrome-extension://${extensionId}/popup.html`);
+  const imported = await swSend<{ lockState?: string }>(anchor, { action: 'importWallet', mnemonic: GOLDEN.mnemonic, password: PASSWORD });
+  expect(imported.lockState).toBe('unlocked');
+  await anchor.evaluate(() => chrome.storage.local.set({ 'wallet.settings': { chainPrivacyAck: true } }));
+  await anchor.close();
 });
 
 test.afterAll(async () => {
@@ -93,5 +119,39 @@ test('#102: dexieResolve returns { offer: null } for an unknown/garbage id, neve
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
   const res = await swSend<{ offer: unknown }>(page, { action: 'dexieResolve', idOrUrl: 'definitely-not-a-real-dexie-id-000' });
   expect(res.offer).toBeNull();
+  await page.close();
+});
+
+test('#102: the popup Take form has no "Browse Dexie" action (basic surface)', async () => {
+  const page = await openTrade('popup.html', { width: 372, height: 640 });
+  await page.getByTestId('trade-mode-take').click();
+  await expect(page.getByTestId('trade-take-dexie-browse')).toHaveCount(0);
+  await page.close();
+});
+
+test('#102: fullscreen Take → Browse Dexie reaches the live API and renders real rows', async () => {
+  const page = await openTrade('app.html', { width: 1200, height: 860 });
+  await page.getByTestId('trade-mode-take').click();
+  await page.getByTestId('trade-take-dexie-browse').click();
+  // Either real rows or the real empty state — never a crash (dexie has hundreds of thousands of
+  // open offers historically, so rows are the expected outcome, but assert leniently on live data).
+  await Promise.race([
+    page.locator('[data-testid="trade-take-dexie-browse-list"] li').first().waitFor({ timeout: 15_000 }),
+    page.getByTestId('trade-take-dexie-browse-empty').waitFor({ timeout: 15_000 }),
+  ]);
+  await page.close();
+});
+
+// Visual capture (§6.5) of the #102 fullscreen "Browse Dexie" panel, inspected for spacing/hierarchy.
+test('screenshot: fullscreen Take with Browse Dexie open', async () => {
+  const page = await openTrade('app.html', { width: 1200, height: 860 });
+  await page.getByTestId('trade-mode-take').click();
+  await page.getByTestId('trade-take-dexie-browse').click();
+  await Promise.race([
+    page.locator('[data-testid="trade-take-dexie-browse-list"] li').first().waitFor({ timeout: 15_000 }),
+    page.getByTestId('trade-take-dexie-browse-empty').waitFor({ timeout: 15_000 }),
+  ]);
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-trade-dexie-browse.png' });
   await page.close();
 });

@@ -71,6 +71,9 @@ test.beforeAll(async () => {
   await anchor.goto(`chrome-extension://${extensionId}/popup.html`);
   const imported = await swSend<{ lockState?: string }>(anchor, { action: 'importWallet', mnemonic: GOLDEN.mnemonic, password: PASSWORD });
   expect(imported.lockState).toBe('unlocked');
+  // Ack the balances-privacy banner (mirrors trade-basic-surfaces.spec.ts) so it doesn't push the
+  // Offers tab content below the fold in the screenshot capture.
+  await anchor.evaluate(() => chrome.storage.local.set({ 'wallet.settings': { chainPrivacyAck: true } }));
   await anchor.close();
 });
 
