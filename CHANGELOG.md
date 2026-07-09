@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.74.2] - 2026-07-09
+
+### Styling
+- **ux:** Whole-extension UX audit + polish across all surfaces (#117) (#103)
+
 ## [1.74.1] - 2026-07-09
 
 ### Testing
