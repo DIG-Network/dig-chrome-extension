@@ -22,6 +22,7 @@ export default defineConfig({
     '**/send-receive-trio.spec.ts',
     '**/qr-scanner-camera.spec.ts',
     '**/settings-prefs.spec.ts',
+    '**/accounts-keys.spec.ts',
   ],
   fullyParallel: true,
   reporter: 'list',

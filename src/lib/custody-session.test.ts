@@ -7,8 +7,10 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   CUSTODY_ACTIONS,
+  SIGNING_REQUIRED_ACTIONS,
   isCustodyAction,
   isSessionRenewingAction,
+  requiresSigningKey,
   shouldApplyRenewal,
   resolveTtlMinutes,
   computeUnlockExpiry,
@@ -73,8 +75,27 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'listClawbacks',
       'prepareClawbackAction',
       'confirmClawbackAction',
+      'exportPrivateKey',
+      'importWatchWallet',
+      'addAccount',
+      'renameAccount',
+      'removeAccount',
+      'exportWalletBackup',
+      'importWalletBackup',
     ].sort(),
   );
+});
+
+// #96 — every action that would need to SIGN or reveal a secret is refused for a watch-only active
+// wallet; read-only actions (balances/addresses/lists) are NOT in this set (they route through the
+// public-key derivation path instead).
+test('requiresSigningKey recognizes every signing/reveal action, rejects read-only ones', () => {
+  for (const action of SIGNING_REQUIRED_ACTIONS) assert.equal(requiresSigningKey(action), true, action);
+  for (const readOnly of ['getReceiveAddress', 'getCustodyBalances', 'listDerivedAddresses', 'listWallets', 'getLockState', 'listNfts', 'listDids', 'listCoins', 'getActivity']) {
+    assert.equal(requiresSigningKey(readOnly), false, readOnly);
+  }
+  assert.equal(requiresSigningKey('not-a-real-action'), false);
+  assert.equal(requiresSigningKey(undefined), false);
 });
 
 // Coin control (#91): a hand-picked coin selection must reach the vault so it overrides auto-selection.
@@ -316,4 +337,19 @@ test('computeLockSnapshot: carries the active wallet\'s active derivation index 
 
 test('computeLockSnapshot: activeIndex defaults to 0 when omitted', () => {
   assert.equal(computeLockSnapshot({ hasKeystore: true, unlockExpiry: 200, now: 100 }).activeIndex, 0);
+});
+
+// ── Watch-only active wallet (#96) — never locked, no keystore blob at all ──
+test('computeLockSnapshot: a watch-only ACTIVE wallet is unconditionally unlocked, even with no keystore', () => {
+  assert.deepEqual(
+    computeLockSnapshot({ hasKeystore: false, activeWalletId: 'watch1', activeIndex: 3, isWatchActive: true, now: 100 }),
+    { lockState: LOCK_STATE.UNLOCKED, activeWalletId: 'watch1', unlockExpiry: null, activeIndex: 3 },
+  );
+});
+
+test('computeLockSnapshot: isWatchActive overrides even an expired/absent unlock session', () => {
+  assert.equal(
+    computeLockSnapshot({ hasKeystore: false, unlockExpiry: 50, isWatchActive: true, now: 100 }).lockState,
+    LOCK_STATE.UNLOCKED,
+  );
 });

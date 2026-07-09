@@ -1,5 +1,16 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { deriveAccount, deriveAccounts, masterFromSeed, WALLET_PATH_PREFIX, type ChiaWasm } from './derive';
+import {
+  deriveAccount,
+  deriveAccounts,
+  masterFromSeed,
+  WALLET_PATH_PREFIX,
+  masterPublicKeyFromHex,
+  deriveWatchAccount,
+  publicKeyFingerprint,
+  deriveWalletSecretKeyHex,
+  type ChiaWasm,
+  type WatchWasm,
+} from './derive';
 import { mnemonicToSeed } from './bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
 import golden from './derive.golden.json';
@@ -82,6 +93,121 @@ describe('HD derivation parity vs dig-l1-wallet (golden vectors)', () => {
     const master = masterFromSeed(chia, seed);
     try {
       expect(deriveAccount(chia, master, 0, 'unhardened').address).toMatch(/^xch1[0-9a-z]+$/);
+    } finally {
+      master.free?.();
+    }
+  });
+});
+
+/**
+ * Public-key-only (watch-only, #96) derivation MUST reproduce the exact same UNHARDENED addresses a
+ * full secret-key derivation would — that is the entire point of BLS unhardened HD derivation (it
+ * commutes with taking the public key first). Hardened derivation is intentionally NOT exercised
+ * here: it cannot be derived from a public key alone (§96 scope — watch-only covers unhardened only).
+ */
+describe('public-key-only derivation (#96 — watch-only wallets)', () => {
+  it('deriveWatchAccount matches the golden UNHARDENED addresses using ONLY the master public key', () => {
+    const master = masterFromSeed(chia, seed);
+    const masterPkHex = chia.toHex(master.publicKey().toBytes()).replace(/^0x/i, '');
+    master.free?.();
+    const masterPk = masterPublicKeyFromHex(chia as unknown as WatchWasm, masterPkHex);
+    try {
+      for (const g of golden.unhardened) {
+        const acct = deriveWatchAccount(chia as unknown as WatchWasm, masterPk, g.index);
+        expect(acct.address, `watch unhardened[${g.index}] address`).toBe(g.address);
+        expect(acct.puzzleHashHex, `watch unhardened[${g.index}] ph`).toBe(g.puzzleHashHex);
+        expect(acct.syntheticPkHex, `watch unhardened[${g.index}] synPk`).toBe(g.syntheticPkHex);
+        expect(acct.scheme).toBe('unhardened');
+      }
+    } finally {
+      masterPk.free?.();
+    }
+  });
+
+  it('masterPublicKeyFromHex accepts a 0x-prefixed hex string identically to a bare one', () => {
+    const master = masterFromSeed(chia, seed);
+    const masterPkHex = chia.toHex(master.publicKey().toBytes()).replace(/^0x/i, '');
+    master.free?.();
+    const a = masterPublicKeyFromHex(chia as unknown as WatchWasm, masterPkHex);
+    const b = masterPublicKeyFromHex(chia as unknown as WatchWasm, `0x${masterPkHex}`);
+    try {
+      expect(deriveWatchAccount(chia as unknown as WatchWasm, a, 0).address).toBe(
+        deriveWatchAccount(chia as unknown as WatchWasm, b, 0).address,
+      );
+    } finally {
+      a.free?.();
+      b.free?.();
+    }
+  });
+
+  it('publicKeyFingerprint returns a positive integer identifying the key (Chia-convention fingerprint)', () => {
+    const master = masterFromSeed(chia, seed);
+    const masterPkHex = chia.toHex(master.publicKey().toBytes()).replace(/^0x/i, '');
+    master.free?.();
+    const masterPk = masterPublicKeyFromHex(chia as unknown as WatchWasm, masterPkHex);
+    try {
+      const fp = publicKeyFingerprint(masterPk);
+      expect(Number.isInteger(fp)).toBe(true);
+      expect(fp).toBeGreaterThan(0);
+    } finally {
+      masterPk.free?.();
+    }
+  });
+
+  it('masterPublicKeyFromHex throws on a malformed key (wrong byte length for a BLS G1 point)', () => {
+    expect(() => masterPublicKeyFromHex(chia as unknown as WatchWasm, 'ab'.repeat(10))).toThrow();
+  });
+});
+
+/**
+ * #96 — private-key export MUST hand back the PRE-synthetic account key (the convention Sage /
+ * chia-blockchain / hardware wallets treat as "the wallet key" — they re-derive the synthetic offset
+ * themselves). Verified by reconstructing the synthetic public key + address FROM the exported hex
+ * and checking it lands on the SAME golden address `deriveAccount` produces directly.
+ */
+describe('deriveWalletSecretKeyHex (#96 — private-key export)', () => {
+  // Widen to the SecretKey.fromBytes + fromHex surface the real wasm module also carries (beyond
+  // the narrow `ChiaWasm` interface derive.ts declares). Computed lazily (inside each test) since
+  // `chia` is only assigned once `beforeAll` has run.
+  function wide() {
+    return chia as unknown as {
+      fromHex(h: string): Uint8Array;
+      SecretKey: { fromBytes(b: Uint8Array): { deriveSynthetic(): { publicKey(): { toBytes(): Uint8Array } } } };
+    };
+  }
+
+  it('the exported raw key re-derives to the golden UNHARDENED address at each index', () => {
+    const master = masterFromSeed(chia, seed);
+    try {
+      for (const g of golden.unhardened.slice(0, 3)) {
+        const hex = deriveWalletSecretKeyHex(chia, master, g.index, 'unhardened');
+        expect(hex).toMatch(/^[0-9a-f]{64}$/);
+        const reconstructed = wide().SecretKey.fromBytes(wide().fromHex(hex));
+        const syntheticPk = reconstructed.deriveSynthetic().publicKey();
+        expect(chia.toHex(syntheticPk.toBytes()).replace(/^0x/i, '')).toBe(g.syntheticPkHex);
+      }
+    } finally {
+      master.free?.();
+    }
+  });
+
+  it('the exported raw key re-derives to the golden HARDENED address too', () => {
+    const master = masterFromSeed(chia, seed);
+    try {
+      const g = golden.hardened[0];
+      const hex = deriveWalletSecretKeyHex(chia, master, g.index, 'hardened');
+      const reconstructed = wide().SecretKey.fromBytes(wide().fromHex(hex));
+      const syntheticPk = reconstructed.deriveSynthetic().publicKey();
+      expect(chia.toHex(syntheticPk.toBytes()).replace(/^0x/i, '')).toBe(g.syntheticPkHex);
+    } finally {
+      master.free?.();
+    }
+  });
+
+  it('produces DIFFERENT raw keys for hardened vs unhardened at the same index', () => {
+    const master = masterFromSeed(chia, seed);
+    try {
+      expect(deriveWalletSecretKeyHex(chia, master, 0, 'unhardened')).not.toBe(deriveWalletSecretKeyHex(chia, master, 0, 'hardened'));
     } finally {
       master.free?.();
     }

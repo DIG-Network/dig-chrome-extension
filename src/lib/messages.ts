@@ -193,8 +193,21 @@ import { DIG_ERR } from './error-codes';
  * intact: no multi-index scan is introduced). #107 (QR camera scanner) is client-side only (no new
  * message action) — it decodes a QR frame in the popup/fullscreen UI and fills the existing
  * `send.recipient`/offer fields.
+ *
+ * v27 (#95/#96/#115 — accounts, watch-only + private-key export, keystore file backup/restore):
+ * `addAccount`/`renameAccount`/`removeAccount` manage NAMED sub-accounts (distinct derivation
+ * indices, #95) under one wallet's existing single-active-index model (#165 unchanged — an account
+ * is a friendly bookmark over one index, never a second scan dimension); `listWallets`'s per-wallet
+ * metadata now always carries `accounts` (defaulted). `importWatchWallet` adds a spend-less
+ * watch-only wallet from a public key only (#96); `getReceiveAddress`/`scanBalances`/
+ * `listDerivedAddresses` accept it directly for a watch-only active wallet (unhardened only); every
+ * signing-required action rejects a watch-only active wallet with `WATCH_ONLY`.
+ * `exportPrivateKey` reveals the raw (pre-synthetic) account secret key at the active index (both
+ * schemes) behind the same full-password re-auth as `revealPhrase`. `exportWalletBackup`/
+ * `importWalletBackup` move a wallet's existing encrypted DIGWX1 record as a downloadable file
+ * (#115) — the SW never decrypts it either way.
  */
-export const MESSAGE_PROTOCOL_VERSION = 26;
+export const MESSAGE_PROTOCOL_VERSION = 27;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -241,12 +254,23 @@ export const ACTIONS = Object.freeze({
   unlockWallet: 'unlockWallet',
   lockWallet: 'lockWallet',
   revealPhrase: 'revealPhrase',
+  // ── private-key reveal (#96): raw account secret key at the active index, both schemes ──
+  exportPrivateKey: 'exportPrivateKey',
   getLockState: 'getLockState',
   // ── multi-wallet switcher (#90): registry over the per-wallet DIGWX1 records ──
   listWallets: 'listWallets',
   switchWallet: 'switchWallet',
   renameWallet: 'renameWallet',
   removeWallet: 'removeWallet',
+  // ── watch-only wallets (#96): a spend-less wallet imported from a public key only ──
+  importWatchWallet: 'importWatchWallet',
+  // ── named accounts (#95): distinct derivation indices under one wallet's seed/key ──
+  addAccount: 'addAccount',
+  renameAccount: 'renameAccount',
+  removeAccount: 'removeAccount',
+  // ── encrypted keystore file backup/restore (#115): move a wallet's own DIGWX1 record as a file ──
+  exportWalletBackup: 'exportWalletBackup',
+  importWalletBackup: 'importWalletBackup',
   // ── single active derivation index (#165): navigate the active wallet's active index ──
   setActiveIndex: 'setActiveIndex',
   getReceiveAddress: 'getReceiveAddress',
@@ -472,6 +496,13 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     request: '{ action, password:string }',
     response: '{ mnemonic:string } | { success:false, code:\'UNLOCK_FAILED\', message }',
   },
+  [ACTIONS.exportPrivateKey]: {
+    summary:
+      "Private-key reveal (#96): show the raw (pre-synthetic) account secret key at the ACTIVE HD derivation index, BOTH schemes. Re-runs the FULL password unlock exactly like revealPhrase (never from the TTL window). This is the key convention Sage/chia-blockchain/hardware wallets treat as \"the wallet key\" for an address — they re-apply the synthetic offset themselves. Refused (WATCH_ONLY) for a watch-only active wallet (it holds no secret at all).",
+    request: '{ action, password:string }',
+    response:
+      "{ privateKeys:[{ scheme:'unhardened'|'hardened', hex:string }] } | { success:false, code:'UNLOCK_FAILED'|'WATCH_ONLY', message }",
+  },
   [ACTIONS.getLockState]: {
     summary: "Report the wallet lock state: 'none' (no wallet), 'locked' (wallet exists, key not in memory / TTL expired), or 'unlocked'. Also carries the active wallet's active HD derivation index (#165) so the index navigator hydrates from this same poll.",
     request: '{ action }',
@@ -479,9 +510,9 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.listWallets]: {
     summary:
-      'Multi-wallet (#90): list the wallet registry as record-FREE metadata (id, label, createdAt, active) + the active id. The encrypted DIGWX1 records never leave the SW.',
+      "Multi-wallet (#90): list the wallet registry as record-FREE metadata (id, label, createdAt, active, activeIndex, accounts — #95's named sub-accounts, always populated) + the active id. A watch-only entry (#96) also carries kind:'watch' + its key fingerprint. The encrypted DIGWX1 records never leave the SW.",
     request: '{ action }',
-    response: '{ wallets:[{ id, label, createdAt, active:boolean }], activeWalletId:string|null } | { success:false, code, message }',
+    response: "{ wallets:[{ id, label, createdAt, active:boolean, activeIndex:number, accounts:[{id,label,index}], kind?:'watch', watchFingerprint?:number }], activeWalletId:string|null } | { success:false, code, message }",
   },
   [ACTIONS.switchWallet]: {
     summary:
@@ -499,6 +530,41 @@ export const MESSAGE_CATALOGUE = Object.freeze({
       'Multi-wallet (#90): remove one wallet (zeroizes its cached key). Refuses the last wallet (LAST_WALLET). Removing the active wallet re-homes active to another; the session stays unlocked only if the new active wallet\'s key is still cached, else it locks.',
     request: '{ action, walletId:string }',
     response: "{ success:true, wallets:[{ id, label, createdAt, active }], activeWalletId:string|null, lockState:'locked'|'unlocked' } | { success:false, code:'LAST_WALLET'|'NO_WALLET', message }",
+  },
+  [ACTIONS.importWatchWallet]: {
+    summary:
+      'Watch-only wallets (#96): add a spend-less wallet from a master/root BLS public key only (hex) — NO password, NO seed, never "locked" (there is nothing to unlock). Every address/balance derives from the public key, UNHARDENED ONLY (hardened is unreachable from a public key alone). Validates the key + previews its index-0 address + Chia-convention fingerprint before adding it, active, to the registry.',
+    request: '{ action, publicKeyHex:string /* 48 bytes / 96 hex chars */, label?:string }',
+    response: "{ success:true, activeWalletId:string, address:string, fingerprint:number } | { success:false, code:'INVALID_PUBLIC_KEY', message }",
+  },
+  [ACTIONS.addAccount]: {
+    summary:
+      "Named accounts (#95): append a new named sub-account to the ACTIVE wallet at the next unused HD derivation index (one above the highest index any of its existing accounts already bookmarks). Purely local metadata over the single-active-index model (#165 unchanged — an account is a friendly bookmark over one index, not a second scan dimension).",
+    request: '{ action, label?:string }',
+    response: "{ success:true, accounts:[{ id, label, index }] } | { success:false, code:'NO_WALLET', message }",
+  },
+  [ACTIONS.renameAccount]: {
+    summary: 'Named accounts (#95): rename one account of the ACTIVE wallet (metadata only).',
+    request: '{ action, accountId:string, label:string }',
+    response: "{ success:true, accounts:[{ id, label, index }] } | { success:false, code:'NO_WALLET'|'BAD_REQUEST', message }",
+  },
+  [ACTIONS.removeAccount]: {
+    summary:
+      "Named accounts (#95): remove one account of the ACTIVE wallet, refusing to drop the last remaining one. Removing the currently-ACTIVE account (its index === the wallet's activeIndex) re-homes activeIndex to the first remaining account, invalidating every index-scoped view exactly like setActiveIndex.",
+    request: '{ action, accountId:string }',
+    response: "{ success:true, accounts:[{ id, label, index }] } | { success:false, code:'NO_WALLET'|'LAST_ACCOUNT', message }",
+  },
+  [ACTIONS.exportWalletBackup]: {
+    summary:
+      "Encrypted keystore file backup (#115): package ONE wallet's own existing at-rest DIGWX1 record as a downloadable JSON envelope (its OWN magic/version). The SW never decrypts it — the embedded record is copied byte-for-byte, so the file is only ever as sensitive as the encrypted blob already persisted (still requires the ORIGINAL password to ever unlock, wherever it's restored).",
+    request: '{ action, walletId:string }',
+    response: "{ success:true, filename:string, json:string } | { success:false, code:'NO_WALLET'|'WATCH_ONLY', message }",
+  },
+  [ACTIONS.importWalletBackup]: {
+    summary:
+      "Encrypted keystore file backup (#115): restore a wallet from a previously-exported backup file's JSON text. Validates the envelope + its embedded DIGWX1 record structurally (never decrypts it) and adds it, active, to the registry under a FRESH id — it comes back LOCKED (no password was ever seen), so the normal unlock screen prompts for its original password. Refuses a byte-identical duplicate already in the registry.",
+    request: '{ action, json:string, label?:string }',
+    response: "{ success:true, activeWalletId:string, lockState:'locked' } | { success:false, code:'BAD_FORMAT'|'BAD_RECORD'|'ALREADY_EXISTS', message }",
   },
   [ACTIONS.setActiveIndex]: {
     summary: 'Single active derivation index (#165): navigate the ACTIVE wallet\'s active HD derivation index (prev/next/jump — the caller computes the target index and sends it absolute). A pure SW registry op (no vault round-trip); persisted per wallet; drops the balance/activity caches (scoped to the previous index).',
