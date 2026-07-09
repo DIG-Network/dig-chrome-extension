@@ -15,6 +15,13 @@ import {
 import type { DappSpendSummary } from '@/offscreen/dappSign';
 import { assessSpendRisk, type SpendRisk } from '@/lib/spend-risk';
 import type { OriginRisk } from '@/lib/phishing';
+import { formatBaseUnits } from '@/lib/wallet-view';
+import { useGetPricesQuery } from '@/features/wallet/priceApi';
+import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
+import { resolveCatMeta, type CatMetaMap } from '@/features/wallet/catMetadata';
+import type { PriceMap } from '@/features/wallet/priceTypes';
+import { xchMojosToUsd, catBaseUnitsToUsd } from '@/features/wallet/custody/approvalFiat';
+import { FiatEquivalent } from '@/features/wallet/custody/FiatEquivalent';
 
 /**
  * {@link ApprovalWindow} wrapped in the react-intl provider bound to the store's active locale. The
@@ -43,6 +50,11 @@ export function ApprovalWindow() {
   const { data, isLoading, isError, refetch } = useGetDappApprovalQueueQuery(undefined, { pollingInterval: 1500 });
   const requests = data?.requests ?? [];
   const current = requests[0] ?? null;
+  // #77 — fiat equivalents + resolved CAT names. Both are SEPARATE, public, non-sensitive api
+  // slices (the SAME ones the wallet's own balances view reads) — a price/registry outage never
+  // blocks review; the summary views below degrade gracefully (no fiat line, generic CAT ticker).
+  const prices = useGetPricesQuery().data ?? {};
+  const catRegistry = useGetCatRegistryQuery().data;
 
   // Dedicated dApp window: once the queue drains, close it (a brief delay avoids flicker between items).
   useEffect(() => {
@@ -79,14 +91,26 @@ export function ApprovalWindow() {
         errorId="dapp.approval.error"
         emptyId="dapp.approval.empty"
       >
-        {current && <ApprovalRequestCard key={current.id} request={current} pending={requests.length} />}
+        {current && (
+          <ApprovalRequestCard key={current.id} request={current} pending={requests.length} prices={prices} catRegistry={catRegistry} />
+        )}
       </FourState>
     </main>
   );
 }
 
 /** Render + decide a single pending request. */
-function ApprovalRequestCard({ request, pending }: { request: DappApprovalRequest; pending: number }) {
+function ApprovalRequestCard({
+  request,
+  pending,
+  prices,
+  catRegistry,
+}: {
+  request: DappApprovalRequest;
+  pending: number;
+  prices: PriceMap;
+  catRegistry?: CatMetaMap;
+}) {
   const [resolve, state] = useResolveDappApprovalMutation();
   const [ack, setAck] = useState(false);
   const busy = state.isLoading;
@@ -145,14 +169,18 @@ function ApprovalRequestCard({ request, pending }: { request: DappApprovalReques
           <FormattedMessage id="dapp.approval.loading" />
         </p>
       ) : isDappSpend ? (
-        <SpendSummaryView summary={request.summary as DappSpendSummary | null} />
+        <SpendSummaryView summary={request.summary as DappSpendSummary | null} prices={prices} />
       ) : request.kind === 'send' ? (
-        <SendSummaryView summary={request.summary as DappSendSummary | null} />
+        <SendSummaryView summary={request.summary as DappSendSummary | null} prices={prices} catRegistry={catRegistry} />
       ) : request.kind === 'createOffer' || request.kind === 'takeOffer' || request.kind === 'cancelOffer' ? (
-        <OfferSummaryView summary={request.summary as DappOfferSummary | null} />
+        <OfferSummaryView summary={request.summary as DappOfferSummary | null} prices={prices} catRegistry={catRegistry} />
       ) : (
         <MessageSummaryView summary={request.summary as DappMessageSummary | null} />
       )}
+
+      {/* #77 — an expandable raw view of the exact decoded facts, for a reviewer who wants the full
+          detail beyond the human summary above. Available whenever there IS a summary to show. */}
+      {!originBlocked && !request.needsUnlock && !request.decodeError && !preparing && <RawDetails data={request.summary} />}
 
       {reviewable && risk.findings.length > 0 && <RiskBanner risk={risk} />}
 
@@ -268,7 +296,7 @@ function short(hex: string): string {
 }
 
 /** The decoded coin-spend summary — the tamper-resistant facts the user authorizes. */
-function SpendSummaryView({ summary }: { summary: DappSpendSummary | null }) {
+function SpendSummaryView({ summary, prices }: { summary: DappSpendSummary | null; prices: PriceMap }) {
   const intl = useIntl();
   if (!summary) {
     return (
@@ -287,11 +315,17 @@ function SpendSummaryView({ summary }: { summary: DappSpendSummary | null }) {
       {summary.allInputsSelf ? (
         <dl className="dig-row" style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 6, margin: '8px 0' }}>
           <dt className="dig-muted"><FormattedMessage id="dapp.approval.sending" /></dt>
-          <dd className="dig-mono" data-testid="approval-sending" style={{ margin: 0, textAlign: 'right' }}>{xch(summary.sendingMojos)} XCH</dd>
+          <dd className="dig-mono" data-testid="approval-sending" style={{ margin: 0, textAlign: 'right' }}>
+            {xch(summary.sendingMojos)} XCH<FiatEquivalent usd={xchMojosToUsd(summary.sendingMojos, prices)} />
+          </dd>
           <dt className="dig-muted"><FormattedMessage id="dapp.approval.change" /></dt>
-          <dd className="dig-mono" data-testid="approval-change" style={{ margin: 0, textAlign: 'right' }}>{xch(summary.changeMojos)} XCH</dd>
+          <dd className="dig-mono" data-testid="approval-change" style={{ margin: 0, textAlign: 'right' }}>
+            {xch(summary.changeMojos)} XCH<FiatEquivalent usd={xchMojosToUsd(summary.changeMojos, prices)} />
+          </dd>
           <dt className="dig-muted"><FormattedMessage id="dapp.approval.fee" /></dt>
-          <dd className="dig-mono" data-testid="approval-fee" style={{ margin: 0, textAlign: 'right' }}>{xch(summary.feeMojos)} XCH</dd>
+          <dd className="dig-mono" data-testid="approval-fee" style={{ margin: 0, textAlign: 'right' }}>
+            {xch(summary.feeMojos)} XCH<FiatEquivalent usd={xchMojosToUsd(summary.feeMojos, prices)} />
+          </dd>
         </dl>
       ) : (
         <p className="dig-muted" data-testid="approval-advanced-note" style={{ margin: '8px 0' }}>
@@ -369,15 +403,70 @@ function MessageSummaryView({ summary }: { summary: DappMessageSummary | null })
   );
 }
 
-/** A trade leg (xch, a CAT, or an NFT — §94) → a short display label with its amount. */
-function legLabel(leg: { asset: DappOfferSummary['offered'][number]['asset']; amount: string }): string {
-  if (leg.asset.kind === 'xch') return `${xch(leg.amount)} XCH`;
-  if (leg.asset.kind === 'cat') return `${leg.amount} ${short(leg.asset.assetId)}`;
-  return `NFT ${short(leg.asset.launcherId)}`;
+/** A trade leg (xch, a CAT, or an NFT — §94): resolved name/decimals + a fiat equivalent when the
+ * asset is priced (#77). A CAT resolves its ticker from the SAME public registry `SendSummaryView`
+ * uses; an NFT has no fungible amount to price, so it renders its launcher id only (unchanged). */
+function LegRow({
+  leg,
+  prices,
+  catRegistry,
+}: {
+  leg: { asset: DappOfferSummary['offered'][number]['asset']; amount: string };
+  prices: PriceMap;
+  catRegistry?: CatMetaMap;
+}) {
+  if (leg.asset.kind === 'xch') {
+    return (
+      <li className="dig-mono">
+        {xch(leg.amount)} XCH<FiatEquivalent usd={xchMojosToUsd(leg.amount, prices)} />
+      </li>
+    );
+  }
+  if (leg.asset.kind === 'cat') {
+    const meta = resolveCatMeta(leg.asset.assetId, catRegistry);
+    return (
+      <li className="dig-mono">
+        {formatBaseUnits(leg.amount, meta.decimals)} {meta.ticker}
+        <FiatEquivalent usd={catBaseUnitsToUsd(leg.asset.assetId, leg.amount, meta.decimals, prices)} />
+      </li>
+    );
+  }
+  return <li className="dig-mono">NFT {short(leg.asset.launcherId)}</li>;
+}
+
+/**
+ * An expandable raw view of the exact decoded summary (#77) — a `<details>` disclosure so it never
+ * clutters the default view; expanding it shows the SAME tamper-resistant facts rendered above, in
+ * full, for a reviewer who wants every field (fees/signers/output hashes/…) beyond the human
+ * summary. Rendered for every kind (send/spend/offer/message) from the ONE decoded `summary`.
+ */
+function RawDetails({ data }: { data: unknown }) {
+  if (data == null) return null;
+  return (
+    <details data-testid="approval-raw-view" style={{ marginTop: 12 }}>
+      <summary className="dig-muted" style={{ cursor: 'pointer' }}>
+        <FormattedMessage id="dapp.approval.raw.title" />
+      </summary>
+      <pre
+        className="dig-mono"
+        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 11, background: 'rgba(0,0,0,0.04)', padding: 8, borderRadius: 8, marginTop: 8 }}
+      >
+        {JSON.stringify(data, null, 2)}
+      </pre>
+    </details>
+  );
 }
 
 /** The decoded wallet-built send summary — recipient, amount, and fee, from the built spend. */
-function SendSummaryView({ summary }: { summary: DappSendSummary | null }) {
+function SendSummaryView({
+  summary,
+  prices,
+  catRegistry,
+}: {
+  summary: DappSendSummary | null;
+  prices: PriceMap;
+  catRegistry?: CatMetaMap;
+}) {
   if (!summary) {
     return (
       <p className="dig-muted" data-testid="approval-no-summary">
@@ -386,6 +475,10 @@ function SendSummaryView({ summary }: { summary: DappSendSummary | null }) {
     );
   }
   const isXch = !summary.asset || summary.asset.toLowerCase() === 'xch';
+  // #77 — a CAT amount resolves its real name/ticker/decimals from the SAME public registry the
+  // wallet's own balances view reads, instead of showing the raw truncated TAIL hex.
+  const catMeta = isXch ? null : resolveCatMeta(summary.asset, catRegistry);
+  const amountUsd = isXch ? xchMojosToUsd(summary.sent, prices) : catBaseUnitsToUsd(summary.asset, summary.sent, catMeta!.decimals, prices);
   return (
     <div data-testid="approval-send-summary">
       <h2 className="dig-section-title" id="approval-req-title" style={{ marginTop: 0 }}>
@@ -395,16 +488,29 @@ function SendSummaryView({ summary }: { summary: DappSendSummary | null }) {
         <dt className="dig-muted"><FormattedMessage id="dapp.approval.to" /></dt>
         <dd className="dig-mono" data-testid="approval-send-to" style={{ margin: 0, textAlign: 'right', wordBreak: 'break-all' }}>{short(summary.recipientPuzzleHashHex)}</dd>
         <dt className="dig-muted"><FormattedMessage id="dapp.approval.amount" /></dt>
-        <dd className="dig-mono" data-testid="approval-send-amount" style={{ margin: 0, textAlign: 'right' }}>{isXch ? `${xch(summary.sent)} XCH` : `${summary.sent} ${short(summary.asset)}`}</dd>
+        <dd className="dig-mono" data-testid="approval-send-amount" style={{ margin: 0, textAlign: 'right' }}>
+          {isXch ? `${xch(summary.sent)} XCH` : `${formatBaseUnits(summary.sent, catMeta!.decimals)} ${catMeta!.ticker}`}
+          <FiatEquivalent usd={amountUsd} />
+        </dd>
         <dt className="dig-muted"><FormattedMessage id="dapp.approval.fee" /></dt>
-        <dd className="dig-mono" data-testid="approval-send-fee" style={{ margin: 0, textAlign: 'right' }}>{xch(summary.fee)} XCH</dd>
+        <dd className="dig-mono" data-testid="approval-send-fee" style={{ margin: 0, textAlign: 'right' }}>
+          {xch(summary.fee)} XCH<FiatEquivalent usd={xchMojosToUsd(summary.fee, prices)} />
+        </dd>
       </dl>
     </div>
   );
 }
 
 /** The decoded two-sided trade summary — what the wallet gives vs receives, from the built offer. */
-function OfferSummaryView({ summary }: { summary: DappOfferSummary | null }) {
+function OfferSummaryView({
+  summary,
+  prices,
+  catRegistry,
+}: {
+  summary: DappOfferSummary | null;
+  prices: PriceMap;
+  catRegistry?: CatMetaMap;
+}) {
   if (!summary) {
     return (
       <p className="dig-muted" data-testid="approval-no-summary">
@@ -422,7 +528,7 @@ function OfferSummaryView({ summary }: { summary: DappOfferSummary | null }) {
       </p>
       <ul data-testid="approval-offer-give" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {summary.offered.map((leg, i) => (
-          <li key={`give-${i}`} className="dig-mono">{legLabel(leg)}</li>
+          <LegRow key={`give-${i}`} leg={leg} prices={prices} catRegistry={catRegistry} />
         ))}
       </ul>
       <p className="dig-muted" style={{ margin: '12px 0 4px' }}>
@@ -430,7 +536,7 @@ function OfferSummaryView({ summary }: { summary: DappOfferSummary | null }) {
       </p>
       <ul data-testid="approval-offer-receive" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {summary.requested.map((leg, i) => (
-          <li key={`receive-${i}`} className="dig-mono">{legLabel(leg)}</li>
+          <LegRow key={`receive-${i}`} leg={leg} prices={prices} catRegistry={catRegistry} />
         ))}
       </ul>
     </div>

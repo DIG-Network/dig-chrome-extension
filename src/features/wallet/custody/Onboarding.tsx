@@ -8,17 +8,34 @@ import {
 } from '@/features/wallet/custodyApi';
 import { RecoveryReveal } from '@/features/wallet/custody/RecoveryReveal';
 
-type Step = 'welcome' | 'create' | 'reveal' | 'confirm' | 'import' | 'watch' | 'restore';
+type Step = 'welcome' | 'security' | 'create' | 'reveal' | 'confirm' | 'backupReminder' | 'import' | 'watch' | 'restore';
 
 /**
- * Self-custody onboarding (§6, Fable: lives in fullscreen). Welcome → Create (set password →
- * back up the recovery phrase behind the accessible reveal → confirm one word) OR Import (paste the
- * phrase + set a password). On success the wallet is created/unlocked in the offscreen vault and
- * `onDone` lets the gate proceed.
+ * Self-custody onboarding (§6, Fable: lives in fullscreen). Welcome → [security nudge] → Create
+ * (set password → back up the recovery phrase behind the accessible reveal → confirm one word →
+ * backup reminder) OR Import (paste the phrase + set a password). On success the wallet is
+ * created/unlocked in the offscreen vault and `onDone` lets the gate proceed.
+ *
+ * Two security nudges bracket the phrase-handling paths (#79 P2-3, the "right moments" — not a
+ * blanket checkbox nobody reads):
+ *   - BEFORE Create/Import — a phishing-education step (a scam site asking for the phrase; DIG
+ *     never asks for it) the user must explicitly acknowledge with Continue before reaching either
+ *     form. Skipped for Watch-only (#96, a public key only — no phrase exists to protect) and
+ *     Restore (#115, an existing ENCRYPTED backup file, not a raw phrase typed in).
+ *   - AFTER a NEW phrase is confirmed (create only) — a backup reminder pointing at the encrypted
+ *     backup-file export (#115, reachable from the wallet switcher) as a second recovery method,
+ *     right when the user has just proven they wrote the phrase down. Import skips this: importing
+ *     an existing phrase means the user already has their own backup by definition.
+ * The existing `custody.strongPreset` (256 MiB Argon2id toggle) on the create form and
+ * `custody.recovery.warn.never` ("DIG will never ask for your recovery phrase") in the reveal step
+ * are the OTHER two nudges the parent roadmap calls for — both already shipped; this component adds
+ * only the two above.
  */
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const intl = useIntl();
   const [step, setStep] = useState<Step>('welcome');
+  // Where Continue on the security nudge goes — set when Create/Import is chosen from Welcome.
+  const [afterSecurity, setAfterSecurity] = useState<'create' | 'import'>('create');
   const [password, setPassword] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [strong, setStrong] = useState(false);
@@ -28,6 +45,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [watchKey, setWatchKey] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /** Create/Import from Welcome route through the phishing-education nudge first (#79). */
+  function startPhraseFlow(target: 'create' | 'import') {
+    setAfterSecurity(target);
+    setLocalError(null);
+    setStep('security');
+  }
 
   const [createWallet, createState] = useCreateWalletMutation();
   const [importWallet, importState] = useImportWalletMutation();
@@ -71,7 +95,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   function verifyConfirmWord() {
     const expected = mnemonic.trim().split(/\s+/)[confirmIndex];
-    if (confirmWord.trim().toLowerCase() === expected) onDone();
+    // #79 — a NEW wallet's phrase is confirmed: nudge a SECOND backup method (the encrypted backup
+    // file) before finishing, rather than finishing silently. Import never reaches this step (it
+    // has its own onDone path in doImport) — an imported phrase is already backed up by definition.
+    if (confirmWord.trim().toLowerCase() === expected) setStep('backupReminder');
     else setLocalError(intl.formatMessage({ id: 'custody.error.wrongWord' }));
   }
 
@@ -113,10 +140,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <p className="dig-muted" style={{ marginTop: 0 }}>
             <FormattedMessage id="custody.onboarding.intro" />
           </p>
-          <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="onboarding-create" onClick={() => setStep('create')}>
+          <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="onboarding-create" onClick={() => startPhraseFlow('create')}>
             <FormattedMessage id="custody.onboarding.create" />
           </button>
-          <button type="button" className="dig-btn dig-btn--block" data-testid="onboarding-import" onClick={() => setStep('import')}>
+          <button type="button" className="dig-btn dig-btn--block" data-testid="onboarding-import" onClick={() => startPhraseFlow('import')}>
             <FormattedMessage id="custody.onboarding.import" />
           </button>
           <button type="button" className="dig-btn dig-btn--block" data-testid="onboarding-restore" onClick={() => { setLocalError(null); setStep('restore'); }}>
@@ -124,6 +151,30 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           </button>
           <button type="button" className="dig-btn dig-btn--block" data-testid="onboarding-watch" onClick={() => { setLocalError(null); setStep('watch'); }}>
             <FormattedMessage id="custody.onboarding.watch" />
+          </button>
+        </div>
+      )}
+
+      {step === 'security' && (
+        <div className="dig-card" data-testid="onboarding-security" aria-labelledby="onboarding-security-title">
+          <h2 className="dig-section-title" id="onboarding-security-title" style={{ marginTop: 0 }}>
+            <FormattedMessage id="custody.onboarding.security.title" />
+          </h2>
+          <ul className="dig-muted" style={{ marginTop: 0 }}>
+            <li><FormattedMessage id="custody.onboarding.security.neverAsk" /></li>
+            <li><FormattedMessage id="custody.onboarding.security.phishing" /></li>
+            <li><FormattedMessage id="custody.onboarding.security.neverShare" /></li>
+          </ul>
+          <button
+            type="button"
+            className="dig-btn dig-btn--primary dig-btn--block"
+            data-testid="onboarding-security-continue"
+            onClick={() => setStep(afterSecurity)}
+          >
+            <FormattedMessage id="custody.onboarding.security.continue" />
+          </button>
+          <button type="button" className="dig-btn dig-btn--block" data-testid="onboarding-security-cancel" onClick={() => setStep('welcome')}>
+            <FormattedMessage id="account.cancel" />
           </button>
         </div>
       )}
@@ -250,6 +301,20 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <FormattedMessage id="custody.confirm.submit" />
           </button>
         </form>
+      )}
+
+      {step === 'backupReminder' && (
+        <div className="dig-card" data-testid="onboarding-backup-reminder" aria-labelledby="onboarding-backup-title">
+          <h2 className="dig-section-title" id="onboarding-backup-title" style={{ marginTop: 0 }}>
+            <FormattedMessage id="custody.onboarding.backup.title" />
+          </h2>
+          <p className="dig-muted" style={{ marginTop: 0 }}>
+            <FormattedMessage id="custody.onboarding.backup.body" />
+          </p>
+          <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="onboarding-backup-reminder-finish" onClick={onDone}>
+            <FormattedMessage id="custody.onboarding.backup.finish" />
+          </button>
+        </div>
       )}
     </section>
   );

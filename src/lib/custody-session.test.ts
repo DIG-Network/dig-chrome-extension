@@ -15,6 +15,7 @@ import {
   resolveTtlMinutes,
   computeUnlockExpiry,
   isUnlockExpired,
+  minutesUntilLock,
   deriveLockState,
   computeLockSnapshot,
   resolveCoinsetUrl,
@@ -260,6 +261,24 @@ test('isUnlockExpired treats missing/invalid/past as expired, future as live', (
   assert.ok(isUnlockExpired(100, 100)); // exactly at expiry = expired
   assert.ok(isUnlockExpired(100, 200));
   assert.ok(!isUnlockExpired(200, 100));
+});
+
+// #76 — the visible session countdown ("auto-locks in Xm") the Settings surface renders.
+test('minutesUntilLock: no active window (missing/invalid/lapsed expiry) → null', () => {
+  assert.equal(minutesUntilLock(undefined, 100), null);
+  assert.equal(minutesUntilLock(null, 100), null);
+  assert.equal(minutesUntilLock(0, 100), null);
+  assert.equal(minutesUntilLock(NaN, 100), null);
+  assert.equal(minutesUntilLock(50, 100), null); // already lapsed
+  assert.equal(minutesUntilLock(100, 100), null); // exactly now = lapsed
+});
+
+test('minutesUntilLock: rounds UP so "1" means "under a minute left", never 0 while unlocked', () => {
+  assert.equal(minutesUntilLock(100 + 1, 100), 1); // 1ms left
+  assert.equal(minutesUntilLock(100 + 59_999, 100), 1); // just under a minute
+  assert.equal(minutesUntilLock(100 + 60_000, 100), 1); // exactly a minute
+  assert.equal(minutesUntilLock(100 + 60_001, 100), 2); // just over a minute
+  assert.equal(minutesUntilLock(100 + 15 * 60_000, 100), 15); // the default TTL, freshly unlocked
 });
 
 test('deriveLockState: no keystore → none', () => {

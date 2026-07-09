@@ -10,6 +10,7 @@ import {
   selectHasWallet,
   selectActiveWalletId,
   selectActiveDerivationIndex,
+  selectUnlockExpiry,
   type WalletState,
 } from './walletSlice';
 
@@ -81,8 +82,10 @@ describe('walletSlice', () => {
     expect(selectHasWallet(root)).toBe(true);
     expect(selectActiveWalletId(root)).toBe('w1');
     expect(selectActiveDerivationIndex(root)).toBe(2);
+    expect(selectUnlockExpiry(root)).toBe(1);
     const none = { wallet: { lockState: 'none', activeWalletId: null, unlockExpiry: null, activeIndex: 0 } as WalletState };
     expect(selectIsUnlocked(none)).toBe(false);
     expect(selectHasWallet(none)).toBe(false);
+    expect(selectUnlockExpiry(none)).toBeNull();
   });
 });

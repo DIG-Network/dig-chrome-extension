@@ -550,3 +550,32 @@ than a guaranteed contract:
   offer format, and `lib/dexie.ts`'s module doc on why dexie's decoded fields are display-only).
 - Offer `status` codes (undocumented, inferred from the data): `0` open, `1` pending, `2` cancelling,
   `3` cancelled, `4` completed, `5` unknown, `6` expired.
+
+## Auto-lock TTL enforcement was alarm/idle-timing-dependent, not per-call (#76)
+
+Before #76, EVERY point that enforces the unlock TTL — the periodic `AUTO_LOCK_ALARM` sweep, the
+`chrome.idle` listener, and (critically) the dApp approval router's vault call — relied entirely on
+the vault having ALREADY had its key zeroized by one of the first two triggers. Nothing checked the
+unlock-expiry timestamp itself at the moment of use. Since a dApp sign/spend request can sit queued
+in the SW-summoned approval window for an arbitrary time (its keepalive port deliberately keeps the
+SW + vault alive so review isn't rushed), this left a real window — up to ~1 minute, the alarm's
+granularity — where the TTL had numerically lapsed but the vault still held the key and would
+happily sign if approved. The fix is NOT "make the alarm fire faster" (that only shrinks the window);
+it's checking `getLockStateSnapshot()` fresh, from storage, at the exact point of every vault call in
+the dApp router (`src/background/index.ts`'s `dappApproval` construction), refusing before ever
+forwarding to the offscreen vault. **Lesson for any future auto-lock-adjacent code:** a periodic
+sweep/listener is a good BACKSTOP but is never sufficient on its own for money-moving actions that
+can be queued/deferred — the enforcement point has to be the actual call site, checked at call time.
+
+## `vi.stubGlobal` is NOT undone by `vi.restoreAllMocks()` — needs `vi.unstubAllGlobals()`
+
+`vitest.setup.ts`'s global `afterEach` calls `vi.restoreAllMocks()`, which only restores spies created
+via `vi.spyOn`/`vi.fn` mocks — it does NOT touch a `vi.stubGlobal('fetch', …)` override (used to feed
+a fake price/CAT-registry/etc. response into a test, e.g. `manageTokens.test.tsx`,
+`approvalWindow.test.tsx`'s `mockPricesAndCatRegistry`). A `vi.stubGlobal` call PERSISTS across every
+subsequent test in the file until something calls `vi.unstubAllGlobals()` — which surfaced as a real
+false-negative: a "graceful degrade when fetch fails" test passed for the wrong reason (it inherited
+an EARLIER test's successful fetch stub instead of hitting the real degrade path) until an explicit
+`vi.unstubAllGlobals()` was added to the file's own `afterEach`. Any new test file that calls
+`vi.stubGlobal` MUST pair it with `vi.unstubAllGlobals()` in its `afterEach` (see `feeField.test.tsx`
+for the existing precedent) — `vi.restoreAllMocks()` alone is not enough.

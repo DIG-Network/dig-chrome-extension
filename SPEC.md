@@ -1277,10 +1277,15 @@ custody requests, owns storage, and enforces auto-lock.
   `lockWallet` (or the TTL sweep) completed while it was still in flight; an explicit lock always
   wins over an in-flight activity call.
 - **auto-lock triggers (all lock the vault + clear the window):** explicit lock (the wallet
-  switcher's Lock control, `wallet-lock`, reachable from both popup and fullscreen); a
-  `chrome.alarms` minute sweep once the TTL lapses with no renewing activity; `chrome.idle`
-  reporting `idle`/`locked`; all-windows-close (the offscreen document tears down, dropping the
-  in-memory key).
+  switcher's Lock control, `wallet-lock`, reachable from both popup and fullscreen, and the
+  Settings-panel `SessionStatus` "Lock now" button, §18.5a); a `chrome.alarms` minute sweep once the
+  TTL lapses with no renewing activity; `chrome.idle` reporting `idle`/`locked` at an EXPLICIT
+  60-second detection interval (`chrome.idle.setDetectionInterval`, matching the alarm's 1-minute
+  granularity rather than an implicit platform default, #76); all-windows-close (the offscreen
+  document tears down, dropping the in-memory key); a lock-on-wake check that recomputes the
+  snapshot the moment the service worker (re)executes its top-level module code — which happens on
+  every SW (re)start (OS sleep/wake, browser restart, SW eviction) — rather than waiting for the
+  next alarm tick, #76.
 - **lock state.** `getLockState` derives the snapshot PURELY from persisted storage — `none` (no
   keystore blob) / `locked` (blob present but the unlock window is absent or lapsed) / `unlocked`
   (blob + a fresh unlock window) — with NO round-trip to the offscreen vault, so it ALWAYS resolves
@@ -1289,6 +1294,15 @@ custody requests, owns storage, and enforces auto-lock.
   `chrome.idle`) independently zeroizes the vault and clears the unlock window when the TTL lapses,
   so a lapsed window reads as `locked` without a vault call; the SW spawns the offscreen document
   only to unlock / use the key, never to read state.
+- **TTL cannot be outlived by a held approval window (#76).** The dApp `walletRpc` router's vault
+  call (§18.12) is NOT a raw pass-through: it re-checks `getLockStateSnapshot()` — freshly, from
+  storage, on every single call — before ever forwarding to the offscreen vault, and refuses with
+  `{ success:false, code:'LOCKED' }` (tidying up the vault via `lockVaultNow()`) when the snapshot
+  is not `unlocked`. This closes the specific race where a queued sign/spend can sit in the approval
+  window for a long time (its keepalive port deliberately keeps the SW + vault alive so review isn't
+  rushed) — without this check, the TTL number could say "expired" for up to a minute before the
+  periodic alarm/idle listener got around to zeroizing the vault, during which the vault would still
+  physically hold the key and happily sign. Proven end-to-end in `e2e/sw/approval-ttl-race.spec.ts`.
 
 ### 18.4 Storage schema (custody)
 
@@ -1316,6 +1330,18 @@ The wallet surface lands on a state-driven custody gate BEFORE the balances view
   "use a Sage wallet instead" escape — self-custody is the only path.
 - **locked**: a password unlock screen.
 - **unlocked**: the wallet (Balances & Intents).
+
+Two security nudges bracket the phrase-handling paths (Create/Import — #79):
+- **Before the form.** Choosing Create or Import from Welcome routes through a phishing-education
+  step first (DIG never asks for the recovery phrase anywhere; a phishing warning; never share it,
+  including with someone claiming to be DIG support), requiring an explicit Continue before either
+  form renders. Watch-only (a public key only, §18.19) and restore-from-backup (an existing
+  ENCRYPTED file, not a typed phrase, §18.21) skip it — neither path exposes a raw phrase.
+- **After a NEW phrase is confirmed.** Once the confirm-word gate succeeds for a freshly CREATED
+  wallet, a backup reminder — pointing at the encrypted backup-file export (reachable from the
+  wallet switcher, §18.21) as a second recovery method — renders BEFORE the gate proceeds to the
+  wallet. Import skips it: an imported phrase is already backed up by definition, so `doImport`
+  still finishes straight to the wallet.
 
 The recovery-phrase reveal MUST be accessible (§5.6): tap-to-reveal, a screen-reader-navigable
 numbered word list, an explicit Copy that AUTO-CLEARS the clipboard after a short delay, and an
@@ -2315,6 +2341,17 @@ gates every request.
   drains. Genuinely unimplemented wallet methods (DID/mint/…) return an honest `404` (→ CHIP-0002
   `4004 METHOD_NOT_FOUND`), never a silent sign. The provider's bridge timeout (120 s) bounds how long
   a request may await a decision.
+- **Every vault call is gated on the live lock snapshot (#76).** The injected `callVault` the router
+  is constructed with is not a raw pass-through — see the TTL bullet in §18.3 — so a queued request
+  can never be signed/broadcast after the unlock TTL has lapsed, regardless of how long the window
+  sat open (its keepalive port keeps the SW alive on purpose).
+- **Richer clear-signing (#77).** The send/spend/offer summaries render a fiat equivalent (the
+  user's chosen display currency, §18.13's `PriceMap`/`FiatCode` machinery, degrading to nothing —
+  never a fabricated `$0` — when a price isn't known) beside every on-chain amount, and a CAT amount
+  resolves its real name/ticker/decimals from the SAME §18.6 CAT-metadata registry the Assets list
+  and Activity ledger resolve through, instead of a raw truncated TAIL. An expandable "View raw
+  request details" disclosure renders the exact decoded `summary` as JSON for every request kind,
+  for a reviewer who wants the full detail beyond the human summary.
 
 ### 18.13 Fiat prices & portfolio value (#86)
 
