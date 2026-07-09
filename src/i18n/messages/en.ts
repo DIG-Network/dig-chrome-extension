@@ -720,6 +720,15 @@ export const en: Record<string, string> = {
   'contacts.picker.manage': 'Manage address book',
   'contacts.picker.close': 'Close',
   'contacts.saved.badge': 'Saved contact',
+  // ── #207: the XL Android-style contacts modal ──
+  'contacts.picker.search.placeholder': 'Search contacts',
+  'contacts.picker.search.label': 'Search contacts',
+  'contacts.picker.noResults': 'No contacts match “{query}”.',
+  'contacts.picker.empty.title': 'No saved contacts yet',
+  'contacts.picker.empty.body': 'Add a contact to pick them here next time.',
+  'contacts.picker.addContact': 'Add contact',
+  'contacts.picker.index.aria': 'Jump to letter',
+  'contacts.picker.index.jumpTo': 'Jump to {letter}',
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   'send.recipient.sendingTo': 'Sending to {label}',

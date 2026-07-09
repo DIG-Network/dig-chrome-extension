@@ -699,6 +699,14 @@ export const es: Record<string, string> = {
   "contacts.picker.manage": "Administrar libreta de direcciones",
   "contacts.picker.close": "Cerrar",
   "contacts.saved.badge": "Contacto guardado",
+  "contacts.picker.search.placeholder": "Buscar contactos",
+  "contacts.picker.search.label": "Buscar contactos",
+  "contacts.picker.noResults": "Ningún contacto coincide con «{query}».",
+  "contacts.picker.empty.title": "Aún no hay contactos guardados",
+  "contacts.picker.empty.body": "Añade un contacto para elegirlo aquí la próxima vez.",
+  "contacts.picker.addContact": "Añadir contacto",
+  "contacts.picker.index.aria": "Ir a la letra",
+  "contacts.picker.index.jumpTo": "Ir a {letter}",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "Enviando a {label}",

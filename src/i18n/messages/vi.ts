@@ -699,6 +699,14 @@ export const vi: Record<string, string> = {
   "contacts.picker.manage": "Quản lý sổ địa chỉ",
   "contacts.picker.close": "Đóng",
   "contacts.saved.badge": "Liên hệ đã lưu",
+  "contacts.picker.search.placeholder": "Tìm kiếm liên hệ",
+  "contacts.picker.search.label": "Tìm kiếm liên hệ",
+  "contacts.picker.noResults": "Không có liên hệ nào khớp với “{query}”.",
+  "contacts.picker.empty.title": "Chưa có liên hệ nào được lưu",
+  "contacts.picker.empty.body": "Thêm một liên hệ để chọn ở đây vào lần sau.",
+  "contacts.picker.addContact": "Thêm liên hệ",
+  "contacts.picker.index.aria": "Chuyển đến chữ",
+  "contacts.picker.index.jumpTo": "Chuyển đến {letter}",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "Đang gửi đến {label}",

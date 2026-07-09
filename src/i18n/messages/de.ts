@@ -699,6 +699,14 @@ export const de: Record<string, string> = {
   "contacts.picker.manage": "Adressbuch verwalten",
   "contacts.picker.close": "Schließen",
   "contacts.saved.badge": "Gespeicherter Kontakt",
+  "contacts.picker.search.placeholder": "Kontakte durchsuchen",
+  "contacts.picker.search.label": "Kontakte durchsuchen",
+  "contacts.picker.noResults": "Keine Kontakte passen zu „{query}“.",
+  "contacts.picker.empty.title": "Noch keine gespeicherten Kontakte",
+  "contacts.picker.empty.body": "Fügen Sie einen Kontakt hinzu, um ihn hier auszuwählen.",
+  "contacts.picker.addContact": "Kontakt hinzufügen",
+  "contacts.picker.index.aria": "Zu Buchstabe springen",
+  "contacts.picker.index.jumpTo": "Zu {letter} springen",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "Senden an {label}",

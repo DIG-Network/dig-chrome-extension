@@ -699,6 +699,14 @@ export const ja: Record<string, string> = {
   "contacts.picker.manage": "アドレス帳を管理",
   "contacts.picker.close": "閉じる",
   "contacts.saved.badge": "保存済みの連絡先",
+  "contacts.picker.search.placeholder": "連絡先を検索",
+  "contacts.picker.search.label": "連絡先を検索",
+  "contacts.picker.noResults": "「{query}」に一致する連絡先はありません。",
+  "contacts.picker.empty.title": "保存された連絡先はまだありません",
+  "contacts.picker.empty.body": "次回ここから選べるように連絡先を追加してください。",
+  "contacts.picker.addContact": "連絡先を追加",
+  "contacts.picker.index.aria": "文字にジャンプ",
+  "contacts.picker.index.jumpTo": "{letter} にジャンプ",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "{label} に送信",

@@ -699,6 +699,14 @@ export const id: Record<string, string> = {
   "contacts.picker.manage": "Kelola buku alamat",
   "contacts.picker.close": "Tutup",
   "contacts.saved.badge": "Kontak tersimpan",
+  "contacts.picker.search.placeholder": "Cari kontak",
+  "contacts.picker.search.label": "Cari kontak",
+  "contacts.picker.noResults": "Tidak ada kontak yang cocok dengan “{query}”.",
+  "contacts.picker.empty.title": "Belum ada kontak tersimpan",
+  "contacts.picker.empty.body": "Tambahkan kontak untuk memilihnya di sini lain kali.",
+  "contacts.picker.addContact": "Tambah kontak",
+  "contacts.picker.index.aria": "Lompat ke huruf",
+  "contacts.picker.index.jumpTo": "Lompat ke {letter}",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "Mengirim ke {label}",

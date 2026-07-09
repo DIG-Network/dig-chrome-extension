@@ -699,6 +699,14 @@ export const hi: Record<string, string> = {
   "contacts.picker.manage": "पता पुस्तिका प्रबंधित करें",
   "contacts.picker.close": "बंद करें",
   "contacts.saved.badge": "सहेजा गया संपर्क",
+  "contacts.picker.search.placeholder": "संपर्क खोजें",
+  "contacts.picker.search.label": "संपर्क खोजें",
+  "contacts.picker.noResults": "“{query}” से कोई संपर्क मेल नहीं खाता।",
+  "contacts.picker.empty.title": "अभी तक कोई सहेजा गया संपर्क नहीं",
+  "contacts.picker.empty.body": "अगली बार यहाँ चुनने के लिए एक संपर्क जोड़ें।",
+  "contacts.picker.addContact": "संपर्क जोड़ें",
+  "contacts.picker.index.aria": "अक्षर पर जाएँ",
+  "contacts.picker.index.jumpTo": "{letter} पर जाएँ",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "{label} को भेजा जा रहा है",

@@ -699,6 +699,14 @@ export const ptBR: Record<string, string> = {
   "contacts.picker.manage": "Gerenciar catálogo de endereços",
   "contacts.picker.close": "Fechar",
   "contacts.saved.badge": "Contato salvo",
+  "contacts.picker.search.placeholder": "Buscar contatos",
+  "contacts.picker.search.label": "Buscar contatos",
+  "contacts.picker.noResults": "Nenhum contato corresponde a “{query}”.",
+  "contacts.picker.empty.title": "Ainda não há contatos salvos",
+  "contacts.picker.empty.body": "Adicione um contato para escolhê-lo aqui na próxima vez.",
+  "contacts.picker.addContact": "Adicionar contato",
+  "contacts.picker.index.aria": "Ir para a letra",
+  "contacts.picker.index.jumpTo": "Ir para {letter}",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "Enviando para {label}",

@@ -699,6 +699,14 @@ export const zhTW: Record<string, string> = {
   "contacts.picker.manage": "管理地址簿",
   "contacts.picker.close": "關閉",
   "contacts.saved.badge": "已儲存的聯絡人",
+  "contacts.picker.search.placeholder": "搜尋聯絡人",
+  "contacts.picker.search.label": "搜尋聯絡人",
+  "contacts.picker.noResults": "沒有聯絡人符合「{query}」。",
+  "contacts.picker.empty.title": "尚無已儲存的聯絡人",
+  "contacts.picker.empty.body": "新增聯絡人以便下次在此選取。",
+  "contacts.picker.addContact": "新增聯絡人",
+  "contacts.picker.index.aria": "跳至字母",
+  "contacts.picker.index.jumpTo": "跳至 {letter}",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "傳送給 {label}",

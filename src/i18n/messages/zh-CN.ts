@@ -699,6 +699,14 @@ export const zhCN: Record<string, string> = {
   "contacts.picker.manage": "管理地址簿",
   "contacts.picker.close": "关闭",
   "contacts.saved.badge": "已保存的联系人",
+  "contacts.picker.search.placeholder": "搜索联系人",
+  "contacts.picker.search.label": "搜索联系人",
+  "contacts.picker.noResults": "没有联系人与“{query}”匹配。",
+  "contacts.picker.empty.title": "还没有已保存的联系人",
+  "contacts.picker.empty.body": "添加联系人后即可在此处选择。",
+  "contacts.picker.addContact": "添加联系人",
+  "contacts.picker.index.aria": "跳转到字母",
+  "contacts.picker.index.jumpTo": "跳转到 {letter}",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "发送给 {label}",

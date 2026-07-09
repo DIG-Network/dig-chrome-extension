@@ -699,6 +699,14 @@ export const ko: Record<string, string> = {
   "contacts.picker.manage": "주소록 관리",
   "contacts.picker.close": "닫기",
   "contacts.saved.badge": "저장된 연락처",
+  "contacts.picker.search.placeholder": "연락처 검색",
+  "contacts.picker.search.label": "연락처 검색",
+  "contacts.picker.noResults": "“{query}”와 일치하는 연락처가 없습니다.",
+  "contacts.picker.empty.title": "아직 저장된 연락처가 없습니다",
+  "contacts.picker.empty.body": "다음에 여기서 선택할 수 있도록 연락처를 추가하세요.",
+  "contacts.picker.addContact": "연락처 추가",
+  "contacts.picker.index.aria": "글자로 이동",
+  "contacts.picker.index.jumpTo": "{letter}로 이동",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "{label}에게 전송",

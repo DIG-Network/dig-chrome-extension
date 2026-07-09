@@ -15,7 +15,14 @@
 
 import { isChiaAddress } from '@/lib/wallet-view';
 
-/** A saved recipient. `id` is a stable local id; `address` is a normalized `xch1…` bech32m string. */
+/**
+ * A saved recipient. `id` is a stable local id; `address` is a normalized `xch1…` bech32m string.
+ *
+ * Forward-compat (#208 chat epic): this shape is additive-only, like every other durable local
+ * record in the extension — a future chat feature can add optional fields (an avatar, a DID) onto
+ * the SAME record without a migration, so one contact powers both send + chat. Nothing here is
+ * removed/renamed/repurposed to make room; add, never break.
+ */
 export interface Contact {
   id: string;
   label: string;
@@ -196,6 +203,43 @@ export function labelForAddress(list: Contact[], address: unknown): string | nul
 /** Sort contacts by label, case-insensitively (stable, locale-aware). */
 export function sortContacts(list: Contact[]): Contact[] {
   return list.slice().sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+}
+
+/**
+ * A–Z section grouping for the XL contacts modal (#207). The label's first alphabetic character,
+ * uppercased; a leading digit/symbol (or an empty label) groups under `'#'`, mirroring the Android
+ * Contacts convention of a trailing catch-all bucket for non-alphabetic entries.
+ */
+export function sectionLetter(label: string): string {
+  const ch = label.trim().charAt(0).toUpperCase();
+  return /^[A-Z]$/.test(ch) ? ch : '#';
+}
+
+/** One sticky letter section in the XL contacts modal: the header letter + its contacts, in order. */
+export interface ContactSection {
+  letter: string;
+  contacts: Contact[];
+}
+
+/**
+ * Group contacts into sticky A–Z sections for the XL contacts modal (#207). Assumes `contacts` is
+ * ALREADY sorted by label (e.g. via {@link sortContacts}), so each section's contacts come out in
+ * order; the `'#'` section (non-alphabetic labels) always sorts LAST, after every lettered section.
+ */
+export function groupContactsByLetter(contacts: Contact[]): ContactSection[] {
+  const groups = new Map<string, Contact[]>();
+  for (const c of contacts) {
+    const letter = sectionLetter(c.label);
+    const bucket = groups.get(letter);
+    if (bucket) bucket.push(c);
+    else groups.set(letter, [c]);
+  }
+  const letters = [...groups.keys()].sort((a, b) => {
+    if (a === '#') return 1;
+    if (b === '#') return -1;
+    return a.localeCompare(b);
+  });
+  return letters.map((letter) => ({ letter, contacts: groups.get(letter)! }));
 }
 
 /**

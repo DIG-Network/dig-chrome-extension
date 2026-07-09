@@ -699,6 +699,14 @@ export const ru: Record<string, string> = {
   "contacts.picker.manage": "Управление адресной книгой",
   "contacts.picker.close": "Закрыть",
   "contacts.saved.badge": "Сохранённый контакт",
+  "contacts.picker.search.placeholder": "Поиск контактов",
+  "contacts.picker.search.label": "Поиск контактов",
+  "contacts.picker.noResults": "Нет контактов, соответствующих «{query}».",
+  "contacts.picker.empty.title": "Пока нет сохранённых контактов",
+  "contacts.picker.empty.body": "Добавьте контакт, чтобы выбрать его здесь в следующий раз.",
+  "contacts.picker.addContact": "Добавить контакт",
+  "contacts.picker.index.aria": "Перейти к букве",
+  "contacts.picker.index.jumpTo": "Перейти к {letter}",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "Отправка получателю {label}",

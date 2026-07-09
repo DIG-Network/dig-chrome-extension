@@ -699,6 +699,14 @@ export const tr: Record<string, string> = {
   "contacts.picker.manage": "Adres defterini yönet",
   "contacts.picker.close": "Kapat",
   "contacts.saved.badge": "Kayıtlı kişi",
+  "contacts.picker.search.placeholder": "Kişilerde ara",
+  "contacts.picker.search.label": "Kişilerde ara",
+  "contacts.picker.noResults": "“{query}” ile eşleşen kişi yok.",
+  "contacts.picker.empty.title": "Henüz kayıtlı kişi yok",
+  "contacts.picker.empty.body": "Bir dahaki sefere buradan seçmek için bir kişi ekleyin.",
+  "contacts.picker.addContact": "Kişi ekle",
+  "contacts.picker.index.aria": "Harfe atla",
+  "contacts.picker.index.jumpTo": "{letter} harfine atla",
 
   // ── send: pick a contact + save-on-send + label preference (#88) ──
   "send.recipient.sendingTo": "{label} adlı kişiye gönderiliyor",
