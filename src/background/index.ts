@@ -838,6 +838,11 @@ const successReports = [];
 // (idle / TTL / all-windows-close). Pure decisions come from custody-session.mjs.
 const OFFSCREEN_URL = 'offscreen.html';
 const AUTO_LOCK_ALARM = 'dig-wallet-autolock';
+/** #76 — explicit `chrome.idle` detection granularity (seconds of inactivity before 'idle' fires).
+ * Chosen to match the AUTO_LOCK_ALARM's 1-minute sweep so the two triggers agree on "how idle is
+ * idle"; set explicitly rather than relying on Chrome's own default so this is a documented,
+ * intentional value instead of an implicit platform behavior that could silently drift. */
+const IDLE_DETECTION_INTERVAL_SECONDS = 60;
 /** `chrome.storage.local` key holding the user's watched CAT list (shared with the wallet UI). */
 const WATCHED_CATS_KEY = 'wallet.watchedCats';
 let creatingOffscreen = null;
@@ -1954,10 +1959,33 @@ try {
   });
 } catch { /* alarms unavailable */ }
 try {
+  // #76 — explicit, not Chrome's undocumented-by-default detection window: a real, in-between idle
+  // check needs a granularity comparable to the 1-minute TTL sweep above, so a genuinely-idle user
+  // is caught promptly without a coarser interval leaving the wallet unlocked for a visibly stale
+  // stretch. 60s is also the Chrome-enforced floor's most permissive common value across platforms.
+  chrome.idle.setDetectionInterval(IDLE_DETECTION_INTERVAL_SECONDS);
   chrome.idle.onStateChanged.addListener((state) => {
     if (state === 'idle' || state === 'locked') lockVaultNow();
   });
 } catch { /* idle unavailable */ }
+
+/**
+ * #76 — lock-on-suspend/wake: recompute the lock snapshot immediately whenever this module
+ * (re)runs, rather than waiting for the next AUTO_LOCK_ALARM tick (up to a minute away) or an
+ * OS idle/locked event. An MV3 service worker is torn down and respawned around OS sleep, browser
+ * restart, and ordinary SW eviction — every one of those re-executes this top-level module code, so
+ * a single call here is the earliest possible point to notice "the TTL lapsed while nothing was
+ * running" and tidy up the vault + the stale alarm. A snapshot that is still fresh is a harmless
+ * no-op (lockVaultNow is idempotent).
+ */
+async function checkAutoLockOnWake() {
+  try {
+    const snap = await getLockStateSnapshot();
+    if (snap.lockState === LOCK_STATE.LOCKED) await lockVaultNow();
+  } catch { /* best effort — the periodic alarm + idle listener still cover this */ }
+}
+void checkAutoLockOnWake();
+chrome.runtime.onStartup.addListener(() => { void checkAutoLockOnWake(); });
 
 // ─── dApp `walletRpc` approval window (#56 §5.5) ───────────────────────────────────────────────
 // A dedicated, trusted popup window the SW summons when a dApp asks the custody wallet to sign. It
@@ -2033,7 +2061,23 @@ const dappApproval = new DappApprovalManager({
   // vault call, read fresh on each call (never captured once at construction) — the user may
   // navigate the active index via prev/next while the SW is alive, and a dApp request must always
   // operate on whichever index is active AT CALL TIME, not whatever was active when the SW booted.
-  callVault: async (req) => callVault({ ...req, coinsetUrl: resolveCoinsetUrl(await readWalletSettings()), activeIndex: await activeDerivationIndex() }),
+  //
+  // #76 — a fresh lock-state check gates EVERY call, not just the periodic AUTO_LOCK_ALARM sweep or
+  // the chrome.idle listener: a queued dApp request can sit in the approval window for a long time
+  // (a keepalive port keeps the SW alive throughout, on purpose, so review isn't rushed), and the
+  // TTL may lapse WHILE it waits — up to a minute before the next alarm tick would otherwise notice.
+  // Checking here means the session can never outlive its TTL just because an approval window held
+  // it open; a lapsed session is refused (and the vault tidied up) at the moment of use, not on the
+  // alarm's schedule. `getLockStateSnapshot` recomputes freshly from storage every call — it is NOT
+  // reading a value cached from when the request was first queued.
+  callVault: async (req) => {
+    const snap = await getLockStateSnapshot();
+    if (snap.lockState !== LOCK_STATE.UNLOCKED) {
+      await lockVaultNow();
+      return { success: false, code: 'LOCKED', message: 'wallet session expired — unlock the wallet to continue' };
+    }
+    return callVault({ ...req, coinsetUrl: resolveCoinsetUrl(await readWalletSettings()), activeIndex: await activeDerivationIndex() });
+  },
   summonWindow: () => summonApprovalWindow(),
   assessOrigin: (o) => assessOriginNow(o),
   randomId: () => crypto.randomUUID(),

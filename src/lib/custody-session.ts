@@ -309,6 +309,20 @@ export function isUnlockExpired(unlockExpiry: number | null | undefined, now: nu
 }
 
 /**
+ * Minutes remaining until the auto-lock TTL lapses, rounded UP so `1` always means "under a minute
+ * left" (never `0` while genuinely still unlocked) — drives the visible session countdown the
+ * Settings surface renders alongside {@link AutoLockSetting} (#76 P1-4). `null` when there is no
+ * live unlock window to count down (missing/invalid/already-lapsed expiry), so the caller can fall
+ * back to an honest "unknown" label instead of showing a stale or negative number.
+ */
+export function minutesUntilLock(unlockExpiry: number | null | undefined, now: number): number | null {
+  if (typeof unlockExpiry !== 'number' || !Number.isFinite(unlockExpiry) || unlockExpiry <= 0) return null;
+  const remainingMs = unlockExpiry - now;
+  if (remainingMs <= 0) return null;
+  return Math.ceil(remainingMs / 60_000);
+}
+
+/**
  * Derive the lock state from lifecycle facts:
  *  - no keystore blob            → `none`   (no wallet yet — show onboarding)
  *  - blob, but no key in vault   → `locked`
