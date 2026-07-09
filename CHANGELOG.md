@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.74.0] - 2026-07-09
+
+### Features
+- **fullscreen:** Professional desktop wallet workspace (expand-to-fullscreen) (#101)
+
 ## [1.73.0] - 2026-07-09
 
 ### Features
