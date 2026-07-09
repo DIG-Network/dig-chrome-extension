@@ -1052,22 +1052,211 @@ extension MUST NOT diverge from it.
 
 ---
 
-## 15. Security properties
+## 15. Security model
+
+The extension has two blast surfaces, hardened independently: the **content-read path** (§1-§9,
+§12 — resolving/decrypting public `.dig` content, no keys involved) and the **self-custody
+wallet** (§18 — holding real key material and signing real spends). §15.1 covers the former;
+§15.2-§15.12 are the wallet's normative, consolidated security model — the output of the #67
+hardening program (P0 supply-chain/phishing/drainer/permissions, P1 provider-channel/address-
+poisoning/signer-hardening/session, P2 clear-signing/onboarding/DOM-isolation). Every subsection
+below cross-references the fuller §18.x contract that specifies it; this section is the map + the
+invariants that MUST hold, not a restatement of the implementation.
+
+### 15.1 Content-read path properties
 
 - **Fail-closed crypto** — unverified WASM (SRI mismatch) refuses to run (§6).
 - **No forged verification** — a failed/absent inclusion proof is never rendered as verified;
   a GCM-SIV tag failure is never rendered as content (§5, §6).
 - **No leaked internals** — user-facing error copy never exposes crypto strings; the machine
   code is separate (§9).
-- **Per-origin wallet consent** — no site gets wallet access without explicit popup approval; the
-  self-custody key never leaves the offscreen vault, and every sign/message request is approved in the
-  SW-summoned approval window (§7.3, §18.12). There is no WalletConnect session.
 - **Privacy-preferring endpoint** — the user's local dig-node is preferred over the hosted
   gateway; the gateway is the fallback, not the default (§8).
-- **Read-only** — the extension performs no on-chain spends and serves no content to peers.
+- **Read-only** — the content-read path performs no on-chain spends and serves no content to peers.
 - **No content cache** — the extension does not persist or memory-cache resolved/decrypted
   content; every `proxyRequest`/`convertDigUrl` call re-fetches, re-verifies, and re-decrypts.
   Caching (and any node-config UI) is a dig-node responsibility, never the extension's (§1).
+
+### 15.2 Wallet threat model
+
+The self-custody wallet (§18) holds real Chia key material and authorizes real spends, so it is
+held to a stricter standard than the read-only content path. The design assumes NONE of the
+following are trustworthy on their own: an npm dependency's install-time behavior; a web page the
+user visits, including its self-reported origin, method arguments, and any postMessage traffic
+it can observe; a dApp's connect/sign request, however it is worded; another extension or script
+sharing the same page; or a merely-present attacker with momentary UI access to an unlocked
+session (no password, no re-auth). The one thing the model trusts is the password the user
+supplies at unlock/reveal/export time and the entropy the vault generates. Studied
+`MetaMask/metamask-extension`'s architecture for proven concepts (per the #67 design report); no
+MetaMask code, no LavaMoat/SES runtime, and no Ethereum-specific tooling or data (e.g. no
+`eth-phishing-detect`) is used — every defense below is Chia-native, original code, evaluated
+on-device.
+
+### 15.3 Supply-chain hardening (build-time perimeter, #67 P0-1a)
+
+A hot wallet's build is itself an attack surface: a malicious or compromised transitive
+dependency's `postinstall` script runs with full ambient authority in the same install as the
+seed-holding offscreen bundle and could exfiltrate keys before a single line of wallet code runs.
+The extension denies this by default rather than trusting the dependency tree:
+
+- `.npmrc` sets `ignore-scripts=true` — NO dependency lifecycle script (`preinstall`/`install`/
+  `postinstall`) runs on `npm install`/`npm ci` by default.
+- `allowed-install-scripts.json` is a hand-reviewed allowlist of the few packages with a genuine,
+  benign install script (native/platform-binary setup, e.g. `esbuild`, `@swc/core`); ONLY these
+  are re-run afterwards via `npm run allow-scripts` (`scripts/allow-scripts.mjs`).
+- The same script is a **drift gate**: it fails the build/CI if any INSTALLED dependency ships an
+  install script that is not on the allowlist, so a new transitive dependency can never silently
+  gain install-time code execution — it forces an explicit, reviewed decision to add it.
+- This is a minimal, dependency-free, Chia/DIG-native denylist-by-default approach — no LavaMoat,
+  no SES `lockdown`/Compartments/policy files, no runtime sandboxing of already-loaded code (§15.2).
+  It closes the install-time vector; it does not sandbox a dependency's behavior once loaded and
+  invoked (§15.12 lists this as a residual gap, not a claimed guarantee).
+
+### 15.4 Key custody core (vault + at-rest keystore)
+
+Normative contract: §18.1 (key derivation) + §18.2 (`DIGWX1` at-rest keystore) + §18.3 (custody
+lifecycle & session). Summary of the invariants those sections specify:
+
+- The decrypted key/entropy exists ONLY inside the long-lived offscreen document's memory — never
+  the service worker, never `chrome.storage`, never persisted or logged in plaintext anywhere.
+- At rest, the entropy is encrypted as a single `DIGWX1` record: Argon2id (memory-hard) at a
+  DEFAULT cost of 64 MiB / 3 iterations / 4 lanes, with a STRONG 256 MiB preset offered for
+  high-value wallets (surfaced as an onboarding toggle, §15.9), feeding AES-256-GCM with the full
+  header (KDF params, salt, cipher id, nonce) bound as AAD — tampering with any of them fails the
+  GCM tag closed. The derived AES key is a non-extractable `CryptoKey`, never serialized. Any
+  decrypt failure (wrong password OR a tampered blob) collapses to one opaque `UNLOCK_FAILED` —
+  the wallet never tells an attacker which one.
+- A bounded PBKDF2-HMAC-SHA-512 (≥600,000 iterations) fallback engages ONLY if the Argon2 wasm
+  fails to instantiate, and the wallet schedules forced re-encryption to Argon2id on the next
+  successful unlock — it is a degrade-gracefully path, never the default.
+- `storage.sync` is NEVER used for wallet key material (§18.4) — it would replicate the encrypted
+  seed to every device signed into the browser profile, widening the at-rest attack surface beyond
+  what the user chose.
+
+### 15.5 Provider-channel isolation (page ↔ content ↔ background, #67 P1-1)
+
+Normative contract: §7.3. The injected MAIN-world provider talks to the content script over
+`window.postMessage` — a pipe any script on the page can observe — so the channel is hardened
+rather than trusted: a namespaced, versioned channel tag (`dig-wallet/1`) rejects unrelated
+traffic; both directions validate `MessageEvent.origin` against the document's own origin AND
+`event.source === window`; request ids are minted from a CSPRNG, never a predictable source; and
+a bounded per-id correlation registry settles each request EXACTLY once, so a forged reply for an
+unknown id is dropped, a duplicate/replayed reply is a no-op, concurrent multiplexed requests
+cannot cross, and a request flood cannot grow the pending map without bound. Downstream, the
+background NEVER trusts a page-self-reported origin string for authorization — it uses the
+unspoofable `sender.origin` (§18.12) at every gate.
+
+### 15.6 dApp request perimeter (connect / sign gate)
+
+Normative contract: §18.12. Every request from an injected `window.chia` provider crosses this
+perimeter before it can see wallet data or move funds:
+
+- **Phishing / malicious-origin protection (P0-2).** `assessOrigin` checks the requesting origin
+  against a DIG-curated, periodically-refreshed blocklist plus on-device lookalike/homoglyph
+  heuristics BEFORE connect. A `block` verdict refuses the origin outright — it is never recorded
+  pending and never approved. A `warn` verdict lets the flow proceed but forces an interstitial
+  acknowledgement in the approval window.
+- **Granular, revocable permissions + Connected sites (P0-4).** Per-origin consent is a capability
+  record (addresses exposed, methods used, granted/last-used timestamps), not a bare boolean, with
+  EIP-2255-shaped (Chia-mapped) `wallet_getPermissions`/`wallet_revokePermissions` and a
+  Connected-sites settings screen for per-site or revoke-all — consent is inspectable and
+  revocable, not a permanent grant.
+- **Anti-drainer spend-risk heuristics (P0-3).** Before a sign/spend approval, `assessSpendRisk`
+  inspects the summary DECODED FROM THE BUILT SPEND (never from page-supplied text, §5.5) and
+  flags high-risk patterns (draining nearly all value, an anomalous fee, an unaccountable signer,
+  untrusted foreign inputs) with a red, acknowledgement-gated banner — no one-click approval on a
+  flagged spend.
+- **Signer accountability + never-sign-a-decode-failure (#75).** Every required signer MUST map to
+  a wallet-derived key; the self-custody signer is all-or-nothing (refuses to contribute a partial
+  signature to a bundle it cannot fully sign), and a request whose spend could not be decoded is
+  REJECT-only end to end (UI hides Approve; the resolver enforces the same gate independently) — a
+  user can never authorize a spend they could not see decoded.
+- **The unlock TTL cannot be outlived by a held approval window (#76).** The dApp router re-checks
+  the live lock snapshot from storage on every call — not a cached/pass-through check — so a
+  request that sat open in the approval window (its keepalive port deliberately keeps the SW +
+  vault alive so review isn't rushed) can never be signed after the session has actually expired.
+- **Clear-signing (#77).** Every rendered summary shows a fiat equivalent and resolved CAT
+  name/ticker (never a raw truncated asset id) beside on-chain amounts, plus an expandable raw
+  JSON view of the exact decoded request for a reviewer who wants full detail.
+
+### 15.7 Address-poisoning defenses (send-path perimeter, #74)
+
+Normative contract: §18.14. On every Send, the entered recipient is classified against the
+address book and recent recipients; a `lookalike` — an address that is NOT already known but
+shares the same truncation prefix/suffix the UI displays while differing in the middle (the
+address-poisoning attack signature) — MUST raise a blocking, explicitly-acknowledged warning
+before the spend can be built. A never-seen address gets a lighter first-time notice. The
+classifier runs entirely on-device over locally-held contact/recipient data.
+
+### 15.8 Session lifecycle & auto-lock (#76)
+
+Normative contract: §18.3. The vault auto-locks (zeroizing the held entropy and clearing the
+unlock window) on: an explicit Lock action; a TTL sweep once the configurable idle window
+(default 15 minutes, clamped 1-60) lapses with no renewing activity; `chrome.idle` reporting
+idle/locked at an explicit detection interval; all extension windows closing (the offscreen
+document tears down); and a lock-on-wake check that runs the moment the service worker restarts
+(OS sleep/wake, browser restart, SW eviction) rather than waiting for the next timer tick. Session
+renewal is a compare-and-swap over the persisted expiry, not an unconditional extend, so an
+explicit lock or a TTL lapse always wins over a slower in-flight call that started before it.
+
+### 15.9 Onboarding security nudges (#79)
+
+Before a NEW-or-imported recovery phrase is ever shown, the Create/Import flow requires an
+explicit acknowledgement of a phishing-education step (DIG never asks for the recovery phrase,
+anywhere, including anyone claiming to be DIG support). After a freshly created wallet's phrase is
+confirmed, a backup-reminder step points at the encrypted keystore backup file (§15.10) as a
+second recovery method before proceeding to the wallet. The keystore KDF's STRONG 256 MiB Argon2id
+preset (§15.4) is exposed as a user-facing toggle for a high-value wallet. Watch-only import and
+restore-from-encrypted-backup skip the phishing step — neither path ever exposes a raw phrase.
+
+### 15.10 Secret-reveal DOM isolation (#67 P1-5)
+
+Normative contract: §18.5 (recovery-phrase reveal) and §18.20 (private-key export). Any UI that
+reveals wallet secret material — the 24-word recovery phrase or an exported raw private key —
+renders the secret text inside a **closed shadow root** (`attachShadow({ mode: 'closed' })`) so
+neither a co-installed extension, an injected page script, nor any other part of the wallet's own
+UI can scrape it via `document.querySelector`/`textContent` harvesting; the host element's
+`shadowRoot` reads back `null` to any outside caller. Screen readers and keyboard navigation still
+traverse the subtree (§5.6). This primitive is REQUIRED for every current and future
+secret-reveal surface, not a one-off.
+
+### 15.11 Reduced-custody & backup paths
+
+- **Watch-only wallets (#96, §18.19)** hold no secret material and can NEVER sign or spend — every
+  signing-required action (reveal, export, send, offer, NFT/DID prepare, clawback) is refused
+  `WATCH_ONLY` before it ever reaches the vault, and a watch-only wallet's id is simply never given
+  a cached key, so a dApp sign/write request against it fails closed identically to a locked wallet.
+- **Private-key export (#96, §18.20)** requires the SAME full-password re-authentication as
+  revealing the recovery phrase — never served from the cached unlock-window TTL — so momentary UI
+  access to an already-unlocked session cannot exfiltrate the signing key without the password.
+  The revealed key uses the §15.10 DOM isolation and an explicit copy action that auto-clears the
+  clipboard after a short delay.
+- **Encrypted keystore file backup/restore (#115, §18.21)** moves a wallet between devices without
+  ever decrypting it: the exported file embeds the wallet's own `DIGWX1` record byte-for-byte, so
+  this path introduces no new cryptographic primitive and never touches the secret key. A restored
+  wallet comes back `locked` — no password is ever seen during restore.
+
+### 15.12 Residual risk / non-goals
+
+This model does not claim to defend against everything:
+
+- **A compromised OS, browser, or a co-installed extension with debugger-level access.** DOM
+  isolation (§15.10) and offscreen-only key residency (§15.4) raise the bar against DOM-scraping
+  and cross-context reads; they do not defend against an attacker who can already instrument the
+  browser process itself.
+- **No runtime sandboxing of loaded dependency code.** §15.3 closes the install-time script vector;
+  it does not constrain what an already-loaded, invoked dependency can do at runtime (no LavaMoat/
+  SES compartments — a deliberate scope decision, §15.2).
+- **No hardware-wallet support.** Deferred, then dropped for this Chia wallet (#67 P2-2, tracked as
+  not-planned in #78).
+- **No independent transaction-simulation/scoring service.** §15.6's anti-drainer heuristics are
+  on-device pattern matching, not a full simulation; an optional hosted scoring tier is a deferred,
+  opt-in future addition (#67 P2-4), never a default or a requirement for approving a spend.
+- **Finality of informed consent.** A spend the user approves after seeing every warning this model
+  raises (risk banner, lookalike warning, unaccountable-signer flag) is intentionally allowed to
+  proceed — the model surfaces risk, it does not override user intent once acknowledged.
+- **§15.1's content-read path is a separate, lower-privilege surface** (no keys involved) and is
+  unaffected by anything in §15.2-§15.11 above.
 
 ---
 
@@ -1103,6 +1292,13 @@ of work is incomplete.
 
 8. Derives self-custody wallet keys per §18.1 (both hardened AND unhardened, byte-identical to
    `dig-l1-wallet` for a given seed) and stores keys only as the §18.2 `DIGWX1` encrypted record.
+9. Holds the decrypted wallet key ONLY in the offscreen document (never the service worker, never
+   `chrome.storage`, never `storage.sync`) and gates every dApp connect/sign request through the
+   full §15.6 perimeter (origin/phishing check, revocable per-origin consent, spend-risk
+   heuristics, signer accountability, live TTL re-check) before it can see wallet data or move
+   funds — per the §15 security model.
+10. Denies dependency install scripts by default and drift-gates any unlisted one (§15.3), and
+    renders any secret-reveal UI inside a closed shadow root (§15.10).
 
 ---
 
