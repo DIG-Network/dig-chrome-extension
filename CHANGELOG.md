@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.76.1] - 2026-07-09
+
+### Documentation
+- **spec:** Consolidate the wallet security model into SPEC.md §15 (#106)
+
 ## [1.76.0] - 2026-07-09
 
 ### Features
