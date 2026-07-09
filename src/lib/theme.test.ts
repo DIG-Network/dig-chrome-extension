@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { THEME_MODES, DEFAULT_THEME_MODE, isThemeMode, resolveEffectiveTheme } from '@/lib/theme';
 
 describe('theme (#111)', () => {
-  it('ships light/dark/system, defaulting to system', () => {
+  it('ships light/dark/system, defaulting to light (#211 — the original white theme is the default)', () => {
     expect(THEME_MODES).toEqual(['light', 'dark', 'system']);
-    expect(DEFAULT_THEME_MODE).toBe('system');
+    // #211 regression: a fresh install with no stored preference must render the ORIGINAL
+    // light/white theme — NOT `system` (which would paint dark on a dark-OS). Default is an
+    // EXPLICIT light so a dark-OS user still starts light until they opt into dark/system.
+    expect(DEFAULT_THEME_MODE).toBe('light');
   });
 
   it('validates a theme mode string', () => {

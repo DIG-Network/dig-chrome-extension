@@ -47,12 +47,15 @@ describe('uiSlice', () => {
     expect(uiReducer(initial(), setAdvanced(true)).advanced).toBe(true);
   });
 
-  it('defaults theme to "system" and validates, ignoring unsupported (#111)', () => {
-    expect(initial().theme).toBe('system');
+  it('defaults theme to "light" and validates, ignoring unsupported (#111, #211)', () => {
+    // #211: no stored preference → the original light theme (regression from #111's dark-by-system).
+    expect(initial().theme).toBe('light');
     let s = uiReducer(initial(), setTheme('dark'));
     expect(s.theme).toBe('dark');
+    // An unrecognized value falls back to the default (now light), never to a paint the user
+    // didn't choose.
     s = uiReducer(s, setTheme('neon' as never));
-    expect(s.theme).toBe('system');
+    expect(s.theme).toBe('light');
   });
 
   it('defaults network to "mainnet" and validates, ignoring unsupported (#108)', () => {
