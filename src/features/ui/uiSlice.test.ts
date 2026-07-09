@@ -7,7 +7,6 @@ import {
   setOpenApp,
   closeApp,
   setLocale,
-  setAdvanced,
   setTheme,
   setChainNetwork,
   routeFromHash,
@@ -43,10 +42,6 @@ describe('uiSlice', () => {
     expect(s.locale).toBe('en');
   });
 
-  it('toggles advanced mode', () => {
-    expect(uiReducer(initial(), setAdvanced(true)).advanced).toBe(true);
-  });
-
   it('defaults theme to "light" and validates, ignoring unsupported (#111, #211)', () => {
     // #211: no stored preference → the original light theme (regression from #111's dark-by-system).
     expect(initial().theme).toBe('light');
@@ -72,10 +67,10 @@ describe('uiSlice', () => {
   });
 
   it('merges persisted settings, ignoring bad/absent values', () => {
-    let s = uiReducer(initial(), settingsHydrated({ locale: 'de', advanced: true }));
-    expect(s).toMatchObject({ locale: 'de', advanced: true });
+    let s = uiReducer(initial(), settingsHydrated({ locale: 'de' }));
+    expect(s).toMatchObject({ locale: 'de' });
     s = uiReducer(s, settingsHydrated(undefined));
-    expect(s).toMatchObject({ locale: 'de', advanced: true });
+    expect(s).toMatchObject({ locale: 'de' });
     s = uiReducer(s, settingsHydrated({ locale: 'zzz' }));
     expect(s.locale).toBe('de');
   });

@@ -20,8 +20,6 @@ export interface UiState {
   networkView: NetworkView;
   /** Active UI locale (persisted to `wallet.settings.locale`). */
   locale: string;
-  /** Tier-3 "Advanced/Pro" disclosure toggle (persisted to `wallet.settings.advanced`). */
-  advanced: boolean;
   /** Active theme mode (#111, persisted to `wallet.settings.theme`); `system` follows the OS. */
   theme: ThemeMode;
   /** Active chain network (#108, persisted to `wallet.settings.network`). Mainnet is real funds. */
@@ -40,7 +38,6 @@ export interface OpenApp {
 /** The persisted settings blob shape (subset of `wallet.settings`). */
 interface PersistedSettings {
   locale?: string;
-  advanced?: boolean;
   theme?: string;
   network?: string;
 }
@@ -52,7 +49,6 @@ function initialState(): UiState {
     walletView: route.walletView,
     networkView: route.networkView,
     locale: DEFAULT_LOCALE,
-    advanced: false,
     theme: DEFAULT_THEME_MODE,
     network: DEFAULT_NETWORK_ID,
     openApp: null,
@@ -83,9 +79,6 @@ const uiSlice = createSlice({
     setLocale(state, action: PayloadAction<string>) {
       state.locale = isSupportedLocale(action.payload) ? action.payload : DEFAULT_LOCALE;
     },
-    setAdvanced(state, action: PayloadAction<boolean>) {
-      state.advanced = action.payload;
-    },
     /** Set the active theme mode (#111), ignoring an unrecognized value (falls back to system). */
     setTheme(state, action: PayloadAction<ThemeMode>) {
       state.theme = isThemeMode(action.payload) ? action.payload : DEFAULT_THEME_MODE;
@@ -106,7 +99,6 @@ const uiSlice = createSlice({
       const s = action.payload;
       if (!s) return;
       if (typeof s.locale === 'string' && isSupportedLocale(s.locale)) state.locale = s.locale;
-      if (typeof s.advanced === 'boolean') state.advanced = s.advanced;
       if (isThemeMode(s.theme)) state.theme = s.theme;
       if (isNetworkId(s.network)) state.network = s.network;
     },
@@ -120,7 +112,6 @@ export const {
   setOpenApp,
   closeApp,
   setLocale,
-  setAdvanced,
   setTheme,
   setChainNetwork,
   routeFromHash,

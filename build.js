@@ -349,13 +349,14 @@ function createZip() {
 }
 
 /**
- * Replace the `__APP_VERSION__` placeholder in the copied HTML pages (popup.html, control.html)
- * with package.json's version, so the shipped pages carry the real build in their <meta
- * name="app-version"> tag + footer (§6.7). Idempotent; a page without the placeholder is left as-is.
+ * Replace the `__APP_VERSION__` placeholder in the copied HTML pages (popup.html, app.html,
+ * approval.html, options.html) with package.json's version, so the shipped pages carry the real
+ * build in their <meta name="app-version"> tag + footer (§6.7). Idempotent; a page without the
+ * placeholder is left as-is.
  */
 function injectAppVersion() {
   const version = require('./package.json').version;
-  for (const page of ['popup.html', 'app.html', 'approval.html']) {
+  for (const page of ['popup.html', 'app.html', 'approval.html', 'options.html']) {
     const dest = path.join(DIST_DIR, page);
     if (!fs.existsSync(dest)) continue;
     const src = fs.readFileSync(dest, 'utf8');

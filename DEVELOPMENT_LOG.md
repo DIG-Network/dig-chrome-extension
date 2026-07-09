@@ -3,6 +3,22 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## A tier gate keyed on a PERSISTED PREFERENCE nobody ever sets is worse than no gate at all (#109, #145)
+
+`CustodyWallet`'s Settings block (NetworkSetting/ChainNodeSetting/AutoLockSetting/SessionStatus/
+ConnectedSites/DerivedAddressList/ExportPrivateKey) was gated on `useAppSelector(s => s.ui.advanced)`
+— a Redux flag hydrated from `wallet.settings.advanced` — instead of the surface (`isFull`) every
+sibling advanced feature (DidPanel, CollectiblesPanel, the Identity tab) already gates on. Nothing in
+the shipped UI ever dispatched `setAdvanced(true)` or wrote `advanced: true` to settings, so the
+ENTIRE block was unreachable on BOTH popup and fullscreen — not a popup leak, a total dead end. Two
+e2e specs had cargo-culted an `advanced: true` seed into `wallet.settings` (or, in one case, a
+`localStorage.setItem` call the app never reads — settings live in `chrome.storage.local`, not
+`localStorage`) that happened to line up with the dead gate, so the tests looked meaningful but a
+couple were vacuous (`if (await panel.count())` guards that never entered their body). Lesson: a
+tier/feature gate should key on something the UI can actually set (a surface check, a route, a prop)
+— a persisted-preference gate with no writer is a silent kill-switch. Gate fixed to `isFull`, matching
+every other advanced-feature pattern in this file; `ui.advanced`/`setAdvanced` retired entirely.
+
 ## The SW e2e harness has NO default viewport, so `app.html` runs in the EXPANDED desktop layout (#85)
 
 `playwright.sw.config.ts` sets no `use.viewport`, so pages get Playwright's default 1280×720 — which

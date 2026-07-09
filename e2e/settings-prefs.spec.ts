@@ -12,7 +12,9 @@ import { test, expect, type Page } from '@playwright/test';
  */
 
 /** chrome.* stub: an unlocked single wallet + a local dig-node (Control tab manage mode). `seed`
- *  pre-populates `wallet.settings` (e.g. `{ advanced: true }` to reach the Advanced-tier settings). */
+ *  pre-populates `wallet.settings` (e.g. `{ network: 'testnet' }`). Advanced/power-user settings
+ *  (NetworkSetting, ChainNodeSetting, …) are fullscreen-only (§145) — open `app.html` to reach them,
+ *  not a persisted preference. */
 function stub(seed: Record<string, unknown> = {}) {
   return `
 (() => {
@@ -158,8 +160,9 @@ test.describe('#111 theme selection', () => {
 });
 
 test.describe('#108 network switcher', () => {
-  test('requires confirmation before switching, then persists + shows the header badge', async ({ page }) => {
-    await open(page, 'popup.html', '#wallet', { 'wallet.settings': { advanced: true } });
+  // §145: NetworkSetting (an advanced/power-user control) is fullscreen-only — drive app.html.
+  test('requires confirmation before switching, then persists + shows the header badge (fullscreen, §145)', async ({ page }) => {
+    await open(page, 'app.html', '#wallet');
     await expect(page.getByTestId('network-setting')).toBeVisible();
     await expect(page.getByTestId('network-badge')).toHaveCount(0);
 
@@ -174,19 +177,32 @@ test.describe('#108 network switcher', () => {
     await expect(page.getByTestId('network-badge')).toContainText(/testnet/i);
   });
 
-  for (const [label, file, size] of [
-    ['popup', 'popup.html', { width: 372, height: 640 }],
-    ['fullscreen', 'app.html', { width: 1200, height: 860 }],
-  ] as const) {
-    test(`screenshot: testnet badge + network setting (${label})`, async ({ page }) => {
-      await page.setViewportSize(size);
-      await open(page, file, '#wallet', { 'wallet.settings': { advanced: true, network: 'testnet' } });
-      await expect(page.getByTestId('network-setting')).toBeVisible();
-      await expect(page.getByTestId('network-badge')).toBeVisible();
-      await page.waitForTimeout(200);
-      await page.screenshot({ path: `e2e/__screenshots__/network-testnet-${label}.png` });
-    });
-  }
+  // The badge itself is core-tier status info (visible on both surfaces); the setting FORM that
+  // changes the network is fullscreen-only (§145) — the popup screenshot proves the badge shows
+  // without the form leaking in.
+  test('§145: the popup shows the testnet badge but never the network-setting form', async ({ page }) => {
+    await open(page, 'popup.html', '#wallet', { 'wallet.settings': { network: 'testnet' } });
+    await expect(page.getByTestId('network-badge')).toBeVisible();
+    await expect(page.getByTestId('network-setting')).toHaveCount(0);
+  });
+
+  test('screenshot: testnet badge + network setting (fullscreen)', async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 860 });
+    await open(page, 'app.html', '#wallet', { 'wallet.settings': { network: 'testnet' } });
+    await expect(page.getByTestId('network-setting')).toBeVisible();
+    await expect(page.getByTestId('network-badge')).toBeVisible();
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: 'e2e/__screenshots__/network-testnet-fullscreen.png' });
+  });
+
+  test('screenshot: testnet badge (popup, no network-setting form — §145)', async ({ page }) => {
+    await page.setViewportSize({ width: 372, height: 640 });
+    await open(page, 'popup.html', '#wallet', { 'wallet.settings': { network: 'testnet' } });
+    await expect(page.getByTestId('network-badge')).toBeVisible();
+    await expect(page.getByTestId('network-setting')).toHaveCount(0);
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: 'e2e/__screenshots__/network-testnet-popup.png' });
+  });
 });
 
 test.describe('#82 Control-tab i18n', () => {
