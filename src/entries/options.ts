@@ -9,6 +9,8 @@
 import { DIG_BROWSER_URL } from '@/lib/links';
 import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from '@/lib/server-config';
 import { digNodeInstallPrompt } from '@/lib/dig-node-status';
+import { readWalletSettings, updateWalletSettings, type WalletSettings } from '@/features/wallet/custody/settings';
+import { DEFAULT_THEME_MODE, isThemeMode, resolveEffectiveTheme, type ThemeMode } from '@/lib/theme';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.getElementById(id) as T | null;
@@ -83,6 +85,44 @@ async function saveRpc(): Promise<void> {
   await chrome.storage.local.set({ digRpcEndpoint: endpoint });
 }
 
+// ---- Appearance / theme (#211) ----
+const DARK_QUERY = '(prefers-color-scheme: dark)';
+
+/** Paint the RESOLVED theme onto this settings page's `documentElement` (the same `data-dig-theme`
+ *  attribute `theme.css` / this page's dark palette key off), mirroring `useAppliedTheme` so the
+ *  settings page matches the wallet. `system` follows the OS signal. */
+function applyOptionsTheme(mode: ThemeMode): void {
+  const mql = typeof window.matchMedia === 'function' ? window.matchMedia(DARK_QUERY) : null;
+  document.documentElement.dataset.digTheme = resolveEffectiveTheme(mode, mql?.matches ?? false);
+}
+
+async function loadTheme(): Promise<void> {
+  const select = $<HTMLSelectElement>('themeSelect');
+  if (!select) return;
+  const settings = await readWalletSettings().catch((): WalletSettings => ({}));
+  // No stored preference → the #211 default (light), never the OS-following `system`.
+  const mode: ThemeMode = isThemeMode(settings.theme) ? settings.theme : DEFAULT_THEME_MODE;
+  select.value = mode;
+  applyOptionsTheme(mode);
+
+  // While on `system`, track live OS changes so the settings page repaints without a reload
+  // (matches the wallet's `useAppliedTheme`). Registered once; only acts when the current pick is
+  // `system`.
+  window.matchMedia?.(DARK_QUERY).addEventListener('change', () => {
+    if (($<HTMLSelectElement>('themeSelect')?.value ?? '') === 'system') applyOptionsTheme('system');
+  });
+}
+
+async function saveTheme(): Promise<void> {
+  const select = $<HTMLSelectElement>('themeSelect');
+  if (!select) return;
+  const mode: ThemeMode = isThemeMode(select.value) ? select.value : DEFAULT_THEME_MODE;
+  applyOptionsTheme(mode);
+  // Read-modify-write the shared `wallet.settings` blob so unrelated prefs (locale, network, …)
+  // survive; the popup + full-screen wallet pick this up live via the storage→store bridge.
+  await updateWalletSettings({ theme: mode });
+}
+
 function debounce(fn: () => void, ms: number): () => void {
   let t: ReturnType<typeof setTimeout>;
   return () => {
@@ -92,8 +132,11 @@ function debounce(fn: () => void, ms: number): () => void {
 }
 
 function init(): void {
+  void loadTheme();
   void loadCompanion();
   void loadRpc();
+
+  $<HTMLSelectElement>('themeSelect')?.addEventListener('change', () => void saveTheme());
 
   const companionHost = $<HTMLInputElement>('companionHost');
   companionHost?.addEventListener('input', debounce(() => void saveCompanion(), 400));

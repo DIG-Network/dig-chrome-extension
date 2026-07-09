@@ -11,8 +11,13 @@
 export const THEME_MODES = ['light', 'dark', 'system'] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
 
-/** The default mode: follow the OS until the user picks an explicit theme. */
-export const DEFAULT_THEME_MODE: ThemeMode = 'system';
+/**
+ * The default mode (#211): the ORIGINAL light/white theme, until the user picks another. This is
+ * an EXPLICIT `light` — deliberately NOT `system` — so a fresh install on a dark-OS still starts
+ * on the light product theme (matching hub.dig.net / the DIG white brand) rather than surprising
+ * the user with dark. `system` (follow the OS) and `dark` remain fully available, opt-in.
+ */
+export const DEFAULT_THEME_MODE: ThemeMode = 'light';
 
 const MODES = new Set<string>(THEME_MODES);
 

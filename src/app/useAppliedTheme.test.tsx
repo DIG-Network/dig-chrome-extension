@@ -64,6 +64,17 @@ describe('useAppliedTheme (#111)', () => {
     expect(document.documentElement.dataset.digTheme).toBe('dark');
   });
 
+  it('#211 regression: a fresh install (no stored preference) renders LIGHT even on a dark OS', () => {
+    // The OS reports a dark preference…
+    stubMatchMedia(true);
+    // …but the user has NOT chosen a theme (default store state, nothing hydrated from storage).
+    const store = createStore();
+    renderHook(() => useAppliedTheme(), { wrapper: wrapper(store) });
+    // …so the extension must paint the ORIGINAL light theme, NOT follow the OS into dark. This
+    // fails while the default is `system` (the #111 regression) and passes once it is `light`.
+    expect(document.documentElement.dataset.digTheme).toBe('light');
+  });
+
   it('degrades gracefully when matchMedia is unavailable (treats as light)', () => {
     vi.stubGlobal('matchMedia', undefined);
     const store = createStore();
