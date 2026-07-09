@@ -211,8 +211,14 @@ import { DIG_ERR } from './error-codes';
  * fixed-supply genesis-by-coin-id TAIL, or multi signature-gated TAIL curried with the wallet's own
  * key — for approval) and `confirmCatIssuance` (sign + broadcast the approved issuance — reuses the
  * vault's `confirmSend` broadcast path).
+ *
+ * v29 (#104 option contracts): added `prepareOptionMint`/`confirmOptionMint` (mint a new
+ * XCH-denominated option — writer AND initial holder), `prepareOptionExercise`/
+ * `confirmOptionExercise` (exercise one this wallet holds), and `getOptions` (the local option
+ * registry, mirroring #101's offer-log — a bare on-chain option carries no recoverable terms, so the
+ * minting wallet remembers them). Both confirm actions reuse the vault's `confirmSend` broadcast path.
  */
-export const MESSAGE_PROTOCOL_VERSION = 28;
+export const MESSAGE_PROTOCOL_VERSION = 29;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -309,6 +315,12 @@ export const ACTIONS = Object.freeze({
   // ── CAT issuance (#97): mint a brand-new CAT + broadcast (confirm reuses the confirmSend path) ──
   prepareCatIssuance: 'prepareCatIssuance',
   confirmCatIssuance: 'confirmCatIssuance',
+  // ── Option contracts (#104): mint/exercise + broadcast (confirm reuses the confirmSend path) ──
+  prepareOptionMint: 'prepareOptionMint',
+  confirmOptionMint: 'confirmOptionMint',
+  prepareOptionExercise: 'prepareOptionExercise',
+  confirmOptionExercise: 'confirmOptionExercise',
+  getOptions: 'getOptions',
   // ── DID management (#93): create/list/transfer/profile a self-custody identity (confirm reuses confirmSend) ──
   listDids: 'listDids',
   prepareDidCreate: 'prepareDidCreate',
@@ -698,6 +710,31 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Sign + BROADCAST a previously-prepared CAT issuance (the approved step — reuses the vault confirmSend broadcast path). Returns an input coin id to poll via sendStatus.',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareOptionMint]: {
+    summary: 'Build (not sign/broadcast) the MINT of a new XCH-denominated option contract owned by the wallet (#104, writer AND initial holder) — locks underlyingAmount mojos of XCH as collateral, exercisable for strikeAmount mojos of XCH until expirationSeconds (absolute unix time). Held under a pending id; returns the decoded (tamper-resistant) summary + the FULL optionRecord the caller MUST persist locally (a bare on-chain option carries no recoverable terms — the SW records it into the local option registry as a side effect on confirmOptionMint). Broadcast via confirmOptionMint.',
+    request: '{ action, optionMint:{ underlyingAmount:string, strikeAmount:string, expirationSeconds:string, fee?:string } }',
+    response: '{ pendingId:string, optionMintSummary:{...optionRecord, fee, coinCount}, optionRecord:{ launcherId, creatorPuzzleHashHex, holderPuzzleHashHex, expirationSeconds, underlyingAmount, strikeAmount, underlyingLockParentCoinId, coinIdHex } } | { success:false, code:\'BAD_REQUEST\'|\'NO_XCH_COINS\'|..., message }',
+  },
+  [ACTIONS.confirmOptionMint]: {
+    summary: "Sign + BROADCAST a previously-prepared option mint (the approved step — reuses the vault confirmSend broadcast path). Records the option into the local registry (#104, mirrors #101's offer-log) as a side effect. Returns an input coin id to poll via sendStatus.",
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.prepareOptionExercise]: {
+    summary: 'Build (not sign/broadcast) the EXERCISE of an option this wallet holds (#104): melt the option singleton, pay the strike to the creator through the settlement puzzle, unlock the underlying, and claim the released value to the holder — all in one bundle. `optionRecord` (the caller\'s persisted registry entry, from getOptions) is REQUIRED. Held under a pending id; returns the decoded summary to approve. Broadcast via confirmOptionExercise.',
+    request: '{ action, optionRecord:{ launcherId, creatorPuzzleHashHex, holderPuzzleHashHex, expirationSeconds, underlyingAmount, strikeAmount, underlyingLockParentCoinId, coinIdHex }, fee?:string }',
+    response: '{ pendingId:string, optionExerciseSummary:{ launcherId, strikeAmount, underlyingAmount, fee, coinCount } } | { success:false, code:\'OPTION_NOT_FOUND\'|\'EXPIRED\'|\'MISSING_KEY\'|\'NO_SUITABLE_COIN\'|..., message }',
+  },
+  [ACTIONS.confirmOptionExercise]: {
+    summary: "Sign + BROADCAST a previously-prepared option exercise (the approved step — reuses the vault confirmSend broadcast path). Flips the local registry entry to 'exercised' (#104) as a side effect. Returns an input coin id to poll via sendStatus.",
+    request: '{ action, pendingId:string }',
+    response: "{ spentCoinId:string } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.getOptions]: {
+    summary: "The LOCAL option registry (#104) for the active wallet + active index — every option THIS wallet has minted, reconciled against the chain (a still-'open' entry whose coin is now spent flips to 'exercised'). An instant read + best-effort chain reconciliation, mirroring getOffers (#101). Read-only.",
+    request: '{ action }',
+    response: '{ options:[{ record:{...}, createdAt:number, status:\'open\'|\'exercised\' }] }',
   },
   [ACTIONS.listDids]: {
     summary: "List the wallet's DIDs (#93) — the offscreen vault derives both HD schemes, finds coins hinted to its inner puzzle hashes (coinset get_coin_records_by_hints), and reconstructs each DID from its parent spend. Read-only.",

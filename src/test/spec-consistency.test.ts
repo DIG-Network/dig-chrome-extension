@@ -47,7 +47,7 @@ test('node-resolution ladder tries dig.local before localhost:<port>', () => {
 });
 
 test('SPEC documents the current message-protocol version', () => {
-  assert.equal(MESSAGE_PROTOCOL_VERSION, 28);
+  assert.equal(MESSAGE_PROTOCOL_VERSION, 29);
   assert.match(SPEC, new RegExp(`MESSAGE_PROTOCOL_VERSION[^\\n]*\\b${MESSAGE_PROTOCOL_VERSION}\\b`));
 });
 

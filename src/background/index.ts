@@ -50,6 +50,7 @@ import {
   BALANCES_CACHE_KEY,
   ACTIVITY_LOG_KEY,
   OFFER_LOG_KEY,
+  OPTION_LOG_KEY,
   LOCK_STATE,
   isCustodyAction,
   isSessionRenewingAction,
@@ -102,6 +103,10 @@ import {
 // The LOCAL offer log (#101 — "your offers", mirrors the #154 activity log's storage idiom): pure
 // append/status-flip/read over the per-wallet+index `OFFER_LOG_KEY` state.
 import { appendOfferEntry, markOfferStatus, entriesFor as offerEntriesFor } from '@/lib/offer-log';
+// The LOCAL option-contract registry (#104): same append/status-flip/read shape as the offer log,
+// over the per-wallet+index `OPTION_LOG_KEY` state — a bare on-chain option carries no recoverable
+// terms, so the minting wallet remembers them (see `optionContracts.ts`'s module doc).
+import { appendOptionEntry, markOptionStatus, optionEntriesFor } from '@/lib/optionContractLog';
 // dexie.space marketplace integration (#102): pure REST client, chrome-free (fetch injected below).
 import { postOfferToDexie, fetchDexieOffer, searchDexieOffers } from '@/lib/dexie';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
@@ -1061,6 +1066,71 @@ async function listOffersReconciled(coinsetUrl) {
   return offerEntriesFor(logState, state.activeId, index);
 }
 
+/** Read the raw `OPTION_LOG_KEY` state (an empty object when nothing has been minted yet). */
+async function readOptionLogState() {
+  const { [OPTION_LOG_KEY]: raw } = await chrome.storage.local.get(OPTION_LOG_KEY);
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
+/**
+ * Record one MINTED option (#104) for the ACTIVE wallet + active derivation index, right after
+ * `confirmOptionMint` broadcasts successfully. A no-op without an active wallet.
+ */
+async function recordOption(record) {
+  const state = await loadRegistry();
+  if (!state.activeId) return;
+  const index = await activeDerivationIndex();
+  const entry = { record, createdAt: Date.now(), status: 'open' };
+  const next = appendOptionEntry(await readOptionLogState(), state.activeId, index, entry);
+  try { await chrome.storage.local.set({ [OPTION_LOG_KEY]: next }); } catch { /* best-effort */ }
+}
+
+/** Eagerly flip a MINTED option's log entry to `exercised` — called at `confirmOptionExercise`
+ * time (never waits for the next `getOptions` poll). */
+async function markOptionExercised(coinIdHex) {
+  if (!coinIdHex) return;
+  const state = await loadRegistry();
+  if (!state.activeId) return;
+  const index = await activeDerivationIndex();
+  const before = await readOptionLogState();
+  const next = markOptionStatus(before, state.activeId, index, coinIdHex, 'exercised');
+  if (next !== before) {
+    try { await chrome.storage.local.set({ [OPTION_LOG_KEY]: next }); } catch { /* best-effort */ }
+  }
+}
+
+/**
+ * List the ACTIVE wallet + active index's option registry (#104), reconciling every still-`open`
+ * entry against the chain first (the SAME `sendStatus` vault op the send/trade confirm-poll uses):
+ * a coin observed spent flips to `exercised` (MVP has no clawback path, so "spent" only ever means
+ * that). Best-effort — a reconciliation failure for one entry never blocks listing the rest.
+ */
+async function listOptionsReconciled(coinsetUrl) {
+  const state = await loadRegistry();
+  if (!state.activeId) return [];
+  const index = await activeDerivationIndex();
+  let logState = await readOptionLogState();
+  const entries = optionEntriesFor(logState, state.activeId, index);
+  let changed = false;
+  for (const e of entries) {
+    if (e.status !== 'open') continue;
+    try {
+      const res = await callVault({ op: 'sendStatus', coinId: e.record.coinIdHex, coinsetUrl });
+      if (res && res.confirmed === true) {
+        const next = markOptionStatus(logState, state.activeId, index, e.record.coinIdHex, 'exercised');
+        if (next !== logState) {
+          logState = next;
+          changed = true;
+        }
+      }
+    } catch { /* best-effort — an unreachable coinset leaves this entry `open` for the next poll */ }
+  }
+  if (changed) {
+    try { await chrome.storage.local.set({ [OPTION_LOG_KEY]: logState }); } catch { /* best-effort */ }
+  }
+  return optionEntriesFor(logState, state.activeId, index);
+}
+
 /**
  * Read the ACTIVE wallet's active HD derivation index (#165 — the single active-index model)
  * directly from storage. A light read (no full migration/normalization like {@link loadRegistry}),
@@ -1606,6 +1676,49 @@ async function handleCustodyActionInner(message) {
         await logActivity('mint', res.activityHint, res.spentCoinId);
       }
       return res || { success: false, code: 'CUSTODY_ERROR', message: 'cat issuance failed' };
+    }
+    case ACTIONS.prepareOptionMint: {
+      // Build (not broadcast) a new XCH-denominated option mint (#104): writer AND initial holder;
+      // held for approval.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareOptionMint', optionMint: message.optionMint, activeIndex: await activeDerivationIndex(), coinsetUrl });
+    }
+    case ACTIONS.confirmOptionMint: {
+      // The ONLY place a prepared option mint is broadcast — reuses the vault confirmSend path.
+      // Records the FULL terms into the local option registry (#104) as a side effect — a bare
+      // on-chain option carries no recoverable terms.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('mint', res.activityHint, res.spentCoinId);
+        if (message.optionRecord) await recordOption(message.optionRecord);
+      }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'option mint failed' };
+    }
+    case ACTIONS.prepareOptionExercise: {
+      // Build (not broadcast) the exercise of an option this wallet holds (#104); held for approval.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareOptionExercise', optionRecord: message.optionRecord, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
+    }
+    case ACTIONS.confirmOptionExercise: {
+      // The ONLY place a prepared option exercise is broadcast — reuses the vault confirmSend path.
+      // Eagerly flips the local registry entry to 'exercised' (#104) — melting is a self-inflicted
+      // action the SW already knows about, no need to wait for the next getOptions poll.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      const res = await callVault({ op: 'confirmSend', pendingId: message.pendingId, coinsetUrl });
+      if (res && res.success !== false) {
+        try { await chrome.storage.local.remove(BALANCES_CACHE_KEY); } catch { /* ignore */ }
+        await logActivity('melt', res.activityHint, res.spentCoinId);
+        await markOptionExercised(res.spentCoinId);
+      }
+      return res || { success: false, code: 'CUSTODY_ERROR', message: 'option exercise failed' };
+    }
+    case ACTIONS.getOptions: {
+      // #104 — the local option registry for the ACTIVE wallet + active index (#165), reconciled
+      // against the chain for any still-`open` entry. See src/lib/optionContractLog.ts.
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return { options: await listOptionsReconciled(coinsetUrl) };
     }
     case ACTIONS.listDids: {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());

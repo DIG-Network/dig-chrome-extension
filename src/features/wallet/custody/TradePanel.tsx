@@ -16,6 +16,7 @@ import { legLabel } from '@/features/wallet/custody/offerLegFormat';
 import { OffersPanel } from '@/features/wallet/custody/OffersPanel';
 import { CatIssuancePanel } from '@/features/wallet/custody/CatIssuancePanel';
 import { SwapPanel } from '@/features/wallet/custody/SwapPanel';
+import { OptionsPanel } from '@/features/wallet/custody/OptionsPanel';
 import {
   useMakeCustodyOfferMutation,
   useInspectCustodyOfferMutation,
@@ -47,7 +48,7 @@ function offerQrDataUrl(offer: string): string | null {
   }
 }
 
-type Mode = 'make' | 'take' | 'offers' | 'issue' | 'swap';
+type Mode = 'make' | 'take' | 'offers' | 'issue' | 'swap' | 'options';
 type MakePhase = 'form' | 'review' | 'made';
 type TakePhase = 'paste' | 'review' | 'confirm' | 'sending' | 'confirmed' | 'failed';
 /** What the maker is GIVING: a fungible balance (XCH/CAT) or one of the wallet's own NFTs (§94). */
@@ -78,6 +79,10 @@ type GiveKind = 'currency' | 'nft';
  * book (#102) — pick what you're paying/receiving, take the best matching open offer via the SAME
  * take pipeline as the Take tab (no new wasm/backend). Also destructive/advanced (§6.4); the popup
  * omits it entirely, same as Issue.
+ *
+ * **Option contracts (#104) is a SIXTH, fullscreen-ONLY tab.** Mint an XCH-denominated option
+ * (lock collateral, set a strike + expiration) and exercise one this wallet holds — both real
+ * spend-construction ops (§6.4); the popup omits it entirely, same as Issue/Swap.
  */
 export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: AssetBalance[]; onClose?: () => void; pollMs?: number; full?: boolean }) {
   const intl = useIntl();
@@ -123,6 +128,9 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
                 <button type="button" role="tab" aria-selected={mode === 'swap'} className={`dig-btn ${mode === 'swap' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-swap" onClick={() => setMode('swap')}>
                   <FormattedMessage id="trade.mode.swap" />
                 </button>
+                <button type="button" role="tab" aria-selected={mode === 'options'} className={`dig-btn ${mode === 'options' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-options" onClick={() => setMode('options')}>
+                  <FormattedMessage id="trade.mode.options" />
+                </button>
               </>
             )}
           </div>
@@ -143,6 +151,7 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
         {mode === 'offers' && <OffersPanel full={isFull} />}
         {mode === 'issue' && isFull && <CatIssuancePanel onDone={() => setMode('make')} pollMs={pollMs} />}
         {mode === 'swap' && isFull && <SwapPanel assets={assets} onDone={() => setMode('make')} pollMs={pollMs} />}
+        {mode === 'options' && isFull && <OptionsPanel onDone={() => setMode('make')} pollMs={pollMs} />}
       </section>
     </div>
   );

@@ -84,6 +84,24 @@ const STUB = `
       requested: [{ asset: { kind: 'xch' }, amount: '10000000000000', toPuzzleHashHex: 'ab' }],
     } };
     if (a === 'confirmTrade') return { spentCoinId: 'swap-coin-1' };
+    // Option contracts (#104): a decoded (tamper-resistant) mint summary + record, an empty local
+    // registry (getOptions), and canned confirm/poll responses for the mint round trip.
+    if (a === 'prepareOptionMint') {
+      const om = msg.optionMint || {};
+      const optRecord = {
+        launcherId: 'ac'.repeat(32),
+        creatorPuzzleHashHex: 'ad'.repeat(32),
+        holderPuzzleHashHex: 'ad'.repeat(32),
+        expirationSeconds: om.expirationSeconds || '9999999999',
+        underlyingAmount: om.underlyingAmount || '1000000000000',
+        strikeAmount: om.strikeAmount || '500000000000',
+        underlyingLockParentCoinId: 'ae'.repeat(32),
+        coinIdHex: 'af'.repeat(32),
+      };
+      return { pendingId: 'option-mint-pending-1', optionMintSummary: Object.assign({}, optRecord, { fee: om.fee || '0', coinCount: 3 }), optionRecord: optRecord };
+    }
+    if (a === 'confirmOptionMint') return { spentCoinId: 'option-mint-coin-1' };
+    if (a === 'getOptions') return { options: [] };
     if (a === 'getDigNodeStatus') return { reachable: true, base: 'https://dig.local' };
     if (a === 'getControlStatus') return { mode: 'manage', localNode: true, base: 'https://dig.local', status: null, controlMethods: [] };
     if (a === 'getConnection') return { connected: false };
@@ -584,4 +602,53 @@ test('fullscreen trade — Swap confirm → confirmed', async ({ page }) => {
   await page.getByTestId('swap-confirmed').waitFor();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-swap-confirmed.png' });
+});
+
+// Option contracts (#104): a destructive/advanced spend-construction op — fullscreen-ONLY (§6.4),
+// the popup never offers the "Options" tab at all.
+test('fullscreen trade — Options tab (mint form)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-options').click();
+  await page.getByTestId('options-mint-form').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-options-mint-form.png' });
+});
+
+test('fullscreen trade — Options mint review shows the decoded summary (underlying + strike)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-options').click();
+  await page.getByTestId('options-mint-underlying').fill('1');
+  await page.getByTestId('options-mint-strike').fill('0.5');
+  await page.getByTestId('options-mint-expires').fill('30');
+  await page.getByTestId('options-mint-review').click();
+  await page.getByTestId('options-mint-review-panel').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-options-mint-review.png' });
+});
+
+test('fullscreen trade — Options mint confirm → confirmed', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-options').click();
+  await page.getByTestId('options-mint-underlying').fill('1');
+  await page.getByTestId('options-mint-strike').fill('0.5');
+  await page.getByTestId('options-mint-expires').fill('30');
+  await page.getByTestId('options-mint-review').click();
+  await page.getByTestId('options-mint-confirm').waitFor();
+  await page.getByTestId('options-mint-confirm').click();
+  await page.getByTestId('options-mint-confirmed').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-options-mint-confirmed.png' });
+});
+
+test('fullscreen trade — Options "Your options" tab shows the empty state', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-options').click();
+  await page.getByTestId('options-mode-list').click();
+  await page.getByTestId('options-list-empty').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-options-list-empty.png' });
 });
