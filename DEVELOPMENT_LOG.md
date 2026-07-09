@@ -3,6 +3,30 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## The dig-node wallet-data source (#217) reflects the NODE's wallet, and its reads are read-only — signing NEVER leaves the vault
+
+Phase 3 of #205 lets the extension read balances/tokens/NFTs/DIDs/coins/activity from a running
+dig-node's Sage-parity `get_*` surface (browser mirror on 9778, plain-HTTP + CORS) instead of coinset.
+Sharp edges to remember:
+- **The node's `get_*` return the NODE's wallet, not the extension's key.** Sage's `get_coins`/
+  `get_cats`/`get_nfts`/… take no puzzle-hash/pubkey input — they answer for the wallet the node
+  tracks. So the integration premise is "the user's node tracks the user's wallet." The extension's
+  self-custody key is NEVER sent to the node; signing stays in the offscreen vault. The node is a
+  READ-ONLY chain-data source — no spend/sign/send method is wired (`node-wallet.ts` has none).
+- **Some vault shape fields have no Sage source.** `WalletNft`/`WalletDid.p2PuzzleHash` and
+  `WalletDid.numVerificationsRequired` are not in the Sage `NftRecord`/`DidRecord` (only a bech32m
+  `address` is), so the node mapper leaves them blank/'1'. That is safe because they are display-only
+  for the list; the LOCAL transfer/sign path re-derives NFT/DID state from chain in the vault and
+  never trusts a listed `p2PuzzleHash`.
+- **Fall-through is strictness-gated.** `auto` falls back to coinset on a node read error (clean
+  degrade); a user-FORCED `node`/`custom` source must SURFACE the failure (`NODE_UNAVAILABLE`/
+  `NODE_READ_FAILED`) — silently downgrading a forced node to coinset would violate the user's intent
+  (and, for a privacy-motivated pick, leak their address set to coinset without consent).
+- **Keep the decision + client PURE.** The SW (`src/background/index.ts`) is `@ts-nocheck` glue
+  excluded from coverage; all logic lives in unit-tested `src/lib/wallet-source.ts` +
+  `src/lib/node-wallet.ts`, the SW just injects its cached §5.3 probe + a direct probe. Same pattern
+  as `dig-control.ts`/`custody-session.ts`.
+
 ## A tier gate keyed on a PERSISTED PREFERENCE nobody ever sets is worse than no gate at all (#109, #145)
 
 `CustodyWallet`'s Settings block (NetworkSetting/ChainNodeSetting/AutoLockSetting/SessionStatus/
