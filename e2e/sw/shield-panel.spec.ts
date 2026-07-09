@@ -78,7 +78,12 @@ test('no content verified on this tab → the honest empty Shield state', async 
 });
 
 test('recorded per-resource verdicts render the capsule, aggregate verdict, and grouped proofs', async () => {
-  const page = await openShield();
+  // Open on HOME first (ShieldTab not yet mounted → getShieldLedger hasn't run), so the entries are
+  // recorded BEFORE the query, and we reach Shield via in-app navigation. A document reload would
+  // fire webNavigation.onCommitted, which clears the per-tab ledger (only dig-viewer keeps it) — so
+  // the panel is reached by React route change (no reload), preserving what this tab recorded.
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/popup.html`);
 
   // Record three resource verdicts the way the dig-viewer's loader does (real SW dispatch, this
   // page's tab owns the ledger). Two pass, one fails → the panel must show a mixed "some failed"
@@ -96,9 +101,10 @@ test('recorded per-resource verdicts render the capsule, aggregate verdict, and 
     resourcePath: 'evil.js', inclusionProofPassed: false, errorCode: 'DIG_ERR_PROOF_MISMATCH', executionProofStatus: '',
   });
 
-  // Reload so the ShieldTab re-queries the SW (getShieldLedger) against the now-populated ledger.
-  await page.reload();
-  await page.waitForURL(/#network\/shield/);
+  // Navigate to Shield via the shell (bottom-nav + segmented control) — a same-document route
+  // change, so the ledger survives and ShieldTab's first getShieldLedger sees the recorded entries.
+  await page.getByTestId('tab-network').click();
+  await page.getByTestId('seg-shield').click();
   await page.getByTestId('shield-panel').waitFor();
 
   // The capsule (storeId:rootHash) is disclosed.
@@ -117,16 +123,32 @@ test('recorded per-resource verdicts render the capsule, aggregate verdict, and 
   await page.setViewportSize({ width: 372, height: 640 });
   await page.waitForTimeout(150);
   await page.screenshot({ path: 'e2e/__screenshots__/shield-populated-popup.png' });
+  await page.close();
 
+  // Fullscreen (expanded layout) — its own tab, so record this tab's ledger the same way, then
+  // reach Shield through the desktop sidebar nav + segmented control (same-document, no reload).
   const fullscreen = await context.newPage();
   await fullscreen.setViewportSize({ width: 1200, height: 860 });
-  await fullscreen.goto(`chrome-extension://${extensionId}/app.html#network/shield`);
+  await fullscreen.goto(`chrome-extension://${extensionId}/app.html`);
+  await fullscreen.getByTestId('nav-network').waitFor();
+  for (const [resourcePath, passed, errorCode] of [
+    ['index.html', true, ''],
+    ['app.js', true, ''],
+    ['evil.js', false, 'DIG_ERR_PROOF_MISMATCH'],
+  ] as const) {
+    await swSend(fullscreen, {
+      action: 'recordLedgerEntry', storeId: STORE_ID, rootHash: ROOT_HASH,
+      resourcePath, inclusionProofPassed: passed, errorCode, executionProofStatus: '',
+    });
+  }
+  await fullscreen.getByTestId('nav-network').click();
+  await fullscreen.getByTestId('seg-shield').click();
   await fullscreen.getByTestId('shield-panel').waitFor();
+  await expect(fullscreen.getByTestId('shield-passed-item')).toHaveCount(2);
+  await expect(fullscreen.getByTestId('shield-failed-item')).toHaveCount(1);
   await fullscreen.waitForTimeout(150);
   await fullscreen.screenshot({ path: 'e2e/__screenshots__/shield-populated-fullscreen.png' });
-
   await fullscreen.close();
-  await page.close();
 });
 
 test('the bottom-nav + segmented sub-nav reach the Shield panel (mobile-OS shell)', async () => {
