@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.71.0] - 2026-07-09
+
+### Features
+- **wallet:** Accounts, watch-only + key export, keystore backup (#95 #96 #115) (#96)
+
 ## [1.70.0] - 2026-07-09
 
 ### Features
