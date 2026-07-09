@@ -1,0 +1,124 @@
+/*
+ * XL contacts modal (#207) — component-scoped styles, co-located + imported directly by
+ * `ContactsXLModal.tsx` (NOT added to the shared `src/styles/theme.css`, which a concurrent theme
+ * lane owns — same rationale as `WalletSwitcher.css`). Reuses the shared `.dig-modal-xl*` dialog
+ * shell (theme.css, #170) for the chrome (backdrop/head/toolbar/body/footer); only the
+ * Android-Contacts-style list — monogram avatars, sticky letter section headers, the A–Z
+ * fast-scroll rail — is new here.
+ */
+
+/* Two-column body: the scrollable contact list + the fixed A–Z rail alongside it. */
+.dig-contacts-xl-columns {
+  display: flex;
+  gap: 4px;
+  height: 100%;
+}
+.dig-contacts-xl-scroll {
+  flex: 1;
+  min-width: 0;
+}
+
+.dig-contacts-xl-list {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+}
+
+/* Sticky per-letter header (position:sticky inside the modal's own scroll container, `.dig-modal-xl-body`). */
+.dig-contacts-xl-section-head {
+  position: sticky;
+  top: 0;
+  margin: 0;
+  padding: 6px 4px;
+  font-size: 0.78em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--dig-text-dim);
+  background: var(--dig-bg);
+  z-index: 1;
+}
+
+.dig-contacts-xl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 4px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--dig-radius-sm);
+}
+.dig-contacts-xl-row:hover {
+  background: var(--dig-bg-elev);
+}
+
+/* Android-style monogram avatar — decorative (the label text carries the real identity). */
+.dig-contacts-xl-avatar {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85em;
+  background: var(--dig-accent-soft);
+  color: var(--dig-accent-ink);
+}
+
+.dig-contacts-xl-row-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.dig-contacts-xl-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.dig-contacts-xl-row-address {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8em;
+}
+
+/* A–Z fast-scroll rail. Hidden while searching (a flat filtered list has no sections to jump to). */
+.dig-contacts-xl-index {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px;
+}
+.dig-contacts-xl-index-btn {
+  flex: none;
+  width: 18px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--dig-text-dim);
+  font-size: 0.68em;
+  font-weight: 700;
+  line-height: 14px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.dig-contacts-xl-index-btn:hover:not(:disabled) {
+  background: var(--dig-bg-elev);
+  color: var(--dig-accent-ink);
+}
+.dig-contacts-xl-index-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
