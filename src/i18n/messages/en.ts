@@ -143,6 +143,7 @@ export const en: Record<string, string> = {
   'wallet.assets.filter.empty': 'No tokens match "{query}"',
   'wallet.getdig': 'Get $DIG',
   'wallet.getdig.open': 'Get more',
+  'wallet.getxch': 'Get more',
   'wallet.getdig.hint.tibetswap': 'XCH ↔ DIG AMM',
   'wallet.getdig.hint.dexie': 'DIG / XCH on the dexie DEX',
   'wallet.getdig.hint.9mm': 'DIG token on 9mm.pro',

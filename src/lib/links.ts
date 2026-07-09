@@ -54,6 +54,13 @@ export const GET_DIG_SOURCES = [
   { name: '9mm.pro', url: NINEMM_DIG_URL, hint: 'DIG token on 9mm.pro' },
 ];
 
+/**
+ * chia.net's official buy-XCH page — the single canonical destination for acquiring XCH (#210).
+ * Unlike $DIG ({@link GET_DIG_SOURCES}, three venues), XCH has ONE canonical funnel, so it is a
+ * plain link rather than a venue menu.
+ */
+export const GET_XCH_URL = 'https://www.chia.net/buy-xch/';
+
 /** The DIG Network community Discord — the canonical org invite (matches dig.net + docs + hub). */
 export const DISCORD_URL = 'https://discord.gg/dignetwork';
 

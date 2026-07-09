@@ -509,7 +509,7 @@ h2.dig-heading {
   font-size: 12px;
 }
 
-/* ── "Get more $DIG" venue menu (#202) ── */
+/* ── "Get more $DIG" venue menu (#202) + the XCH row's plain "Get more" link (#210) ── */
 .dig-getdig {
   position: relative;
   display: inline-flex;
@@ -524,6 +524,9 @@ h2.dig-heading {
   border-radius: var(--dig-radius-sm);
   cursor: pointer;
   white-space: nowrap;
+  /* Shared by the $DIG button trigger AND the XCH plain <a> link (#210) — buttons have no default
+   * underline, but anchors do, so reset it explicitly for visual parity between the two rows. */
+  text-decoration: none;
 }
 .dig-getdig-trigger:hover {
   background: var(--dig-accent-soft);
