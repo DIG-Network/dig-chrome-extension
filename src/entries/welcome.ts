@@ -4,6 +4,10 @@
  * destination comes from the shared {@link links} module so the funnels can never drift from the
  * popup. Pure DOM glue (no state), built by Vite as a standalone extension page under `src/entries/`.
  */
+// Vendored DIG product type (Space Grotesk / Space Mono, `font-src 'self'`) so the FIRST page a new
+// user sees matches the popup + full-screen wallet typography (§6.1 "one product"). welcome.html's
+// inline CSS names these families with a system fallback until the woff2 load.
+import '@/styles/fonts';
 import { DIG_NETWORK_URL, DOCS_URL, DIG_BROWSER_URL, DISCORD_URL } from '@/lib/links';
 
 /** Wire an anchor to open `url` in a new tab, keeping a real `href` so it works even without JS. */
