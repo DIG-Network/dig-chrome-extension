@@ -19,6 +19,33 @@ function mockSw(router: (m: { action: string; [k: string]: unknown }) => unknown
   return fn;
 }
 
+const CAT = 'a406d3961da0da3daa196ca9f2f81bafda9d7d3e3d8b25de5b3616fa9c9f2f81';
+
+/**
+ * Stub `global.fetch` for the price + CAT-registry queries the approval window's fiat-equivalent
+ * + CAT-naming enrichment (#77 P2-1) reads (`@/features/wallet/priceApi` + `@/features/wallet/
+ * catMetadataApi` — SEPARATE api slices from the SW seam, fetched directly over HTTPS). Unit tests
+ * default `global.fetch` to a rejection (`vitest.setup.ts`) so this is opt-in per test; XCH = $20,
+ * the given CAT = $2 (quoted at 0.1 XCH), registered as ticker "SBX" / 3 decimals.
+ */
+function mockPricesAndCatRegistry() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.includes('coingecko')) {
+        return { ok: true, json: async () => ({ chia: { usd: 20, usd_24h_change: 1 } }) };
+      }
+      if (url.includes('dexie.space/v2/prices/tickers')) {
+        return { ok: true, json: async () => ({ tickers: [{ base_id: CAT, target_id: 'xch', target_code: 'XCH', last_price: 0.1 }] }) };
+      }
+      if (url.includes('dexie.space/v1/swap/tokens')) {
+        return { ok: true, json: async () => ({ tokens: [{ id: CAT, name: 'Spacebucks', code: 'SBX', denom: 1000, icon: 'https://icons.dexie.space/x.png' }] }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    }) as unknown as typeof fetch,
+  );
+}
+
 const SPEND_SUMMARY = {
   coinCount: 1,
   inputs: [{ coinId: 'a1', puzzleHash: 'd2', amount: '1000000000000', isSelf: true }],
@@ -37,6 +64,7 @@ function signRequest(over = {}) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals(); // undo mockPricesAndCatRegistry()'s vi.stubGlobal('fetch', …) between tests
   vi.useRealTimers();
 });
 
@@ -212,14 +240,16 @@ describe('ApprovalWindow', () => {
   it('renders a two-sided trade summary (give vs receive) for takeOffer', async () => {
     mockSw((m) => {
       if (m.action === 'dappApprovalList') {
-        return { requests: [signRequest({ id: 'o1', method: 'chia_takeOffer', kind: 'takeOffer', summary: { offered: [{ asset: { kind: 'xch' }, amount: '100000000000' }], requested: [{ asset: { kind: 'cat', assetId: 'cc'.repeat(32) }, amount: '5', toPuzzleHashHex: 'ab' }] } })], lockState: 'unlocked', summoned: true };
+        return { requests: [signRequest({ id: 'o1', method: 'chia_takeOffer', kind: 'takeOffer', summary: { offered: [{ asset: { kind: 'xch' }, amount: '100000000000' }], requested: [{ asset: { kind: 'cat', assetId: 'cc'.repeat(32) }, amount: '5000', toPuzzleHashHex: 'ab' }] } })], lockState: 'unlocked', summoned: true };
       }
       return { success: true };
     });
     renderWithProviders(<ApprovalWindow />);
     expect(await screen.findByTestId('approval-offer-summary')).toBeInTheDocument();
     expect(screen.getByTestId('approval-offer-give')).toHaveTextContent('0.1 XCH');
-    expect(screen.getByTestId('approval-offer-receive')).toHaveTextContent('5');
+    // #77 — an unregistered CAT still renders human decimal units (base-unit ÷ CAT_DECIMALS) + the
+    // generic "CAT" ticker fallback, never the raw base-unit integer it showed before.
+    expect(screen.getByTestId('approval-offer-receive')).toHaveTextContent('5 CAT');
   });
 
   it('runs drainer risk assessment on a sendTransaction bundle (dApp-built spend)', async () => {
@@ -257,5 +287,63 @@ describe('ApprovalWindow', () => {
     expect(screen.getByTestId('approval-approve')).toBeDisabled();
     fireEvent.click(screen.getByTestId('approval-risk-ack-input'));
     expect(screen.getByTestId('approval-approve')).toBeEnabled();
+  });
+});
+
+describe('ApprovalWindow — richer rendering: fiat equivalents + CAT naming + raw view (#77 P2-1)', () => {
+  it('shows a fiat equivalent + the resolved CAT ticker for a wallet-built CAT send', async () => {
+    mockPricesAndCatRegistry();
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') {
+        return { requests: [signRequest({ id: 'cs1', method: 'chia_send', kind: 'send', summary: { asset: CAT, sent: '5000', change: '0', fee: '0', recipientPuzzleHashHex: 'ab'.repeat(16), coinCount: 1 } })], lockState: 'unlocked', summoned: true };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    const amount = await screen.findByTestId('approval-send-amount');
+    // 5000 base units / 1000 (denom→3 decimals) = 5 SBX (the registered ticker, not the raw TAIL).
+    expect(amount).toHaveTextContent('5 SBX');
+    // 5 SBX * $2 = $10 (the resolved CAT price is 0.1 XCH * $20 XCH-USD anchor).
+    await waitFor(() => expect(amount).toHaveTextContent('$10.00'));
+  });
+
+  it('shows fiat equivalents next to the sending/change/fee amounts of a dApp-built spend', async () => {
+    mockPricesAndCatRegistry();
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') return { requests: [signRequest()], lockState: 'unlocked', summoned: true };
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    // SPEND_SUMMARY sends 0.25 XCH — at $20/XCH that is $5.00.
+    await waitFor(() => expect(screen.getByTestId('approval-sending')).toHaveTextContent('$5.00'));
+  });
+
+  it('shows an expandable raw view of the decoded summary for review before approving', async () => {
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') return { requests: [signRequest()], lockState: 'unlocked', summoned: true };
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    const raw = await screen.findByTestId('approval-raw-view');
+    // Collapsed by default (no clutter on first render); expanding reveals the exact decoded facts.
+    fireEvent.click(raw.querySelector('summary')!);
+    expect(raw).toHaveTextContent('sendingMojos');
+    expect(raw).toHaveTextContent('250000000000');
+  });
+
+  it('never blocks or hides the approval when fiat/CAT-name lookups fail (graceful degrade)', async () => {
+    // The default unit-test fetch stub rejects every call — no mockPricesAndCatRegistry() here.
+    mockSw((m) => {
+      if (m.action === 'dappApprovalList') {
+        return { requests: [signRequest({ id: 'cs2', method: 'chia_send', kind: 'send', summary: { asset: CAT, sent: '5000', change: '0', fee: '0', recipientPuzzleHashHex: 'ab'.repeat(16), coinCount: 1 } })], lockState: 'unlocked', summoned: true };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<ApprovalWindow />);
+    expect(await screen.findByTestId('approval-send-summary')).toBeInTheDocument();
+    // Falls back to the short-form TAIL + generic "CAT" ticker; no fiat equivalent text at all
+    // (never a fabricated $0) — and Approve is still available.
+    expect(screen.getByTestId('approval-approve')).toBeEnabled();
+    expect(screen.queryByTestId('approval-fiat-equivalent')).not.toBeInTheDocument();
   });
 });
