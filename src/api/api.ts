@@ -29,6 +29,8 @@ export const TAGS = [
   'Clawbacks',
   // Trade offers (#101): the local "your offers" log (made offers + derived status).
   'Offers',
+  // Option contracts (#104): the local minted-option registry (mint + derived status).
+  'Options',
 ] as const;
 
 /**

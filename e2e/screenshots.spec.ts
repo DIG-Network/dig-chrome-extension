@@ -56,6 +56,52 @@ const STUB = `
       offered: [{ asset: { kind: 'xch' }, amount: '100000000000' }],
       requested: [{ asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: '250', toPuzzleHashHex: 'ab' }],
     } };
+    // CAT issuance (#97): a brand-new token's decoded (tamper-resistant) pre-sign summary + its
+    // freshly-minted asset id, echoing the mode/amount/fee the form actually submitted.
+    if (a === 'prepareCatIssuance') return { pendingId: 'issue-pending-1', assetId: 'ab'.repeat(32), catIssuanceSummary: {
+      assetId: 'ab'.repeat(32),
+      mode: (msg.catIssuance && msg.catIssuance.mode) || 'single',
+      amount: (msg.catIssuance && msg.catIssuance.amount) || '1000000000',
+      fee: (msg.catIssuance && msg.catIssuance.fee) || '0',
+      coinCount: 1,
+    } };
+    if (a === 'confirmCatIssuance') return { spentCoinId: 'issue-coin-1' };
+    if (a === 'sendStatus') return { confirmed: true };
+    // Token swap (#103): a matching dexie offer for the wallet's DEFAULT pick ("pay XCH -> receive
+    // $DIG" - the built-in $DIG row is always the second asset, #204) plus the REAL decoded offer
+    // summary prepareTrade returns for the review step (the dexie numbers are display-only).
+    const DIG_ASSET_ID = 'a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81';
+    if (a === 'dexieBrowse') return { offers: [{
+      id: 'swap-offer-1',
+      offer: 'offer1qqqswapscreenshotexampleqqq',
+      status: 0,
+      date_found: '2026-01-01T00:00:00Z',
+      offered: [{ id: DIG_ASSET_ID, code: '$DIG', amount: 1000 }],
+      requested: [{ id: 'xch', code: 'XCH', amount: 10 }],
+    }] };
+    if (a === 'prepareTrade') return { pendingId: 'swap-pending-1', offerSummary: {
+      offered: [{ asset: { kind: 'cat', assetId: DIG_ASSET_ID }, amount: '1000000' }],
+      requested: [{ asset: { kind: 'xch' }, amount: '10000000000000', toPuzzleHashHex: 'ab' }],
+    } };
+    if (a === 'confirmTrade') return { spentCoinId: 'swap-coin-1' };
+    // Option contracts (#104): a decoded (tamper-resistant) mint summary + record, an empty local
+    // registry (getOptions), and canned confirm/poll responses for the mint round trip.
+    if (a === 'prepareOptionMint') {
+      const om = msg.optionMint || {};
+      const optRecord = {
+        launcherId: 'ac'.repeat(32),
+        creatorPuzzleHashHex: 'ad'.repeat(32),
+        holderPuzzleHashHex: 'ad'.repeat(32),
+        expirationSeconds: om.expirationSeconds || '9999999999',
+        underlyingAmount: om.underlyingAmount || '1000000000000',
+        strikeAmount: om.strikeAmount || '500000000000',
+        underlyingLockParentCoinId: 'ae'.repeat(32),
+        coinIdHex: 'af'.repeat(32),
+      };
+      return { pendingId: 'option-mint-pending-1', optionMintSummary: Object.assign({}, optRecord, { fee: om.fee || '0', coinCount: 3 }), optionRecord: optRecord };
+    }
+    if (a === 'confirmOptionMint') return { spentCoinId: 'option-mint-coin-1' };
+    if (a === 'getOptions') return { options: [] };
     if (a === 'getDigNodeStatus') return { reachable: true, base: 'https://dig.local' };
     if (a === 'getControlStatus') return { mode: 'manage', localNode: true, base: 'https://dig.local', status: null, controlMethods: [] };
     if (a === 'getConnection') return { connected: false };
@@ -474,4 +520,135 @@ test('popup app-view blocked (embed fails → open-in-tab note)', async ({ page 
   await page.getByTestId('app-tile-chia-offer').click();
   await page.getByTestId('appview-blocked').waitFor({ timeout: 9000 });
   await page.screenshot({ path: 'e2e/__screenshots__/popup-appview-blocked.png' });
+});
+
+// CAT issuance (#97): a destructive/advanced spend-construction op — fullscreen-ONLY (§6.4), the
+// popup never offers the "Issue" tab at all (no view-only stub — nothing pending to view before a
+// mint is built).
+test('popup trade never shows the Issue tab (advanced → fullscreen-only)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'wallet/trade');
+  await page.getByTestId('trade-make-form').waitFor();
+  await expect(page.getByTestId('trade-mode-issue')).toHaveCount(0);
+});
+
+test('fullscreen trade — Issue tab (CAT issuance form)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-issue').click();
+  await page.getByTestId('issue-form').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-issue-form.png' });
+});
+
+test('fullscreen trade — Issue review shows the decoded summary (supply + asset id + fee)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-issue').click();
+  await page.getByTestId('issue-supply').fill('1000000');
+  await page.getByTestId('issue-mode-multi').click();
+  await page.getByTestId('issue-review').click();
+  await page.getByTestId('issue-review-panel').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-issue-review.png' });
+});
+
+test('fullscreen trade — Issue confirm → confirmed (the new asset id is shown + copyable)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-issue').click();
+  await page.getByTestId('issue-supply').fill('1000000');
+  await page.getByTestId('issue-review').click();
+  await page.getByTestId('issue-confirm').waitFor();
+  await page.getByTestId('issue-confirm').click();
+  await page.getByTestId('issue-confirmed').waitFor();
+  await page.getByTestId('issue-confirmed-asset-id').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-issue-confirmed.png' });
+});
+
+// Token swap (#103): a destructive/advanced spend-construction op — fullscreen-ONLY (§6.4), the
+// popup never offers the "Swap" tab at all. The default pick is "pay XCH → receive $DIG" (the
+// built-in $DIG row is always the wallet's second asset, #204) — a quote appears automatically from
+// the public offer book (#102), then Review decodes the REAL offer bytes exactly like the Take tab.
+test('fullscreen trade — Swap tab (a quote appears for the default XCH → $DIG pick)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-swap').click();
+  await page.getByTestId('swap-quote-result').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-swap-quote.png' });
+});
+
+test('fullscreen trade — Swap review shows the decoded (re-derived) offer summary', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-swap').click();
+  await page.getByTestId('swap-review').waitFor();
+  await page.getByTestId('swap-review').click();
+  await page.getByTestId('swap-review-panel').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-swap-review.png' });
+});
+
+test('fullscreen trade — Swap confirm → confirmed', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-swap').click();
+  await page.getByTestId('swap-review').waitFor();
+  await page.getByTestId('swap-review').click();
+  await page.getByTestId('swap-confirm').waitFor();
+  await page.getByTestId('swap-confirm').click();
+  await page.getByTestId('swap-confirmed').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-swap-confirmed.png' });
+});
+
+// Option contracts (#104): a destructive/advanced spend-construction op — fullscreen-ONLY (§6.4),
+// the popup never offers the "Options" tab at all.
+test('fullscreen trade — Options tab (mint form)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-options').click();
+  await page.getByTestId('options-mint-form').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-options-mint-form.png' });
+});
+
+test('fullscreen trade — Options mint review shows the decoded summary (underlying + strike)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-options').click();
+  await page.getByTestId('options-mint-underlying').fill('1');
+  await page.getByTestId('options-mint-strike').fill('0.5');
+  await page.getByTestId('options-mint-expires').fill('30');
+  await page.getByTestId('options-mint-review').click();
+  await page.getByTestId('options-mint-review-panel').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-options-mint-review.png' });
+});
+
+test('fullscreen trade — Options mint confirm → confirmed', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-options').click();
+  await page.getByTestId('options-mint-underlying').fill('1');
+  await page.getByTestId('options-mint-strike').fill('0.5');
+  await page.getByTestId('options-mint-expires').fill('30');
+  await page.getByTestId('options-mint-review').click();
+  await page.getByTestId('options-mint-confirm').waitFor();
+  await page.getByTestId('options-mint-confirm').click();
+  await page.getByTestId('options-mint-confirmed').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-options-mint-confirmed.png' });
+});
+
+test('fullscreen trade — Options "Your options" tab shows the empty state', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-options').click();
+  await page.getByTestId('options-mode-list').click();
+  await page.getByTestId('options-list-empty').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-options-list-empty.png' });
 });

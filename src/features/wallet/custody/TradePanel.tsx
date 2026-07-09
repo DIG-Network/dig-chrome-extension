@@ -14,6 +14,9 @@ import { NftMedia } from '@/features/collectibles/NftDetail';
 import { nftDisplayName, nftImageSrc } from '@/features/collectibles/nftDisplay';
 import { legLabel } from '@/features/wallet/custody/offerLegFormat';
 import { OffersPanel } from '@/features/wallet/custody/OffersPanel';
+import { CatIssuancePanel } from '@/features/wallet/custody/CatIssuancePanel';
+import { SwapPanel } from '@/features/wallet/custody/SwapPanel';
+import { OptionsPanel } from '@/features/wallet/custody/OptionsPanel';
 import {
   useMakeCustodyOfferMutation,
   useInspectCustodyOfferMutation,
@@ -45,7 +48,7 @@ function offerQrDataUrl(offer: string): string | null {
   }
 }
 
-type Mode = 'make' | 'take' | 'offers';
+type Mode = 'make' | 'take' | 'offers' | 'issue' | 'swap' | 'options';
 type MakePhase = 'form' | 'review' | 'made';
 type TakePhase = 'paste' | 'review' | 'confirm' | 'sending' | 'confirmed' | 'failed';
 /** What the maker is GIVING: a fungible balance (XCH/CAT) or one of the wallet's own NFTs (§94). */
@@ -66,6 +69,20 @@ type GiveKind = 'currency' | 'nft';
  * `full` prop. The compact popup keeps a persistent "open full screen" link for that + any future
  * advanced option (multi-asset, fee tuning). `full` is auto-detected from the surface (overridable
  * in tests).
+ *
+ * **CAT issuance (#97) is a FOURTH, fullscreen-ONLY tab.** Minting a brand-new CAT is a destructive/
+ * advanced spend-construction op (§6.4 popup/fullscreen tiering) — its tab button + panel render
+ * only when `isFull`; the popup omits it entirely (no view-only stub — there is nothing pending to
+ * view before a mint is built).
+ *
+ * **Token swap (#103) is a FIFTH, fullscreen-ONLY tab.** A market order over dexie's public offer
+ * book (#102) — pick what you're paying/receiving, take the best matching open offer via the SAME
+ * take pipeline as the Take tab (no new wasm/backend). Also destructive/advanced (§6.4); the popup
+ * omits it entirely, same as Issue.
+ *
+ * **Option contracts (#104) is a SIXTH, fullscreen-ONLY tab.** Mint an XCH-denominated option
+ * (lock collateral, set a strike + expiration) and exercise one this wallet holds — both real
+ * spend-construction ops (§6.4); the popup omits it entirely, same as Issue/Swap.
  */
 export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: AssetBalance[]; onClose?: () => void; pollMs?: number; full?: boolean }) {
   const intl = useIntl();
@@ -101,6 +118,21 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
             <button type="button" role="tab" aria-selected={mode === 'offers'} className={`dig-btn ${mode === 'offers' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-offers" onClick={() => setMode('offers')}>
               <FormattedMessage id="trade.mode.offers" />
             </button>
+            {/* CAT issuance (#97) + token swap (#103): destructive/advanced spend-construction ops —
+                fullscreen-ONLY tabs (§6.4 popup/fullscreen tiering), never offered in the popup. */}
+            {isFull && (
+              <>
+                <button type="button" role="tab" aria-selected={mode === 'issue'} className={`dig-btn ${mode === 'issue' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-issue" onClick={() => setMode('issue')}>
+                  <FormattedMessage id="trade.mode.issue" />
+                </button>
+                <button type="button" role="tab" aria-selected={mode === 'swap'} className={`dig-btn ${mode === 'swap' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-swap" onClick={() => setMode('swap')}>
+                  <FormattedMessage id="trade.mode.swap" />
+                </button>
+                <button type="button" role="tab" aria-selected={mode === 'options'} className={`dig-btn ${mode === 'options' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-options" onClick={() => setMode('options')}>
+                  <FormattedMessage id="trade.mode.options" />
+                </button>
+              </>
+            )}
           </div>
           {!isFull && (
             <button
@@ -117,6 +149,9 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
         {mode === 'make' && <MakeTrade assets={assets} full={isFull} />}
         {mode === 'take' && <TakeTrade pollMs={pollMs} full={isFull} />}
         {mode === 'offers' && <OffersPanel full={isFull} />}
+        {mode === 'issue' && isFull && <CatIssuancePanel onDone={() => setMode('make')} pollMs={pollMs} />}
+        {mode === 'swap' && isFull && <SwapPanel assets={assets} onDone={() => setMode('make')} pollMs={pollMs} />}
+        {mode === 'options' && isFull && <OptionsPanel onDone={() => setMode('make')} pollMs={pollMs} />}
       </section>
     </div>
   );

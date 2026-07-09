@@ -648,6 +648,17 @@ wallet's existing encrypted DIGWX1 record as a downloadable JSON file (§18.21) 
 it either way; restoring lands the wallet LOCKED (no password was ever supplied) so the normal unlock
 screen gates it. Purely additive — no existing action/shape changed.
 
+`MESSAGE_PROTOCOL_VERSION` `28` (#97 CAT issuance) added `prepareCatIssuance` / `confirmCatIssuance`
+(§18.22) — mint a brand-new CAT (single fixed-supply genesis-by-coin-id TAIL, or multi
+signature-gated TAIL curried with the wallet's own synthetic key). `confirmCatIssuance` reuses the
+vault's existing `confirmSend` broadcast path. Purely additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `29` (#104 option contracts) added `prepareOptionMint`/`confirmOptionMint`,
+`prepareOptionExercise`/`confirmOptionExercise`, and `getOptions` (§18.23) — mint + exercise an
+XCH-denominated option contract, with a local option registry (mirrors #101's offer-log) since a
+bare on-chain option carries no recoverable terms. Both confirm actions reuse the vault's existing
+`confirmSend` broadcast path. Purely additive — no existing action/shape changed.
+
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
 
@@ -2808,3 +2819,149 @@ import, so this feature never touches the wallet's secret key.
   "Restore from backup file" — taking a file picker (`<input type="file">`, read via `.text()`) next
   to "Create new" and "Import from recovery phrase". Both are fullscreen-only (§2.1), alongside the
   other advanced/security-sensitive onboarding paths. Four states + react-intl across the 14 locales.
+
+### 18.22 CAT issuance / minting (#97)
+
+Mint a BRAND-NEW CAT (create its asset id for the first time) from the wallet's own coins, via the
+`chia-wallet-sdk-wasm` `Action` system already used by NFT mint (§18.11) — no new wasm surface.
+`prepareCatIssuance` (§7) builds the spend and holds it under a pending id; `confirmCatIssuance`
+signs + broadcasts it, reusing the vault's shared `confirmSend` path exactly like an NFT mint.
+
+- **Two issuance modes** (`mode`, request field on `catIssuance`):
+  - `'single'` (default) — `Action.singleIssueCat(undefined, amount)`: a genesis-by-coin-id TAIL
+    bound to one specific funding coin. Fixed supply from the moment of mint; this asset id can
+    NEVER be re-minted, by anyone, under any circumstance.
+  - `'multi'` — `Action.issueCat(tailSpend, undefined, amount)` with a hand-curried TAIL: the
+    standard "everything with signature" TAIL (`Clvm.everythingWithSignature()`), curried with the
+    wallet's OWN synthetic public key at the active index. Only that same key can ever authorize a
+    future re-mint/melt of this asset id (via `Action.runTail` — not yet exposed as its own action;
+    a tracked follow-up). The TAIL's `AGG_SIG_ME` condition is signed through the SAME generic
+    `signing.ts` machinery every other spend uses — no bespoke signing path.
+- **Supply + change routing.** The newly-minted CAT and any XCH change both auto-route to the
+  active index's own p2 puzzle hash (the `Spends` driver's default for an unrouted new asset — the
+  same behavior `Action.mintNft` relies on, §18.11). The minted asset id is read back from
+  `FinishedSpends.spend()`'s `Outputs.cats()`/`cat(id)` — the wasm's OWN decode of what it just
+  built, independent of any hand tree-hash math on this side.
+- **UI (fullscreen-only, §6.4).** A `Trade` tab, "Issue" — a plain-language form (whole-token total
+  supply at the ecosystem's standard 3-decimal CAT convention, §18.9's `CAT_DECIMALS` — issuance
+  type toggle, optional network fee) → a pre-sign review decoded FROM the built spend (supply, mode,
+  the new asset id, fee) → confirm (sign + broadcast) → poll to confirmed/retry (`sendStatus`, an
+  issuance is a coin spend like any other). The popup omits the tab entirely — an issuance is a
+  destructive/advanced spend-construction op with nothing pending to view before it is built.
+- **Registering the new token.** The minted asset id is shown (+ copyable) on the confirmed screen;
+  adding it to "Manage tokens" (§18.9) so it renders with a friendly name/ticker is a separate,
+  already-existing "add a custom token" action — issuance does not auto-register it (a user may
+  choose never to add a ticker for a token they only ever hold at the raw asset-id level).
+- **Simulator-proven.** `catIssuance.test.ts` mints both modes against the wasm Simulator, asserts
+  the resulting asset id is well-formed and — for the single-issuance case — that the wallet's own
+  CAT-lineage reconstruction (§18.9's `reconstructCats`) finds the minted coin post-broadcast. Never
+  broadcasts to mainnet in CI.
+
+### 18.23 Token swap (#103)
+
+A "swap" is a MARKET ORDER over dexie's public offer book (§18.10's dexie integration, #102) — NOT
+an AMM, and no new wasm/backend surface (per the ticket's own scoping note). Pick what you're
+paying + what you want; `bestSwapQuote` (`lib/swapQuote.ts`) is a PURE, client-side best-rate
+selector over the EXISTING `browseDexieOffers` (§7) search results — display units only,
+informational. Executing hands the matched offer's raw `offer1…` bytes to the wallet's OWN existing
+take pipeline (`prepareTrade`/`confirmTrade`, §18.10) completely unchanged — it re-derives the real
+base-unit amounts from the bytes exactly like a pasted/dropped offer (fail-closed; the dexie display
+numbers are never trusted for the actual spend). No new vault op, no new message action.
+
+- **UI (fullscreen-only, §6.4).** A `Trade` tab, "Swap" — pick "You pay" / "You receive" from the
+  wallet's own asset list (§18.9) → a quote appears automatically (querying dexie filtered by the
+  chosen pair) → Review decodes the REAL offer via `prepareTrade` → Confirm broadcasts via
+  `confirmTrade` → poll to confirmed/retry (`sendStatus`). The popup omits the tab entirely, same
+  tiering rationale as Issue (§18.22) — swap execution is a real spend.
+- **Best-rate selection.** Among every open (`status:0`) dexie offer matching the chosen pair,
+  `bestSwapQuote` picks the highest `buyAmount/sellAmount` ratio; ties/no-match return `null` (the
+  UI's empty state). Matches by either the dexie-reported ticker `code` OR the raw CAT asset id
+  `id`, so callers can search by whichever they have; the returned quote echoes the matched leg's
+  OWN `code` for display (never the raw id, even when the caller searched by it).
+- **Proven.** `swapQuote.test.ts` unit-tests the selector (best-rate, status filtering, malformed
+  legs, same-asset rejection); `swapPanel.test.tsx` covers the picker → quote → review → confirm →
+  poll flow against a mocked SW.
+
+### 18.24 Option contracts — mint / list / exercise (#104)
+
+Option-contract puzzle support DOES exist in the shipped `chia-wallet-sdk-wasm` (the ticket's own
+"verify before scoping" flag) — but only as LOW-LEVEL primitives (`OptionInfo`/`OptionUnderlying`/
+`OptionType`/`OptionMetadata`, `Clvm.spendOption`/`meltSingleton`/`sendMessage`/
+`spendSettlementCoin`/`singletonLauncher`), with NO `Action`/`Spends` driver convenience (unlike
+CAT/NFT — no `Action.mintOption`, no `Spends.addOption`). `optionContracts.ts` hand-rolls the
+singleton launch + underlying lock/unlock exactly as the upstream `chia-wallet-sdk`'s OWN
+`napi/__test__/options.spec.ts` reference test does (napi and wasm share the same
+`chia-sdk-bindings` surface, so that test is a byte-for-byte authoritative usage guide).
+
+**MVP scope, deliberately narrow** (mirrors how §18.9's offer engine documents its own gaps):
+- **XCH-denominated only.** Both the underlying (locked collateral) and the strike (exercise price)
+  are native XCH. `OptionType.cat`/`.revocableCat`/`.nft` exist in the wasm for a follow-up.
+- **Self-mint, self-exercise round trip.** This wallet must be BOTH the writer (creator) and the
+  holder to exercise — the local {@link OptionRecord} (below) carries the full off-chain terms this
+  wallet needs; a third party who only sees the bare on-chain singleton has no way to learn the
+  strike/expiration/creator without them being published out-of-band (e.g. a marketplace listing
+  carrying the terms alongside the launcher id, analogous to how an offer string carries its own
+  terms). Transferring a minted option to another wallet, and clawing it back after expiry
+  (`OptionUnderlying.clawbackSpend` already ships in the wasm for exactly that), are follow-ups.
+
+**Mint** (`prepareOptionMint`/`confirmOptionMint`, §7): the funding coin creates TWO sibling coins
+in one spend — the underlying-lock coin (at `OptionUnderlying.puzzleHash()`) and the singleton
+launcher (at `Constants.singletonLauncherHash()`); the launcher is spent to create the eve option
+singleton (at `OptionInfo.puzzleHash()`), immediately re-spent once more to commit its REAL
+(non-eve) lineage — the same "eve create, then re-spend" shape §18.19's `createEveDid`+`spendDid`
+uses, except DID has a wasm helper for the launcher plumbing; options don't, so it's built explicitly.
+Returns the FULL {@link OptionRecord} the caller MUST persist — `confirmOptionMint` records it into
+the LOCAL option registry (mirrors §18.10's #101 offer-log shape/idioms exactly) as a side effect,
+since a bare on-chain option carries no recoverable terms.
+
+```ts
+interface OptionRecord {
+  launcherId: string;                  // the option singleton's stable identity (hex)
+  creatorPuzzleHashHex: string;        // writer's p2 — receives the strike on exercise
+  holderPuzzleHashHex: string;         // current holder's p2 — who can exercise
+  expirationSeconds: string;           // absolute unix seconds (decimal string)
+  underlyingAmount: string;            // locked collateral, base units (decimal string)
+  strikeAmount: string;                // exercise price, base units (decimal string)
+  underlyingLockParentCoinId: string;  // rebuilds the exact underlying-lock Coin object
+  coinIdHex: string;                   // the option's current coin id — the #101-style poll key
+}
+```
+
+**Exercise** (`prepareOptionExercise`/`confirmOptionExercise`, §7), the holder proving control by
+simultaneously melting the option singleton:
+1. Melt the option's OWN singleton coin via a delegated spend carrying `meltSingleton()` +
+   `sendMessage(23, underlying.delegatedPuzzleHash(), [underlyingLockCoinId])` — mode `23` and the
+   receiver/data shape are copied VERBATIM from the upstream reference test; this is the
+   "SingletonMember" proof-of-simultaneous-spend the underlying's 1-of-N exercise path checks for.
+2. Fund + settle the strike payment to the creator through the SAME settlement-puzzle mechanism
+   §18.10's offer engine already uses — a `NotarizedPayment` keyed by the option's own launcher id,
+   UN-hinted for XCH (`OptionType::is_hinted() == false` for XCH — a mismatch here would make the
+   underlying's own `payment_assertion` fail, since it re-derives the SAME notarized-payment tree
+   hash from the recorded terms).
+3. Unlock the underlying (`OptionUnderlying.exerciseSpend` — the wasm builds the 1-of-N puzzle logic
+   internally, no hand-rolled puzzle here) and claim the released value straight to the holder's own
+   address in the SAME bundle (it lands back at the settlement puzzle un-notarized, so leaving it
+   unclaimed would let ANY spend claim it later — this module claims it immediately instead).
+
+Throws `OPTION_NOT_FOUND` when the option's live coin can't be located at its expected (fully
+deterministic from the recorded terms) puzzle hash, `EXPIRED` past `expirationSeconds`,
+`MISSING_KEY` when this wallet is not the recorded holder, `NO_SUITABLE_COIN` when it cannot fund
+the strike + fee.
+
+**List** (`getOptions`, §7): the LOCAL option registry for the active wallet + active index —
+reconciled against the chain (a still-`'open'` entry whose `coinIdHex` is now spent flips to
+`'exercised'` — the SAME cheap `sendStatus`/`coinConfirmed` poll every confirm-poll already uses;
+MVP has no clawback path, so "spent" only ever means exercised). Mirrors §18.10's `getOffers`
+reconciliation pattern exactly.
+
+**UI (fullscreen-only, §6.4).** A `Trade` tab, "Options" — mint form (underlying amount, strike
+amount, expiration) → review (decoded from the built spend) → confirm/poll, plus a list of minted
+options (open/exercised) each with an "Exercise" action when still open and not yet expired. The
+popup omits the tab entirely, same tiering rationale as Issue (§18.22).
+
+**Simulator-proven with REALISTIC amounts.** `optionContracts.test.ts` mints AND exercises against
+the wasm Simulator using non-trivial amounts (1 XCH underlying, 0.5 XCH strike) — the upstream
+reference test this module mirrors uses a 1-mojo toy strike, which would hide a coin-conservation
+bug a real-sized strike would expose. Covers expiration rejection, insufficient-funds rejection, and
+that a second exercise attempt after the first correctly reports `OPTION_NOT_FOUND`. Never
+broadcasts to mainnet in CI.
