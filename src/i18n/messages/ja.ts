@@ -252,9 +252,15 @@ export const ja: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': '作成',
   'trade.mode.take': '承諾',
+  'trade.mode.offers': 'オファー',
+  'trade.offers.empty': 'まだオファーを作成していません。',
+  'trade.offers.status.open': 'オープン',
+  'trade.offers.status.taken': '成立',
+  'trade.offers.status.cancelled': 'キャンセル済み',
   'trade.make.continue': '続ける',
   'trade.make.review.intro': 'オファーを作成する前に取引内容を確認してください。',
   'trade.make.submit': 'オファーを作成',
+  'trade.addAsset': '+ 別の資産を追加',
   'trade.error.sameAsset': '取引する2つの異なる資産を選択してください',
   'trade.error.build': 'この取引を作成できませんでした。残高を確認してもう一度お試しください',
   'trade.deal.intro': 'このオファーを共有してください。誰でも承諾でき、交換はアトミックに行われます。',
@@ -273,6 +279,12 @@ export const ja: Record<string, string> = {
   'trade.take.failed': '取引は成立しませんでした。もう一度お試しください。',
   'trade.summary.youGet': '受け取る資産',
   'trade.summary.youPay': '支払う資産',
+  'trade.dexie.post': 'Dexieに投稿',
+  'trade.dexie.posted': 'Dexieに投稿しました — 他のウォレットが見つけられるようになりました。',
+  'trade.dexie.postFailed': 'Dexieへの投稿に失敗しました。もう一度お試しください。',
+  'trade.dexie.browse': 'Dexieを閲覧',
+  'trade.dexie.browseEmpty': 'Dexieでオープンなオファーが見つかりません。',
+  'trade.dexie.import': 'インポート',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dAppストア',

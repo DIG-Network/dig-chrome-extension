@@ -252,9 +252,15 @@ export const de: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Erstellen',
   'trade.mode.take': 'Annehmen',
+  'trade.mode.offers': 'Angebote',
+  'trade.offers.empty': 'Du hast noch keine Angebote erstellt.',
+  'trade.offers.status.open': 'Offen',
+  'trade.offers.status.taken': 'Angenommen',
+  'trade.offers.status.cancelled': 'Storniert',
   'trade.make.continue': 'Weiter',
   'trade.make.review.intro': 'Prüfen Sie Ihren Tausch, bevor Sie das Angebot erstellen.',
   'trade.make.submit': 'Angebot erstellen',
+  'trade.addAsset': '+ Weiteres Asset hinzufügen',
   'trade.error.sameAsset': 'Wählen Sie zwei unterschiedliche Vermögenswerte zum Handeln aus',
   'trade.error.build': 'Dieser Trade konnte nicht erstellt werden — überprüfen Sie Ihre Guthaben und versuchen Sie es erneut',
   'trade.deal.intro': 'Teilen Sie dieses Angebot. Jeder kann es annehmen — der Tausch erfolgt atomar.',
@@ -273,6 +279,12 @@ export const de: Record<string, string> = {
   'trade.take.failed': 'Der Trade wurde nicht abgeschlossen. Versuchen Sie es erneut.',
   'trade.summary.youGet': 'Sie erhalten',
   'trade.summary.youPay': 'Sie zahlen',
+  'trade.dexie.post': 'Bei Dexie veröffentlichen',
+  'trade.dexie.posted': 'Bei Dexie veröffentlicht – andere Wallets können es jetzt finden.',
+  'trade.dexie.postFailed': 'Veröffentlichung bei Dexie fehlgeschlagen. Bitte erneut versuchen.',
+  'trade.dexie.browse': 'Dexie durchsuchen',
+  'trade.dexie.browseEmpty': 'Keine offenen Angebote auf Dexie gefunden.',
+  'trade.dexie.import': 'Importieren',
 
   // ── apps (#59) ──
   'apps.title': 'DIG-dApp-Store',

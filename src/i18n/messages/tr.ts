@@ -252,9 +252,15 @@ export const tr: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Oluştur',
   'trade.mode.take': 'Kabul et',
+  'trade.mode.offers': 'Teklifler',
+  'trade.offers.empty': 'Henüz hiç teklif oluşturmadınız.',
+  'trade.offers.status.open': 'Açık',
+  'trade.offers.status.taken': 'Kabul edildi',
+  'trade.offers.status.cancelled': 'İptal edildi',
   'trade.make.continue': 'Devam et',
   'trade.make.review.intro': 'Teklifi oluşturmadan önce takasınızı gözden geçirin.',
   'trade.make.submit': 'Teklif oluştur',
+  'trade.addAsset': '+ Başka bir varlık ekle',
   'trade.error.sameAsset': 'Takas için iki farklı varlık seçin',
   'trade.error.build': 'Bu takas oluşturulamadı — bakiyelerinizi kontrol edip tekrar deneyin',
   'trade.deal.intro': 'Bu teklifi paylaşın. Herkes kabul edebilir — takas atomiktir.',
@@ -273,6 +279,12 @@ export const tr: Record<string, string> = {
   'trade.take.failed': 'Takas gerçekleşmedi. Tekrar deneyin.',
   'trade.summary.youGet': 'Aldığınız',
   'trade.summary.youPay': 'Ödediğiniz',
+  'trade.dexie.post': 'Dexie\'de yayınla',
+  'trade.dexie.posted': 'Dexie\'de yayınlandı — diğer cüzdanlar artık bulabilir.',
+  'trade.dexie.postFailed': 'Dexie\'de yayınlanamadı. Tekrar deneyin.',
+  'trade.dexie.browse': 'Dexie\'ye göz at',
+  'trade.dexie.browseEmpty': 'Dexie\'de açık teklif bulunamadı.',
+  'trade.dexie.import': 'İçe aktar',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dApp Mağazası',

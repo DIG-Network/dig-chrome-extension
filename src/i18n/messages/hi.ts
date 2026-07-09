@@ -252,9 +252,15 @@ export const hi: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'बनाएं',
   'trade.mode.take': 'लें',
+  'trade.mode.offers': 'ऑफ़र',
+  'trade.offers.empty': 'आपने अभी तक कोई ऑफ़र नहीं बनाया है।',
+  'trade.offers.status.open': 'खुला',
+  'trade.offers.status.taken': 'स्वीकृत',
+  'trade.offers.status.cancelled': 'रद्द',
   'trade.make.continue': 'जारी रखें',
   'trade.make.review.intro': 'ऑफ़र बनाने से पहले अपने ट्रेड की समीक्षा करें।',
   'trade.make.submit': 'ऑफ़र बनाएं',
+  'trade.addAsset': '+ एक और संपत्ति जोड़ें',
   'trade.error.sameAsset': 'ट्रेड करने के लिए दो अलग-अलग एसेट चुनें',
   'trade.error.build': 'यह ट्रेड नहीं बन सका — अपना बैलेंस जांचें और फिर से कोशिश करें',
   'trade.deal.intro': 'यह ऑफ़र शेयर करें। कोई भी इसे स्वीकार कर सकता है — स्वैप एटॉमिक होता है।',
@@ -273,6 +279,12 @@ export const hi: Record<string, string> = {
   'trade.take.failed': 'ट्रेड पूरा नहीं हो सका। फिर से कोशिश करें।',
   'trade.summary.youGet': 'आपको मिलेगा',
   'trade.summary.youPay': 'आप देंगे',
+  'trade.dexie.post': 'Dexie पर पोस्ट करें',
+  'trade.dexie.posted': 'Dexie पर पोस्ट हो गया — अन्य वॉलेट अब इसे ढूंढ सकते हैं।',
+  'trade.dexie.postFailed': 'Dexie पर पोस्ट नहीं हो सका। फिर से प्रयास करें।',
+  'trade.dexie.browse': 'Dexie ब्राउज़ करें',
+  'trade.dexie.browseEmpty': 'Dexie पर कोई खुला ऑफ़र नहीं मिला।',
+  'trade.dexie.import': 'आयात करें',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dApp स्टोर',

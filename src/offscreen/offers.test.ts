@@ -142,8 +142,8 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
     const requestedXch = 50_000_000_000n;
     const made = await makeOffer(asOffer(), chain, {
       seed: makerSeed,
-      offered: { asset: { kind: 'cat', assetId }, amount: offeredCat },
-      requested: { asset: { kind: 'xch' }, amount: requestedXch },
+      offered: [{ asset: { kind: 'cat', assetId }, amount: offeredCat }],
+      requested: [{ asset: { kind: 'xch' }, amount: requestedXch }],
       activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
@@ -183,8 +183,8 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
     const requestedCat = 250n;
     const made = await makeOffer(asOffer(), chain, {
       seed: makerSeed,
-      offered: { asset: { kind: 'xch' }, amount: offeredXch },
-      requested: { asset: { kind: 'cat', assetId }, amount: requestedCat },
+      offered: [{ asset: { kind: 'xch' }, amount: offeredXch }],
+      requested: [{ asset: { kind: 'cat', assetId }, amount: requestedCat }],
       activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
@@ -218,8 +218,8 @@ describe('offers — two-party settlement (Simulator-validated)', () => {
 
     const made = await makeOffer(asOffer(), chain, {
       seed: makerSeed,
-      offered: { asset: { kind: 'cat', assetId }, amount: 300n },
-      requested: { asset: { kind: 'xch' }, amount: 50_000_000_000n },
+      offered: [{ asset: { kind: 'cat', assetId }, amount: 300n }],
+      requested: [{ asset: { kind: 'xch' }, amount: 50_000_000_000n }],
       activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
@@ -251,8 +251,8 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
     const requestedXch = 50_000_000_000n;
     const made = await makeOffer(asOffer(), chain, {
       seed: makerSeed,
-      offered: { asset: { kind: 'nft', launcherId }, amount: 1n },
-      requested: { asset: { kind: 'xch' }, amount: requestedXch },
+      offered: [{ asset: { kind: 'nft', launcherId }, amount: 1n }],
+      requested: [{ asset: { kind: 'xch' }, amount: requestedXch }],
       activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
@@ -296,8 +296,8 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
 
     const made = await makeOffer(asOffer(), chain, {
       seed: makerSeed,
-      offered: { asset: { kind: 'nft', launcherId }, amount: 1n },
-      requested: { asset: { kind: 'xch' }, amount: requestedXch },
+      offered: [{ asset: { kind: 'nft', launcherId }, amount: 1n }],
+      requested: [{ asset: { kind: 'xch' }, amount: requestedXch }],
       activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
@@ -326,8 +326,8 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
 
     const made = await makeOffer(asOffer(), chain, {
       seed: makerSeed,
-      offered: { asset: { kind: 'nft', launcherId }, amount: 1n },
-      requested: { asset: { kind: 'xch' }, amount: 50_000_000_000n },
+      offered: [{ asset: { kind: 'nft', launcherId }, amount: 1n }],
+      requested: [{ asset: { kind: 'xch' }, amount: 50_000_000_000n }],
       activeIndex: 0,
       additionalDataHex: TESTNET11_AGG_SIG_ME,
     });
@@ -345,8 +345,8 @@ describe('offers — NFT (Simulator-validated, #94)', () => {
     await expect(
       makeOffer(asOffer(), simChain(new chia.Simulator()), {
         seed,
-        offered: { asset: { kind: 'xch' }, amount: 1n },
-        requested: { asset: { kind: 'nft', launcherId: 'aa'.repeat(32) }, amount: 1n },
+        offered: [{ asset: { kind: 'xch' }, amount: 1n }],
+        requested: [{ asset: { kind: 'nft', launcherId: 'aa'.repeat(32) }, amount: 1n }],
         additionalDataHex: TESTNET11_AGG_SIG_ME,
       }),
     ).rejects.toThrow(/UNSUPPORTED_REQUEST/);
@@ -359,8 +359,8 @@ describe('offers — validation + errors', () => {
     await expect(
       makeOffer(asOffer(), simChain(new chia.Simulator()), {
         seed,
-        offered: { asset: { kind: 'xch' }, amount: 1n },
-        requested: { asset: { kind: 'xch' }, amount: 1n },
+        offered: [{ asset: { kind: 'xch' }, amount: 1n }],
+        requested: [{ asset: { kind: 'xch' }, amount: 1n }],
         additionalDataHex: TESTNET11_AGG_SIG_ME,
       }),
     ).rejects.toThrow(/SAME_ASSET/);
@@ -371,8 +371,8 @@ describe('offers — validation + errors', () => {
     await expect(
       makeOffer(asOffer(), simChain(new chia.Simulator()), {
         seed,
-        offered: { asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 1n },
-        requested: { asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 1n },
+        offered: [{ asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 1n }],
+        requested: [{ asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 1n }],
         additionalDataHex: TESTNET11_AGG_SIG_ME,
       }),
     ).rejects.toThrow(/SAME_ASSET/);
@@ -386,11 +386,223 @@ describe('offers — validation + errors', () => {
     await expect(
       makeOffer(asOffer(), simChain(sim), {
         seed,
-        offered: { asset: { kind: 'cat', assetId: 'bb'.repeat(32) }, amount: 1n },
-        requested: { asset: { kind: 'xch' }, amount: 1n },
+        offered: [{ asset: { kind: 'cat', assetId: 'bb'.repeat(32) }, amount: 1n }],
+        requested: [{ asset: { kind: 'xch' }, amount: 1n }],
         activeIndex: 0,
         additionalDataHex: TESTNET11_AGG_SIG_ME,
       }),
     ).rejects.toThrow(/NO_CAT_COINS/);
+  });
+
+  it('rejects an empty offered array', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    await expect(
+      makeOffer(asOffer(), simChain(new chia.Simulator()), {
+        seed,
+        offered: [],
+        requested: [{ asset: { kind: 'xch' }, amount: 1n }],
+        additionalDataHex: TESTNET11_AGG_SIG_ME,
+      }),
+    ).rejects.toThrow(/BAD_REQUEST/);
+  });
+
+  it('rejects an empty requested array', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    await expect(
+      makeOffer(asOffer(), simChain(new chia.Simulator()), {
+        seed,
+        offered: [{ asset: { kind: 'xch' }, amount: 1n }],
+        requested: [],
+        additionalDataHex: TESTNET11_AGG_SIG_ME,
+      }),
+    ).rejects.toThrow(/BAD_REQUEST/);
+  });
+
+  it('rejects the same offered asset listed twice (#100)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    await expect(
+      makeOffer(asOffer(), simChain(new chia.Simulator()), {
+        seed,
+        offered: [
+          { asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 1n },
+          { asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 2n },
+        ],
+        requested: [{ asset: { kind: 'xch' }, amount: 1n }],
+        additionalDataHex: TESTNET11_AGG_SIG_ME,
+      }),
+    ).rejects.toThrow(/DUPLICATE_ASSET/);
+  });
+
+  it('rejects the same requested asset listed twice (#100)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    await expect(
+      makeOffer(asOffer(), simChain(new chia.Simulator()), {
+        seed,
+        offered: [{ asset: { kind: 'xch' }, amount: 1n }],
+        requested: [
+          { asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 1n },
+          { asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 2n },
+        ],
+        additionalDataHex: TESTNET11_AGG_SIG_ME,
+      }),
+    ).rejects.toThrow(/DUPLICATE_ASSET/);
+  });
+
+  it('rejects an asset requested that is also offered (generalized SAME_ASSET, #100)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    await expect(
+      makeOffer(asOffer(), simChain(new chia.Simulator()), {
+        seed,
+        offered: [
+          { asset: { kind: 'xch' }, amount: 1n },
+          { asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 1n },
+        ],
+        requested: [{ asset: { kind: 'cat', assetId: 'aa'.repeat(32) }, amount: 2n }],
+        additionalDataHex: TESTNET11_AGG_SIG_ME,
+      }),
+    ).rejects.toThrow(/SAME_ASSET/);
+  });
+});
+
+describe('offers — multi-asset (#100: >1 offered and/or >1 requested asset in one offer)', () => {
+  it('MULTI 1: maker offers XCH + a CAT together, requests a DIFFERENT CAT; taker takes both offered assets', async () => {
+    const makerSeed = await mnemonicToSeed(golden.mnemonic);
+    const takerSeed = await mnemonicToSeed(TAKER_MNEMONIC);
+    const makerRing = buildKeyring(asFlow(), makerSeed, { index: 0 });
+    const takerRing = buildKeyring(asFlow(), takerSeed, { index: 0 });
+    const makerPh0 = chia.fromHex(makerRing[0].puzzleHashHex);
+    const takerPh0 = chia.fromHex(takerRing[0].puzzleHashHex);
+
+    const sim = new chia.Simulator();
+    sim.newCoin(makerPh0, 5_000_000_000_000n); // maker XCH — mints the offered CAT AND funds the offered XCH leg
+    sim.newCoin(takerPh0, 5_000_000_000_000n); // taker XCH — mints the requested CAT
+    const offeredAssetId = mintCatTo(sim, makerRing[0]);
+    const requestedAssetId = mintCatTo(sim, takerRing[0]);
+    const chain = simChain(sim);
+
+    const offeredXch = 10_000_000_000n;
+    const offeredCat = 400n;
+    const requestedCat = 175n;
+    const made = await makeOffer(asOffer(), chain, {
+      seed: makerSeed,
+      offered: [
+        { asset: { kind: 'xch' }, amount: offeredXch },
+        { asset: { kind: 'cat', assetId: offeredAssetId }, amount: offeredCat },
+      ],
+      requested: [{ asset: { kind: 'cat', assetId: requestedAssetId }, amount: requestedCat }],
+      activeIndex: 0,
+      additionalDataHex: TESTNET11_AGG_SIG_ME,
+    });
+    expect(made.offer.startsWith('offer1')).toBe(true);
+    expect(made.summary.offered).toEqual(
+      expect.arrayContaining([
+        { asset: { kind: 'xch' }, amount: offeredXch },
+        { asset: { kind: 'cat', assetId: offeredAssetId }, amount: offeredCat },
+      ]),
+    );
+    // #101 — the poll key: every real offered coin's id is surfaced so the offer-log can detect a
+    // later take/cancel by checking whether ANY of them got spent (they're spent atomically together).
+    expect(made.offeredCoinIdsHex.length).toBeGreaterThanOrEqual(2);
+
+    const summary = inspectOffer(asOffer(), made.offer);
+    expect(summary.offered).toEqual(
+      expect.arrayContaining([
+        { asset: { kind: 'xch' }, amount: offeredXch },
+        { asset: { kind: 'cat', assetId: offeredAssetId }, amount: offeredCat },
+      ]),
+    );
+    expect(summary.requested).toHaveLength(1);
+
+    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, activeIndex: 0, additionalDataHex: TESTNET11_AGG_SIG_ME });
+    const res = await chain.pushSpendBundle(taken.bundle); // Simulator validates → no throw = atomic settlement valid
+    expect(res.success).toBe(true);
+
+    // maker received the requested CAT; taker received BOTH offered assets.
+    const makerRequestedCat = sim.unspentCoins(chia.catPuzzleHash(chia.fromHex(requestedAssetId), makerPh0), false).map((c) => c.amount);
+    expect(makerRequestedCat).toContain(requestedCat);
+    const takerXchAfterTotal = sim.unspentCoins(takerPh0, false).reduce((a, c) => a + c.amount, 0n);
+    expect(takerXchAfterTotal).toBeGreaterThanOrEqual(offeredXch); // the offered XCH landed (merged as change)
+    const takerOfferedCat = sim.unspentCoins(chia.catPuzzleHash(chia.fromHex(offeredAssetId), takerPh0), false).map((c) => c.amount);
+    expect(takerOfferedCat).toContain(offeredCat);
+  });
+
+  it('MULTI 2: maker offers a CAT, requests XCH + a second CAT together; taker takes and funds both', async () => {
+    const makerSeed = await mnemonicToSeed(golden.mnemonic);
+    const takerSeed = await mnemonicToSeed(TAKER_MNEMONIC);
+    const makerRing = buildKeyring(asFlow(), makerSeed, { index: 0 });
+    const takerRing = buildKeyring(asFlow(), takerSeed, { index: 0 });
+    const makerPh0 = chia.fromHex(makerRing[0].puzzleHashHex);
+    const takerPh0 = chia.fromHex(takerRing[0].puzzleHashHex);
+
+    const sim = new chia.Simulator();
+    sim.newCoin(makerPh0, 5_000_000_000_000n); // maker XCH — mints the offered CAT
+    sim.newCoin(takerPh0, 6_000_000_000_000n); // taker XCH — pays the requested XCH leg + mints the 2nd requested CAT
+    const offeredAssetId = mintCatTo(sim, makerRing[0]);
+    const requestedCatAssetId = mintCatTo(sim, takerRing[0]);
+    const chain = simChain(sim);
+
+    const offeredCat = 300n;
+    const requestedXch = 20_000_000_000n;
+    const requestedCat = 150n;
+    const made = await makeOffer(asOffer(), chain, {
+      seed: makerSeed,
+      offered: [{ asset: { kind: 'cat', assetId: offeredAssetId }, amount: offeredCat }],
+      requested: [
+        { asset: { kind: 'xch' }, amount: requestedXch },
+        { asset: { kind: 'cat', assetId: requestedCatAssetId }, amount: requestedCat },
+      ],
+      activeIndex: 0,
+      additionalDataHex: TESTNET11_AGG_SIG_ME,
+    });
+
+    const summary = inspectOffer(asOffer(), made.offer);
+    expect(summary.offered).toEqual([{ asset: { kind: 'cat', assetId: offeredAssetId }, amount: offeredCat }]);
+    expect(summary.requested).toHaveLength(2);
+    expect(summary.requested).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ asset: { kind: 'xch' }, amount: requestedXch }),
+        expect.objectContaining({ asset: { kind: 'cat', assetId: requestedCatAssetId }, amount: requestedCat }),
+      ]),
+    );
+
+    const taken = await takeOffer(asOffer(), chain, { seed: takerSeed, offerStr: made.offer, activeIndex: 0, additionalDataHex: TESTNET11_AGG_SIG_ME });
+    const res = await chain.pushSpendBundle(taken.bundle);
+    expect(res.success).toBe(true);
+
+    // maker received BOTH requested assets; taker received the offered CAT.
+    const makerXch = sim.unspentCoins(makerPh0, false).map((c) => c.amount);
+    expect(makerXch).toContain(requestedXch);
+    const makerRequestedCat = sim.unspentCoins(chia.catPuzzleHash(chia.fromHex(requestedCatAssetId), makerPh0), false).map((c) => c.amount);
+    expect(makerRequestedCat).toContain(requestedCat);
+    const takerOfferedCat = sim.unspentCoins(chia.catPuzzleHash(chia.fromHex(offeredAssetId), takerPh0), false).map((c) => c.amount);
+    expect(takerOfferedCat).toContain(offeredCat);
+  });
+
+  it('CANCEL: a multi-asset offer (XCH + CAT offered) cancels back to the maker in one spend', async () => {
+    const makerSeed = await mnemonicToSeed(golden.mnemonic);
+    const makerRing = buildKeyring(asFlow(), makerSeed, { index: 0 });
+    const makerPh0 = chia.fromHex(makerRing[0].puzzleHashHex);
+
+    const sim = new chia.Simulator();
+    sim.newCoin(makerPh0, 5_000_000_000_000n);
+    const assetId = mintCatTo(sim, makerRing[0]);
+    const chain = simChain(sim);
+
+    const made = await makeOffer(asOffer(), chain, {
+      seed: makerSeed,
+      offered: [
+        { asset: { kind: 'xch' }, amount: 10_000_000_000n },
+        { asset: { kind: 'cat', assetId }, amount: 300n },
+      ],
+      requested: [{ asset: { kind: 'cat', assetId: 'bb'.repeat(32) }, amount: 50_000_000_000n }],
+      activeIndex: 0,
+      additionalDataHex: TESTNET11_AGG_SIG_ME,
+    });
+
+    const cancelled = await cancelOffer(asOffer(), chain, { seed: makerSeed, offerStr: made.offer, activeIndex: 0, additionalDataHex: TESTNET11_AGG_SIG_ME });
+    const res = await chain.pushSpendBundle(cancelled.bundle);
+    expect(res.success).toBe(true);
+    const makerCat = sim.unspentCoins(chia.catPuzzleHash(chia.fromHex(assetId), makerPh0), false).map((c) => c.amount);
+    expect(makerCat.reduce((a, b) => a + b, 0n)).toBe(1000n);
   });
 });

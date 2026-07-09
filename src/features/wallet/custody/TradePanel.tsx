@@ -1,22 +1,28 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import qrcode from 'qrcode-generator';
-import { toBaseUnits, formatBaseUnits } from '@/lib/wallet-view';
+import { toBaseUnits } from '@/lib/wallet-view';
 import { popOutToFullpage } from '@/lib/popout';
 import { isFullpageSurface } from '@/features/collectibles/surface';
 import { ViewHeader } from '@/components/ViewHeader';
+import { FourState } from '@/components/FourState';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { WireOfferAsset, WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 import { useListCollectiblesQuery } from '@/features/collectibles/collectiblesApi';
 import { NftPickerModal } from '@/features/collectibles/NftPickerModal';
 import { NftMedia } from '@/features/collectibles/NftDetail';
 import { nftDisplayName, nftImageSrc } from '@/features/collectibles/nftDisplay';
+import { legLabel } from '@/features/wallet/custody/offerLegFormat';
+import { OffersPanel } from '@/features/wallet/custody/OffersPanel';
 import {
   useMakeCustodyOfferMutation,
   useInspectCustodyOfferMutation,
   usePrepareTradeMutation,
   useConfirmTradeMutation,
   useLazySendStatusQuery,
+  usePostOfferToDexieMutation,
+  useBrowseDexieOffersQuery,
+  useResolveDexieOfferMutation,
 } from '@/features/wallet/custodyApi';
 
 const XCH_DECIMALS = 12;
@@ -39,7 +45,7 @@ function offerQrDataUrl(offer: string): string | null {
   }
 }
 
-type Mode = 'make' | 'take';
+type Mode = 'make' | 'take' | 'offers';
 type MakePhase = 'form' | 'review' | 'made';
 type TakePhase = 'paste' | 'review' | 'confirm' | 'sending' | 'confirmed' | 'failed';
 /** What the maker is GIVING: a fungible balance (XCH/CAT) or one of the wallet's own NFTs (§94). */
@@ -92,6 +98,9 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
             <button type="button" role="tab" aria-selected={mode === 'take'} className={`dig-btn ${mode === 'take' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-take" onClick={() => setMode('take')}>
               <FormattedMessage id="trade.mode.take" />
             </button>
+            <button type="button" role="tab" aria-selected={mode === 'offers'} className={`dig-btn ${mode === 'offers' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-offers" onClick={() => setMode('offers')}>
+              <FormattedMessage id="trade.mode.offers" />
+            </button>
           </div>
           {!isFull && (
             <button
@@ -105,17 +114,49 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
           )}
         </div>
 
-        {mode === 'make' ? <MakeTrade assets={assets} full={isFull} /> : <TakeTrade pollMs={pollMs} />}
+        {mode === 'make' && <MakeTrade assets={assets} full={isFull} />}
+        {mode === 'take' && <TakeTrade pollMs={pollMs} full={isFull} />}
+        {mode === 'offers' && <OffersPanel full={isFull} />}
       </section>
     </div>
   );
 }
 
+/** One currency (XCH/CAT) leg being edited in the multi-asset give/get builder (#100): which asset
+ * row it points at (an index into `assets`) + its decimal-string amount. */
+interface CurrencyLegDraft {
+  assetIdx: number;
+  amount: string;
+}
+
+/** A stable overlap/dedupe key for one wire offer leg — same asset identity ⇒ same key (#100,
+ * mirrors the offer engine's own `assetKey`, kept client-side for an immediate inline error rather
+ * than a round trip to discover a DUPLICATE_ASSET/SAME_ASSET failure). */
+function wireLegKey(l: WireOfferLeg): string {
+  return l.asset.kind === 'xch' ? 'xch' : l.asset.kind === 'cat' ? `cat:${l.asset.assetId}` : `nft:${l.asset.launcherId}`;
+}
+
+/** The first asset index NOT already used by `legs` (falls back to 0 when every asset is used —
+ * the user can still change it; validation catches a resulting duplicate). */
+function nextUnusedAssetIdx(assets: AssetBalance[], legs: CurrencyLegDraft[]): number {
+  const used = new Set(legs.map((l) => l.assetIdx));
+  for (let i = 0; i < assets.length; i++) if (!used.has(i)) return i;
+  return 0;
+}
+
 /**
  * MAKE: pick give/get assets + amounts → a "You give / You get" review → build the offer → show
  * the shareable deal card. Guided steps (#169): form → review → made, so nothing is built until
- * the maker has confirmed the exact terms. `full` gates the ADVANCED give-kind toggle (offering an
- * NFT, §94) — the compact popup only offers currency-for-currency (basic maker).
+ * the maker has confirmed the exact terms. `full` gates TWO advanced capabilities — offering an NFT
+ * (§94) and composing MULTIPLE assets per side (#100, "+ Add another asset"); the compact popup
+ * stays a single currency-for-currency leg on each side (basic maker).
+ *
+ * **Multi-asset (#100).** `giveLegs`/`getLegs` are arrays of {@link CurrencyLegDraft} — 1 element in
+ * the popup (no add/remove controls rendered), 1-or-more in fullscreen. Every leg on a side must
+ * name a DIFFERENT asset (checked client-side before ever building anything, mirroring the engine's
+ * own `DUPLICATE_ASSET`/`SAME_ASSET` checks), and no asset may appear on BOTH sides. Offering an NFT
+ * (`giveKind === 'nft'`) stays a single exclusive leg — the v1 offer engine supports at most one
+ * offered NFT — so the "+ Add another asset" control only applies to the currency give path.
  *
  * **NFT picker (#170).** Choosing the offered NFT opens the {@link NftPickerModal} XL modal (the
  * wallet's NFTs in a searchable grid) instead of a plain dropdown, giving real thumbnails + search
@@ -128,12 +169,10 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
   const intl = useIntl();
   const [phase, setPhase] = useState<MakePhase>('form');
   const [giveKind, setGiveKind] = useState<GiveKind>('currency');
-  const [giveIdx, setGiveIdx] = useState(0);
+  const [giveLegs, setGiveLegs] = useState<CurrencyLegDraft[]>([{ assetIdx: 0, amount: '' }]);
   const [giveNftLauncherId, setGiveNftLauncherId] = useState<string | null>(null);
   const [nftPickerOpen, setNftPickerOpen] = useState(false);
-  const [getIdx, setGetIdx] = useState(assets.length > 1 ? 1 : 0);
-  const [giveAmount, setGiveAmount] = useState('');
-  const [getAmount, setGetAmount] = useState('');
+  const [getLegs, setGetLegs] = useState<CurrencyLegDraft[]>([{ assetIdx: assets.length > 1 ? 1 : 0, amount: '' }]);
   const [error, setError] = useState<string | null>(null);
   const [offer, setOffer] = useState('');
   const [copied, setCopied] = useState(false);
@@ -144,45 +183,82 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
   const [cancelState, setCancelState] = useState<'idle' | 'cancelled' | 'failed'>('idle');
   const nfts = useListCollectiblesQuery(undefined, { skip: giveKind !== 'nft' });
 
-  const give = assets[giveIdx];
-  const get = assets[getIdx];
+  // dexie marketplace integration (#102, fullscreen-only advanced action): post the just-made offer
+  // so other wallets can discover it via dexie's public listing.
+  const [postToDexie, dx] = usePostOfferToDexieMutation();
+  const [dexieState, setDexieState] = useState<'idle' | 'posted' | 'failed'>('idle');
+  async function doPostToDexie() {
+    const res = await postToDexie({ offer });
+    setDexieState('data' in res && res.data?.dexieId ? 'posted' : 'failed');
+  }
+
   const giveNft = nfts.data?.nfts?.find((n) => n.launcherId === giveNftLauncherId);
   const qr = useMemo(() => (offer ? offerQrDataUrl(offer) : null), [offer]);
 
-  /** Validate the current picks and build the two offer legs — the ONE validation path shared by
-   * "Continue" (validate only) and the review step's "Create offer" (validate + build). Sets
-   * `error` and returns null on any invalid pick; never throws. */
-  function computeLegs(): { offered: WireOfferLeg; requested: WireOfferLeg } | null {
-    const getBase = safeBase(getAmount, decimalsOf(get));
-    if (!get || getBase <= 0) {
-      setError(intl.formatMessage({ id: 'send.error.amount' }));
-      return null;
-    }
+  const updateGiveLeg = (i: number, patch: Partial<CurrencyLegDraft>) =>
+    setGiveLegs((legs) => legs.map((l, li) => (li === i ? { ...l, ...patch } : l)));
+  const updateGetLeg = (i: number, patch: Partial<CurrencyLegDraft>) =>
+    setGetLegs((legs) => legs.map((l, li) => (li === i ? { ...l, ...patch } : l)));
+  const addGiveLeg = () => setGiveLegs((legs) => [...legs, { assetIdx: nextUnusedAssetIdx(assets, legs), amount: '' }]);
+  const addGetLeg = () => setGetLegs((legs) => [...legs, { assetIdx: nextUnusedAssetIdx(assets, legs), amount: '' }]);
+  const removeGiveLeg = (i: number) => setGiveLegs((legs) => (legs.length > 1 ? legs.filter((_, li) => li !== i) : legs));
+  const removeGetLeg = (i: number) => setGetLegs((legs) => (legs.length > 1 ? legs.filter((_, li) => li !== i) : legs));
 
-    let offered: WireOfferLeg;
-    if (giveKind === 'nft') {
-      if (!giveNft) return null;
-      offered = { asset: { kind: 'nft', launcherId: giveNft.launcherId }, amount: '1' };
-    } else {
-      if (!give) return null;
-      if (giveIdx === getIdx) {
-        setError(intl.formatMessage({ id: 'trade.error.sameAsset' }));
-        return null;
-      }
-      const giveBase = safeBase(giveAmount, decimalsOf(give));
-      if (giveBase <= 0) {
+  /** Build + validate one side's currency legs into wire legs, or return null (setting `error`) on
+   * the first invalid amount / insufficient balance / duplicate asset within the side. */
+  function buildCurrencyLegs(legs: CurrencyLegDraft[], checkBalance: boolean): WireOfferLeg[] | null {
+    const seen = new Set<string>();
+    const out: WireOfferLeg[] = [];
+    for (const leg of legs) {
+      const asset = assets[leg.assetIdx];
+      if (!asset) return null;
+      const base = safeBase(leg.amount, decimalsOf(asset));
+      if (base <= 0) {
         setError(intl.formatMessage({ id: 'send.error.amount' }));
         return null;
       }
-      if ((give.balance ?? 0) < giveBase) {
+      if (checkBalance && (asset.balance ?? 0) < base) {
         setError(intl.formatMessage({ id: 'send.error.insufficient' }));
         return null;
       }
-      offered = { asset: toWireAsset(give), amount: String(giveBase) };
+      const wireLeg = { asset: toWireAsset(asset), amount: String(base) };
+      const key = wireLegKey(wireLeg);
+      if (seen.has(key)) {
+        setError(intl.formatMessage({ id: 'trade.error.sameAsset' }));
+        return null;
+      }
+      seen.add(key);
+      out.push(wireLeg);
+    }
+    return out;
+  }
+
+  /** Validate the current picks and build the two offer leg arrays — the ONE validation path shared
+   * by "Continue" (validate only) and the review step's "Create offer" (validate + build). Sets
+   * `error` and returns null on any invalid pick; never throws. */
+  function computeLegs(): { offered: WireOfferLeg[]; requested: WireOfferLeg[] } | null {
+    const requested = buildCurrencyLegs(getLegs, false);
+    if (!requested) return null;
+
+    let offered: WireOfferLeg[];
+    if (giveKind === 'nft') {
+      if (!giveNft) return null;
+      offered = [{ asset: { kind: 'nft', launcherId: giveNft.launcherId }, amount: '1' }];
+    } else {
+      const built = buildCurrencyLegs(giveLegs, true);
+      if (!built) return null;
+      offered = built;
+    }
+
+    // Generalized SAME_ASSET (#100): no asset may appear on BOTH sides.
+    const offeredKeys = new Set(offered.map(wireLegKey));
+    if (requested.some((r) => offeredKeys.has(wireLegKey(r)))) {
+      setError(intl.formatMessage({ id: 'trade.error.sameAsset' }));
+      return null;
     }
 
     setError(null);
-    return { offered, requested: { asset: toWireAsset(get), amount: String(getBase) } };
+    return { offered, requested };
   }
 
   /** Step 1 → 2: validate the picks and move to the "You give / You get" review (no network call). */
@@ -238,10 +314,28 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
           <button type="button" className="dig-btn dig-btn--primary" data-testid="trade-copy" onClick={copyOffer}>
             <FormattedMessage id={copied ? 'trade.deal.copied' : 'trade.deal.copy'} />
           </button>
-          <button type="button" className="dig-btn" data-testid="trade-new" onClick={() => { setPhase('form'); setOffer(''); setCancelState('idle'); }}>
+          <button type="button" className="dig-btn" data-testid="trade-new" onClick={() => { setPhase('form'); setOffer(''); setCancelState('idle'); setDexieState('idle'); }}>
             <FormattedMessage id="trade.deal.new" />
           </button>
         </div>
+        {full && (
+          <div style={{ marginTop: 8 }}>
+            {dexieState === 'posted' ? (
+              <p className="dig-state" data-state="success" role="status" data-testid="trade-deal-dexie-posted">
+                <FormattedMessage id="trade.dexie.posted" />
+              </p>
+            ) : (
+              <button type="button" className="dig-btn" data-testid="trade-deal-dexie-post" onClick={() => void doPostToDexie()} disabled={dx.isLoading}>
+                <FormattedMessage id={dx.isLoading ? 'custody.working' : 'trade.dexie.post'} />
+              </button>
+            )}
+            {dexieState === 'failed' && (
+              <p className="dig-error-text" role="alert" data-testid="trade-deal-dexie-post-failed">
+                <FormattedMessage id="trade.dexie.postFailed" />
+              </p>
+            )}
+          </div>
+        )}
         {cancelState === 'cancelled' ? (
           <p className="dig-state" data-state="success" role="status" data-testid="trade-cancelled" style={{ marginTop: 10 }}>
             <FormattedMessage id="trade.cancel.done" />
@@ -260,11 +354,13 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
 
   // Step 2 (#169): the "You give / You get" review — the terms are fixed at this point; Confirm is
   // the ONLY place `makeOffer` is actually called. Mirrors `TwoSided`'s take-side review framing.
+  // Multi-asset (#100): each side's legs join with " + " ("0.1 XCH + 10 $DIG").
   if (phase === 'review') {
+    const legLabel = (leg: CurrencyLegDraft) => `${leg.amount || '0'} ${assets[leg.assetIdx]?.descriptor.ticker ?? ''}`;
     const giveLabel = giveKind === 'nft'
       ? (giveNft ? `NFT ${giveNft.launcherId.slice(0, 6)}…` : '')
-      : `${giveAmount || '0'} ${give?.descriptor.ticker ?? ''}`;
-    const getLabel = `${getAmount || '0'} ${get?.descriptor.ticker ?? ''}`;
+      : giveLegs.map(legLabel).join(' + ');
+    const getLabel = getLegs.map(legLabel).join(' + ');
     return (
       <div data-testid="trade-make-review">
         <p className="dig-muted" style={{ marginTop: 0 }}>
@@ -322,16 +418,47 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
           </div>
         )}
         {giveKind === 'currency' ? (
-          <label className="dig-field">
-            <div style={{ display: 'flex', gap: 8 }}>
-              <select className="dig-input" data-testid="trade-give-asset" value={giveIdx} onChange={(e) => setGiveIdx(Number(e.target.value))}>
-                {assets.map((a, i) => (
-                  <option key={`give-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={i}>{a.descriptor.ticker}</option>
-                ))}
-              </select>
-              <input className="dig-input" data-testid="trade-give-amount" inputMode="decimal" value={giveAmount} onChange={(e) => setGiveAmount(e.target.value)} aria-label={intl.formatMessage({ id: 'trade.give' })} />
-            </div>
-          </label>
+          <>
+            {giveLegs.map((leg, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                <select
+                  className="dig-input"
+                  data-testid={i === 0 ? 'trade-give-asset' : `trade-give-asset-${i}`}
+                  value={leg.assetIdx}
+                  onChange={(e) => updateGiveLeg(i, { assetIdx: Number(e.target.value) })}
+                >
+                  {assets.map((a, ai) => (
+                    <option key={`give-${i}-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={ai}>{a.descriptor.ticker}</option>
+                  ))}
+                </select>
+                <input
+                  className="dig-input"
+                  data-testid={i === 0 ? 'trade-give-amount' : `trade-give-amount-${i}`}
+                  inputMode="decimal"
+                  value={leg.amount}
+                  onChange={(e) => updateGiveLeg(i, { amount: e.target.value })}
+                  aria-label={intl.formatMessage({ id: 'trade.give' })}
+                />
+                {full && i > 0 && (
+                  <button
+                    type="button"
+                    className="dig-link"
+                    data-testid={`trade-give-remove-asset-${i}`}
+                    onClick={() => removeGiveLeg(i)}
+                    aria-label={intl.formatMessage({ id: 'wallet.switcher.remove' })}
+                    style={{ flexShrink: 0 }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            {full && (
+              <button type="button" className="dig-link" data-testid="trade-give-add-asset" onClick={addGiveLeg}>
+                <FormattedMessage id="trade.addAsset" />
+              </button>
+            )}
+          </>
         ) : nfts.data?.nfts?.length ? (
           <div data-testid="trade-give-nft">
             {giveNft ? (
@@ -370,17 +497,48 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
           }}
         />
       )}
-      <label className="dig-field">
+      <div className="dig-field">
         <span><FormattedMessage id="trade.get" /></span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select className="dig-input" data-testid="trade-get-asset" value={getIdx} onChange={(e) => setGetIdx(Number(e.target.value))}>
-            {assets.map((a, i) => (
-              <option key={`get-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={i}>{a.descriptor.ticker}</option>
-            ))}
-          </select>
-          <input className="dig-input" data-testid="trade-get-amount" inputMode="decimal" value={getAmount} onChange={(e) => setGetAmount(e.target.value)} aria-label={intl.formatMessage({ id: 'trade.get' })} />
-        </div>
-      </label>
+        {getLegs.map((leg, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+            <select
+              className="dig-input"
+              data-testid={i === 0 ? 'trade-get-asset' : `trade-get-asset-${i}`}
+              value={leg.assetIdx}
+              onChange={(e) => updateGetLeg(i, { assetIdx: Number(e.target.value) })}
+            >
+              {assets.map((a, ai) => (
+                <option key={`get-${i}-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={ai}>{a.descriptor.ticker}</option>
+              ))}
+            </select>
+            <input
+              className="dig-input"
+              data-testid={i === 0 ? 'trade-get-amount' : `trade-get-amount-${i}`}
+              inputMode="decimal"
+              value={leg.amount}
+              onChange={(e) => updateGetLeg(i, { amount: e.target.value })}
+              aria-label={intl.formatMessage({ id: 'trade.get' })}
+            />
+            {full && i > 0 && (
+              <button
+                type="button"
+                className="dig-link"
+                data-testid={`trade-get-remove-asset-${i}`}
+                onClick={() => removeGetLeg(i)}
+                aria-label={intl.formatMessage({ id: 'wallet.switcher.remove' })}
+                style={{ flexShrink: 0 }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+        {full && (
+          <button type="button" className="dig-link" data-testid="trade-get-add-asset" onClick={addGetLeg}>
+            <FormattedMessage id="trade.addAsset" />
+          </button>
+        )}
+      </div>
       {error && <p className="dig-error-text" role="alert" data-testid="trade-make-error">{error}</p>}
       <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="trade-make-continue">
         <FormattedMessage id="trade.make.continue" />
@@ -390,7 +548,7 @@ function MakeTrade({ assets, full }: { assets: AssetBalance[]; full: boolean }) 
 }
 
 /** TAKE: paste an offer → inspect the two-sided summary → prepare → confirm → broadcast → poll. */
-function TakeTrade({ pollMs }: { pollMs: number }) {
+function TakeTrade({ pollMs, full }: { pollMs: number; full: boolean }) {
   const intl = useIntl();
   const [phase, setPhase] = useState<TakePhase>('paste');
   const [offerStr, setOfferStr] = useState('');
@@ -404,20 +562,39 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
   const [confirmTrade, ct] = useConfirmTradeMutation();
   const [pollStatus] = useLazySendStatusQuery();
 
+  // dexie marketplace integration (#102, fullscreen-only advanced action): browse open offers +
+  // import one, and auto-resolve a pasted dexie link/id before the normal offer1… validation.
+  const [resolveDexieOffer] = useResolveDexieOfferMutation();
+  const [dexieBrowseOpen, setDexieBrowseOpen] = useState(false);
+  const browse = useBrowseDexieOffersQuery(undefined, { skip: !dexieBrowseOpen });
+
   async function doInspect(text?: string) {
-    const trimmed = (text ?? offerStr).trim();
+    let trimmed = (text ?? offerStr).trim();
     if (!trimmed.startsWith('offer1')) {
-      setError(intl.formatMessage({ id: 'trade.error.invalid' }));
-      return;
+      // Not a raw offer string — try resolving it as a dexie link/id (#102) before rejecting.
+      const resolved = await resolveDexieOffer({ idOrUrl: trimmed });
+      const resolvedOffer = 'data' in resolved ? resolved.data?.offer : null;
+      if (!resolvedOffer?.offerStr) {
+        setError(intl.formatMessage({ id: 'trade.error.invalid' }));
+        return;
+      }
+      trimmed = resolvedOffer.offerStr;
     }
     setError(null);
     const res = await inspect({ offerStr: trimmed });
     if ('data' in res && res.data?.offerSummary) {
+      setOfferStr(trimmed);
       setSummary(res.data.offerSummary);
       setPhase('review');
     } else {
       setError(intl.formatMessage({ id: 'trade.error.invalid' }));
     }
+  }
+
+  /** Import a dexie-browsed offer directly (its bytes are already known — no resolve round trip). */
+  function importDexieOffer(offer: string) {
+    setOfferStr(offer);
+    void doInspect(offer);
   }
 
   /** Read a dropped `.offer`/text file's contents, populate the field, and inspect it immediately. */
@@ -472,7 +649,7 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
   if (phase === 'review' || phase === 'confirm') {
     return (
       <div data-testid="trade-take-review">
-        <TwoSided summary={summary} intl={intl} />
+        <TwoSided summary={summary} />
         {phase === 'review' ? (
           <>
             <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="trade-take-accept" onClick={() => void doPrepare()} disabled={busy}>
@@ -549,28 +726,51 @@ function TakeTrade({ pollMs }: { pollMs: number }) {
       <button type="submit" className="dig-btn dig-btn--primary dig-btn--block" data-testid="trade-take-review-btn" disabled={busy}>
         <FormattedMessage id={busy ? 'custody.working' : 'trade.take.review'} />
       </button>
+      {full && (
+        <div style={{ marginTop: 10 }}>
+          <button type="button" className="dig-link" data-testid="trade-take-dexie-browse" onClick={() => setDexieBrowseOpen((v) => !v)}>
+            <FormattedMessage id="trade.dexie.browse" />
+          </button>
+          {dexieBrowseOpen && (
+            <FourState
+              isLoading={browse.isLoading}
+              isError={browse.isError}
+              isEmpty={!browse.isLoading && !browse.isError && (browse.data?.offers.length ?? 0) === 0}
+              onRetry={() => void browse.refetch()}
+              testid="trade-take-dexie-browse"
+              emptyId="trade.dexie.browseEmpty"
+            >
+              <ul className="dig-list" data-testid="trade-take-dexie-browse-list" style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
+                {(browse.data?.offers ?? []).map((o) => (
+                  <li key={o.id} className="dig-card" style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <span className="dig-mono">
+                      {o.offered.map((a) => `${a.amount} ${a.code}`).join(' + ')} → {o.requested.map((a) => `${a.amount} ${a.code}`).join(' + ')}
+                    </span>
+                    <button type="button" className="dig-btn" data-testid={`trade-take-dexie-import-${o.id}`} onClick={() => importDexieOffer(o.offerStr)}>
+                      <FormattedMessage id="trade.dexie.import" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </FourState>
+          )}
+        </div>
+      )}
     </form>
   );
 }
 
 /** The two-sided offer summary (you get = the offered legs; you pay = the requested legs). */
-function TwoSided({ summary, intl }: { summary: WireOfferSummary | null; intl: ReturnType<typeof useIntl> }) {
+function TwoSided({ summary }: { summary: WireOfferSummary | null }) {
   if (!summary) return null;
   return (
     <dl className="dig-summary" data-testid="trade-summary">
       <dt><FormattedMessage id="trade.summary.youGet" /></dt>
-      <dd data-testid="trade-summary-get">{summary.offered.map((l) => legLabel(l, intl)).join(', ') || '—'}</dd>
+      <dd data-testid="trade-summary-get">{summary.offered.map((l) => legLabel(l)).join(', ') || '—'}</dd>
       <dt><FormattedMessage id="trade.summary.youPay" /></dt>
-      <dd data-testid="trade-summary-pay">{summary.requested.map((l) => legLabel(l, intl)).join(', ') || '—'}</dd>
+      <dd data-testid="trade-summary-pay">{summary.requested.map((l) => legLabel(l)).join(', ') || '—'}</dd>
     </dl>
   );
-}
-
-/** Format one leg as "<amount> <ticker>" (XCH decimals for XCH; a 3-dp CAT default; NFT by launcher id). */
-function legLabel(leg: { asset: WireOfferAsset; amount: string }, _intl: ReturnType<typeof useIntl>): string {
-  if (leg.asset.kind === 'xch') return `${formatBaseUnits(Number(leg.amount), XCH_DECIMALS)} XCH`;
-  if (leg.asset.kind === 'nft') return `NFT ${leg.asset.launcherId.slice(0, 6)}…`;
-  return `${formatBaseUnits(Number(leg.amount), 3)} ${leg.asset.assetId.slice(0, 6)}…`;
 }
 
 /** Parse a decimal amount to base units; 0 on garbage. */

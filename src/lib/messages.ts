@@ -261,6 +261,8 @@ export const ACTIONS = Object.freeze({
   inspectOffer: 'inspectOffer',
   prepareTrade: 'prepareTrade',
   confirmTrade: 'confirmTrade',
+  // ── saved/active offer management (#101): the local "your offers" log + derived status ──
+  getOffers: 'getOffers',
   // ── self-custody NFTs / Collectibles (#56): routed to the offscreen vault ──
   listNfts: 'listNfts',
   prepareNftTransfer: 'prepareNftTransfer',
@@ -314,6 +316,11 @@ export const ACTIONS = Object.freeze({
   // ── diagnostics ──
   reportError: 'reportError',
   reportSuccess: 'reportSuccess',
+  // ── dexie marketplace integration (#102): NOT a custody action — no wallet key involved, handled
+  // directly by the SW (mirrors getNftMetadata's off-chain-fetch pattern) ──
+  dexiePost: 'dexiePost',
+  dexieBrowse: 'dexieBrowse',
+  dexieResolve: 'dexieResolve',
   // ── search engine ──
   addSearchEngine: 'addSearchEngine',
   getDefaultSearchEngine: 'getDefaultSearchEngine',
@@ -534,9 +541,9 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: "{ events:[{ id, kind:'sent'|'received'|'mint'|'did'|'offer'|'trade'|'clawback'|'melt', asset, amount, counterparty, coinId, timestamp, status:'pending'|'confirmed' }] } | { success:false, code, message }",
   },
   [ACTIONS.makeOffer]: {
-    summary: "Build (not broadcast) a shareable trade offer in the offscreen vault: spend the offered asset into the settlement puzzle + assert the requested payment; returns the `offer1…` string + two-sided summary. Offering an NFT (#94, OFFERED side only) with a nonzero on-chain royalty automatically declares the CHIP-0011 sale trade-price so the taker's royalty payment is chain-enforced. `requested.asset.kind:'nft'` is rejected with UNSUPPORTED_REQUEST (buying a specific NFT is a tracked follow-up); there is no `did` asset kind (DID is not an offer asset — see offers.ts).",
-    request: "{ action, offered:{ asset:{kind:'xch'}|{kind:'cat',assetId}|{kind:'nft',launcherId}, amount:string }, requested:{ asset:{kind:'xch'}|{kind:'cat',assetId}, amount:string }, fee?:string }",
-    response: "{ offer:string /* offer1… */, offerSummary:{ offered:[{asset,amount}], requested:[{asset,amount,toPuzzleHashHex}] } } | { success:false, code:'UNSUPPORTED_REQUEST'|..., message }",
+    summary: "Build (not broadcast) a shareable trade offer in the offscreen vault: spend the offered asset(s) into the settlement puzzle + assert the requested payment(s); returns the `offer1…` string + two-sided summary. `offered`/`requested` are ARRAYS (#100) — 1 or more legs per side, any mix of XCH/CAT on either side plus at most one offered NFT; no asset may repeat within a side (DUPLICATE_ASSET) or appear on both sides (SAME_ASSET). Offering an NFT (#94, OFFERED side only) with a nonzero on-chain royalty automatically declares the CHIP-0011 sale trade-price so the taker's royalty payment is chain-enforced. A `requested` leg with `asset.kind:'nft'` is rejected with UNSUPPORTED_REQUEST (buying a specific NFT is a tracked follow-up); there is no `did` asset kind (DID is not an offer asset — see offers.ts).",
+    request: "{ action, offered:[{ asset:{kind:'xch'}|{kind:'cat',assetId}|{kind:'nft',launcherId}, amount:string }, ...], requested:[{ asset:{kind:'xch'}|{kind:'cat',assetId}, amount:string }, ...], fee?:string }",
+    response: "{ offer:string /* offer1… */, offerSummary:{ offered:[{asset,amount}], requested:[{asset,amount,toPuzzleHashHex}] }, offerCoinIds?:string[] } | { success:false, code:'UNSUPPORTED_REQUEST'|'DUPLICATE_ASSET'|'SAME_ASSET'|..., message }",
   },
   [ACTIONS.inspectOffer]: {
     summary: 'Decode an `offer1…` string to its two-sided (offered vs requested) summary in the offscreen vault. Read-only; no broadcast. An offered NFT leg (#94) decodes to `{kind:"nft",launcherId}` at amount 1.',
@@ -549,9 +556,14 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: '{ pendingId:string, offerSummary:{ offered, requested } } | { success:false, code, message }',
   },
   [ACTIONS.confirmTrade]: {
-    summary: 'BROADCAST a previously-prepared trade (the approved step — the only place a trade is pushed). Returns an input coin id to poll, plus a #154 activityHint the SW logs as a `trade` entry (always present, even for a cancel).',
+    summary: 'BROADCAST a previously-prepared trade (the approved step — the only place a trade is pushed). Returns an input coin id to poll, plus a #154 activityHint the SW logs as a `trade` entry (always present, even for a cancel). A CANCEL also eagerly flips the matching #101 offer-log entry to `cancelled` (never waits for the next getOffers poll to guess `taken`).',
     request: '{ action, pendingId:string }',
     response: "{ spentCoinId:string, activityHint:{ asset, amount, counterparty:null } } | { success:false, code:'PUSH_FAILED'|'NO_PENDING'|..., message }",
+  },
+  [ACTIONS.getOffers]: {
+    summary: "The LOCAL offer log (#101) for the ACTIVE wallet + active index (#165): every offer this wallet has MADE via makeOffer, newest first, with derived status. Before returning, reconciles every still-`open` entry against the chain (a cheap coin-spent check per entry, mirroring sendStatus) — a coin spent WITHOUT this wallet having cancelled it flips to `taken`; a cancel is flipped eagerly by confirmTrade instead of waiting for this poll. See src/lib/offer-log.ts.",
+    request: '{ action }',
+    response: "{ offers:[{ id, offer, summary:{ offered, requested }, coinIdHex, createdAt, status:'open'|'taken'|'cancelled'|'expired' }] }",
   },
   [ACTIONS.listNfts]: {
     summary: "List the wallet's NFTs (Collectibles) — the offscreen vault derives both HD schemes, finds coins hinted to its inner puzzle hashes (coinset get_coin_records_by_hints), and reconstructs each NFT from its parent spend. Read-only.",
@@ -739,6 +751,21 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Record a resolution-strategy success (rolling diagnostics buffer).',
     request: '{ action, url:string, strategy:string, timestamp:number }',
     response: 'none (synchronous)',
+  },
+  [ACTIONS.dexiePost]: {
+    summary: "dexie marketplace (#102): POST this wallet's already-built offer bytes to api.dexie.space so other wallets can discover it. No wallet key involved — a plain upload of bytes `makeOffer` already produced.",
+    request: '{ action, offer:string /* offer1… */ }',
+    response: "{ dexieId:string, known:boolean } | { success:false, code:'DEXIE_POST_FAILED', message }",
+  },
+  [ACTIONS.dexieBrowse]: {
+    summary: 'dexie marketplace (#102): browse currently-open offers on api.dexie.space, optionally filtered by offered/requested asset. Never throws — a flaky dexie read returns an empty list.',
+    request: '{ action, offered?:string, requested?:string }',
+    response: "{ offers:[{ id, offerStr, status:number, dateFound, offered:[{id,code,name,amount}], requested:[{id,code,name,amount}] }] }",
+  },
+  [ACTIONS.dexieResolve]: {
+    summary: 'dexie marketplace (#102): resolve a dexie.space offer link/id to its `offer1…` bytes, for the Take flow to inspect via the SAME path as a pasted offer (dexie\'s own decoded fields are never trusted for the actual take).',
+    request: '{ action, idOrUrl:string }',
+    response: '{ offer:{ id, offerStr, status, dateFound, offered, requested } | null }',
   },
   [ACTIONS.addSearchEngine]: {
     summary: 'Register the DIG omnibox/search engine.',

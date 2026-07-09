@@ -3,6 +3,8 @@ import { api } from '@/api/api';
 import { ACTIONS } from '@/lib/messages';
 import type { LockState } from '@/features/wallet/walletSlice';
 import type { LocalActivityEntry } from '@/lib/activity-log';
+import type { OfferLogEntry } from '@/lib/offer-log';
+import type { DexieOfferSummary } from '@/lib/dexie';
 import type { WireOfferLeg, WireOfferSummary } from '@/offscreen/vault';
 import type { WalletMeta } from '@/lib/wallet-registry';
 
@@ -310,10 +312,13 @@ export const custodyApi = api.injectEndpoints({
       providesTags: ['Activity'],
     }),
 
-    // ── Trade offers (#56) ──
-    // Build (not broadcast) a shareable offer → the `offer1…` string + two-sided summary.
-    makeCustodyOffer: build.mutation<{ offer: string; offerSummary: WireOfferSummary }, { offered: WireOfferLeg; requested: WireOfferLeg; fee?: string }>({
+    // ── Trade offers (#56, multi-asset #100, saved/active management #101) ──
+    // Build (not broadcast) a shareable offer → the `offer1…` string + two-sided summary. `offered`/
+    // `requested` are ARRAYS (#100) — 1 or more legs per side; a single-asset offer is a 1-element
+    // array. The SW persists an #101 offer-log entry as a side effect, so this also invalidates 'Offers'.
+    makeCustodyOffer: build.mutation<{ offer: string; offerSummary: WireOfferSummary; offerCoinIds?: string[] }, { offered: WireOfferLeg[]; requested: WireOfferLeg[]; fee?: string }>({
       query: (arg) => ({ action: ACTIONS.makeOffer, ...arg }),
+      invalidatesTags: ['Offers'],
     }),
     // Decode an offer string → its two-sided summary (read-only review).
     inspectCustodyOffer: build.mutation<{ offerSummary: WireOfferSummary }, { offerStr: string }>({
@@ -323,10 +328,34 @@ export const custodyApi = api.injectEndpoints({
     prepareTrade: build.mutation<{ pendingId: string; offerSummary: WireOfferSummary }, { offerStr: string; tradeKind: 'take' | 'cancel'; fee?: string }>({
       query: (arg) => ({ action: ACTIONS.prepareTrade, ...arg }),
     }),
-    // BROADCAST a prepared trade (the approved step). Invalidates balances/activity.
+    // BROADCAST a prepared trade (the approved step). Invalidates balances/activity, plus 'Offers'
+    // (#101) since a CANCEL of a made offer flips its log entry's status.
     confirmTrade: build.mutation<{ spentCoinId: string }, { pendingId: string }>({
       query: (arg) => ({ action: ACTIONS.confirmTrade, ...arg }),
-      invalidatesTags: ['Balances', 'Activity'],
+      invalidatesTags: ['Balances', 'Activity', 'Offers'],
+    }),
+
+    // ── Saved/active offer management (#101) ──
+    // The LOCAL "your offers" log for the active wallet + index: every offer this wallet has MADE,
+    // with derived status (open/taken/cancelled) — an instant storage read reconciled against the
+    // chain for open entries, NOT a marketplace scan. See src/lib/offer-log.ts.
+    getCustodyOffers: build.query<{ offers: OfferLogEntry[] }, void>({
+      query: () => ({ action: ACTIONS.getOffers }),
+      providesTags: ['Offers'],
+    }),
+
+    // ── dexie marketplace integration (#102) — NOT custody actions (no wallet key involved) ──
+    // POST an already-built offer to dexie so other wallets can discover it.
+    postOfferToDexie: build.mutation<{ dexieId: string; known: boolean }, { offer: string }>({
+      query: (arg) => ({ action: ACTIONS.dexiePost, ...arg }),
+    }),
+    // Browse currently-open dexie offers, optionally filtered by offered/requested asset.
+    browseDexieOffers: build.query<{ offers: DexieOfferSummary[] }, { offered?: string; requested?: string } | void>({
+      query: (arg) => ({ action: ACTIONS.dexieBrowse, ...(arg ?? {}) }),
+    }),
+    // Resolve a pasted dexie link/id to its offer1… bytes (Take then inspects it like a pasted offer).
+    resolveDexieOffer: build.mutation<{ offer: DexieOfferSummary | null }, { idOrUrl: string }>({
+      query: (arg) => ({ action: ACTIONS.dexieResolve, ...arg }),
     }),
   }),
   overrideExisting: false,
@@ -361,4 +390,8 @@ export const {
   useInspectCustodyOfferMutation,
   usePrepareTradeMutation,
   useConfirmTradeMutation,
+  useGetCustodyOffersQuery,
+  usePostOfferToDexieMutation,
+  useBrowseDexieOffersQuery,
+  useResolveDexieOfferMutation,
 } = custodyApi;

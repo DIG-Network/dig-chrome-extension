@@ -1714,19 +1714,29 @@ entry uses the synthetic `NFT` label, not a specific token id).
 
 Offers are assembled from `chia-wallet-sdk-wasm` primitives to match the canonical `chia-sdk-driver`
 offer construction byte-for-byte, so they interoperate with Sage / dexie. All money paths are proven
-consensus-valid by a two-party simulator settlement test. v1 supports a SINGLE offered asset and a
+consensus-valid by a two-party simulator settlement test. v1 supported a SINGLE offered asset and a
 SINGLE requested asset, each XCH or a CAT (covering every XCH↔token trade); v2 (#94) additionally
-supports offering an NFT (selling a self-custody NFT for XCH/CAT), with CHIP-0011 royalty. The offered
-and requested assets MUST differ.
+supports offering an NFT (selling a self-custody NFT for XCH/CAT), with CHIP-0011 royalty; v3 (#100)
+generalizes `offered`/`requested` to ARRAYS — 1 or more legs per side, any mix of XCH/CAT on EITHER
+side plus at most one offered NFT (the NFT-per-offer cap is unchanged). No asset may appear more than
+once on the same side (`DUPLICATE_ASSET`), and no asset may appear on BOTH sides (`SAME_ASSET`,
+generalized from the v1 single-pair check). The offer's `Offer::nonce` is computed once, over the
+ascending-sorted coin ids of EVERY offered coin across every offered asset, and every requested
+leg's `NotarizedPayment` shares that same nonce — one notarized payment + one phantom carrier +
+one `AssertPuzzleAnnouncement` per requested leg. `INSPECT`/`TAKE`/`CANCEL` already parsed/handled an
+arbitrary number of legs per side (the array shape was latent in their coin-spend reconstruction);
+#100's change is concentrated in `makeOffer`'s construction loop + the wire/UI plumbing.
 
-- **Surface tiering (#169, refining #145).** A BASIC maker/taker renders on BOTH the compact popup
-  AND fullscreen. Taking an offer has no advanced variant (accepting fixed, already-built terms is
-  basic by nature) and is IDENTICAL on both surfaces. Making an offer is basic
-  (currency-for-currency) on both surfaces too; only the ADVANCED capability — offering one of the
-  wallet's own NFTs (the give-kind toggle) — is fullscreen (ExpandedLayout) ONLY. The popup keeps a
-  persistent "open full screen" link (`trade-open-fullscreen`) for that and any future advanced
-  option (multi-asset legs, fee tuning). This SUPERSEDES the earlier #145 rule that gated the
-  entire Trade surface to fullscreen.
+- **Surface tiering (#169, refining #145; extended by #100).** A BASIC maker/taker renders on BOTH
+  the compact popup AND fullscreen — a single give leg + a single get leg, one asset each. Taking an
+  offer has no advanced variant (accepting fixed, already-built terms is basic by nature) and is
+  IDENTICAL on both surfaces. Two capabilities are ADVANCED — fullscreen (ExpandedLayout) ONLY:
+  offering one of the wallet's own NFTs (the give-kind toggle, #94), and composing MULTIPLE assets
+  per side via "+ Add another asset" (`trade-give-add-asset`/`trade-get-add-asset`, #100 — each added
+  row gets its own `trade-give-asset-{i}`/`trade-give-amount-{i}` pair and a
+  `trade-give-remove-asset-{i}` control, mirrored on the get side). The popup keeps a persistent
+  "open full screen" link (`trade-open-fullscreen`) for both. This SUPERSEDES the earlier #145 rule
+  that gated the entire Trade surface to fullscreen.
 - **Guided review step (#169 clarity redesign).** Making an offer is a 3-step guided flow: **form**
   (pick give/get assets + amounts) → **review** (a "You give / You get" summary of the exact terms,
   computed locally — no network call yet) → **made** (the built `offer1…` deal card). The ONLY
@@ -1795,6 +1805,83 @@ render identically on the compact popup and fullscreen (Take has no advanced var
 proven end-to-end in Playwright against the built extension pages (a real `DragEvent` carrying a
 `DataTransfer` + `File`, and a filled textarea) — see `e2e/sw/trade-basic-surfaces.spec.ts` for the
 popup path and `e2e/sw/offers.spec.ts` for the vault-wiring guard clauses.
+
+### 18.10a Saved/active offer management + status (#101)
+
+The local "your offers" log (`lib/offer-log.ts`) persists every offer this wallet has MADE via
+`makeOffer`, so the **Offers** tab (`trade-mode-offers`, a third mode alongside Make/Take) lists them
+with a derived status, lets the maker re-share a still-open one, and cancel it — a
+MetaMask/dexie-"My offers"-style ledger, NOT a marketplace/network scan. Storage mirrors the #154
+local activity log's idiom exactly: `chrome.storage.local[OFFER_LOG_KEY]`, a flat map keyed by
+`"<walletId>:<activeIndex>"` → that scope's own ring-buffered entry array (newest first, capped at
+200), never cleared on wallet switch or index navigation.
+
+- **Recording.** The SW appends an entry the moment `makeOffer` succeeds (there is no broadcast to
+  hang this on — an offer is only a promise until someone takes it): `{ id, offer, summary,
+  coinIdHex, createdAt, status:'open' }`, where `coinIdHex` is the first of `makeOffer`'s
+  {@link MadeOffer.offeredCoinIdsHex} (#100) — any ONE of the offer's real offered coin ids suffices,
+  since the maker's spend consumes them all atomically together whether taken or cancelled.
+- **Status is derived, not pushed** (Chia has no "someone took my offer" event):
+  - `open` — the initial state; the offered coin(s) are still unspent.
+  - `taken` — `getOffers` reconciles every still-`open` entry against the chain first (the SAME
+    `sendStatus` vault op the send/trade confirm-poll uses, one cheap coin-spent check per entry) —
+    a coin observed spent that this wallet did NOT itself cancel flips to `taken`.
+  - `cancelled` — `confirmTrade` returns `tradeKind:'take'|'cancel'` (#101 addition to its response)
+    so the SW can EAGERLY flip the matching entry the moment a cancel broadcasts, rather than waiting
+    for the next `getOffers` poll (which would otherwise misclassify the spend as `taken`).
+  - `expired` — RESERVED (mirrors `activity-log.ts`'s reserved `offer`/`clawback`/`melt` kinds); the
+    offer engine does not set an on-chain expiry timestamp yet, so this is never currently emitted.
+  A terminal status (`taken`/`cancelled`) is never re-flipped by a later poll.
+- **Surface tiering, extending §18.10's advanced-capability gating.** BOTH surfaces render the SAME
+  list + status — the log itself is not fullscreen-gated. Only fullscreen renders the per-offer
+  ACTIONS (re-share via copy, and cancel for a still-open offer, reusing the existing
+  `prepareTrade('cancel')` → `confirmTrade` path); the popup is VIEW-ONLY (status only), matching its
+  persistent `trade-open-fullscreen` link for "go manage it".
+- Read-only listing is proven end-to-end in Playwright against the built extension
+  (`e2e/sw/offer-management.spec.ts` — the empty state, deterministic and network-free since
+  reconciliation only calls the chain for `open` entries). The append/status-flip/ring-buffer logic
+  is unit-tested (`lib/offer-log.test.ts`); the full copy/cancel/status UI is unit-tested with a
+  mocked SW (`OffersPanel.test.tsx`) — a live-coinset-dependent full make→list→cancel round trip is
+  not exercised in CI (no live chain access), matching the existing `offers.spec.ts` split.
+
+### 18.10b dexie marketplace integration (#102)
+
+A thin client (`lib/dexie.ts`, chrome-free — `fetch` injected) for the public `api.dexie.space/v1`
+REST API — an offer AGGREGATOR, not a counterparty: this wallet's own offer bytes are already
+dexie-compatible (the same `chia-sdk-driver` construction, §18.10's module doc), so posting is a
+plain upload of bytes `makeOffer` already built. `api.dexie.space` is pre-granted in both
+`host_permissions` and the extension-pages CSP `connect-src` (`manifest.json`).
+
+- **Post** (`dexiePost` → `postOfferToDexie`): upload an already-built `offer1…` string. Fullscreen
+  ONLY — a "Post to Dexie" button on the MAKE deal card, alongside the existing copy/QR/cancel
+  actions. Returns dexie's own id; `known:true` when dexie had already indexed the exact bytes.
+- **Browse** (`dexieBrowse` → `searchDexieOffers`): list currently-open offers (`status:0`),
+  optionally filtered by offered/requested asset. Fullscreen ONLY — a "Browse Dexie" toggle on the
+  TAKE paste form, listing each row's dexie-reported `<amount> <code>` legs (DISPLAY only, see the
+  amount caveat below) with an "Import" button.
+- **Resolve / import** (`dexieResolve` → `fetchDexieOffer`): given a `dexie.space/offers/<id>` URL
+  or a bare id, fetch the underlying `offer1…` bytes. Wired into the Take paste box itself: pasting
+  input that doesn't start with `offer1` is tried as a dexie link/id FIRST (before the normal
+  invalid-offer rejection) — so a user can paste either a raw offer string or a dexie link
+  interchangeably. Importing from the Browse list skips the resolve round trip (the search response
+  already embeds the full offer bytes) and goes straight to the shared `inspectOffer` step.
+- **Fail-closed: dexie's own decoded fields are DISPLAY-only, never trusted for the actual take.**
+  Every dexie response embeds its own `offered`/`requested` arrays with HUMAN-decimal `amount`
+  numbers (dexie normalizes server-side; confirmed against the LIVE API — no formal OpenAPI spec is
+  published, see DEVELOPMENT_LOG.md) — these are used ONLY to render the browse list. The instant a
+  user imports/resolves an offer, its raw `offer1…` bytes are fed into this wallet's OWN
+  `inspectOffer`, which re-derives the two-sided summary from scratch exactly like a pasted or
+  dropped offer (§18.10) — dexie is never a source of truth for what a spend actually does.
+- `dexiePost`/`dexieBrowse`/`dexieResolve` are NOT custody actions (no wallet key involved) —
+  handled directly by the SW, mirroring `getNftMetadata`'s off-chain-fetch pattern (§18.11c) rather
+  than routing through the offscreen vault.
+- The pure client is unit-tested (`lib/dexie.test.ts`) with an injected fetch stub; the full
+  post/browse/import UI incl. failure paths is unit-tested with a mocked SW (`tradePanel.test.tsx`).
+  `e2e/sw/dexie-integration.spec.ts` proves REAL wiring against the live `api.dexie.space` API
+  (reachable from CI, unlike coinset) — a real browse read, a real post-rejection for a garbage
+  offer, and a real "no such id" resolve — never posting an actual wallet-built offer (that needs a
+  live coinset read to build, out of scope here, matching the `offers.spec.ts` split) and never
+  broadcasting a mainnet spend.
 
 ### 18.11 NFTs / Collectibles
 

@@ -252,9 +252,15 @@ export const ru: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Создать',
   'trade.mode.take': 'Принять',
+  'trade.mode.offers': 'Предложения',
+  'trade.offers.empty': 'Вы ещё не создали ни одного предложения.',
+  'trade.offers.status.open': 'Открыто',
+  'trade.offers.status.taken': 'Принято',
+  'trade.offers.status.cancelled': 'Отменено',
   'trade.make.continue': 'Продолжить',
   'trade.make.review.intro': 'Проверьте условия сделки перед созданием предложения.',
   'trade.make.submit': 'Создать предложение',
+  'trade.addAsset': '+ Добавить ещё один актив',
   'trade.error.sameAsset': 'Выберите два разных актива для обмена',
   'trade.error.build': 'Не удалось сформировать сделку — проверьте балансы и попробуйте снова',
   'trade.deal.intro': 'Поделитесь этим предложением. Принять его может кто угодно — обмен атомарен.',
@@ -273,6 +279,12 @@ export const ru: Record<string, string> = {
   'trade.take.failed': 'Сделка не состоялась. Попробуйте снова.',
   'trade.summary.youGet': 'Вы получаете',
   'trade.summary.youPay': 'Вы платите',
+  'trade.dexie.post': 'Опубликовать на Dexie',
+  'trade.dexie.posted': 'Опубликовано на Dexie — другие кошельки теперь могут его найти.',
+  'trade.dexie.postFailed': 'Не удалось опубликовать на Dexie. Попробуйте снова.',
+  'trade.dexie.browse': 'Просмотреть Dexie',
+  'trade.dexie.browseEmpty': 'Открытых предложений на Dexie не найдено.',
+  'trade.dexie.import': 'Импортировать',
 
   // ── apps (#59) ──
   'apps.title': 'Магазин dApp DIG',

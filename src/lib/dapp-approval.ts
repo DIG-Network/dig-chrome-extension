@@ -204,6 +204,10 @@ export function prepareWriteParams(
     return { params: { offerStr: String(offerStr), ...(p.fee != null ? { fee: String(p.fee) } : {}) } };
   }
   if (kind === 'createOffer') {
+    // The dApp RPC surface stays restricted to exactly one offered + one requested asset (unchanged
+    // by #100, which generalizes the self-custody wallet's OWN Trade UI) — a distinct, narrower
+    // surface than the vault engine's wire shape. `offered`/`requested` are wrapped into 1-element
+    // ARRAYS below purely to match the vault's #100 `makeOffer` wire contract (`WireOfferLeg[]`).
     const offerAssets = p.offerAssets ?? p.offered;
     const requestAssets = p.requestAssets ?? p.requested;
     if (!Array.isArray(offerAssets) || !Array.isArray(requestAssets) || offerAssets.length !== 1 || requestAssets.length !== 1) {
@@ -212,7 +216,7 @@ export function prepareWriteParams(
     const offered = offerLeg(offerAssets[0] as Record<string, unknown>);
     const requested = offerLeg(requestAssets[0] as Record<string, unknown>);
     if (!offered || !requested) return { error: 'createOffer legs require an amount', status: 400 };
-    return { params: { offered, requested, ...(p.fee != null ? { fee: String(p.fee) } : {}) } };
+    return { params: { offered: [offered], requested: [requested], ...(p.fee != null ? { fee: String(p.fee) } : {}) } };
   }
   if (kind === 'sendTransaction') {
     const bundle = (p.spendBundle ?? p.spend_bundle) as Record<string, unknown> | undefined;
