@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.75.0] - 2026-07-09
+
+### Features
+- Security P2 tail — auto-lock, clear-signing, onboarding nudges (#76, #77, #79) (#104)
+
 ## [1.74.2] - 2026-07-09
 
 ### Styling
