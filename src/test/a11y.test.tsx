@@ -7,6 +7,7 @@ import { AppsTab } from '@/features/apps/AppsTab';
 import { UnlockScreen } from '@/features/wallet/custody/UnlockScreen';
 import { RecoveryReveal } from '@/features/wallet/custody/RecoveryReveal';
 import { HomeScreen } from '@/features/home/HomeScreen';
+import { ChainSourceSetting } from '@/features/wallet/custody/ChainSourceSetting';
 import { renderWithProviders } from '@/test/harness';
 
 // color-contrast needs real layout (jsdom can't compute it); assert on structure/roles/labels.
@@ -69,6 +70,15 @@ describe('accessibility (axe)', () => {
     );
     const results = await axe(container, AXE_OPTS);
     expect(results.violations).toEqual([]);
+  });
+
+  it('ChainSourceSetting (wallet-data source switch, #217) has no WCAG violations — default + custom mode', async () => {
+    const { container } = renderWithProviders(<ChainSourceSetting />);
+    expect((await axe(container, AXE_OPTS)).violations).toEqual([]);
+    // Custom mode reveals the URL input — assert its labelled form is clean too.
+    fireEvent.change(await screen.findByTestId('chain-source-select'), { target: { value: 'custom' } });
+    await screen.findByTestId('chain-source-url');
+    expect((await axe(container, AXE_OPTS)).violations).toEqual([]);
   });
 
   it('HomeScreen (no wallet) has no WCAG violations', async () => {
