@@ -67,6 +67,23 @@ const STUB = `
     } };
     if (a === 'confirmCatIssuance') return { spentCoinId: 'issue-coin-1' };
     if (a === 'sendStatus') return { confirmed: true };
+    // Token swap (#103): a matching dexie offer for the wallet's DEFAULT pick ("pay XCH -> receive
+    // $DIG" - the built-in $DIG row is always the second asset, #204) plus the REAL decoded offer
+    // summary prepareTrade returns for the review step (the dexie numbers are display-only).
+    const DIG_ASSET_ID = 'a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81';
+    if (a === 'dexieBrowse') return { offers: [{
+      id: 'swap-offer-1',
+      offer: 'offer1qqqswapscreenshotexampleqqq',
+      status: 0,
+      date_found: '2026-01-01T00:00:00Z',
+      offered: [{ id: DIG_ASSET_ID, code: '$DIG', amount: 1000 }],
+      requested: [{ id: 'xch', code: 'XCH', amount: 10 }],
+    }] };
+    if (a === 'prepareTrade') return { pendingId: 'swap-pending-1', offerSummary: {
+      offered: [{ asset: { kind: 'cat', assetId: DIG_ASSET_ID }, amount: '1000000' }],
+      requested: [{ asset: { kind: 'xch' }, amount: '10000000000000', toPuzzleHashHex: 'ab' }],
+    } };
+    if (a === 'confirmTrade') return { spentCoinId: 'swap-coin-1' };
     if (a === 'getDigNodeStatus') return { reachable: true, base: 'https://dig.local' };
     if (a === 'getControlStatus') return { mode: 'manage', localNode: true, base: 'https://dig.local', status: null, controlMethods: [] };
     if (a === 'getConnection') return { connected: false };
@@ -530,4 +547,41 @@ test('fullscreen trade — Issue confirm → confirmed (the new asset id is show
   await page.getByTestId('issue-confirmed-asset-id').waitFor();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-issue-confirmed.png' });
+});
+
+// Token swap (#103): a destructive/advanced spend-construction op — fullscreen-ONLY (§6.4), the
+// popup never offers the "Swap" tab at all. The default pick is "pay XCH → receive $DIG" (the
+// built-in $DIG row is always the wallet's second asset, #204) — a quote appears automatically from
+// the public offer book (#102), then Review decodes the REAL offer bytes exactly like the Take tab.
+test('fullscreen trade — Swap tab (a quote appears for the default XCH → $DIG pick)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-swap').click();
+  await page.getByTestId('swap-quote-result').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-swap-quote.png' });
+});
+
+test('fullscreen trade — Swap review shows the decoded (re-derived) offer summary', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-swap').click();
+  await page.getByTestId('swap-review').waitFor();
+  await page.getByTestId('swap-review').click();
+  await page.getByTestId('swap-review-panel').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-swap-review.png' });
+});
+
+test('fullscreen trade — Swap confirm → confirmed', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'wallet/trade');
+  await page.getByTestId('trade-mode-swap').click();
+  await page.getByTestId('swap-review').waitFor();
+  await page.getByTestId('swap-review').click();
+  await page.getByTestId('swap-confirm').waitFor();
+  await page.getByTestId('swap-confirm').click();
+  await page.getByTestId('swap-confirmed').waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-swap-confirmed.png' });
 });
