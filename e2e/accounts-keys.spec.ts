@@ -135,25 +135,24 @@ test.describe('#96 watch-only wallet', () => {
 
 test.describe('#96 private-key export', () => {
   test('reveal the raw key (both schemes) only after the correct password', async ({ page }) => {
-    // The export panel is in the Advanced section, fullscreen-only — drive app.html + enable advanced.
+    // The export panel is fullscreen-only (§145) — gated purely on the SURFACE (`isFull`), so
+    // driving app.html is sufficient; no settings/storage seeding is needed or read.
     await page.addInitScript(STUB);
-    await page.addInitScript(() => {
-      // Persist the advanced-disclosure flag the UI reads on boot.
-      try { localStorage.setItem('wallet.settings.advanced', 'true'); } catch (e) {}
-    });
     await page.setViewportSize({ width: 1200, height: 900 });
     await page.goto('/app.html#wallet');
     await expect(page.getByTestId('custody-wallet')).toBeVisible();
 
-    const panel = page.getByTestId('export-private-key');
-    // Advanced may need toggling via the UI if not persisted; the panel is present when advanced is on.
-    if (await panel.count()) {
-      await page.getByTestId('export-pk-password').fill('password1');
-      await page.getByTestId('export-pk-reveal').click();
-      await expect(page.getByTestId('export-pk-result')).toBeVisible();
-      await expect(page.getByTestId('export-pk-unhardened')).toBeVisible();
-      await expect(page.getByTestId('export-pk-hardened')).toBeVisible();
-    }
+    await expect(page.getByTestId('export-private-key')).toBeVisible();
+    await page.getByTestId('export-pk-password').fill('password1');
+    await page.getByTestId('export-pk-reveal').click();
+    await expect(page.getByTestId('export-pk-result')).toBeVisible();
+    await expect(page.getByTestId('export-pk-unhardened')).toBeVisible();
+    await expect(page.getByTestId('export-pk-hardened')).toBeVisible();
+  });
+
+  test('is hidden in the popup (§145)', async ({ page }) => {
+    await openWallet(page);
+    await expect(page.getByTestId('export-private-key')).toHaveCount(0);
   });
 });
 

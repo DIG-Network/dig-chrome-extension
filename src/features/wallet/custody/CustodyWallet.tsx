@@ -74,7 +74,6 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
     return SEG_OPTIONS.filter((opt) => visible.includes(opt.value));
   }, [isFull]);
   const walletView = useAppSelector((s) => s.ui.walletView);
-  const advanced = useAppSelector((s) => s.ui.advanced);
   const [watchedCats] = useStorageValue<unknown>('wallet.watchedCats', []);
   const [hiddenCats] = useStorageValue<unknown>('wallet.hiddenCats', []);
   const balances = useGetCustodyBalancesQuery();
@@ -308,7 +307,12 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
             </div>
           </FourState>
 
-          {advanced && (
+          {/* Settings (§145): fullscreen-only, like every other advanced/power-user surface in this
+              component (Identity tab, clawback management, …) — gated on the SURFACE (`isFull`),
+              not a separate persisted "advanced" preference. A prior version gated this block on a
+              `ui.advanced` flag that nothing ever set to true, making it unreachable on EITHER
+              surface; see DEVELOPMENT_LOG.md. */}
+          {isFull && (
             <>
               <NetworkSetting />
               <ChainNodeSetting />
@@ -316,9 +320,9 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
               <SessionStatus />
               <ConnectedSites />
               <DerivedAddressList />
-              {/* Private-key export (#96, §18.20) — fullscreen-only + never for a watch-only wallet
-                  (it holds no secret to export). */}
-              {isFull && !isWatchActive && <ExportPrivateKey />}
+              {/* Private-key export (#96, §18.20) — never for a watch-only wallet (it holds no
+                  secret to export). */}
+              {!isWatchActive && <ExportPrivateKey />}
             </>
           )}
         </>

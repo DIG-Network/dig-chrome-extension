@@ -4,9 +4,9 @@ import { test, expect, type Page } from '@playwright/test';
  * END-USER e2e for #105/#106/#107 (the send/receive trio), driven against the REAL built popup +
  * fullscreen bundles (dist-web). Same pattern as e2e/contacts.spec.ts: a canned
  * `chrome.runtime.sendMessage` stub for the SW/vault (memo/derived-address reads never touch a real
- * chain), plus a functional `chrome.storage.local` so `advanced` mode hydrates for real via the
- * shipped `storageSync` seam. Never broadcasts — `confirmSend` is stubbed and never invoked by these
- * flows (they stop at Review or a settings view).
+ * chain), plus a functional `chrome.storage.local` so settings hydrate for real via the shipped
+ * `storageSync` seam. Never broadcasts — `confirmSend` is stubbed and never invoked by these flows
+ * (they stop at Review or a settings view).
  *
  * Run: `npm run build:web && npx playwright test e2e/send-receive-trio.spec.ts`.
  */
@@ -14,8 +14,8 @@ import { test, expect, type Page } from '@playwright/test';
 const RECIPIENT_ADDR = 'xch1qgp8xdq8lrsrljezregl9xk8ymw4x0h2z9m0j8zq0k7q9m8x0hqsm3g4tl';
 
 /** chrome.* stub: an unlocked wallet, prepareSend echoes back the memo, listDerivedAddresses
- * returns a small deterministic page, and storage.local is FUNCTIONAL so `advanced` hydrates. */
-function stub(opts: { advanced?: boolean } = {}) {
+ * returns a small deterministic page, and storage.local is FUNCTIONAL so settings hydrate. */
+function stub() {
   return `
 (() => {
   const canned = (msg) => {
@@ -41,7 +41,7 @@ function stub(opts: { advanced?: boolean } = {}) {
     }
     return { success: true };
   };
-  const store = { 'wallet.settings': ${JSON.stringify({ locale: 'en', advanced: !!opts.advanced })} };
+  const store = { 'wallet.settings': ${JSON.stringify({ locale: 'en' })} };
   const changeListeners = new Set();
   const pick = (keys) => {
     if (keys == null) return { ...store };
@@ -78,8 +78,8 @@ function stub(opts: { advanced?: boolean } = {}) {
 `;
 }
 
-async function openWallet(page: Page, file = 'popup.html', opts: { advanced?: boolean } = {}) {
-  await page.addInitScript(stub(opts));
+async function openWallet(page: Page, file = 'popup.html') {
+  await page.addInitScript(stub());
   await page.goto(`/${file}#wallet`);
   await expect(page.getByTestId('custody-wallet')).toBeVisible();
 }
@@ -139,8 +139,8 @@ test.describe('#105 memo on send', () => {
 });
 
 test.describe('#106 derived-address list', () => {
-  test('the Advanced list shows both HD schemes and "Show more" extends the page', async ({ page }) => {
-    await openWallet(page, 'app.html', { advanced: true });
+  test('the fullscreen list shows both HD schemes and "Show more" extends the page (§145)', async ({ page }) => {
+    await openWallet(page, 'app.html');
     await expect(page.getByTestId('derived-addresses')).toBeVisible();
     await expect(page.getByTestId('derived-address-unhardened-0')).toBeVisible();
     await expect(page.getByTestId('derived-address-hardened-0')).toBeVisible();
@@ -153,36 +153,30 @@ test.describe('#106 derived-address list', () => {
     await expect(page.getByTestId('derived-address-unhardened-0')).toBeVisible();
   });
 
-  test('is hidden outside Advanced mode', async ({ page }) => {
-    await openWallet(page, 'app.html', { advanced: false });
+  // §145: advanced settings are gated on SURFACE, not a persisted preference — the popup never
+  // renders this section, fullscreen always does (no separate "advanced mode" toggle exists).
+  test('is hidden in the popup, regardless of the (now-retired) advanced preference', async ({ page }) => {
+    await openWallet(page, 'popup.html');
     await expect(page.getByTestId('derived-addresses')).toHaveCount(0);
   });
 
   test('Copy copies the full address to the clipboard', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await openWallet(page, 'app.html', { advanced: true });
+    await openWallet(page, 'app.html');
     await page.getByTestId('derived-address-copy-unhardened-0').click();
     await expect(page.getByTestId('derived-address-copy-unhardened-0')).toHaveText(/copied/i);
   });
 
-  for (const [label, file, size] of [
-    ['popup', 'popup.html', { width: 372, height: 900 }],
-    ['fullscreen', 'app.html', { width: 1200, height: 1000 }],
-  ] as const) {
-    test(`screenshot: derived-address list (${label})`, async ({ page }) => {
-      await page.setViewportSize(size);
-      await openWallet(page, file, { advanced: true });
-      const section = page.getByTestId('derived-addresses');
-      await expect(section).toBeVisible();
-      // The popup is a FIXED-HEIGHT 600px window (`.dig-app[data-layout='compact']`, the real Chrome
-      // popup constraint) whose ONLY scroll container is the inner content area — `fullPage`
-      // screenshots the outer (non-growing) document, so the Advanced section (below the fold) must
-      // be scrolled into view first, exactly as a real user would scroll the popup to reach it.
-      await section.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(200);
-      await page.screenshot({ path: `e2e/__screenshots__/derived-addresses-${label}.png` });
-    });
-  }
+  // Fullscreen-only (§145) — no popup capture, the section never renders there.
+  test('screenshot: derived-address list (fullscreen)', async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 1000 });
+    await openWallet(page, 'app.html');
+    const section = page.getByTestId('derived-addresses');
+    await expect(section).toBeVisible();
+    await section.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: 'e2e/__screenshots__/derived-addresses-fullscreen.png' });
+  });
 });
 
 test.describe('#107 QR camera scanner', () => {

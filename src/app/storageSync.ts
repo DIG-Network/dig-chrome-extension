@@ -22,7 +22,6 @@ function tagForEpochKey(key: string): string | null {
 /** The persisted settings shape as read from storage (mirrors `uiSlice`'s `PersistedSettings`). */
 interface StoredSettings {
   locale?: string;
-  advanced?: boolean;
   theme?: string;
   network?: string;
 }

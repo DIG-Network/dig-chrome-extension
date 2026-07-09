@@ -1263,8 +1263,8 @@ custody requests, owns storage, and enforces auto-lock.
 - **unlock window (idle TTL, #155).** A NON-SECRET expiry timestamp is stored in
   `chrome.storage.session` (`wallet.unlockExpiry`) — never key material. Default TTL 15 minutes
   (a MetaMask-style idle default), clamped to 1–60, from `wallet.settings.unlockTtlMinutes`
-  (user-configurable in Settings → the wallet's "advanced" section, alongside the chain-node
-  override). "Unlocked for the session" means unlocked for as long as the wallet is ACTIVELY used,
+  (user-configurable in the fullscreen Wallet Settings, §145, alongside the chain-node override).
+  "Unlocked for the session" means unlocked for as long as the wallet is ACTIVELY used,
   not merely for a fixed span from the original unlock: `isSessionRenewingAction` (pure,
   `src/lib/custody-session.ts`) classifies every custody action except the passive `getLockState`
   read and the explicit `lockWallet` as activity, and `handleCustodyAction` (the SW dispatcher, one
@@ -1449,9 +1449,10 @@ Read-only balances come from an HD scan run in the offscreen vault (it has the k
 - **Chain source.** The wasm coinset `RpcClient` fetches the configured chain endpoint from the
   offscreen document (extensions bypass CORS). Default `https://api.coinset.org`; an explicit
   `wallet.settings.chainRpcUrl` override wins (§5.3 — a user-facing custom node, settable +
-  persisted); absent an override, the selected network's default applies (§18.6b). The pooled
-  `dig.local`/`localhost` tiers are NOT used for the wallet chain reads (a DIG node does not expose
-  coinset-shape chain reads today).
+  persisted; discoverable via `ChainNodeSetting` in the fullscreen Wallet Settings, §145 — the
+  everyday popup never needs it); absent an override, the selected network's default applies
+  (§18.6b). The pooled `dig.local`/`localhost` tiers are NOT used for the wallet chain reads (a DIG
+  node does not expose coinset-shape chain reads today).
 - **Privacy.** The wallet DISCLOSES, once (until acknowledged, `wallet.settings.chainPrivacyAck`),
   that a scan reveals the wallet's full address set to the configured operator, and offers the
   override so a privacy-minded user can point at their own node.
@@ -1501,8 +1502,8 @@ scan/discovery, only how the resolved rows are ordered, which are pinned, and wh
 
 ### 18.6b Network selection — mainnet/testnet11 (#108)
 
-A user-facing switcher (`NetworkSetting`, Advanced tier, alongside the chain-node override) selects
-which Chia network the wallet's balance/activity/coin reads resolve against:
+A user-facing switcher (`NetworkSetting`, fullscreen-only §145, alongside the chain-node override)
+selects which Chia network the wallet's balance/activity/coin reads resolve against:
 
 - **Config (`src/lib/network.ts`).** Two networks, `mainnet` (default) and `testnet` (Chia's
   testnet11), each carrying the three things that differ between them: the bech32(m) address prefix
