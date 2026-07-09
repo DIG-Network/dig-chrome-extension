@@ -942,7 +942,7 @@ describe('Vault trade ops', () => {
     return chain;
   }
   const CAT = 'aa'.repeat(32);
-  const offerXchForCat = { offered: { asset: { kind: 'xch' as const }, amount: '100000000000' }, requested: { asset: { kind: 'cat' as const, assetId: CAT }, amount: '250' } };
+  const offerXchForCat = { offered: [{ asset: { kind: 'xch' as const }, amount: '100000000000' }], requested: [{ asset: { kind: 'cat' as const, assetId: CAT }, amount: '250' }] };
 
   it('makeOffer builds an offer1… string + two-sided summary; inspectOffer round-trips it', async () => {
     const v = await unlockedZerosWallet();
@@ -951,12 +951,34 @@ describe('Vault trade ops', () => {
     expect(made.success).toBe(true);
     expect(made.offer?.startsWith('offer1')).toBe(true);
     expect(made.offerSummary?.offered[0]).toEqual({ asset: { kind: 'xch' }, amount: '100000000000' });
+    // #101 — the poll key every real offered coin id, surfaced so the SW can persist an offer-log
+    // entry and later detect a take/cancel via a cheap coin-spent check.
+    expect(made.offerCoinIds?.length).toBeGreaterThan(0);
 
     const seen = await v.handle({ op: 'inspectOffer', offerStr: made.offer! }, { ...deps, chia, chain });
     expect(seen.success).toBe(true);
     expect(seen.offerSummary?.offered[0]).toEqual({ asset: { kind: 'xch' }, amount: '100000000000' });
     expect(seen.offerSummary?.requested[0].asset).toEqual({ kind: 'cat', assetId: CAT });
     expect(seen.offerSummary?.requested[0].amount).toBe('250');
+  });
+
+  it('makeOffer (#100) accepts MULTIPLE requested legs in one offer', async () => {
+    const v = await unlockedZerosWallet();
+    const chain = tradeChain();
+    const CAT2 = 'cc'.repeat(32);
+    // Multi-REQUESTED (rather than multi-OFFERED) so this orchestration-level test doesn't need the
+    // mock chain to source real CAT coins for a second offered asset — that path is proven end-to-end
+    // against the wasm Simulator in offers.test.ts's MULTI 1/2 cases.
+    const multi = {
+      offered: [{ asset: { kind: 'xch' as const }, amount: '100000000000' }],
+      requested: [
+        { asset: { kind: 'cat' as const, assetId: CAT }, amount: '250' },
+        { asset: { kind: 'cat' as const, assetId: CAT2 }, amount: '10' },
+      ],
+    };
+    const made = await v.handle({ op: 'makeOffer', ...multi, activeIndex: 0 }, { ...deps, chia, chain });
+    expect(made.success).toBe(true);
+    expect(made.offerSummary?.requested).toHaveLength(2);
   });
 
   it('prepareTrade(cancel) → confirmTrade broadcasts a self-spend; a second confirm is NO_PENDING', async () => {

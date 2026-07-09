@@ -252,9 +252,15 @@ export const id: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Buat',
   'trade.mode.take': 'Terima',
+  'trade.mode.offers': 'Penawaran',
+  'trade.offers.empty': 'Anda belum membuat penawaran apa pun.',
+  'trade.offers.status.open': 'Terbuka',
+  'trade.offers.status.taken': 'Diambil',
+  'trade.offers.status.cancelled': 'Dibatalkan',
   'trade.make.continue': 'Lanjutkan',
   'trade.make.review.intro': 'Tinjau perdagangan Anda sebelum membuat penawaran.',
   'trade.make.submit': 'Buat penawaran',
+  'trade.addAsset': '+ Tambah aset lain',
   'trade.error.sameAsset': 'Pilih dua aset yang berbeda untuk ditukar',
   'trade.error.build': 'Penawaran tukar ini tidak dapat dibuat — periksa saldo Anda dan coba lagi',
   'trade.deal.intro': 'Bagikan penawaran ini. Siapa pun dapat menerimanya — ini adalah pertukaran atomik.',
@@ -273,6 +279,12 @@ export const id: Record<string, string> = {
   'trade.take.failed': 'Pertukaran tidak berhasil. Coba lagi.',
   'trade.summary.youGet': 'Anda menerima',
   'trade.summary.youPay': 'Anda membayar',
+  'trade.dexie.post': 'Posting ke Dexie',
+  'trade.dexie.posted': 'Diposting ke Dexie — dompet lain sekarang dapat menemukannya.',
+  'trade.dexie.postFailed': 'Gagal memposting ke Dexie. Coba lagi.',
+  'trade.dexie.browse': 'Jelajahi Dexie',
+  'trade.dexie.browseEmpty': 'Tidak ada penawaran terbuka ditemukan di Dexie.',
+  'trade.dexie.import': 'Impor',
 
   // ── apps (#59) ──
   'apps.title': 'Toko dApp DIG',

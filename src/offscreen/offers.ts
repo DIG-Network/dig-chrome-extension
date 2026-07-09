@@ -315,92 +315,147 @@ export interface OfferSummary {
 export interface MadeOffer {
   offer: string;
   summary: OfferSummary;
+  /**
+   * The hex coin ids of EVERY real offered coin spent into settlement (across every offered asset,
+   * #100). Any one of these being spent on-chain means the offer was taken or cancelled — used by
+   * the offer-log (#101) as a single cheap poll key, since the maker's spend consumes them all
+   * atomically together.
+   */
+  offeredCoinIdsHex: string[];
+}
+
+/** A stable dedupe/overlap key for one offer asset — same asset kind + identity ⇒ same key. */
+function assetKey(a: OfferAsset): string {
+  return a.kind === 'xch' ? 'xch' : a.kind === 'cat' ? `cat:${a.assetId.toLowerCase()}` : `nft:${a.launcherId.toLowerCase()}`;
 }
 
 /**
- * MAKE an offer: spend the wallet's OFFERED coins into the settlement puzzle, assert the REQUESTED
- * payment announcement (never funding it), and append the phantom requested-payment carrier. Returns
- * the encoded `offer1…` string. Does NOT broadcast — an offer is only a promise until taken.
+ * MAKE an offer: spend the wallet's OFFERED coins into the settlement puzzle, assert every REQUESTED
+ * payment announcement (never funding it), and append one phantom requested-payment carrier per
+ * requested asset. Returns the encoded `offer1…` string. Does NOT broadcast — an offer is only a
+ * promise until taken.
+ *
+ * Multi-asset (#100): `offered`/`requested` are ARRAYS — 1 or more assets per side, in any mix of
+ * XCH/CAT (either side) plus AT MOST ONE offered NFT (the v1 single-offered-NFT model, §94; a
+ * requested NFT remains unsupported — see the module doc). The chia-sdk offer format ties every
+ * requested payment to the SAME nonce (computed once, over the ascending-sorted ids of ALL offered
+ * coins across every offered asset) — so building N legs on either side is a straightforward loop
+ * over the same per-asset primitives the v1 single-asset path already used; no new wasm surface.
  */
 export async function makeOffer(
   chia: OfferWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; offered: OfferLeg; requested: OfferLeg; fee?: bigint; activeIndex?: number; additionalDataHex?: string },
+  opts: { seed: Uint8Array; offered: OfferLeg[]; requested: OfferLeg[]; fee?: bigint; activeIndex?: number; additionalDataHex?: string },
 ): Promise<MadeOffer> {
-  if (opts.offered.asset.kind === opts.requested.asset.kind && opts.offered.asset.kind === 'xch') {
-    throw new Error('SAME_ASSET: cannot trade XCH for XCH');
+  if (opts.offered.length === 0) throw new Error('BAD_REQUEST: at least one offered asset is required');
+  if (opts.requested.length === 0) throw new Error('BAD_REQUEST: at least one requested asset is required');
+  const offeredKeys = opts.offered.map((l) => assetKey(l.asset));
+  const requestedKeys = opts.requested.map((l) => assetKey(l.asset));
+  if (new Set(offeredKeys).size !== offeredKeys.length) {
+    throw new Error('DUPLICATE_ASSET: an offered asset is listed more than once — combine it into a single leg');
   }
-  if (opts.offered.asset.kind === 'cat' && opts.requested.asset.kind === 'cat' && opts.offered.asset.assetId === opts.requested.asset.assetId) {
-    throw new Error('SAME_ASSET: cannot trade a token for itself');
+  if (new Set(requestedKeys).size !== requestedKeys.length) {
+    throw new Error('DUPLICATE_ASSET: a requested asset is listed more than once — combine it into a single leg');
   }
-  if (opts.requested.asset.kind === 'nft') {
-    // Requesting a SPECIFIC NFT needs its full on-chain state (metadata/owner/royalty) known up
-    // front to build its phantom carrier's 3-layer puzzle reveal — a "read any NFT by launcher id"
-    // capability this wallet doesn't have yet (only owned-NFT hint-scan). Tracked follow-up.
-    throw new Error('UNSUPPORTED_REQUEST: requesting a specific NFT is not yet supported — offer it instead');
+  if (offeredKeys.some((k) => requestedKeys.includes(k))) {
+    throw new Error('SAME_ASSET: cannot request an asset you are also offering');
   }
+  if (opts.offered.filter((l) => l.asset.kind === 'nft').length > 1) {
+    throw new Error('UNSUPPORTED_OFFER: at most one offered NFT is supported per offer');
+  }
+  for (const leg of opts.requested) {
+    if (leg.asset.kind === 'nft') {
+      // Requesting a SPECIFIC NFT needs its full on-chain state (metadata/owner/royalty) known up
+      // front to build its phantom carrier's 3-layer puzzle reveal — a "read any NFT by launcher id"
+      // capability this wallet doesn't have yet (only owned-NFT hint-scan). Tracked follow-up.
+      throw new Error('UNSUPPORTED_REQUEST: requesting a specific NFT is not yet supported — offer it instead');
+    }
+  }
+
   const fee = opts.fee ?? 0n;
   const additionalData = opts.additionalDataHex ?? MAINNET_AGG_SIG_ME;
   const keyring = buildKeyring(chia as unknown as SendFlowWasm, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
-  const receivePh = bytes(chia, keyring[0].puzzleHashHex); // requested payment + change → index-0
+  const receivePh = bytes(chia, keyring[0].puzzleHashHex); // requested payments + change → index-0
   const settleHash = chia.Constants.settlementPaymentHash();
-  const requestedAsset: FungibleAsset = opts.requested.asset;
 
   const clvm = new chia.Clvm();
   const spends = new chia.Spends(clvm, receivePh);
 
-  // Add the OFFERED asset (+ XCH to cover the fee) and record its coin id(s) for the nonce.
+  // Add every OFFERED asset's coins (+ record its coin id(s) for the nonce — computed over ALL of
+  // them together, per chia-sdk's `Offer::nonce`).
   const offeredCoinIds: Uint8Array[] = [];
   let offeredNft: WasmNft | undefined;
-  if (opts.offered.asset.kind === 'xch') {
-    const xch = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
-    for (const c of xch) {
-      spends.addXch(c as unknown as WasmCoin);
-      offeredCoinIds.push((c as unknown as WasmCoin).coinId());
+  let xchAdded = false;
+  for (const leg of opts.offered) {
+    if (leg.asset.kind === 'xch') {
+      const xch = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
+      for (const c of xch) {
+        spends.addXch(c as unknown as WasmCoin);
+        offeredCoinIds.push((c as unknown as WasmCoin).coinId());
+      }
+      xchAdded = true;
+    } else if (leg.asset.kind === 'cat') {
+      const cats = (await reconstructCats(chia as unknown as SendFlowWasm, chain, keyring, leg.asset.assetId)) as unknown as WasmCat[];
+      if (cats.length === 0) throw new Error('NO_CAT_COINS: the wallet holds none of this token');
+      for (const c of cats) {
+        spends.addCat(c);
+        offeredCoinIds.push(c.coin.coinId());
+      }
+    } else {
+      offeredNft = (await findOwnedNft(
+        chia as unknown as NftWasm,
+        chain,
+        clvm as unknown as NftClvm,
+        keyring,
+        leg.asset.launcherId,
+      )) as unknown as WasmNft;
+      spends.addNft(offeredNft);
+      offeredCoinIds.push(offeredNft.coin.coinId());
     }
-  } else if (opts.offered.asset.kind === 'cat') {
-    const cats = (await reconstructCats(chia as unknown as SendFlowWasm, chain, keyring, opts.offered.asset.assetId)) as unknown as WasmCat[];
-    if (cats.length === 0) throw new Error('NO_CAT_COINS: the wallet holds none of this token');
-    for (const c of cats) {
-      spends.addCat(c);
-      offeredCoinIds.push(c.coin.coinId());
-    }
-    if (fee > 0n) for (const c of await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex))) spends.addXch(c as unknown as WasmCoin);
-  } else {
-    offeredNft = (await findOwnedNft(
-      chia as unknown as NftWasm,
-      chain,
-      clvm as unknown as NftClvm,
-      keyring,
-      opts.offered.asset.launcherId,
-    )) as unknown as WasmNft;
-    spends.addNft(offeredNft);
-    offeredCoinIds.push(offeredNft.coin.coinId());
-    if (fee > 0n) for (const c of await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex))) spends.addXch(c as unknown as WasmCoin);
   }
-  const offeredAmount = opts.offered.asset.kind === 'nft' ? 1n : opts.offered.amount;
+  // A fee is paid in XCH; if XCH isn't already one of the offered assets, fund it separately.
+  if (fee > 0n && !xchAdded) {
+    for (const c of await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex))) spends.addXch(c as unknown as WasmCoin);
+  }
 
   const nonce = offerNonce(clvm, offeredCoinIds);
-  const reqNp = notarizedPayment(chia, nonce, receivePh, opts.requested.amount);
+
+  // One notarized payment per requested leg, ALL sharing the offer's single nonce.
+  const requestedPayments = opts.requested.map((leg) => {
+    const asset = leg.asset as FungibleAsset; // validated non-nft above
+    return { asset, np: notarizedPayment(chia, nonce, receivePh, leg.amount) };
+  });
 
   const actions: unknown[] = [];
-  if (opts.offered.asset.kind === 'nft') {
-    // CHIP-0011 royalty (§94): declare the sale's trade price BEFORE claiming the NFT into
-    // settlement, so the ownership layer's transfer program emits the royalty assert automatically.
-    const nftId = chia.Id.existing(bytes(chia, opts.offered.asset.launcherId));
-    if (offeredNft!.info.royaltyBasisPoints > 0) {
-      const tradePrice = new chia.TradePrice(opts.requested.amount, settlementPuzzleHash(chia, requestedAsset));
-      actions.push(chia.Action.updateNft(nftId, [], new chia.TransferNftById(undefined, [tradePrice])));
+  const offeredLegsOut: OfferLeg[] = [];
+  for (const leg of opts.offered) {
+    if (leg.asset.kind === 'nft') {
+      // CHIP-0011 royalty (§94): declare the sale's trade price BEFORE claiming the NFT into
+      // settlement, so the ownership layer's transfer program emits the royalty assert automatically.
+      // The trade price ties to the FIRST requested leg — the common single-requested-asset case; a
+      // royalty split across MULTIPLE requested assets is a rare follow-up (dexie/Sage themselves
+      // only price royalties against one asset too).
+      const nftId = chia.Id.existing(bytes(chia, leg.asset.launcherId));
+      if (offeredNft!.info.royaltyBasisPoints > 0) {
+        const priceLeg = requestedPayments[0]!;
+        const tradePrice = new chia.TradePrice(opts.requested[0]!.amount, settlementPuzzleHash(chia, priceLeg.asset));
+        actions.push(chia.Action.updateNft(nftId, [], new chia.TransferNftById(undefined, [tradePrice])));
+      }
+      actions.push(chia.Action.send(nftId, settleHash, 1n, undefined));
+      offeredLegsOut.push({ asset: leg.asset, amount: 1n });
+    } else {
+      const offeredId = leg.asset.kind === 'xch' ? chia.Id.xch() : chia.Id.existing(bytes(chia, leg.asset.assetId));
+      actions.push(chia.Action.send(offeredId, settleHash, leg.amount, undefined));
+      offeredLegsOut.push({ asset: leg.asset, amount: leg.amount });
     }
-    actions.push(chia.Action.send(nftId, settleHash, 1n, undefined));
-  } else {
-    const offeredId = opts.offered.asset.kind === 'xch' ? chia.Id.xch() : chia.Id.existing(bytes(chia, opts.offered.asset.assetId));
-    actions.push(chia.Action.send(offeredId, settleHash, offeredAmount, undefined));
   }
   if (fee > 0n) actions.push(chia.Action.fee(fee));
+
   const deltas = spends.apply(actions);
-  spends.addRequiredCondition(clvm.assertPuzzleAnnouncement(paymentAssertionId(chia, clvm, requestedAsset, reqNp)));
+  for (const { asset, np } of requestedPayments) {
+    spends.addRequiredCondition(clvm.assertPuzzleAnnouncement(paymentAssertionId(chia, clvm, asset, np)));
+  }
 
   const fin = spends.prepare(deltas);
   for (const ps of fin.pendingSpends()) {
@@ -412,14 +467,15 @@ export async function makeOffer(
   const realCoinSpends = clvm.coinSpends();
   const sig = signCoinSpends(chia as unknown as SigningWasm, realCoinSpends, keyring.map((k) => k.sk), additionalData);
 
-  const phantom = buildPhantomCarrier(chia, requestedAsset, reqNp);
-  const bundle = new chia.SpendBundle([...realCoinSpends, phantom as unknown as SigCoinSpend], sig);
+  const phantoms = requestedPayments.map(({ asset, np }) => buildPhantomCarrier(chia, asset, np) as unknown as SigCoinSpend);
+  const bundle = new chia.SpendBundle([...realCoinSpends, ...phantoms], sig);
   const offer = chia.encodeOffer(bundle);
   return {
     offer,
+    offeredCoinIdsHex: offeredCoinIds.map((id) => asHex(chia, id)),
     summary: {
-      offered: [{ asset: opts.offered.asset, amount: offeredAmount }],
-      requested: [{ asset: opts.requested.asset, amount: opts.requested.amount, toPuzzleHashHex: asHex(chia, receivePh) }],
+      offered: offeredLegsOut,
+      requested: opts.requested.map((leg) => ({ asset: leg.asset, amount: leg.amount, toPuzzleHashHex: asHex(chia, receivePh) })),
     },
   };
 }

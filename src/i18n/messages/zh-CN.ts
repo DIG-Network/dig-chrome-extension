@@ -252,9 +252,15 @@ export const zhCN: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': '发起',
   'trade.mode.take': '接受',
+  'trade.mode.offers': '报价',
+  'trade.offers.empty': '您还没有创建任何报价。',
+  'trade.offers.status.open': '进行中',
+  'trade.offers.status.taken': '已成交',
+  'trade.offers.status.cancelled': '已取消',
   'trade.make.continue': '继续',
   'trade.make.review.intro': '创建报价前请确认交易内容。',
   'trade.make.submit': '创建报价',
+  'trade.addAsset': '+ 添加另一种资产',
   'trade.error.sameAsset': '请选择两种不同的资产进行交易',
   'trade.error.build': '交易创建失败——请检查您的余额后重试',
   'trade.deal.intro': '分享此报价。任何人都可以接受它——交换过程具有原子性，安全可靠。',
@@ -273,6 +279,12 @@ export const zhCN: Record<string, string> = {
   'trade.take.failed': '交易未能完成，请重试。',
   'trade.summary.youGet': '您获得',
   'trade.summary.youPay': '您支付',
+  'trade.dexie.post': '发布到 Dexie',
+  'trade.dexie.posted': '已发布到 Dexie——其他钱包现在可以找到它。',
+  'trade.dexie.postFailed': '发布到 Dexie 失败,请重试。',
+  'trade.dexie.browse': '浏览 Dexie',
+  'trade.dexie.browseEmpty': '在 Dexie 上未找到进行中的报价。',
+  'trade.dexie.import': '导入',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dApp 商店',

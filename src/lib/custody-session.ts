@@ -33,6 +33,10 @@ export const BALANCES_CACHE_KEY = 'walletCache.balances';
  * key alone. Supersedes the old `walletCache.activity` (a cache of an on-chain scan's result, retired
  * with the heavy `includeSpent: true` coinset reconstruction it cached). */
 export const ACTIVITY_LOG_KEY = 'wallet.activityLog';
+/** `chrome.storage.local` key: the LOCAL offer log (#101) — offers this wallet has MADE, with
+ * derived status (open/taken/cancelled). See `src/lib/offer-log.ts`. Same durable-history semantics
+ * as {@link ACTIVITY_LOG_KEY} (never cleared on wallet switch or index navigation). */
+export const OFFER_LOG_KEY = 'wallet.offerLog';
 
 /** The default public coinset chain source (extensions bypass its CORS). Mainnet — see `resolveNetwork`. */
 export const DEFAULT_COINSET_URL = 'https://api.coinset.org';
@@ -108,6 +112,8 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'inspectOffer',
   'prepareTrade',
   'confirmTrade',
+  // Saved/active offer management (#101): the local "your offers" log for the active wallet+index.
+  'getOffers',
   'listNfts',
   'prepareNftTransfer',
   'confirmNftTransfer',

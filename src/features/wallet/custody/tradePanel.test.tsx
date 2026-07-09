@@ -11,6 +11,13 @@ function twoAssets() {
   return custodyAssetBalances({ xch: 1_000_000_000_000, cats: { [DIG_ASSET_ID]: 5000 } }, []);
 }
 
+/** XCH + $DIG + a second CAT (#100 — multi-asset tests need a 3rd distinct asset so a give leg and
+ * TWO requested legs can each name a different asset with none overlapping). */
+const OTHER_CAT = 'ee'.repeat(32);
+function threeAssets() {
+  return custodyAssetBalances({ xch: 1_000_000_000_000, cats: { [DIG_ASSET_ID]: 5000, [OTHER_CAT]: 900 } }, []);
+}
+
 function mockSw(router: (m: { action: string; [k: string]: unknown }) => unknown) {
   const fn = vi.fn((msg: unknown, cb?: (r: unknown) => void) => {
     const reply = router(msg as { action: string; [k: string]: unknown });
@@ -58,6 +65,13 @@ describe('TradePanel — surface tiering (#169 refines #145: basic maker/taker n
     expect(await screen.findByTestId('trade-mode-make')).toBeInTheDocument();
     expect(screen.getByTestId('trade-mode-take')).toBeInTheDocument();
     expect(screen.getByTestId('trade-make-form')).toBeInTheDocument();
+  });
+
+  it('#101: an "Offers" mode tab switches to the local made-offers log', async () => {
+    mockSw((m) => (m.action === 'getOffers' ? { offers: [] } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(await screen.findByTestId('trade-mode-offers'));
+    expect(await screen.findByTestId('offers-panel')).toBeInTheDocument();
   });
 
   it('the popup surface still offers an explicit "open full screen" link for advanced options', async () => {
@@ -253,7 +267,8 @@ describe('TradePanel — make an NFT (offering a self-custody singleton, #94 —
     fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
 
     expect(await screen.findByTestId('trade-deal-card')).toBeInTheDocument();
-    expect(capturedOffered).toEqual({ asset: { kind: 'nft', launcherId: nftFixture().launcherId }, amount: '1' });
+    // #100 — offered/requested are ARRAYS on the wire now (a single-asset offer is a 1-element array).
+    expect(capturedOffered).toEqual([{ asset: { kind: 'nft', launcherId: nftFixture().launcherId }, amount: '1' }]);
   });
 
   it('shows an empty state when the wallet holds no NFTs to offer', async () => {
@@ -337,5 +352,226 @@ describe('TradePanel — make an NFT (offering a self-custody singleton, #94 —
 
     renderWithProviders(<TradePanel assets={twoAssets()} full onClose={() => {}} />);
     expect(screen.getByTestId('view-header')).toContainElement(screen.getByTestId('trade-close'));
+  });
+});
+
+describe('TradePanel — multi-asset offers (#100: >1 offered and/or >1 requested asset, fullscreen-only advanced path)', () => {
+  it('the popup Make form has no "add asset" controls — basic single-asset only', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+    await screen.findByTestId('trade-make-form');
+    expect(screen.queryByTestId('trade-give-add-asset')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trade-get-add-asset')).not.toBeInTheDocument();
+  });
+
+  it('the fullscreen Make form offers "add another asset" on both give and get', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    expect(await screen.findByTestId('trade-give-add-asset')).toBeInTheDocument();
+    expect(screen.getByTestId('trade-get-add-asset')).toBeInTheDocument();
+  });
+
+  it('adding a second GIVE asset sends a 2-element offered array', async () => {
+    let capturedOffered: unknown;
+    let capturedRequested: unknown;
+    mockSw((m) => {
+      if (m.action === 'makeOffer') {
+        capturedOffered = m.offered;
+        capturedRequested = m.requested;
+        return { offer: OFFER, offerSummary: SUMMARY };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={threeAssets()} full />);
+
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } }); // give row 0: XCH (idx 0)
+    fireEvent.click(screen.getByTestId('trade-give-add-asset'));
+    fireEvent.change(screen.getByTestId('trade-give-asset-1'), { target: { value: '2' } }); // give row 1: the 3rd asset — distinct from get's default ($DIG, idx 1)
+    fireEvent.change(screen.getByTestId('trade-give-amount-1'), { target: { value: '0.1' } }); // well within the 900-base-unit balance
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } }); // get: $DIG (idx 1)
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    await screen.findByTestId('trade-make-review');
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+
+    expect(await screen.findByTestId('trade-deal-card')).toBeInTheDocument();
+    expect(capturedOffered).toHaveLength(2);
+    expect(capturedRequested).toHaveLength(1);
+  });
+
+  it('adding a second GET asset sends a 2-element requested array', async () => {
+    let capturedRequested: unknown;
+    mockSw((m) => {
+      if (m.action === 'makeOffer') {
+        capturedRequested = m.requested;
+        return { offer: OFFER, offerSummary: SUMMARY };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={threeAssets()} full />);
+
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } }); // give: XCH (idx 0)
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } }); // get row 0: $DIG (idx 1)
+    fireEvent.click(screen.getByTestId('trade-get-add-asset'));
+    fireEvent.change(screen.getByTestId('trade-get-asset-1'), { target: { value: '2' } }); // get row 1: the 3rd asset — distinct from both the give leg AND get row 0
+    fireEvent.change(screen.getByTestId('trade-get-amount-1'), { target: { value: '5' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    await screen.findByTestId('trade-make-review');
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+
+    expect(await screen.findByTestId('trade-deal-card')).toBeInTheDocument();
+    expect(capturedRequested).toHaveLength(2);
+  });
+
+  it('removing an added asset row drops it back to a single leg', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-give-add-asset'));
+    expect(screen.getByTestId('trade-give-asset-1')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('trade-give-remove-asset-1'));
+    expect(screen.queryByTestId('trade-give-asset-1')).not.toBeInTheDocument();
+  });
+
+  it('rejects picking the SAME asset twice on the give side before reaching review', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.click(screen.getByTestId('trade-give-add-asset'));
+    fireEvent.change(screen.getByTestId('trade-give-asset-1'), { target: { value: '0' } }); // same as row 0 (XCH)
+    fireEvent.change(screen.getByTestId('trade-give-amount-1'), { target: { value: '0.2' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    expect(await screen.findByTestId('trade-make-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('trade-make-review')).not.toBeInTheDocument();
+  });
+});
+
+describe('TradePanel — dexie marketplace integration (#102, fullscreen-only advanced actions)', () => {
+  it('the popup deal card has no "post to dexie" action (basic surface)', async () => {
+    mockSw((m) => (m.action === 'makeOffer' ? { offer: OFFER, offerSummary: SUMMARY } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+    await screen.findByTestId('trade-deal-card');
+    expect(screen.queryByTestId('trade-deal-dexie-post')).not.toBeInTheDocument();
+  });
+
+  it('fullscreen: posts a made offer to dexie and shows the success state', async () => {
+    let posted: unknown;
+    mockSw((m) => {
+      if (m.action === 'makeOffer') return { offer: OFFER, offerSummary: SUMMARY };
+      if (m.action === 'dexiePost') {
+        posted = m.offer;
+        return { dexieId: 'newDexieId123', known: false };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+    await screen.findByTestId('trade-deal-card');
+
+    fireEvent.click(screen.getByTestId('trade-deal-dexie-post'));
+    expect(await screen.findByTestId('trade-deal-dexie-posted')).toBeInTheDocument();
+    expect(posted).toBe(OFFER);
+  });
+
+  it('fullscreen: surfaces a failed dexie post', async () => {
+    mockSw((m) => {
+      if (m.action === 'makeOffer') return { offer: OFFER, offerSummary: SUMMARY };
+      if (m.action === 'dexiePost') return { success: false, code: 'DEXIE_POST_FAILED' };
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.change(screen.getByTestId('trade-give-amount'), { target: { value: '0.1' } });
+    fireEvent.change(screen.getByTestId('trade-get-amount'), { target: { value: '250' } });
+    fireEvent.click(screen.getByTestId('trade-make-continue'));
+    fireEvent.click(screen.getByTestId('trade-make-review-confirm'));
+    await screen.findByTestId('trade-deal-card');
+
+    fireEvent.click(screen.getByTestId('trade-deal-dexie-post'));
+    expect(await screen.findByTestId('trade-deal-dexie-post-failed')).toBeInTheDocument();
+  });
+
+  it('the popup Take form has no "Browse Dexie" action (basic surface)', async () => {
+    mockSw(() => ({ success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full={false} />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    expect(screen.queryByTestId('trade-take-dexie-browse')).not.toBeInTheDocument();
+  });
+
+  it('fullscreen: browses open dexie offers and imports one into the review step', async () => {
+    const DEXIE_OFFER = 'offer1qqqfromdexieqqq';
+    mockSw((m) => {
+      if (m.action === 'dexieBrowse') {
+        return {
+          offers: [
+            {
+              id: 'o1',
+              offerStr: DEXIE_OFFER,
+              status: 0,
+              dateFound: '2026-07-08T00:00:00.000Z',
+              offered: [{ id: 'xch', code: 'XCH', amount: 1.5 }],
+              requested: [{ id: 'bb'.repeat(32), code: 'DIG', amount: 100 }],
+            },
+          ],
+        };
+      }
+      if (m.action === 'inspectOffer') return { offerSummary: SUMMARY };
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    fireEvent.click(screen.getByTestId('trade-take-dexie-browse'));
+
+    expect(await screen.findByTestId('trade-take-dexie-import-o1')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('trade-take-dexie-import-o1'));
+    expect(await screen.findByTestId('trade-take-review')).toBeInTheDocument();
+  });
+
+  it('fullscreen: shows an empty state when dexie has no matching open offers', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [] } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    fireEvent.click(screen.getByTestId('trade-take-dexie-browse'));
+    expect(await screen.findByTestId('trade-take-dexie-browse-empty')).toBeInTheDocument();
+  });
+
+  it('pasting a dexie link auto-resolves it before inspecting (never treated as a raw offer1… string)', async () => {
+    const DEXIE_URL = 'https://dexie.space/offers/HuorAxfhfB9mvaTN7d1qAMohLjTaQ8P6ZisJiEhxtNwa';
+    const RESOLVED_OFFER = 'offer1qqqresolvedqqq';
+    let resolvedIdOrUrl: unknown;
+    let inspectedOfferStr: unknown;
+    mockSw((m) => {
+      if (m.action === 'dexieResolve') {
+        resolvedIdOrUrl = m.idOrUrl;
+        return { offer: { id: 'HuorAxfhfB9mvaTN7d1qAMohLjTaQ8P6ZisJiEhxtNwa', offerStr: RESOLVED_OFFER, status: 0, dateFound: '', offered: [], requested: [] } };
+      }
+      if (m.action === 'inspectOffer') {
+        inspectedOfferStr = m.offerStr;
+        return { offerSummary: SUMMARY };
+      }
+      return { success: true };
+    });
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    fireEvent.change(screen.getByTestId('trade-take-input'), { target: { value: DEXIE_URL } });
+    fireEvent.click(screen.getByTestId('trade-take-review-btn'));
+
+    expect(await screen.findByTestId('trade-take-review')).toBeInTheDocument();
+    expect(resolvedIdOrUrl).toBe(DEXIE_URL);
+    expect(inspectedOfferStr).toBe(RESOLVED_OFFER);
+  });
+
+  it('a dexie link that fails to resolve falls back to the normal invalid-offer error', async () => {
+    mockSw((m) => (m.action === 'dexieResolve' ? { offer: null } : { success: true }));
+    renderWithProviders(<TradePanel assets={twoAssets()} full />);
+    fireEvent.click(screen.getByTestId('trade-mode-take'));
+    fireEvent.change(screen.getByTestId('trade-take-input'), { target: { value: 'https://dexie.space/offers/unknownId123456' } });
+    fireEvent.click(screen.getByTestId('trade-take-review-btn'));
+    expect(await screen.findByTestId('trade-take-error')).toBeInTheDocument();
   });
 });

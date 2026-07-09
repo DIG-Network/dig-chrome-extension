@@ -260,9 +260,16 @@ export const en: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Make',
   'trade.mode.take': 'Take',
+  // Saved/active offer management (#101)
+  'trade.mode.offers': 'Offers',
+  'trade.offers.empty': "You haven't made any offers yet.",
+  'trade.offers.status.open': 'Open',
+  'trade.offers.status.taken': 'Taken',
+  'trade.offers.status.cancelled': 'Cancelled',
   'trade.make.continue': 'Continue',
   'trade.make.review.intro': 'Review your trade before you create the offer.',
   'trade.make.submit': 'Create offer',
+  'trade.addAsset': '+ Add another asset',
   'trade.error.sameAsset': 'Pick two different assets to trade',
   'trade.error.build': "Couldn't build this trade — check your balances and try again",
   'trade.deal.intro': 'Share this offer. Anyone can accept it — the swap is atomic.',
@@ -281,6 +288,13 @@ export const en: Record<string, string> = {
   'trade.take.failed': "The trade didn't go through. Try again.",
   'trade.summary.youGet': 'You get',
   'trade.summary.youPay': 'You pay',
+  // dexie marketplace integration (#102)
+  'trade.dexie.post': 'Post to Dexie',
+  'trade.dexie.posted': 'Posted to Dexie — other wallets can now find it.',
+  'trade.dexie.postFailed': "Couldn't post to Dexie. Try again.",
+  'trade.dexie.browse': 'Browse Dexie',
+  'trade.dexie.browseEmpty': 'No open offers found on Dexie.',
+  'trade.dexie.import': 'Import',
 
   // ── apps (#59) ──
   'apps.title': 'DIG dApp store',

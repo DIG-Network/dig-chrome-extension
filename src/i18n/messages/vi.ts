@@ -252,9 +252,15 @@ export const vi: Record<string, string> = {
   // Self-custody Trade (§18.10)
   'trade.mode.make': 'Tạo',
   'trade.mode.take': 'Nhận',
+  'trade.mode.offers': 'Đề nghị',
+  'trade.offers.empty': 'Bạn chưa tạo đề nghị nào.',
+  'trade.offers.status.open': 'Đang mở',
+  'trade.offers.status.taken': 'Đã nhận',
+  'trade.offers.status.cancelled': 'Đã hủy',
   'trade.make.continue': 'Tiếp tục',
   'trade.make.review.intro': 'Xem lại giao dịch của bạn trước khi tạo đề nghị.',
   'trade.make.submit': 'Tạo đề nghị',
+  'trade.addAsset': '+ Thêm tài sản khác',
   'trade.error.sameAsset': 'Chọn hai tài sản khác nhau để giao dịch',
   'trade.error.build': 'Không thể tạo giao dịch này — hãy kiểm tra số dư và thử lại',
   'trade.deal.intro': 'Chia sẻ đề nghị này. Bất kỳ ai cũng có thể chấp nhận — đây là một giao dịch hoán đổi nguyên tử.',
@@ -273,6 +279,12 @@ export const vi: Record<string, string> = {
   'trade.take.failed': 'Giao dịch không thành công. Hãy thử lại.',
   'trade.summary.youGet': 'Bạn nhận',
   'trade.summary.youPay': 'Bạn trả',
+  'trade.dexie.post': 'Đăng lên Dexie',
+  'trade.dexie.posted': 'Đã đăng lên Dexie — các ví khác giờ có thể tìm thấy.',
+  'trade.dexie.postFailed': 'Không thể đăng lên Dexie. Vui lòng thử lại.',
+  'trade.dexie.browse': 'Duyệt Dexie',
+  'trade.dexie.browseEmpty': 'Không tìm thấy đề nghị đang mở nào trên Dexie.',
+  'trade.dexie.import': 'Nhập',
 
   // ── apps (#59) ──
   'apps.title': 'Kho dApp DIG',
