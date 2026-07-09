@@ -9,6 +9,7 @@ export const es: Record<string, string> = {
   'shell.wallet.title': 'Billetera DIG',
   'shell.popout': 'Abrir en ventana completa',
   'shell.settings': 'Configuración de DIG',
+  'shell.nav.label': 'Navegación lateral',
   'shell.version': 'Versión {version}',
   'shell.language': 'Idioma',
   'shell.theme': 'Tema',

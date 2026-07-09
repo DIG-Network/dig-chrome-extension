@@ -184,10 +184,14 @@ test('popup wallet tab set hides Identity (advanced → fullscreen-only)', async
   await page.screenshot({ path: 'e2e/__screenshots__/popup-wallet-tabset.png' });
 });
 
-test('fullscreen wallet tab set includes Identity', async ({ page }) => {
+test('fullscreen wallet nav includes Identity (the desktop sidebar is the wallet-view nav, #85)', async ({ page }) => {
   await page.setViewportSize(TABLET);
   await open(page, 'app.html', 'wallet');
-  await expect(page.getByTestId('seg-did')).toBeVisible();
+  // On the desktop workspace the in-content segmented control is hidden and the persistent sidebar
+  // carries every wallet section, Identity included (it stays advanced/fullscreen-only — the popup
+  // has no sidebar). The old in-content `seg-did` is intentionally hidden here.
+  await expect(page.getByTestId('nav-did')).toBeVisible();
+  await expect(page.getByTestId('seg-did')).toBeHidden();
 });
 
 // #154 — the local activity log ledger: pending (no SpaceScan link yet) + confirmed rows, the new

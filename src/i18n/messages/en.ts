@@ -10,6 +10,7 @@ export const en: Record<string, string> = {
   'shell.wallet.title': 'DIG Wallet',
   'shell.popout': 'Open in full window',
   'shell.settings': 'DIG settings',
+  'shell.nav.label': 'Sidebar navigation',
   'shell.version': 'Version {version}',
   'shell.language': 'Language',
   // ── theme (#111) ──

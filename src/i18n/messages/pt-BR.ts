@@ -9,6 +9,7 @@ export const ptBR: Record<string, string> = {
   'shell.wallet.title': 'Carteira DIG',
   'shell.popout': 'Abrir em janela completa',
   'shell.settings': 'Configurações do DIG',
+  'shell.nav.label': 'Navegação lateral',
   'shell.version': 'Versão {version}',
   'shell.language': 'Idioma',
   'shell.theme': 'Tema',

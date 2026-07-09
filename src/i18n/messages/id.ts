@@ -9,6 +9,7 @@ export const id: Record<string, string> = {
   'shell.wallet.title': 'Dompet DIG',
   'shell.popout': 'Buka di jendela penuh',
   'shell.settings': 'Pengaturan DIG',
+  'shell.nav.label': 'Navigasi bilah sisi',
   'shell.version': 'Versi {version}',
   'shell.language': 'Bahasa',
   'shell.theme': 'Tema',

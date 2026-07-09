@@ -9,6 +9,7 @@ export const ja: Record<string, string> = {
   'shell.wallet.title': 'DIGウォレット',
   'shell.popout': '全画面ウィンドウで開く',
   'shell.settings': 'DIG設定',
+  'shell.nav.label': 'サイドバーナビゲーション',
   'shell.version': 'バージョン {version}',
   'shell.language': '言語',
   'shell.theme': 'テーマ',

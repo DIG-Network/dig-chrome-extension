@@ -9,6 +9,7 @@ export const ko: Record<string, string> = {
   'shell.wallet.title': 'DIG 지갑',
   'shell.popout': '전체 창에서 열기',
   'shell.settings': 'DIG 설정',
+  'shell.nav.label': '사이드바 탐색',
   'shell.version': '버전 {version}',
   'shell.language': '언어',
   'shell.theme': '테마',
