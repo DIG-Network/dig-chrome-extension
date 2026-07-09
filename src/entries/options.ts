@@ -6,6 +6,10 @@
  * parser/resolver come from `#shared/*` so the background read path and these keys can never
  * disagree on the default port.
  */
+// Vendored DIG product type (`font-src 'self'`) so this page actually renders in Space Grotesk like
+// the popup + full-screen shell — its CSS names `--font-display`, but without the @fontsource import
+// the family never loaded and headings silently fell back to the system stack.
+import '@/styles/fonts';
 import { DIG_BROWSER_URL } from '@/lib/links';
 import { DEFAULT_DIG_NODE_HOST, parseServerHost, resolveDigNode } from '@/lib/server-config';
 import { digNodeInstallPrompt } from '@/lib/dig-node-status';
