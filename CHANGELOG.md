@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.80.0] - 2026-07-10
+
+### Bug Fixes
+- **viewer:** Render chia:// in a sandboxed frame; verify rootless URNs vs anchored root (#111)
+
 ## [1.79.0] - 2026-07-10
 
 ### Features
