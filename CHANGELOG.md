@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.79.0] - 2026-07-10
+
+### Features
+- **wallet:** Auto-detect a running local dig-node as the wallet-data source (#110)
+
 ## [1.78.0] - 2026-07-10
 
 ### Features
