@@ -217,8 +217,13 @@ import { DIG_ERR } from './error-codes';
  * `confirmOptionExercise` (exercise one this wallet holds), and `getOptions` (the local option
  * registry, mirroring #101's offer-log — a bare on-chain option carries no recoverable terms, so the
  * minting wallet remembers them). Both confirm actions reuse the vault's `confirmSend` broadcast path.
+ *
+ * v30 (#222 auto-detect a running local dig-node): added `getChainSourceStatus` — resolves the
+ * §5.3 ladder for the WALLET-data read path (distinct from `getDigNodeStatus`'s content path) and
+ * reports the selected mode + the resolved source, backing the "Local dig-node detected" indicator
+ * `ChainSourceSetting` shows when Auto mode auto-selects a local node. Purely additive.
  */
-export const MESSAGE_PROTOCOL_VERSION = 29;
+export const MESSAGE_PROTOCOL_VERSION = 30;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -350,6 +355,8 @@ export const ACTIONS = Object.freeze({
   reportVerification: 'reportVerification',
   getVerification: 'getVerification',
   getDigNodeStatus: 'getDigNodeStatus',
+  // ── wallet-data source auto-detect (#222): the §5.3 ladder status for the WALLET read path ──
+  getChainSourceStatus: 'getChainSourceStatus',
   // ── dig-dns Path-B proxy fallback (#175): the shared .dig-resolution availability signal ──
   getDigDnsStatus: 'getDigDnsStatus',
   // ── DIG Shields (per-resource proof ledger) — mirrors the browser dig://shields #134 ──
@@ -840,6 +847,13 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Probe whether a local dig-node is reachable; report the chosen base.',
     request: '{ action }',
     response: '{ reachable:boolean, base:string|null }',
+  },
+  [ACTIONS.getChainSourceStatus]: {
+    summary:
+      "Wallet-data source auto-detect (#222): resolve the §5.3 ladder for the WALLET read path (distinct from getDigNodeStatus's content path) and report the selected mode + the resolved source (a reachable node's base/strict, coinset, or unavailable+reason). Backs the 'Local dig-node detected' indicator ChainSourceSetting shows when Auto mode auto-selects a local node.",
+    request: '{ action }',
+    response:
+      "{ mode:'auto'|'node'|'coinset'|'custom', resolved:{kind:'node',base:string,strict:boolean}|{kind:'coinset'}|{kind:'unavailable',reason:'node-unreachable'|'custom-unreachable'|'custom-missing'} }",
   },
   [ACTIONS.getDigDnsStatus]: {
     summary:

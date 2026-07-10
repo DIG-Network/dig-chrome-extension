@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useAppDispatch } from '@/app/hooks';
-import { custodyApi } from '@/features/wallet/custodyApi';
+import { custodyApi, useGetChainSourceStatusQuery } from '@/features/wallet/custodyApi';
 import { readWalletSettings, updateWalletSettings } from '@/features/wallet/custody/settings';
 import { setChainSource } from '@/features/ui/uiSlice';
 import {
@@ -10,9 +10,15 @@ import {
   isChainSourceMode,
   type ChainSourceMode,
 } from '@/lib/wallet-source';
+import { walletSourceIndicatorView } from '@/lib/wallet-source-status';
+import { StatusPill } from '@/components/StatusPill';
 
 /** Every wallet-data view depends on the source, so a source change re-fetches them all (#217). */
-const SOURCE_DEPENDENT_TAGS = ['Balances', 'Activity', 'Collectibles', 'Identity', 'Coins'] as const;
+const SOURCE_DEPENDENT_TAGS = ['Balances', 'Activity', 'Collectibles', 'Identity', 'Coins', 'ChainSourceStatus'] as const;
+
+/** Re-probe the §5.3 ladder while the panel is open (#222) so a node that starts/stops mid-session
+ * updates the "Local dig-node detected" indicator without requiring a popup reopen. */
+const CHAIN_SOURCE_STATUS_POLL_MS = 15_000;
 
 /**
  * User-facing wallet-data SOURCE switch (#217 EXT-2, design D.3) — the 4-state control that picks
@@ -34,6 +40,11 @@ export function ChainSourceSetting() {
   const [mode, setMode] = useState<ChainSourceMode>(DEFAULT_CHAIN_SOURCE_MODE);
   const [customUrl, setCustomUrl] = useState('');
   const [saved, setSaved] = useState(false);
+  // #222: actively probe the §5.3 ladder for the wallet-data path (on mount + a live poll) so a
+  // zero-config local node is surfaced the moment it's reachable, not only once a balance/NFT/etc.
+  // fetch happens to run.
+  const chainStatus = useGetChainSourceStatusQuery(undefined, { pollingInterval: CHAIN_SOURCE_STATUS_POLL_MS });
+  const indicator = walletSourceIndicatorView(mode, chainStatus.data?.resolved);
 
   useEffect(() => {
     let live = true;
@@ -87,6 +98,14 @@ export function ChainSourceSetting() {
       <p className="dig-muted" style={{ marginTop: 0 }}>
         <FormattedMessage id={`custody.source.hint.${mode}`} />
       </p>
+
+      {indicator.visible && (
+        <p className="dig-muted" style={{ marginTop: 8 }}>
+          <StatusPill tone={indicator.tone} testid="chain-source-detected-pill">
+            <FormattedMessage id={indicator.labelId} values={{ endpoint: indicator.endpoint }} />
+          </StatusPill>
+        </p>
+      )}
 
       {mode === 'custom' && (
         <form

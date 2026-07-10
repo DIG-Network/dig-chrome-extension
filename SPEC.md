@@ -674,6 +674,11 @@ XCH-denominated option contract, with a local option registry (mirrors #101's of
 bare on-chain option carries no recoverable terms. Both confirm actions reuse the vault's existing
 `confirmSend` broadcast path. Purely additive — no existing action/shape changed.
 
+`MESSAGE_PROTOCOL_VERSION` `30` (#222 auto-detect a running local dig-node) added
+`getChainSourceStatus` (§18.6c) — resolves the §5.3 ladder for the WALLET-data read path and reports
+the selected mode + the resolved source, backing the "Local dig-node detected" indicator. Purely
+additive — no existing action/shape changed.
+
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
 
@@ -714,6 +719,7 @@ fix is entirely extension-side — on.dig.net's headers are not modified.
 | `dappApprovalList` / `dappApprovalResolve` | Approval-window channel (§18.12): read the pending dApp signing-request queue (decoded summaries) / return the user's approve-reject decision. |
 | `reportVerification` / `getVerification` | Record/read the active tab's verification state. |
 | `getDigNodeStatus` | Probe whether a local dig-node is reachable; report the chosen base. |
+| `getChainSourceStatus` | Wallet-data source auto-detect (#222, §18.6c): resolve the §5.3 ladder for the WALLET read path; report the selected mode + the resolved source. |
 | `getDigDnsStatus` | The shared dig-dns Path-B availability signal (§8.5) — phase, bound port, PAC URL, whether the proxy is engaged. |
 | `recordLedgerEntry` / `getShieldLedger` | DIG Shields per-resource proof ledger (§10). |
 | `getControlStatus` | DIG Control Panel status (manage vs install) (§11). |
@@ -1825,6 +1831,17 @@ offscreen DIGWX1 vault and the node never receives one.
   react-intl'd across all 14 locales, a11y-labelled, four RTK-Query states; a change invalidates the
   wallet-data tags so every view re-reads from the new source. Satisfies §5.3's "custom-node config
   must be user-facing on every client" for the wallet-data path.
+- **Auto-detect indicator (#222).** The extension does not wait for a wallet-data fetch to discover a
+  local node: `resolveLocalDigNode()` (the shared §5.3 cache backing both the content path and this
+  wallet path) is warmed proactively on SW `onStartup`/`onInstalled`, and `ChainSourceSetting` queries
+  `getChainSourceStatus` on mount (+ a 15s poll while open) to show the result immediately. When Auto
+  mode's ladder resolves to a reachable node, the panel renders a **"Local dig-node detected"**
+  indicator naming the resolved endpoint (`src/lib/wallet-source-status.ts`
+  `walletSourceIndicatorView`, a pure `{mode, resolved} → {visible, tone, labelId, endpoint}`
+  mapping) — zero-config, no `server.host`/custom-URL entry required. The indicator is scoped to
+  `mode === 'auto'` with a `resolved.kind === 'node'` result; a user-forced mode (node/custom/coinset)
+  relies on its own `custody.source.hint.*` copy + the four-state error UI instead, so the two never
+  disagree.
 
 ### 18.7 Spend signing
 

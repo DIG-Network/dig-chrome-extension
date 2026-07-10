@@ -131,6 +131,7 @@ export const zhCN: Record<string, string> = {
   'custody.source.custom.label': 'dig-node RPC URL',
   'custody.source.custom.save': '保存来源',
   'custody.source.saved': '已保存',
+  'custody.source.detected': '检测到本地 dig-node — 正在从 {endpoint} 读取钱包数据。',
   'custody.soon.activity': '活动记录功能将随自托管转账功能一同推出。',
   'custody.soon.trade': '交易功能将随自托管签名功能一同推出。',
 

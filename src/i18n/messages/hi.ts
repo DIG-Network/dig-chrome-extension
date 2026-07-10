@@ -131,6 +131,7 @@ export const hi: Record<string, string> = {
   'custody.source.custom.label': 'dig-node RPC URL',
   'custody.source.custom.save': 'स्रोत सेव करें',
   'custody.source.saved': 'सेव हो गया',
+  'custody.source.detected': 'लोकल dig-node मिल गया — {endpoint} से वॉलेट डेटा पढ़ा जा रहा है।',
   'custody.soon.activity': 'सेल्फ-कस्टडी सेंडिंग के साथ एक्टिविटी हिस्ट्री जल्द आ रही है।',
   'custody.soon.trade': 'सेल्फ-कस्टडी साइनिंग के साथ ट्रेडिंग जल्द आ रही है।',
 

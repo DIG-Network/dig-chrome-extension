@@ -131,6 +131,7 @@ export const ja: Record<string, string> = {
   'custody.source.custom.label': 'dig-node RPC URL',
   'custody.source.custom.save': 'ソースを保存',
   'custody.source.saved': '保存しました',
+  'custody.source.detected': 'ローカルの dig-node が検出されました — {endpoint} からウォレットデータを読み取っています。',
   'custody.soon.activity': 'アクティビティ履歴は、自己管理型の送金機能とあわせて追加予定です。',
   'custody.soon.trade': '取引機能は、自己管理型の署名機能とあわせて追加予定です。',
 
