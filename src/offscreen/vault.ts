@@ -69,6 +69,10 @@ import {
   type ClawbackInfo,
   type ClawbackWasm,
 } from '@/offscreen/clawback';
+// #228: the coinset-direct chain-anchored-root walk (hosted rpc.dig.net tier fallback for a
+// rootless chia:// read) — KEYLESS, no wallet secret involved; lives here only because the
+// offscreen document is where the DataLayer driver wasm can be loaded (chip35Wasm.d.ts / vite-plugin-wasm).
+import { walkAnchoredRoot, type Chip35Wasm, type LineageCoinsetClient } from '@/offscreen/anchoredRoot';
 
 /**
  * A CHIP-0002 `getAssetBalance` result: the wallet-wide aggregate for one asset (XCH or a CAT), in
@@ -232,7 +236,11 @@ export type VaultOp =
   | 'decodeDappSpend'
   | 'signDappSpend'
   | 'signMessage'
-  | 'broadcastDappBundle';
+  | 'broadcastDappBundle'
+  // Content-read verify (#228): resolve a DataLayer store's chain-anchored root directly from
+  // coinset.org (the hosted rpc.dig.net tier doesn't serve `dig.getAnchoredRoot`) — keyless, no
+  // wallet secret involved; the SW calls this as a fallback when the local node is unavailable.
+  | 'resolveCoinsetAnchoredRoot';
 
 /**
  * Wire-safe (JSON, no bigint) NFT mint inputs (#92) crossing the SW→vault boundary. URIs are plain
@@ -375,6 +383,8 @@ export interface VaultRequest {
   publicKey?: string;
   /** broadcastDappBundle: the dApp bundle's aggregated BLS signature (hex) — the bundle is already signed. */
   aggregatedSignature?: string;
+  /** resolveCoinsetAnchoredRoot (#228): the store's launcher id (= store id), 64-hex (0x optional). */
+  storeId?: string;
 }
 
 /** The vault's reply. Never carries the persisted key; `mnemonic` is for one-time display only. */
@@ -482,17 +492,25 @@ export interface VaultResponse {
   signature?: string;
   /** signMessage: the public key (hex) the message was signed under. */
   signerPublicKey?: string;
+  /** resolveCoinsetAnchoredRoot (#228): the store's chain-anchored tip root (64-hex, no 0x), or
+   *  `null` when the on-chain walk could not resolve one (fail-closed — the caller MUST treat this
+   *  as unverifiable, never silently trust the URN string or the serving host). */
+  root?: string | null;
 }
 
 /** Test/DI seam. `chia` + `chain` power derivation + the balance scan; `keystoreWasm` powers the
  * V2 vault crypto (dig_ecosystem #147 Phase B) — all offscreen-only at runtime (real wasm/network
  * deps are lazily loaded by `src/entries/offscreen.ts` and injected here, never imported by this
- * pure class). `argon2Fn` is a test seam for the LEGACY V1 decode path only. */
+ * pure class). `argon2Fn` is a test seam for the LEGACY V1 decode path only. `chip35` +
+ * `lineageClient` (#228) power `resolveCoinsetAnchoredRoot` — a KEYLESS read, no relation to the
+ * custody `chia`/`chain` deps above. */
 export interface VaultDeps {
   argon2Fn?: Argon2Fn;
   keystoreWasm?: KeystoreWasm;
   chia?: ScanWasm;
   chain?: ChainClient;
+  chip35?: Chip35Wasm;
+  lineageClient?: LineageCoinsetClient;
 }
 
 /** A prepared-but-unsigned send held between approval and confirm (offscreen memory only). */
@@ -656,6 +674,8 @@ export class Vault {
           return await this.signMessage(req, deps);
         case 'broadcastDappBundle':
           return await this.broadcastDappBundle(req, deps);
+        case 'resolveCoinsetAnchoredRoot':
+          return await this.resolveCoinsetAnchoredRoot(req, deps);
         default:
           return { success: false, code: 'BAD_REQUEST', message: `unknown vault op` };
       }
@@ -1694,6 +1714,24 @@ export class Vault {
     const push = await deps.chain.pushSpendBundle(bundle);
     if (!push.success) return { success: false, code: 'PUSH_FAILED', message: push.error ?? 'broadcast failed' };
     return { success: true };
+  }
+
+  /**
+   * Resolve a DataLayer store's CHAIN-ANCHORED tip root directly from coinset.org (#228): walks the
+   * store's on-chain singleton lineage from its launcher (`req.storeId`) to the live unspent tip via
+   * `deps.lineageClient`, reconstructing each generation with `deps.chip35`'s `dataStoreFromSpend`.
+   * KEYLESS — reads no wallet secret, needs no unlocked wallet (this is a content-verify concern,
+   * not a custody one; it lives here only because the offscreen document is where the DataLayer
+   * driver wasm can be loaded, the same rationale as `chain.ts`'s coinset `RpcClient`). Fail-closed:
+   * `root: null` (never a thrown error) when the walk cannot resolve a live anchored root — the SW
+   * MUST treat that as unverifiable, never fall back to trusting the URN string or the serving host.
+   */
+  private async resolveCoinsetAnchoredRoot(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chip35 || !deps.lineageClient) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const storeId = (req.storeId || '').replace(/^0x/i, '').toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(storeId)) return { success: false, code: 'BAD_REQUEST', message: 'storeId must be 64-hex' };
+    const root = await walkAnchoredRoot(deps.lineageClient, deps.chip35, storeId);
+    return { success: true, root };
   }
 }
 

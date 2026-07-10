@@ -651,24 +651,57 @@ async function fetchVerified(endpoint, storeId, rk, root) {
 /**
  * Resolve a store's CHAIN-ANCHORED tip root (lowercase 64-hex) — the TRUSTED root a rootless
  * ('latest') URN must verify against (#226). The root MUST come from the chain, NEVER the serving
- * host: the local dig-node exposes `dig.getAnchoredRoot`, which walks the store's DataStore
- * singleton lineage on coinset.org SERVER-SIDE and returns `result.root`. The hosted rpc.dig.net
- * gateway does NOT serve this method (it answers -32601) and must not be trusted to assert a root,
- * so when no node answers this returns null and the caller FAILS CLOSED (content still loads, but is
- * reported unverified). Non-throwing: any RPC/transport error resolves to null.
- *
- * (A future enhancement can resolve the anchored root directly from coinset.org on the hosted tier
- * — that needs the DataLayer store-coin driver wasm the extension does not yet bundle; until then
- * the hosted tier is fail-closed, which never regresses trust.)
+ * host. Tries the local dig-node's `dig.getAnchoredRoot` first (it walks the store's DataStore
+ * singleton lineage on coinset.org SERVER-SIDE and returns `result.root`). The hosted rpc.dig.net
+ * gateway does NOT serve this method (it answers -32601), so on the HOSTED tier — no local node
+ * reachable/answering — this falls back to resolving the SAME walk directly against coinset.org via
+ * the offscreen vault's DataLayer store-coin driver wasm (#228: `resolveAnchoredRootFromCoinset`
+ * below), so a rootless read still verifies with NO local node running. Non-throwing throughout: any
+ * RPC/transport/walk failure resolves to null and the caller FAILS CLOSED (content still loads, but
+ * is reported unverified) — never a silent trust of the URN string or the serving host.
  */
 async function resolveAnchoredRoot(endpoint, storeId) {
   try {
     const r = await rpcCall(endpoint, 'dig.getAnchoredRoot', { store_id: storeId });
     const root = r && typeof r.root === 'string' ? r.root.replace(/^0x/i, '').toLowerCase() : '';
-    return /^[0-9a-f]{64}$/.test(root) ? root : null;
+    if (/^[0-9a-f]{64}$/.test(root)) return root;
   } catch {
-    return null; // method unavailable (e.g. rpc.dig.net -32601) or a transport error → fail closed
+    // node unreachable / method unavailable (e.g. rpc.dig.net -32601) — fall through to coinset below
   }
+  return resolveAnchoredRootFromCoinset(storeId);
+}
+
+// #228: a short-lived, SW-lifetime-only cache of the coinset-resolved anchored root, keyed by store
+// id. A single rootless page load fetches MANY subresources, each independently calling
+// resolveAnchoredRoot() for the SAME store — without this, every subresource would re-walk the FULL
+// on-chain singleton lineage via coinset.org from scratch. A `null` (unresolved) result is cached
+// too, so a genuinely-unresolvable store doesn't hammer coinset.org once per subresource either.
+const _coinsetAnchoredRootCache = new Map();
+const COINSET_ANCHORED_ROOT_CACHE_TTL_MS = 20_000;
+
+/**
+ * Resolve the chain-anchored root directly from coinset.org (#228 — the hosted rpc.dig.net tier
+ * fallback for `resolveAnchoredRoot` above, when the local node is unreachable or doesn't serve
+ * `dig.getAnchoredRoot`). Delegates the actual walk to the offscreen document (the DataLayer
+ * store-coin driver wasm can only load there — see `offscreen/anchoredRoot.ts`'s doc comment), using
+ * whichever coinset endpoint the wallet settings resolve (defaults to api.coinset.org — the SAME
+ * default the wallet's own coinset reads use). Non-throwing: any offscreen/coinset/transport failure
+ * resolves to null (fail closed).
+ */
+async function resolveAnchoredRootFromCoinset(storeId) {
+  const cached = _coinsetAnchoredRootCache.get(storeId);
+  if (cached && Date.now() - cached.at < COINSET_ANCHORED_ROOT_CACHE_TTL_MS) return cached.root;
+  let root = null;
+  try {
+    const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+    const res = await callVault({ op: 'resolveCoinsetAnchoredRoot', storeId, coinsetUrl });
+    const candidate = res && res.success && typeof res.root === 'string' ? res.root.replace(/^0x/i, '').toLowerCase() : '';
+    if (/^[0-9a-f]{64}$/.test(candidate)) root = candidate;
+  } catch {
+    root = null; // offscreen document / coinset unreachable → fail closed
+  }
+  _coinsetAnchoredRootCache.set(storeId, { root, at: Date.now() });
+  return root;
 }
 
 /**
@@ -965,15 +998,31 @@ async function hasOffscreenDocument() {
   return false;
 }
 
+/**
+ * Create the offscreen document if it doesn't exist, coalescing CONCURRENT first-time callers onto
+ * the SAME in-flight creation (#228 fix — a real race, not hypothetical: a rootless chia:// page load
+ * and an explicit content read can both call this within the same tick the first time, e.g. dig-
+ * viewer.html's own initial content fetch racing an extension-triggered `proxyRequest`). The guard
+ * MUST be set SYNCHRONOUSLY, before the first `await`, so no concurrent caller can observe
+ * `creatingOffscreen` as still null: the OLD code checked `await hasOffscreenDocument()` FIRST — an
+ * async yield point — so two callers arriving together could both see "no document yet, not
+ * creating yet" and both call `chrome.offscreen.createDocument()`, producing a transient state where
+ * a `chrome.runtime.sendMessage` lands before either document is ready to receive it ("Could not
+ * establish connection. Receiving end does not exist."). Setting the guard first (line below) closes
+ * that window: JS is single-threaded, so between the `if (creatingOffscreen)` check and the
+ * assignment there is no `await` for a second caller to interleave into.
+ */
 async function ensureOffscreenDocument() {
-  if (await hasOffscreenDocument()) return;
   if (creatingOffscreen) { await creatingOffscreen; return; }
-  creatingOffscreen = chrome.offscreen.createDocument({
-    url: OFFSCREEN_URL,
-    reasons: ['WORKERS'],
-    justification: 'Hold the self-custody wallet key in memory and run Argon2id + AES-GCM decryption off the ephemeral service worker.',
-  });
-  try { await creatingOffscreen; } catch { /* another caller may have created it */ } finally { creatingOffscreen = null; }
+  creatingOffscreen = (async () => {
+    if (await hasOffscreenDocument()) return;
+    await chrome.offscreen.createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['WORKERS'],
+      justification: 'Hold the self-custody wallet key in memory and run Argon2id + AES-GCM decryption off the ephemeral service worker.',
+    });
+  })();
+  try { await creatingOffscreen; } catch { /* another caller may have created it first (Chrome rejects a duplicate createDocument) */ } finally { creatingOffscreen = null; }
 }
 
 /** Forward one request to the offscreen keystore vault (creating the doc if needed). */
