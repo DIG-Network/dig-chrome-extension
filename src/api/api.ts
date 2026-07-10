@@ -6,6 +6,8 @@ export const TAGS = [
   'Balances',
   'Activity',
   'NodeStatus',
+  // Wallet-data source auto-detect (#222): the §5.3 ladder status for the WALLET read path.
+  'ChainSourceStatus',
   // dig-dns Path-B proxy fallback (#175): the shared `.dig`-resolution availability signal.
   'DigDnsStatus',
   'Shield',

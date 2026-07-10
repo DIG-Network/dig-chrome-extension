@@ -263,6 +263,14 @@ test('Auto mode, no node reachable — clean coinset fallback (wired, not the un
 test('Settings switch persists across the four states + screenshots the control (§6.5)', async () => {
   const page = await context.newPage();
   await page.setViewportSize({ width: 1200, height: 900 });
+  // Re-confirm unlocked before navigating to the wallet screen (#222 hardening): this is the LAST
+  // of five serial tests in this file, and the offscreen vault's in-memory key does not necessarily
+  // survive an MV3 service-worker/offscreen-document lifecycle event across the wall-clock time the
+  // earlier tests' real loopback I/O takes — without this, the panel can land on the "Unlock your
+  // wallet" gate instead of ChainSourceSetting (observed flake). Idempotent if already unlocked.
+  await page.goto(`chrome-extension://${extensionId}/popup.html`);
+  const unlocked = await swSend<{ lockState?: string }>(page, { action: 'unlockWallet', password: 'e2e-217-not-a-real-secret' });
+  expect(unlocked.lockState).toBe('unlocked');
   await page.goto(`chrome-extension://${extensionId}/app.html#wallet/home`);
 
   const select = page.getByTestId('chain-source-select');

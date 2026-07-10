@@ -131,6 +131,7 @@ export const fr: Record<string, string> = {
   'custody.source.custom.label': 'URL RPC du dig-node',
   'custody.source.custom.save': 'Enregistrer la source',
   'custody.source.saved': 'Enregistré',
+  'custody.source.detected': 'dig-node local détecté — lecture des données du portefeuille depuis {endpoint}.',
   'custody.soon.activity': "L'historique des activités arrivera avec l'envoi en autoconservation.",
   'custody.soon.trade': "L'échange arrivera avec la signature en autoconservation.",
 

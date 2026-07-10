@@ -131,6 +131,7 @@ export const ptBR: Record<string, string> = {
   'custody.source.custom.label': 'URL RPC do dig-node',
   'custody.source.custom.save': 'Salvar origem',
   'custody.source.saved': 'Salvo',
+  'custody.source.detected': 'dig-node local detectado — lendo os dados da carteira de {endpoint}.',
   'custody.soon.activity': 'O histórico de atividade chegará junto com os envios autocustodiados.',
   'custody.soon.trade': 'As negociações chegarão junto com a assinatura autocustodiada.',
 

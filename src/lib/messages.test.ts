@@ -42,6 +42,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'getDataUrl', 'updateServerConfig', 'reportError', 'reportSuccess', 'navigate',
     'proxyRequest', 'walletRpc', 'reportVerification', 'getVerification',
     'getDigNodeStatus', 'walletConsent',
+    // Wallet-data source auto-detect (#222): §5.3 ladder status for the wallet read path:
+    'getChainSourceStatus',
     // Self-custody wallet (#56): keystore ops routed to the offscreen vault:
     'createWallet', 'importWallet', 'unlockWallet', 'lockWallet', 'revealPhrase', 'getLockState',
     // Multi-wallet switcher (#90): registry list + switch/rename/remove routed via handleCustodyAction:
