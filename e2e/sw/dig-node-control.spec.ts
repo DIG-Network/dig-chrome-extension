@@ -206,11 +206,12 @@ test('a real OPEN dig-node (no token gate) — manage mode with LIVE stats from 
     await page.reload();
     await page.waitForURL(/#network\/control/);
     await expect(page.getByTestId('control-panel')).toHaveAttribute('data-mode', 'manage');
-    await expect(page.getByTestId('control-node-state')).toContainText(/running/i);
-    await expect(page.getByTestId('control-stats')).toContainText(String(OPEN_STATUS.hosted_store_count));
-    await expect(page.getByTestId('control-manage-note')).toBeVisible();
-    await expect(page.getByTestId('control-get-browser')).toBeVisible();
-    await expect(page.getByTestId('control-read-fallback')).toContainText(/locally/i);
+    // The full panel's OPEN sections render for any reachable node (no pairing needed): the live
+    // status + the cache/LRU surface. In the popup, the fullscreen-only paired sections are behind
+    // an "open the full panel" link (§6.4 tiering).
+    await expect(page.getByTestId('control-live')).toBeVisible();
+    await expect(page.getByTestId('control-cache')).toBeVisible();
+    await expect(page.getByTestId('control-open-full')).toBeVisible();
 
     await page.setViewportSize({ width: 372, height: 640 });
     await page.waitForTimeout(150);
@@ -256,11 +257,12 @@ test('a real TOKEN-GATED dig-node (-32030 UNAUTHORIZED) — still "manage" (node
 
     await page.reload();
     await page.waitForURL(/#network\/control/);
+    // The node IS present and answering — a token-gated control.status must never downgrade the
+    // panel to "install". The OPEN cache/LRU + live-status sections still render (they need no
+    // token); the token-gated management sits behind the pairing gate on the full page.
     await expect(page.getByTestId('control-panel')).toHaveAttribute('data-mode', 'manage');
-    await expect(page.getByTestId('control-node-state')).toContainText(/running/i);
-    // No live stats surface when the node only answered UNAUTHORIZED.
-    await expect(page.getByTestId('control-stats')).toHaveCount(0);
-    await expect(page.getByTestId('control-manage-note')).toContainText(/DIG Browser/i);
+    await expect(page.getByTestId('control-live')).toBeVisible();
+    await expect(page.getByTestId('control-cache')).toBeVisible();
 
     await page.setViewportSize({ width: 372, height: 640 });
     await page.waitForTimeout(150);

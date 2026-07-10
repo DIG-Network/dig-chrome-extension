@@ -12,6 +12,15 @@ export const TAGS = [
   'DigDnsStatus',
   'Shield',
   'Control',
+  // dig-node control panel (#278/#281): the live node status, the OPEN cache/LRU surface, the
+  // control-token pairing state, and the token-gated management surfaces.
+  'NodeLiveStatus',
+  'Cache',
+  'Pairing',
+  'Upstream',
+  'HostedStores',
+  'Sync',
+  'Peers',
   // Self-custody (#56): lock state + derived receive addresses.
   'LockState',
   'Address',

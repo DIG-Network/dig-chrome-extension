@@ -10,6 +10,10 @@ import '@/features/wallet/custodyApi';
 import '@/features/resolver/resolverApi';
 import '@/features/shield/shieldApi';
 import '@/features/control/controlApi';
+// dig-node control panel (#278/#281): live status, OPEN cache/LRU, and control-token pairing.
+import '@/features/control/nodeApi';
+import '@/features/control/cacheApi';
+import '@/features/control/pairingApi';
 
 /**
  * Create the Redux store. Every server/backend interaction routes over the SW seam

@@ -146,7 +146,14 @@ import {
   decideControlView,
   CONTROL_METHODS,
   isUnauthorizedControlResult,
+  CONTROL_TOKEN_HEADER,
 } from '@/lib/dig-control';
+// #280 control-token pairing controller (pure state machine; wired to the real controlRpc +
+// chrome.storage below). The SW owns the paired token; it is never exposed to page content.
+import { createPairingController } from '@/lib/dig-pairing';
+// #239 live node-status controller: the SW holds a WebSocket to the local node's `/ws/status`,
+// re-connecting with backoff, and broadcasts every transition so the popup shows live liveness.
+import { createNodeWsController, initialNodeLiveStatus } from '@/lib/dig-node-ws';
 
 // DIG Shields per-resource proof LEDGER (#134, mirrored from the browser): the per-tab/
 // per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
@@ -360,6 +367,80 @@ try {
 // Best-effort startup probe. A failure just means the signal stays 'unavailable' until the next
 // alarm tick or navigation error — never throws, never blocks SW startup.
 digDnsController.probe().catch(() => {});
+
+// ─── dig-node control panel (#278/#281): live status + control-token pairing ──────────────────
+//
+// The SW owns two long-lived controllers for the control panel: a WS liveness channel to the
+// local node's `/ws/status` (#239) and the control-token pairing state machine (#280). Both
+// broadcast their state so the popup + fullscreen panel reflect changes live with no polling.
+
+/** chrome.storage.local key holding the scoped paired controller token (#280). SW-only. */
+const PAIRED_TOKEN_KEY = 'control.pairedToken';
+
+/** Best-effort broadcast to any open popup/app view (they ignore unknown actions). */
+function broadcastRuntime(msg) {
+  try {
+    // A resolved-nowhere promise (no receiver) is expected + harmless.
+    void chrome.runtime.sendMessage(msg).catch(() => {});
+  } catch { /* runtime.sendMessage unavailable in some contexts */ }
+}
+
+/** The local node's JSON-RPC POST endpoint (base + trailing slash), or null when none is reachable. */
+async function controlEndpointOrNull() {
+  const base = await resolveLocalDigNode();
+  if (!base) return null;
+  return base.endsWith('/') ? base : base + '/';
+}
+
+async function loadPairedToken() {
+  try {
+    const { [PAIRED_TOKEN_KEY]: t } = await chrome.storage.local.get(PAIRED_TOKEN_KEY);
+    return typeof t === 'string' && t ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+async function savePairedToken(token) {
+  try {
+    if (token) await chrome.storage.local.set({ [PAIRED_TOKEN_KEY]: token });
+    else await chrome.storage.local.remove(PAIRED_TOKEN_KEY);
+  } catch { /* storage unavailable */ }
+}
+
+/** The last live node status, so a freshly-opened popup hydrates without waiting for a WS frame. */
+let _liveNodeStatus = initialNodeLiveStatus();
+
+const nodeWsController = createNodeWsController({
+  resolveBase: resolveLocalDigNode,
+  onStatusChange: (status) => {
+    _liveNodeStatus = status;
+    broadcastRuntime({ action: 'nodeLiveStatusChanged', status });
+  },
+});
+try {
+  nodeWsController.start();
+} catch { /* no WebSocket in some test contexts */ }
+
+const pairingController = createPairingController({
+  requestPairing: async (clientName) => {
+    const ep = await controlEndpointOrNull();
+    if (!ep) return null;
+    const r = await controlRpc(ep, 'pairing.request', { client_name: clientName });
+    return r && r.result ? r.result : null;
+  },
+  pollPairing: async (pairingId) => {
+    const ep = await controlEndpointOrNull();
+    if (!ep) return null;
+    const r = await controlRpc(ep, 'pairing.poll', { pairing_id: pairingId });
+    return r && r.result ? r.result : null;
+  },
+  loadToken: loadPairedToken,
+  saveToken: savePairedToken,
+  onChange: (state) => broadcastRuntime({ action: 'pairingStateChanged', state }),
+});
+// Hydrate any previously-stored token → paired, so a returning user is already paired.
+void pairingController.hydrate();
 
 // Build a data: URL for the branded, white-theme chia:// error page. Uses the shared
 // error-page builder so the message is mapped to a friendly, non-leaking cause (internal
@@ -587,12 +668,17 @@ async function rpcCall(endpoint, method, params) {
  * cannot) populate the X-Dig-Control-Token header — an MV3 extension has no filesystem access —
  * so a node will answer mutating control.* with UNAUTHORIZED, which the caller handles honestly.
  */
-async function controlRpc(endpoint, method, params) {
+async function controlRpc(endpoint, method, params, token) {
   let res;
+  const headers = { 'content-type': 'application/json' };
+  // #280: a PAIRED controller token authorizes the gated control.* mutations. The OPEN
+  // cache.*/pairing.* surface passes no token. The token is a scoped credential the node minted
+  // after local operator approval; it is stored in the SW and never exposed to page content.
+  if (token) headers[CONTROL_TOKEN_HEADER] = token;
   try {
     res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: params || {} }),
     });
   } catch (e) {
@@ -2899,6 +2985,88 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           controlMethods: [...CONTROL_METHODS],
         });
       }
+    })();
+    return true;
+  }
+
+  // ─── dig-node control panel (#278/#281) ──────────────────────────────────────────────────────
+
+  // #239: the SW-cached live node status (from the WS controller). The popup hydrates from this
+  // and then live-patches from the `nodeLiveStatusChanged` broadcast — no polling.
+  if (message.action === ACTIONS.getNodeLiveStatus) {
+    sendResponse(_liveNodeStatus);
+    return false;
+  }
+
+  // OPEN cache.* (#279 — no control token): drive the reserved-cap / LRU management surface.
+  if (
+    message.action === ACTIONS.cacheGetConfig ||
+    message.action === ACTIONS.cacheSetCap ||
+    message.action === ACTIONS.cacheList ||
+    message.action === ACTIONS.cacheRemove ||
+    message.action === ACTIONS.cacheClear ||
+    message.action === ACTIONS.cacheStats
+  ) {
+    (async () => {
+      const ep = await controlEndpointOrNull();
+      if (!ep) { sendResponse({ success: false, error: 'no local dig-node' }); return; }
+      const map = {
+        [ACTIONS.cacheGetConfig]: ['cache.getConfig', {}],
+        [ACTIONS.cacheSetCap]: ['cache.setCapBytes', { cap_bytes: message.capBytes }],
+        [ACTIONS.cacheList]: ['cache.listCached', {}],
+        [ACTIONS.cacheRemove]: ['cache.removeCached', { store_id: message.storeId, root: message.root }],
+        [ACTIONS.cacheClear]: ['cache.clear', {}],
+        [ACTIONS.cacheStats]: ['cache.stats', {}],
+      };
+      const [method, params] = map[message.action];
+      const resp = await controlRpc(ep, method, params); // OPEN — no token
+      if (resp && resp.result !== undefined) sendResponse(resp.result);
+      else sendResponse({ success: false, error: (resp && resp.error && resp.error.message) || 'cache RPC failed' });
+    })();
+    return true;
+  }
+
+  // #280 pairing lifecycle: start / current-state / cancel / unpair. The pairing controller owns
+  // the state machine + the poll loop + the stored token; these just drive it + return the state.
+  if (message.action === ACTIONS.pairingStart) {
+    (async () => { await pairingController.startPairing(); sendResponse(pairingController.getState()); })();
+    return true;
+  }
+  if (message.action === ACTIONS.pairingState) {
+    sendResponse(pairingController.getState());
+    return false;
+  }
+  if (message.action === ACTIONS.pairingCancel) {
+    pairingController.cancel();
+    sendResponse(pairingController.getState());
+    return false;
+  }
+  if (message.action === ACTIONS.pairingUnpair) {
+    (async () => { await pairingController.unpair(); sendResponse(pairingController.getState()); })();
+    return true;
+  }
+
+  // #281 authed control.*: drive a token-gated control method with the stored paired token. On a
+  // -32030 the token is stale (operator revoked it) → clear it + drop back to unpaired.
+  if (message.action === ACTIONS.controlAuthed) {
+    (async () => {
+      const ep = await controlEndpointOrNull();
+      if (!ep) { sendResponse({ success: false, error: 'no local dig-node' }); return; }
+      const token = pairingController.getToken();
+      if (!token) { sendResponse({ success: false, error: 'not paired', code: -32030 }); return; }
+      const resp = await controlRpc(ep, message.method, message.params || {}, token);
+      if (isUnauthorizedControlResult(resp)) {
+        // The stored token no longer authorizes (revoked): forget it so the UI re-pairs.
+        await pairingController.unpair();
+        sendResponse({ success: false, error: 'unauthorized', code: -32030 });
+        return;
+      }
+      if (resp && resp.result !== undefined) { sendResponse(resp.result); return; }
+      sendResponse({
+        success: false,
+        error: (resp && resp.error && resp.error.message) || 'control RPC failed',
+        code: resp && resp.error && resp.error.code,
+      });
     })();
     return true;
   }
