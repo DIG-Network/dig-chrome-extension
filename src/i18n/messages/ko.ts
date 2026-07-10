@@ -131,6 +131,7 @@ export const ko: Record<string, string> = {
   'custody.source.custom.label': 'dig-node RPC URL',
   'custody.source.custom.save': '소스 저장',
   'custody.source.saved': '저장됨',
+  'custody.source.detected': '로컬 dig-node가 감지되었습니다 — {endpoint}에서 지갑 데이터를 읽는 중입니다.',
   'custody.soon.activity': '활동 내역은 자가 보관 방식의 전송 기능과 함께 제공될 예정입니다.',
   'custody.soon.trade': '거래 기능은 자가 보관 방식의 서명 기능과 함께 제공될 예정입니다.',
 

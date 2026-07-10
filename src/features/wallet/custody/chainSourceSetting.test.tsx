@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { ChainSourceSetting } from '@/features/wallet/custody/ChainSourceSetting';
+import { ACTIONS } from '@/lib/messages';
 
 /**
  * The wallet-data SOURCE switch (#217 EXT-2, design D.3): a 4-state control (auto / dig-node /
@@ -67,5 +68,45 @@ describe('ChainSourceSetting (#217)', () => {
     expect(screen.getByText(/otherwise fall back to coinset\.org/i)).toBeInTheDocument();
     fireEvent.change(select, { target: { value: 'node' } });
     await waitFor(() => expect(screen.getByText(/Always read from your local dig-node/i)).toBeInTheDocument());
+  });
+});
+
+/**
+ * "Local dig-node detected" auto-detect indicator (#222) — actively probes the §5.3 ladder via
+ * `getChainSourceStatus` and shows a visible indicator when Auto mode auto-selected a local node,
+ * with zero manual server-host/custom-URL configuration.
+ */
+describe('ChainSourceSetting — local dig-node detected indicator (#222)', () => {
+  function mockChainSourceStatus(response: unknown) {
+    chrome.runtime.sendMessage = vi.fn((m: { action?: string }, cb?: (r: unknown) => void) => {
+      const reply = m && m.action === ACTIONS.getChainSourceStatus ? response : { success: true };
+      cb?.(reply);
+      return Promise.resolve(reply);
+    }) as never;
+  }
+
+  it('shows the indicator with the resolved endpoint when Auto mode auto-selected a local node', async () => {
+    mockChainSourceStatus({ mode: 'auto', resolved: { kind: 'node', base: 'http://localhost:9778', strict: false } });
+    renderWithProviders(<ChainSourceSetting />);
+    const pill = await screen.findByTestId('chain-source-detected-pill');
+    expect(pill).toHaveAttribute('data-tone', 'good');
+    expect(pill).toHaveTextContent('Local dig-node detected');
+    expect(pill).toHaveTextContent('http://localhost:9778');
+  });
+
+  it('hides the indicator when Auto mode found no reachable node (coinset fallback)', async () => {
+    mockChainSourceStatus({ mode: 'auto', resolved: { kind: 'coinset' } });
+    renderWithProviders(<ChainSourceSetting />);
+    await screen.findByTestId('chain-source-select');
+    expect(screen.queryByTestId('chain-source-detected-pill')).not.toBeInTheDocument();
+  });
+
+  it('hides the indicator when the mode is forced to "node" — even though a node is reachable', async () => {
+    await chrome.storage.local.set({ [SETTINGS_KEY]: { chainSourceMode: 'node' } });
+    mockChainSourceStatus({ mode: 'node', resolved: { kind: 'node', base: 'http://localhost:9778', strict: true } });
+    renderWithProviders(<ChainSourceSetting />);
+    const select = (await screen.findByTestId('chain-source-select')) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('node'));
+    expect(screen.queryByTestId('chain-source-detected-pill')).not.toBeInTheDocument();
   });
 });

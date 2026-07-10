@@ -131,6 +131,7 @@ export const de: Record<string, string> = {
   'custody.source.custom.label': 'dig-node-RPC-URL',
   'custody.source.custom.save': 'Quelle speichern',
   'custody.source.saved': 'Gespeichert',
+  'custody.source.detected': 'Lokaler dig-node erkannt — Wallet-Daten werden von {endpoint} gelesen.',
   'custody.soon.activity': 'Der Aktivitätsverlauf wird mit dem Senden in Eigenverwahrung eingeführt.',
   'custody.soon.trade': 'Der Handel wird mit der Signatur in Eigenverwahrung eingeführt.',
 

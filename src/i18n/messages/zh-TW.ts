@@ -131,6 +131,7 @@ export const zhTW: Record<string, string> = {
   'custody.source.custom.label': 'dig-node RPC URL',
   'custody.source.custom.save': '儲存來源',
   'custody.source.saved': '已儲存',
+  'custody.source.detected': '偵測到本地 dig-node — 正在從 {endpoint} 讀取錢包資料。',
   'custody.soon.activity': '活動記錄功能將隨自託管轉帳功能一同推出。',
   'custody.soon.trade': '交易功能將隨自託管簽署功能一同推出。',
 

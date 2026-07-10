@@ -654,3 +654,38 @@ directions would not catch two drifted implementations silently agreeing).
    invisible to a fresh clone/CI. Use a git-TRACKED directory instead (`third_party/`) with a
    `PROVENANCE.md` recording the exact upstream commit + rebuild command, or the vendored package
    silently disappears for every consumer except the machine that created it.
+
+## A LATER test in a `describe.serial` e2e file can find the wallet re-locked — always re-`unlockWallet` before navigating to a wallet screen (#222)
+
+`node-wallet-source.spec.ts`'s 5th serial test ("Settings switch persists…") intermittently landed on
+the "Unlock your wallet" gate instead of `ChainSourceSetting` when the WHOLE `e2e/sw` suite ran (not
+when the file ran alone) — `chain-source-select` never appeared, and the `toBeVisible` wait burned
+its full 20s timeout. Root cause: the offscreen vault's in-memory decrypted key (and/or the MV3
+service worker itself) does not necessarily survive across the wall-clock time + real loopback I/O
+several earlier serial tests take, even though `beforeAll` unlocked the wallet once at file start and
+the persisted `lockState` flag says "unlocked" — the KEY material living only in the offscreen
+document's memory is what actually gates the wallet screen, and that document can be torn down
+independently of the flag. **Fix: call `unlockWallet` again (idempotent if already unlocked) on the
+page right before navigating to any wallet-screen route**, not just once in `beforeAll` — cheap
+insurance for any LATER test in a serial file, especially one following tests with real network I/O
+or added waits. Applied to both `node-wallet-source.spec.ts` and `chain-source-detect.spec.ts`.
+
+## The sandboxed e2e agent environment's headless Chromium CANNOT reach a REAL OS-level service on the host's `127.0.0.1`/`localhost` loopback — only servers started WITHIN the same test process are reachable, and only via specific literals (#222)
+
+Tried to verify #222's auto-detect fix against an ACTUAL running dig-node at `127.0.0.1:9778` on the
+agent's dev machine: `curl http://127.0.0.1:9778/` from the agent's own shell succeeds (200), but the
+SAME URL fetched from the extension inside Playwright's headless Chromium (`--headless=new`) in this
+sandboxed harness throws `Failed to fetch` — even a bare `fetch()` from an extension page context,
+with `http://localhost:*/*` + `https://*/*` already in `host_permissions`. External network calls
+(coinset.org, dexie, etc.) work fine from the SAME browser in the SAME suite, so this is loopback-only
+isolation: the sandboxed browser process appears to sit in a different network namespace than the
+agent's own shell/Node processes, so the host's OTHER real processes bound to `127.0.0.1`/`localhost`
+are unreachable, while a Node `http.createServer` started BY THE TEST ITSELF (same process/namespace
+as the browser) IS reachable — but only via the `127.0.0.5` loopback literal already adopted in
+`dig-node-control.spec.ts` (binding to bare `localhost`/`127.0.0.1` still fails even for an
+in-process server — see that file's header comment on Chrome's `::1`-first resolution). **Practical
+rule for this harness: e2e proof of a "real dig-node" interaction MUST start its own fake server
+in-process on `127.0.0.5`; it can never reach a genuinely separate real node process on
+`127.0.0.1`/`localhost`, no matter how "real" that node is.** The ladder's alias-tier ORDERING
+(`dig.local` before `localhost:<port>`) is instead proven at the unit level with an injected `fetch`
+(`dig-node-resolve.test.ts`), which needs no real socket at all.

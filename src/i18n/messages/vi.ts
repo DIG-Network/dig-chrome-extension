@@ -131,6 +131,7 @@ export const vi: Record<string, string> = {
   'custody.source.custom.label': 'URL RPC của dig-node',
   'custody.source.custom.save': 'Lưu nguồn',
   'custody.source.saved': 'Đã lưu',
+  'custody.source.detected': 'Đã phát hiện dig-node cục bộ — đang đọc dữ liệu ví từ {endpoint}.',
   'custody.soon.activity': 'Lịch sử hoạt động sẽ có cùng với tính năng gửi tự quản lý.',
   'custody.soon.trade': 'Tính năng giao dịch sẽ có cùng với việc ký tự quản lý.',
 

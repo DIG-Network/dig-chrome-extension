@@ -10,6 +10,7 @@ import type { CatIssuanceSummary } from '@/offscreen/catIssuance';
 import type { OptionRecord, OptionMintSummary, OptionExerciseSummary } from '@/offscreen/optionContracts';
 import type { OptionLogEntry } from '@/lib/optionContractLog';
 import type { AccountEntry, WalletMeta } from '@/lib/wallet-registry';
+import type { ChainSourceMode, ResolvedWalletSource } from '@/lib/wallet-source';
 
 /** The record-free registry snapshot the switcher reads (#90): every wallet's metadata + the active id. */
 export interface WalletsResult {
@@ -132,6 +133,12 @@ export interface PendingClawback {
 export interface PreparedClawbackAction {
   pendingId: string;
   clawbackAmountOut: string;
+}
+/** Wallet-data source auto-detect (#222): the §5.3 ladder status for the WALLET read path — the
+ * selected mode + the resolved source (a reachable node's base/strict, coinset, or unavailable). */
+export interface ChainSourceStatus {
+  mode: ChainSourceMode;
+  resolved: ResolvedWalletSource;
 }
 
 /**
@@ -454,6 +461,13 @@ export const custodyApi = api.injectEndpoints({
       providesTags: ['Options'],
     }),
 
+    // Wallet-data source auto-detect (#222): resolve the §5.3 ladder for the wallet read path;
+    // backs ChainSourceSetting's "Local dig-node detected" indicator (Auto mode only).
+    getChainSourceStatus: build.query<ChainSourceStatus, void>({
+      query: () => ({ action: ACTIONS.getChainSourceStatus }),
+      providesTags: ['ChainSourceStatus'],
+    }),
+
     // ── dexie marketplace integration (#102) — NOT custody actions (no wallet key involved) ──
     // POST an already-built offer to dexie so other wallets can discover it.
     postOfferToDexie: build.mutation<{ dexieId: string; known: boolean }, { offer: string }>({
@@ -518,4 +532,5 @@ export const {
   usePrepareOptionExerciseMutation,
   useConfirmOptionExerciseMutation,
   useGetOptionsQuery,
+  useGetChainSourceStatusQuery,
 } = custodyApi;

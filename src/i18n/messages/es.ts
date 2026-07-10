@@ -131,6 +131,7 @@ export const es: Record<string, string> = {
   'custody.source.custom.label': 'URL RPC del dig-node',
   'custody.source.custom.save': 'Guardar origen',
   'custody.source.saved': 'Guardado',
+  'custody.source.detected': 'dig-node local detectado — leyendo los datos de la billetera desde {endpoint}.',
   'custody.soon.activity': 'El historial de actividad llegará junto con los envíos autocustodiados.',
   'custody.soon.trade': 'El intercambio llegará junto con la firma autocustodiada.',
 

@@ -131,6 +131,7 @@ export const id: Record<string, string> = {
   'custody.source.custom.label': 'URL RPC dig-node',
   'custody.source.custom.save': 'Simpan sumber',
   'custody.source.saved': 'Tersimpan',
+  'custody.source.detected': 'dig-node lokal terdeteksi — membaca data dompet dari {endpoint}.',
   'custody.soon.activity': 'Riwayat aktivitas akan hadir bersama fitur pengiriman swakelola.',
   'custody.soon.trade': 'Fitur trading akan hadir bersama fitur penandatanganan swakelola.',
 

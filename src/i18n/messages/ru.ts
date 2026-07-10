@@ -131,6 +131,7 @@ export const ru: Record<string, string> = {
   'custody.source.custom.label': 'RPC-адрес dig-node',
   'custody.source.custom.save': 'Сохранить источник',
   'custody.source.saved': 'Сохранено',
+  'custody.source.detected': 'Обнаружен локальный dig-node — данные кошелька считываются из {endpoint}.',
   'custody.soon.activity': 'История активности появится вместе с отправкой из некастодиального кошелька.',
   'custody.soon.trade': 'Обмен появится вместе с подписанием в некастодиальном кошельке.',
 

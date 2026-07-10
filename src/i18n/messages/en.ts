@@ -140,6 +140,8 @@ export const en: Record<string, string> = {
   'custody.source.custom.label': 'dig-node RPC URL',
   'custody.source.custom.save': 'Save source',
   'custody.source.saved': 'Saved',
+  // Auto-detect indicator (#222): shown when Auto mode's §5.3 ladder auto-selects a local node.
+  'custody.source.detected': 'Local dig-node detected — reading wallet data from {endpoint}.',
   'custody.soon.activity': 'Activity history is coming with self-custody sending.',
   'custody.soon.trade': 'Trading is coming with self-custody signing.',
 

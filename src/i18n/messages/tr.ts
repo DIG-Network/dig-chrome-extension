@@ -131,6 +131,7 @@ export const tr: Record<string, string> = {
   'custody.source.custom.label': "dig-node RPC URL'si",
   'custody.source.custom.save': 'Kaynağı kaydet',
   'custody.source.saved': 'Kaydedildi',
+  'custody.source.detected': "Yerel dig-node algılandı — cüzdan verileri {endpoint} kaynağından okunuyor.",
   'custody.soon.activity': 'Etkinlik geçmişi, kendi kontrolünüzdeki gönderim özelliğiyle birlikte eklenecek.',
   'custody.soon.trade': 'Takas özelliği, kendi kontrolünüzdeki imzalama ile birlikte eklenecek.',
 

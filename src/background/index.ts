@@ -265,13 +265,19 @@ async function getRpcEndpoint() {
 // NFTs / DIDs / coins / activity). The pure 4-state decision lives in wallet-source.ts; here we
 // inject the cached §5.3 node resolver + a direct probe for the Custom-URL mode.
 
-/** Resolve the wallet-data source from the persisted chain-source setting + the §5.3 ladder. */
+/**
+ * Resolve the wallet-data source from the persisted chain-source setting + the §5.3 ladder. Also
+ * reports the selected `mode` (#222) so callers — the read dispatcher below AND the
+ * `getChainSourceStatus` status action — can distinguish an Auto-mode auto-selection from a
+ * user-forced node/custom/coinset choice without a second storage read.
+ */
 async function resolveWalletDataSource() {
   const setting = readChainSourceSetting(await readWalletSettings());
-  return resolveWalletSource(setting, {
+  const resolved = await resolveWalletSource(setting, {
     resolveLadderNode: () => resolveLocalDigNode(),
     probeNode: async (base) => ((await probeDigNode(base).catch(() => false)) ? base : null),
   });
+  return { mode: setting.mode, resolved };
 }
 
 /**
@@ -285,7 +291,7 @@ async function resolveWalletDataSource() {
  * The node client is READ-ONLY (#217 HARD gate) — it never signs or broadcasts.
  */
 async function readFromNodeSource(nodeFn) {
-  const source = await resolveWalletDataSource();
+  const { resolved: source } = await resolveWalletDataSource();
   if (source.kind === 'coinset') return { handled: false };
   if (source.kind === 'unavailable') {
     return {
@@ -313,6 +319,15 @@ try {
     }
   });
 } catch { /* storage.onChanged unavailable in some contexts */ }
+
+// #222: warm the §5.3 local-node cache at SW startup/install so the FIRST popup paint (and any
+// content read racing it) doesn't pay for a cold probe. `resolveLocalDigNode()` backs BOTH the
+// content path (getRpcEndpoint) and the wallet-data path (resolveWalletDataSource) — one warm call
+// covers both. Best-effort: a failed probe here is silently retried on the next real caller.
+try {
+  chrome.runtime.onStartup.addListener(() => { void resolveLocalDigNode().catch(() => {}); });
+  chrome.runtime.onInstalled.addListener(() => { void resolveLocalDigNode().catch(() => {}); });
+} catch { /* runtime lifecycle events unavailable in some test contexts */ }
 
 // ─── dig-dns Path-B proxy fallback (#175, Component C of #174) ────────────────────────────────
 // dig-dns is a SEPARATE OS service (unrelated to the chia:// read path above) that resolves plain
@@ -2658,6 +2673,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ reachable: !!base, base: base || null });
       } catch {
         sendResponse({ reachable: false, base: null });
+      }
+    })();
+    return true;
+  }
+
+  // Wallet-data source auto-detect (#222): the §5.3 ladder status for the WALLET read path
+  // (distinct from getDigNodeStatus's content path above) — the selected mode + the resolved
+  // source. Backs ChainSourceSetting's "Local dig-node detected" indicator (Auto mode only).
+  if (message.action === ACTIONS.getChainSourceStatus) {
+    (async () => {
+      try {
+        const { mode, resolved } = await resolveWalletDataSource();
+        sendResponse({ mode, resolved });
+      } catch {
+        sendResponse({ mode: 'auto', resolved: { kind: 'coinset' } });
       }
     })();
     return true;
