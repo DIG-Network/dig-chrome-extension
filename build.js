@@ -52,6 +52,12 @@ const EXTENSION_FILES = [
   // The SW still opens it via getURL('dig-viewer.html') (filename unchanged).
   // (store-refs migrated to src/lib/store-refs.ts as TS — #68; it inlines into the store-interceptor
   // esbuild bundle + the vite dig-viewer bundle, no longer plain-copied.)
+  //
+  // The MV3 SANDBOXED store-frame page (#225): a static HTML page listed in manifest.json
+  // "sandbox.pages" that dig-viewer frames to render decrypted store content in an opaque origin.
+  // It loads the esbuild-bundled dist/store-interceptor.js as an EXTERNAL same-origin script (the
+  // extension's strict CSP forbids the old inline data:-frame). Plain-copied to dist root.
+  'dig-store-frame.html',
   // dig-client WASM (ES module + binary) — required for client-side decryption in the module SW
   'dig_client.js',
   'dig_client_bg.wasm',
@@ -458,11 +464,12 @@ async function bundleProvider() {
 // (qr.mjs migrated to src/lib/qr.ts as TS — #68; qrcode-generator now inlines into the vite React
 // bundles that import @/lib/qr, so no separate esbuild bundle step / dist/qr.mjs is needed.)
 
-// The in-page STORE INTERCEPTOR (#55) runs inside the sandboxed, opaque-origin `data:` frame that
-// dig-viewer renders store HTML into. An opaque frame can neither import an ES module nor fetch a
-// cross-origin script, so the interceptor MUST be a single self-contained IIFE that dig-viewer.js
-// inlines into the frame document. esbuild bundles store-interceptor.entry.mjs (which imports the
-// unit-tested store-refs.mjs) into dist/store-interceptor.js with the pure logic inlined.
+// The in-page STORE INTERCEPTOR (#55) runs inside the MV3 SANDBOXED, opaque-origin extension page
+// (dig-store-frame.html, #225) that dig-viewer frames to render store HTML into. The sandboxed page
+// loads this as an EXTERNAL same-origin script (script-src 'self') — the old data:-frame inlined it,
+// which the extension's strict CSP forbids. It is a single self-contained IIFE (no ES import): esbuild
+// bundles store-interceptor.entry.ts (which imports the unit-tested store-refs) into
+// dist/store-interceptor.js with the pure logic inlined.
 const STORE_INTERCEPTOR_SRC = path.join(SRC_DIR, 'entries', 'store-interceptor.entry.ts');
 const STORE_INTERCEPTOR_OUT = path.join(DIST_DIR, 'store-interceptor.js');
 
@@ -482,13 +489,14 @@ async function bundleStoreInterceptor() {
     alias: { '@': SRC_DIR, '#shared': __dirname },
   });
   const out = fs.readFileSync(STORE_INTERCEPTOR_OUT, 'utf8');
-  // Must be self-contained (store-refs inlined; no surviving ES import) and must NOT contain a
-  // literal `</script>` sequence (dig-viewer inlines this into a data: <script> block).
+  // Must be self-contained (store-refs inlined; no surviving ES import). The `</script>` guard is
+  // kept defensively (the file is now loaded as an external same-origin script, not inlined, so a
+  // literal `</script>` is harmless — but the bundle must never grow one either way).
   if (PROVIDER_ESM_LEAK.test(out)) {
     throw new Error('Bundled store-interceptor.js still contains an ES import/export — store-refs did not inline.');
   }
   if (/<\/script/i.test(out)) {
-    throw new Error('Bundled store-interceptor.js contains a literal </script> — would break the inlined <script> block.');
+    throw new Error('Bundled store-interceptor.js contains a literal </script> — the bundle must stay embeddable.');
   }
   for (const needle of ['__DIG_CFG', 'read-result']) {
     if (!out.includes(needle)) {
@@ -653,7 +661,8 @@ async function main() {
   await bundleProvider();
 
   // Bundle the in-page store interceptor (#55) into dist/store-interceptor.js as a self-contained
-  // IIFE (store-refs.mjs inlined) so dig-viewer can inline it into the sandboxed store frame.
+  // IIFE (store-refs inlined). The MV3 sandboxed store frame (dig-store-frame.html, #225) loads it
+  // as an external same-origin script.
   await bundleStoreInterceptor();
 
   // Bundle the three content-script-layer entries (src/content/*.ts → dist/middleware.js,

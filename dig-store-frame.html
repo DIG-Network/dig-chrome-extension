@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
+  <title>DIG Network Content</title>
+  <!--
+    MV3 SANDBOXED extension page (#225) — listed in manifest.json "sandbox.pages" and governed by
+    "content_security_policy.sandbox". It renders arbitrary DECRYPTED store content in an OPAQUE
+    origin with NO access to chrome.* APIs or the extension's keys/messaging, isolated from the
+    privileged dig-viewer page that frames it. All store reads are delegated to that parent over
+    postMessage (the in-page interceptor below), so this frame never touches the network directly.
+
+    The interceptor is loaded as an EXTERNAL SAME-ORIGIN script (script-src 'self') — the old
+    data:-frame inlined it, which the extension's own strict CSP forbids and which broke rendering.
+    The capsule config arrives by postMessage from the parent after this page announces 'frame-ready'
+    (the sandbox CSP forbids an inline window.__DIG_CFG script).
+  -->
+  <style>html,body{margin:0;padding:0;min-height:100%;background:#fff}</style>
+</head>
+<body>
+  <script src="store-interceptor.js"></script>
+</body>
+</html>

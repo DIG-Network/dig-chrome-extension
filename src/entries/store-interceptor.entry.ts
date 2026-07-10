@@ -66,13 +66,18 @@ declare global {
 (function () {
   'use strict';
 
-  const CFG: FrameConfig = (typeof window !== 'undefined' && window.__DIG_CFG) || {};
-  const STORE_ID = CFG.storeId || '';
-  const CFG_ROOT = CFG.root || 'latest';
-  const CFG_SALT = CFG.salt || null;
+  // The capsule config arrives AFTER load. Under MV3 this interceptor runs in a SANDBOXED extension
+  // page (dig-store-frame.html — opaque origin, its own relaxed CSP), which cannot receive an inline
+  // `window.__DIG_CFG` script (script-src forbids it) — so the parent (dig-viewer) hands the config
+  // over `postMessage` once we signal 'frame-ready'. These are set in boot() before any read runs.
+  // (The legacy inline `window.__DIG_CFG` path is still honoured for the old data:-frame, if present.)
+  let STORE_ID = '';
+  let CFG_ROOT = 'latest';
+  let CFG_SALT: string | null = null;
   // The current document's resource key — the base relative refs resolve against. Updated on an
   // in-page <a> navigation so `../x` on a sub-page resolves relative to THAT page (multi-page store).
-  let currentKey = CFG.entryKey || 'index.html';
+  let currentKey = 'index.html';
+  let booted = false;
 
   const parentWin = window.parent;
   const origFetch = window.fetch ? window.fetch.bind(window) : null;
@@ -99,7 +104,6 @@ declare global {
     window.removeEventListener('message', onBridgeMessage);
     window.addEventListener('message', onBridgeMessage);
   }
-  armBridge();
 
   function requestRead(ref: StoreRef): Promise<ReadResult> {
     return new Promise<ReadResult>((resolve) => {
@@ -347,31 +351,63 @@ declare global {
     return 'chia://chia:' + ref.storeId + root + '/' + (ref.resourceKey || 'index.html');
   }
 
-  // --- Boot: render the entry, then let the interceptor serve everything it references ---------
-  installObserver();
-  const entryRef: StoreRef = { storeId: STORE_ID, root: CFG_ROOT, resourceKey: currentKey, salt: CFG_SALT };
-  requestRead(entryRef)
-    .then((r) => {
-      if (!r || !r.ok || !r.dataUrl) {
-        notify('entry-error', { code: r && r.code, message: r && r.message });
-        return;
-      }
-      const ct = r.contentType || contentType(currentKey);
-      if (ct.indexOf('text/html') === 0) {
-        (origFetch ? origFetch(r.dataUrl) : fetch(r.dataUrl))
-          .then((res) => res.text())
-          .then((html) => {
-            swapDocument(html);
-            notify('ready', { verified: !!r.verified });
-          })
-          .catch(() => notify('entry-error', {}));
-      } else {
-        // A non-HTML entry (e.g. a direct image URN): show it directly.
-        location.href = r.dataUrl;
-        notify('ready', { verified: !!r.verified });
-      }
-    })
-    .catch(() => notify('entry-error', {}));
+  // --- Boot: apply the capsule config, then render the entry + serve everything it references ---
+  function boot(cfg: FrameConfig): void {
+    if (booted) return; // idempotent — the parent may (re)send cfg on frame-ready AND on iframe.onload
+    booted = true;
+    STORE_ID = cfg.storeId || '';
+    CFG_ROOT = cfg.root || 'latest';
+    CFG_SALT = cfg.salt || null;
+    currentKey = cfg.entryKey || 'index.html';
+
+    armBridge(); // arm the read-result bridge before the first requestRead
+    installObserver();
+    const entryRef: StoreRef = { storeId: STORE_ID, root: CFG_ROOT, resourceKey: currentKey, salt: CFG_SALT };
+    requestRead(entryRef)
+      .then((r) => {
+        if (!r || !r.ok || !r.dataUrl) {
+          notify('entry-error', { code: r && r.code, message: r && r.message });
+          return;
+        }
+        const ct = r.contentType || contentType(currentKey);
+        if (ct.indexOf('text/html') === 0) {
+          (origFetch ? origFetch(r.dataUrl) : fetch(r.dataUrl))
+            .then((res) => res.text())
+            .then((html) => {
+              swapDocument(html);
+              notify('ready', { verified: !!r.verified });
+            })
+            .catch(() => notify('entry-error', {}));
+        } else {
+          // A non-HTML entry (e.g. a direct image URN): show it directly.
+          location.href = r.dataUrl;
+          notify('ready', { verified: !!r.verified });
+        }
+      })
+      .catch(() => notify('entry-error', {}));
+  }
+
+  // Config delivery. The parent posts `{ __dig, type:'cfg', cfg }` after we announce 'frame-ready'
+  // (and again on iframe.onload as a belt-and-suspenders — boot() is idempotent). The legacy inline
+  // `window.__DIG_CFG` (old data:-frame) still boots immediately when present.
+  function onBootMessage(e: MessageEvent): void {
+    if (e.source !== parentWin) return; // only trust our embedder
+    const d = e.data as { __dig?: boolean; type?: string; cfg?: FrameConfig } | null;
+    if (!d || d.__dig !== true || d.type !== 'cfg' || !d.cfg) return;
+    boot(d.cfg);
+  }
+
+  if (typeof window !== 'undefined' && window.__DIG_CFG) {
+    boot(window.__DIG_CFG);
+  } else {
+    window.addEventListener('message', onBootMessage);
+    // Tell the parent we're ready to receive the capsule config (listener is armed above first).
+    try {
+      parentWin.postMessage({ __dig: true, type: 'frame-ready' }, '*');
+    } catch {
+      /* no parent / cross-origin — nothing to do */
+    }
+  }
 })();
 
 export {};
