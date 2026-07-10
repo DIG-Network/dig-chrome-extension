@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.81.0] - 2026-07-10
+
+### Features
+- **content-read:** Resolve chain-anchored root from coinset.org on the hosted tier (#228) (#112)
+
 ## [1.80.0] - 2026-07-10
 
 ### Bug Fixes
