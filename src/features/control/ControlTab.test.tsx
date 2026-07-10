@@ -21,7 +21,7 @@ describe('ControlTab', () => {
     expect(screen.getByTestId('control-read-fallback')).toHaveTextContent('https://rpc.dig.net/');
   });
 
-  it('renders the manage view + stats when a local node is running (#82: stats interpolated via react-intl)', async () => {
+  it('renders the full panel (live status + cache/LRU) when a local node is running', async () => {
     mockControl({
       mode: 'manage',
       localNode: true,
@@ -29,15 +29,16 @@ describe('ControlTab', () => {
       controlEndpoint: 'http://dig.local/',
       readFallback: 'https://rpc.dig.net/',
       status: { hosted_store_count: 3, cached_capsule_count: 12, cache: { used_bytes: 1000 }, sync: { available: true } },
-      authRequired: true,
+      authRequired: false,
       controlMethods: [],
     });
     renderWithProviders(<ControlTab />);
-    expect(await screen.findByTestId('control-stats')).toBeInTheDocument();
-    expect(screen.getByTestId('control-stats')).toHaveTextContent('3');
-    expect(screen.getByTestId('control-stats')).toHaveTextContent('12');
+    // The OPEN sections (no pairing needed) render for any reachable node.
+    expect(await screen.findByTestId('control-live')).toBeInTheDocument();
+    expect(screen.getByTestId('control-cache')).toBeInTheDocument();
     expect(screen.getByTestId('control-panel')).toHaveAttribute('data-mode', 'manage');
-    expect(screen.getByTestId('control-manage-note')).toHaveTextContent(/DIG Browser|native/i);
-    expect(screen.getByTestId('control-read-fallback')).toHaveTextContent(/local/i);
+    // jsdom is a narrow (popup) viewport → the compact summary offers an "open full panel" link
+    // rather than embedding the fullscreen-only paired management sections (§6.4 tiering).
+    expect(screen.getByTestId('control-open-full')).toBeInTheDocument();
   });
 });

@@ -222,8 +222,16 @@ import { DIG_ERR } from './error-codes';
  * §5.3 ladder for the WALLET-data read path (distinct from `getDigNodeStatus`'s content path) and
  * reports the selected mode + the resolved source, backing the "Local dig-node detected" indicator
  * `ChainSourceSetting` shows when Auto mode auto-selects a local node. Purely additive.
+ *
+ * v31 (#278/#281 dig-node control panel): added the control-panel action set the SW routes to the
+ * node's 9778 browser control surface — `getNodeLiveStatus` (the cached `/ws/status` live snapshot,
+ * §239), the OPEN cache/LRU family (`cacheGetConfig`, `cacheSetCap`, `cacheList`, `cacheRemove`,
+ * `cacheClear`, `cacheStats` — no control token), the pairing controls (`pairingStart`,
+ * `pairingState`, `pairingCancel`, `pairingUnpair`), and `controlAuthed` (a single dispatcher that
+ * attaches the SW-held paired token to any token-gated `control.*` method — the token is NEVER
+ * exposed to a page/UI). Purely additive.
  */
-export const MESSAGE_PROTOCOL_VERSION = 30;
+export const MESSAGE_PROTOCOL_VERSION = 31;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -364,6 +372,19 @@ export const ACTIONS = Object.freeze({
   getShieldLedger: 'getShieldLedger',
   // ── DIG Control Panel (node management) — mirrors the browser dig://control ──
   getControlStatus: 'getControlStatus',
+  // ── dig-node control panel (#278/#281): live WS status, OPEN cache/LRU, pairing, authed control ──
+  getNodeLiveStatus: 'getNodeLiveStatus',
+  cacheGetConfig: 'cacheGetConfig',
+  cacheSetCap: 'cacheSetCap',
+  cacheList: 'cacheList',
+  cacheRemove: 'cacheRemove',
+  cacheClear: 'cacheClear',
+  cacheStats: 'cacheStats',
+  pairingStart: 'pairingStart',
+  pairingState: 'pairingState',
+  pairingCancel: 'pairingCancel',
+  pairingUnpair: 'pairingUnpair',
+  controlAuthed: 'controlAuthed',
   // ── diagnostics ──
   reportError: 'reportError',
   reportSuccess: 'reportSuccess',
@@ -876,6 +897,66 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'DIG Control Panel: detect a local dig-node (manage vs install) + best-effort control.status; honest hosted-RPC fallback. Mirrors dig://control.',
     request: '{ action }',
     response: "{ mode:'manage'|'install', localNode:boolean, base:string|null, controlEndpoint:string|null, readFallback:string, status:object|null, authRequired:boolean, controlMethods:string[] }",
+  },
+  [ACTIONS.getNodeLiveStatus]: {
+    summary: 'DIG control panel (#239): the SW-cached live node status from the WS `/ws/status` channel (Connected/Connecting/Disconnected + addr/version). Popup hydrates from this and live-patches from the `nodeLiveStatusChanged` broadcast.',
+    request: '{ action }',
+    response: "{ state:'connecting'|'connected'|'disconnected', base:string|null, addr:string|null, version:string|null, commit:string|null, updatedAt:number }",
+  },
+  [ACTIONS.cacheGetConfig]: {
+    summary: 'OPEN cache.getConfig on the local node (no token): reserved cap + live usage.',
+    request: '{ action }',
+    response: "{ cap_bytes:number, used_bytes:number, cache_dir:string, shared:boolean } | { success:false }",
+  },
+  [ACTIONS.cacheSetCap]: {
+    summary: 'OPEN cache.setCapBytes (no token): set the reserved cache cap (node floors at 64 MiB).',
+    request: '{ action, capBytes:number }',
+    response: '{ cap_bytes:number } | { success:false }',
+  },
+  [ACTIONS.cacheList]: {
+    summary: 'OPEN cache.listCached (no token): cached capsules with size + last-access + lru_rank (0 = next evicted).',
+    request: '{ action }',
+    response: '{ cached: Array<{capsule,store_id,root,size_bytes,last_used_unix_ms,lru_rank}> } | { success:false }',
+  },
+  [ACTIONS.cacheRemove]: {
+    summary: 'OPEN cache.removeCached (no token): evict one cached capsule by store_id + root.',
+    request: '{ action, storeId:string, root:string }',
+    response: '{ removed:boolean } | { success:false }',
+  },
+  [ACTIONS.cacheClear]: {
+    summary: 'OPEN cache.clear (no token): delete all locally cached DIG content.',
+    request: '{ action }',
+    response: '{} | { success:false }',
+  },
+  [ACTIONS.cacheStats]: {
+    summary: 'OPEN cache.stats (no token): cap/used, entry_count/total_bytes, session evicted + content-cache hit/miss.',
+    request: '{ action }',
+    response: '{ cap_bytes,used_bytes,entry_count,total_bytes,evicted_count,evicted_bytes,content_cache:{hits,misses} } | { success:false }',
+  },
+  [ACTIONS.pairingStart]: {
+    summary: 'Control-token pairing (#280): begin a pairing (OPEN pairing.request → await operator approval → poll). Returns the current pairing state.',
+    request: '{ action }',
+    response: "{ phase:'requesting'|'awaiting'|'paired'|'expired'|'error', pairingId:string|null, pairingCode:string|null, expiresMs:number|null, error:string|null }",
+  },
+  [ACTIONS.pairingState]: {
+    summary: 'Control-token pairing (#280): the current pairing phase (the token value is never returned).',
+    request: '{ action }',
+    response: "{ phase:'unpaired'|'requesting'|'awaiting'|'paired'|'expired'|'error', pairingId, pairingCode, expiresMs, error }",
+  },
+  [ACTIONS.pairingCancel]: {
+    summary: 'Control-token pairing (#280): cancel an in-flight pairing (back to unpaired/paired).',
+    request: '{ action }',
+    response: '{ phase }',
+  },
+  [ACTIONS.pairingUnpair]: {
+    summary: 'Control-token pairing (#280): clear the stored controller token locally (unpair). Node-side revoke is the operator\'s `dig-node pair revoke`.',
+    request: '{ action }',
+    response: "{ phase:'unpaired' }",
+  },
+  [ACTIONS.controlAuthed]: {
+    summary: 'Authed control.* call (#281): drive a token-gated control method with the stored paired token as X-Dig-Control-Token. On -32030 the SW clears the stale token (returns to unpaired).',
+    request: '{ action, method:string, params?:object }',
+    response: '{ result:object } | { error:{code,data:{code}} } | { success:false }',
   },
   [ACTIONS.reportError]: {
     summary: 'Record a resolution-strategy error (kept as a rolling diagnostics buffer).',

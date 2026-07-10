@@ -4,6 +4,7 @@ import { routeToHash } from '@/app/tabs';
 import { popOutToFullpage } from '@/lib/popout';
 import { hasRuntime } from '@/lib/messaging';
 import { StatusPill } from '@/components/StatusPill';
+import { LiveStatusPill } from '@/features/control/LiveStatusSection';
 import type { Surface } from '@/app/layout';
 
 /**
@@ -35,6 +36,8 @@ export function AppHeader({ surface }: { surface: Surface }) {
           <FormattedMessage id="custody.network.testnet" />
         </StatusPill>
       )}
+      {/* #239: live dig-node connection indicator — flips online/offline with no user action. */}
+      <LiveStatusPill />
       <span className="dig-spacer" />
       {surface === 'popup' && (
         <button

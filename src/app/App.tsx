@@ -10,6 +10,7 @@ import { useLayoutMode, type Surface } from '@/app/layout';
 import { routeFromHash } from '@/features/ui/uiSlice';
 import { routeToHash } from '@/app/tabs';
 import { installStorageSync } from '@/app/storageSync';
+import { installControlPanelSync } from '@/app/controlPanelSync';
 import { useBackgroundPrefetch } from '@/app/useBackgroundPrefetch';
 import { useAppliedTheme } from '@/app/useAppliedTheme';
 import { publishVersionGlobal } from '@/lib/version';
@@ -45,14 +46,19 @@ function Shell({ surface }: { surface: Surface }) {
   // #111 — apply the active theme (light/dark/system) to the document; live for OS-theme changes.
   useAppliedTheme();
 
-  // Boot: publish version (§6.7) + install the storage→store bridge (§3.4).
+  // Boot: publish version (§6.7) + install the storage→store bridge (§3.4) + the control-panel
+  // broadcast bridge (#278/#281: live node status + pairing).
   useEffect(() => {
     publishVersionGlobal();
     let cleanup: (() => void) | undefined;
     void installStorageSync(store).then((fn) => {
       cleanup = fn;
     });
-    return () => cleanup?.();
+    const cleanupControl = installControlPanelSync(store);
+    return () => {
+      cleanup?.();
+      cleanupControl();
+    };
   }, [store]);
 
   // Hydrate route from the hash on mount + follow external hash changes (deep-link + pop-out).
