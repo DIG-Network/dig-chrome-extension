@@ -1,0 +1,24 @@
+{
+  "name": "@dignetwork/dig-keystore-wasm",
+  "type": "module",
+  "private": true,
+  "description": "VENDORED wasm-pack bundler-target build of dig-keystore-wasm (opaque secret sealing: AES-256-GCM + Argon2id) — see PROVENANCE.md. Consumed here as a `file:` dependency (dig_ecosystem #147 Phase B) pending the real npm publish (dig_ecosystem #70-adjacent).",
+  "version": "0.2.0",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DIG-Network/dig-keystore"
+  },
+  "files": [
+    "dig_keystore_wasm_bg.wasm",
+    "dig_keystore_wasm.js",
+    "dig_keystore_wasm_bg.js",
+    "dig_keystore_wasm.d.ts"
+  ],
+  "main": "dig_keystore_wasm.js",
+  "types": "dig_keystore_wasm.d.ts",
+  "sideEffects": [
+    "./dig_keystore_wasm.js",
+    "./snippets/*"
+  ]
+}

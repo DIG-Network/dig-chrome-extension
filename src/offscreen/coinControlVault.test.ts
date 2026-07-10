@@ -7,6 +7,10 @@ import type { ChainClient, ChainCoin, ChainCoinRecord } from '@/offscreen/chain'
 import { mnemonicToSeed } from '@/lib/keystore/bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
 import golden from '@/lib/keystore/derive.golden.json';
+import { makeFakeKeystoreWasm } from '@/test/keystoreWasmFake';
+
+// dig_ecosystem #147 Phase B: importWallet (the V2 writer) needs a keystoreWasm dep.
+const keystoreWasm = makeFakeKeystoreWasm();
 
 /**
  * Coin control (#91) through the REAL vault path — `Vault.handle` for listCoins / prepareSplit /
@@ -51,7 +55,7 @@ function simChain(sim: SimHandle): ChainClient {
 
 async function unlockedVault(): Promise<{ vault: Vault; seed: Uint8Array }> {
   const vault = new Vault();
-  await vault.handle({ op: 'importWallet', mnemonic: golden.mnemonic, password: 'coin-control-test' });
+  await vault.handle({ op: 'importWallet', mnemonic: golden.mnemonic, password: 'coin-control-test' }, { keystoreWasm });
   return { vault, seed: await mnemonicToSeed(golden.mnemonic) };
 }
 
