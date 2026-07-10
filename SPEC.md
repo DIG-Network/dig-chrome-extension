@@ -68,6 +68,12 @@ re-decrypts (§15).
   §18.11). `host_permissions` correspondingly includes an all-hosts HTTPS pattern (needed for the
   extension's CORS-bypass fetch elevation — most off-chain metadata hosts won't send
   `Access-Control-Allow-Origin`).
+  - The manifest MUST additionally declare a `content_security_policy.sandbox` for the store-render
+    frame (§5.3): a `sandbox` directive WITHOUT `allow-same-origin` (opaque origin, isolated from the
+    extension) that relaxes `script-src`/`style-src` to allow the arbitrary decrypted store content to
+    render (`'self' 'unsafe-inline' 'unsafe-eval' data: blob:`) while constraining `connect-src` to
+    `'self' data: blob:` so store content has NO network egress. The store frame page
+    (`dig-store-frame.html`) is listed in `sandbox.pages`.
   - **A Manifest V3 background SERVICE WORKER's own `fetch()` IS subject to `connect-src`** —
     empirically verified (`DEVELOPMENT_LOG.md`) building `getNftMetadata` (§18.11c): a fetch to a host
     outside `connect-src` failed before ever reaching the network layer, the signature of a CSP block,
@@ -455,17 +461,29 @@ The primary read is `chrome.runtime` action `proxyRequest` (§7). Given a `chia:
 service worker MUST execute, in order:
 
 1. `parseURN` the URL; a `null` result is `DIG_ERR_INVALID_URN`.
-2. Select the capsule: `root = roothash || 'latest'`; `resourceKey = resourceKey || 'index.html'`.
+2. Select the capsule: `resourceKey = resourceKey || 'index.html'`.
 3. Load + SRI-verify the WASM (§6). A digest mismatch fails closed.
 4. Resolve the RPC endpoint (§8).
 5. `retrieval_key = retrievalKey(storeId, resourceKey)`.
-6. Fetch ciphertext via chunked `dig.getContent` (§5.1).
-7. `verifyInclusion(ciphertext, proof, root)` — non-throwing; a decoy/false verdict yields
-   `verified: false` but MUST NOT throw.
-8. `deriveKey(storeId, resourceKey, salt)`.
-9. Decrypt (§5.2). A GCM-SIV tag failure means decoy/wrong-key and surfaces
-   `DIG_ERR_DECRYPT_TAG`.
-10. Encode decrypted bytes to a `data:<contentType>;base64,…` URL (content type inferred from
+6. Resolve the **trusted root** — the root the read is verified against. It MUST come from the
+   CHAIN, never the URN string and never the serving host:
+   - a **rooted** URN pins a concrete generation → its own `roothash` is the trusted root;
+   - a **rootless** URN's trusted root is the store's chain-ANCHORED tip, resolved via
+     `dig.getAnchoredRoot { store_id }` on the resolved node (which walks the DataStore singleton on
+     coinset.org server-side). The hosted `rpc.dig.net` gateway does NOT serve this method
+     (it answers `-32601`); when the anchored root is unresolvable the read is treated as
+     UNVERIFIED (fail-closed) — never silently trusted.
+   The literal string `'latest'` MUST NOT be passed as the trusted root to `verifyInclusion`.
+7. Fetch ciphertext via chunked `dig.getContent` (§5.1), with `root` pinned to the trusted root
+   when known (else `'latest'`), so the returned proof folds to the same root that is verified
+   against (no `'latest'` race).
+8. `verifyInclusion(ciphertext, proof, trustedRoot)` — non-throwing; a decoy/false/tampered verdict
+   yields `verified: false` but MUST NOT throw. With no resolvable trusted root, `verified` is
+   `false` regardless of the proof (fail-closed).
+9. `deriveKey(storeId, resourceKey, salt)`.
+10. Decrypt (§5.2). A GCM-SIV tag failure means decoy/wrong-key and surfaces
+    `DIG_ERR_DECRYPT_TAG`.
+11. Encode decrypted bytes to a `data:<contentType>;base64,…` URL (content type inferred from
     `resourceKey`) and return.
 
 ### 5.1 `dig.getContent` JSON-RPC wire
@@ -514,9 +532,16 @@ in-page path):
    (decode percent-escapes until stable — a valid URN has no literal `%`), because some navigation
    paths encode the `chia://` URL more than once and `URLSearchParams` decodes only once; a
    still-encoded value would fail `parseURN` and never load. It then renders store HTML inside a
-   SANDBOXED, opaque-origin `data:` frame (isolated from the extension — the frame has no `chrome.*`
-   access and holds no keys) that boots the interceptor with the entry capsule config
-   `{ storeId, root, salt, entryKey }`.
+   **MV3 SANDBOXED extension page** (`dig-store-frame.html`, declared in manifest `sandbox.pages`):
+   an opaque-origin frame isolated from the extension — NO `chrome.*` access, no keys, and its own
+   `content_security_policy.sandbox` with `connect-src 'self' data: blob:` so store content cannot
+   egress to the network (all reads are delegated to the parent). The sandboxed page loads the
+   interceptor as an EXTERNAL same-origin script (`script-src 'self'`); it MUST NOT use a `data:`
+   frame or inline scripts (both are blocked by the extension's own strict CSP — `frame-src 'self'`,
+   `script-src 'self'` — the bug that previously prevented any content from rendering). The viewer
+   hands the entry capsule config `{ storeId, root, salt, entryKey }` to the interceptor over
+   `postMessage` (the sandbox CSP forbids an inline `window.__DIG_CFG`): the frame announces
+   `frame-ready`, the viewer replies `cfg`, and boot is idempotent (also re-sent on `iframe.onload`).
 2. The interceptor patches `window.fetch` + `XMLHttpRequest` and rewrites DOM `src`/`href` on
    injection and on mutation. Each reference is classified as:
    - a **relative** ref — resolved against the CURRENT document's resource key into the same
@@ -1032,8 +1057,9 @@ extension MUST NOT diverge from it.
   self-contained ESM (inlining `@dignetwork/chia-provider` — browsers + MV3 SWs cannot resolve the
   bare specifier, so the raw re-export would break every consumer's module graph), esbuild-bundles
   `store-interceptor.entry.mjs` → `dist/store-interceptor.js` (a self-contained IIFE with the
-  unit-tested `store-refs.mjs` inlined, since the opaque store frame can neither import a module nor
-  fetch a cross-origin script — §5.3), esbuild-bundles the MV3 service worker + content-script layer,
+  unit-tested `store-refs.mjs` inlined; the MV3 sandboxed store frame `dig-store-frame.html` loads it
+  as an external same-origin script — §5.3), copies the static `dig-store-frame.html` into `dist/`,
+  esbuild-bundles the MV3 service worker + content-script layer,
   injects the `package.json` version into the `__APP_VERSION__` placeholder of `popup.html` +
   `app.html` + `approval.html` (§2.3), and emits `dist/agent-surface.json`. There is NO WalletConnect
   vendoring — the extension is a self-custody wallet.

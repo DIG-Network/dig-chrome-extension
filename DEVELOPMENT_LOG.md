@@ -3,6 +3,39 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## chia:// content only RENDERS in an MV3 SANDBOXED page; a rootless URN's trusted root is the CHAIN-anchored root, never 'latest' (#225, #226)
+
+Two coupled bugs that made `chia://` content NOT display in the browser window, both proven by the
+live-node e2e (`e2e/sw/live-node-content-load.spec.ts`, B.1b + B.4) against 127.0.0.1:9778.
+
+- **#225 — the extension's OWN MV3 CSP blocked the store frame.** The dig-viewer rendered store HTML
+  into a `data:text/html` iframe with the interceptor + config as INLINE scripts. `extension_pages`
+  CSP `frame-src 'self' https:` blocks the `data:` frame, and `script-src 'self'` blocks the inline
+  scripts (MV3 forbids `'unsafe-inline'` in `extension_pages`, and a per-store inline config can't be
+  hash-pinned). The READ path worked end-to-end the whole time — only the RENDER was blocked, and the
+  repo's own loader e2e had explicitly DEFERRED the success-render assertion, so it went unnoticed for
+  many releases. Fix = a real **MV3 sandboxed extension page** (`dig-store-frame.html` in manifest
+  `sandbox.pages` + a `content_security_policy.sandbox`): opaque origin, NO `chrome.*`/keys, its own
+  relaxed CSP that CAN run inline/`data:` scripts (so arbitrary decrypted store HTML/JS renders), and
+  `connect-src 'self' data: blob:` so store content has no network egress. Do NOT include
+  `allow-same-origin` in the sandbox directive — the opaque origin IS the isolation. The interceptor
+  loads as an EXTERNAL same-origin `<script src>` (`script-src 'self'` covers it); config is delivered
+  by `postMessage` (frame posts `frame-ready` → parent replies `cfg`; boot idempotent, also re-sent on
+  `iframe.onload`) because the sandbox CSP forbids an inline `window.__DIG_CFG`.
+
+- **#226 — the literal string `'latest'` was passed as the trusted root to `verifyInclusion`.** A
+  folded `proof.root` (32-byte hex) can NEVER equal the string `'latest'`, so every rootless URN (the
+  common case) reported `verified=false` even for genuinely valid chain-anchored content. The trusted
+  root MUST come from the CHAIN: for a rootless URN, resolve it via `dig.getAnchoredRoot { store_id }`
+  on the node (it walks the DataStore singleton on coinset.org SERVER-SIDE), pin the `dig.getContent`
+  fetch to that root (so the proof folds to what we verify against — no `'latest'` race), and verify
+  against it. FAIL-CLOSED: `rpc.dig.net` does NOT serve `dig.getAnchoredRoot` (answers `-32601`), so
+  the hosted tier reports UNVERIFIED rather than trusting a host-asserted root. The pure decision lives
+  in `src/lib/trusted-root.ts` (unit-tested); the SW just calls `resolveAnchoredRoot` + the helpers.
+  Follow-up: resolving the anchored root from coinset.org directly on the hosted tier needs the
+  DataLayer store-coin driver wasm the extension does not yet bundle (`@dignetwork/chip35-dl-coin-wasm`,
+  as hub's `lib/lineage.ts` uses) — until then the hosted tier is fail-closed.
+
 ## The dig-node wallet-data source (#217) reflects the NODE's wallet, and its reads are read-only — signing NEVER leaves the vault
 
 Phase 3 of #205 lets the extension read balances/tokens/NFTs/DIDs/coins/activity from a running
