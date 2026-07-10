@@ -5,6 +5,10 @@ import type { ChainClient, ChainCoin, ChainCoinSpend, ChainSpendBundle } from '@
 import { mnemonicToSeed } from '@/lib/keystore/bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
 import golden from '@/lib/keystore/derive.golden.json';
+import { makeFakeKeystoreWasm } from '@/test/keystoreWasmFake';
+
+// dig_ecosystem #147 Phase B: importWallet (the V2 writer) needs a keystoreWasm dep.
+const keystoreWasm = makeFakeKeystoreWasm();
 
 /**
  * DID management (#93) through the REAL vault path — `Vault.handle` for `listDids` / `prepareDidCreate`
@@ -50,7 +54,7 @@ function simChain(sim: SimHandle): ChainClient {
 
 async function unlockedVault(): Promise<{ vault: Vault; seed: Uint8Array }> {
   const vault = new Vault();
-  await vault.handle({ op: 'importWallet', mnemonic: golden.mnemonic, password: 'did-mgmt-test' });
+  await vault.handle({ op: 'importWallet', mnemonic: golden.mnemonic, password: 'did-mgmt-test' }, { keystoreWasm });
   return { vault, seed: await mnemonicToSeed(golden.mnemonic) };
 }
 

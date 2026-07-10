@@ -1114,21 +1114,27 @@ The extension denies this by default rather than trusting the dependency tree:
 
 ### 15.4 Key custody core (vault + at-rest keystore)
 
-Normative contract: §18.1 (key derivation) + §18.2 (`DIGWX1` at-rest keystore) + §18.3 (custody
-lifecycle & session). Summary of the invariants those sections specify:
+Normative contract: §18.1 (key derivation) + §18.2 (`DIGWX1` at-rest keystore, V2 current /
+V1 legacy decode-only, dig_ecosystem #147 Phase B) + §18.3 (custody lifecycle & session). Summary
+of the invariants those sections specify:
 
 - The decrypted key/entropy exists ONLY inside the long-lived offscreen document's memory — never
   the service worker, never `chrome.storage`, never persisted or logged in plaintext anywhere.
-- At rest, the entropy is encrypted as a single `DIGWX1` record: Argon2id (memory-hard) at a
-  DEFAULT cost of 64 MiB / 3 iterations / 4 lanes, with a STRONG 256 MiB preset offered for
-  high-value wallets (surfaced as an onboarding toggle, §15.9), feeding AES-256-GCM with the full
-  header (KDF params, salt, cipher id, nonce) bound as AAD — tampering with any of them fails the
-  GCM tag closed. The derived AES key is a non-extractable `CryptoKey`, never serialized. Any
-  decrypt failure (wrong password OR a tampered blob) collapses to one opaque `UNLOCK_FAILED` —
-  the wallet never tells an attacker which one.
-- A bounded PBKDF2-HMAC-SHA-512 (≥600,000 iterations) fallback engages ONLY if the Argon2 wasm
-  fails to instantiate, and the wallet schedules forced re-encryption to Argon2id on the next
-  successful unlock — it is a degrade-gracefully path, never the default.
+- At rest, the entropy is encrypted as a single `DIGWX1` record. The CURRENT (V2) writer delegates
+  to the canonical `dig-keystore` crate's wasm binding (`@dignetwork/dig-keystore-wasm`): Argon2id
+  (memory-hard) at a DEFAULT cost of 64 MiB / 3 iterations / 4 lanes, with a STRONG 256 MiB preset
+  offered for high-value wallets (surfaced as an onboarding toggle, §15.9), feeding AES-256-GCM with
+  the full header (KDF params, salt, cipher id, nonce) bound as AAD inside the wasm binding's own
+  self-describing container — tampering with any of them fails the GCM tag closed. An OLDER V1
+  record (written before this migration) decodes via the extension's original hand-rolled path
+  (native WebCrypto AES-256-GCM, same AAD binding) — see §18.2 for the full V1/V2 split. Either
+  path's derived AES key is a non-extractable `CryptoKey`, never serialized. Any decrypt failure
+  (wrong password OR a tampered blob) collapses to one opaque `UNLOCK_FAILED` — the wallet never
+  tells an attacker which one.
+- A bounded PBKDF2-HMAC-SHA-512 (≥600,000 iterations) fallback was part of the legacy V1 writer,
+  engaging ONLY if the Argon2 wasm failed to instantiate; `decryptEntropy` still opens a
+  PBKDF2-fallback V1 record forever (§18.2). The V2 writer has no analogous fallback — see §18.2's
+  `EncryptResult.usedFallback` note for why.
 - `storage.sync` is NEVER used for wallet key material (§18.4) — it would replicate the encrypted
   seed to every device signed into the browser profile, widening the at-rest attack surface beyond
   what the user chose.
@@ -1406,24 +1412,57 @@ for indexes `0..count-1`, for VIEWING and COPYING — never for balance/activity
 - **Copy copies the FULL address**, never the shortened display text (`shortenAddress` is
   presentational only).
 
-### 18.2 At-rest keystore — `DIGWX1` v1
+### 18.2 At-rest keystore — `DIGWX1` v2 (current), v1 (legacy, decode-only)
 
 The wallet entropy is stored ONLY as an encrypted `DIGWX1` record under `chrome.storage.local`
-(`wallet.keystore`). No plaintext secret is ever written to any storage area.
+(`wallet.keystore`). No plaintext secret is ever written to any storage area. Two record versions
+share the `DIGWX1` magic (`src/lib/keystore/digwx1.ts`):
+
+**V2 (current writer, dig_ecosystem #147 Phase B).** ALL crypto delegates to the canonical
+`dig-keystore` crate's `opaque` module via its wasm binding, `@dignetwork/dig-keystore-wasm`
+(consumed as a vendored `file:` dependency at `third_party/dig-keystore-wasm/` pending its npm
+publish — see the directory's `PROVENANCE.md`) — the SAME audited Argon2id + AES-256-GCM
+implementation every other DIG binary's keystore file uses, instead of hand-rolling the primitives
+in JS:
+
+- **`seal(password, secret)` / `sealStrong(password, secret)`** — DEFAULT (64 MiB/3/4) or STRONG
+  (256 MiB/4/4) Argon2id preset, drawn from OS randomness (`getrandom`'s "js" backend), producing a
+  self-describing container (its own header carries the KDF params, salt, nonce; AES-256-GCM
+  ciphertext+tag; CRC-32).
+- **`open(password, blob)`** — re-derives the key from the blob's own header and AES-GCM-verifies;
+  ANY failure (wrong password, tampering, or a non-opaque blob) throws, collapsed by the vault to
+  the same opaque `UNLOCK_FAILED` as v1.
+- **Record shape** (base64 field): `kdf`/`cipher` are placeholders — the real parameters live inside
+  the wasm binding's container, not the JS-side record:
+  ```json
+  { "version":2, "magic":"DIGWX1",
+    "kdf":{ "id":"dig-keystore-opaque" },
+    "cipher":{ "id":"dig-keystore-opaque" },
+    "ciphertext":"<b64 dig-keystore-wasm seal/sealStrong output>", "createdAt":<ms>, "label":"<optional>" }
+  ```
+- The real wasm module is loaded ONLY at the offscreen-document runtime edge
+  (`src/entries/offscreen.ts`'s `getKeystoreWasm()`, mirroring `getChia()`/`loadChiaWasm`) and
+  injected into `src/offscreen/vault.ts` via `VaultDeps.keystoreWasm` — `digwx1.ts` itself never
+  imports the wasm binding directly, staying chrome-free/wasm-import-free and unit-testable with an
+  injected fake (`src/test/keystoreWasmFake.ts`).
+
+**V1 (legacy, DECODE-ONLY).** The extension's original hand-rolled writer — kept readable FOREVER
+per §5.1's backwards-compatibility spirit for permanent at-rest formats; an existing user's vault,
+encrypted before this extension migrated to V2, MUST keep opening. NO production call site writes
+this format anymore (`encryptEntropyLegacyV1` still exists, exported for test-fixture generation and
+decode-path regression coverage only):
 
 - **KDF:** Argon2id (via the in-package `hash-wasm`) at the DEFAULT cost 64 MiB / 3 iterations /
-  4 lanes (a STRONG 256 MiB preset is offered for high-value wallets), with a fresh 16-byte random
-  salt. A `kdf.id` field allows versioned migration.
+  4 lanes (a STRONG 256 MiB preset was offered for high-value wallets), with a fresh 16-byte random
+  salt.
 - **Cipher:** AES-256-GCM (native WebCrypto), fresh 12-byte nonce, 128-bit tag. The record HEADER —
   `{version, magic, full kdf params, cipher id + nonce}` — is bound as GCM AAD, so tampering with any
   KDF param, the salt, or the nonce fails the tag CLOSED with no separate MAC.
 - **Key handle:** the derived AES key is a NON-EXTRACTABLE `CryptoKey` (`extractable:false`), never
   serialized.
 - **PBKDF2 fallback (bounded, never silent):** PBKDF2-HMAC-SHA-512 (≥600 000 iters, `kdf.id=pbkdf2`)
-  engages ONLY when the Argon2 wasm fails to instantiate; the wallet surfaces a warning and schedules
-  forced re-encryption to Argon2 on the next unlock.
-- **Error opacity:** any decrypt failure (wrong password OR tampered blob) collapses to a single
-  opaque `UNLOCK_FAILED`; only a structurally-invalid record yields `BAD_RECORD`.
+  engaged ONLY when the Argon2 wasm failed to instantiate; `decryptEntropy` still opens a
+  PBKDF2-fallback V1 record.
 - **Record shape** (base64 fields):
   ```json
   { "version":1, "magic":"DIGWX1",
@@ -1431,10 +1470,21 @@ The wallet entropy is stored ONLY as an encrypted `DIGWX1` record under `chrome.
     "cipher":{ "id":"aes-256-gcm","nonce":"<b64 12B>" },
     "ciphertext":"<b64 entropy‖tag>", "createdAt":<ms>, "label":"<optional>" }
   ```
-- **Additive versioning:** newer readers keep decoding every prior `version`/`kdf.id`; ids are never
-  removed or repurposed.
 
-Fresh salt + nonce are drawn on every (re)encryption; RNG is `crypto.getRandomValues`.
+**Shared across both versions:**
+
+- **Error opacity:** any decrypt failure (wrong password OR tampered blob) collapses to a single
+  opaque `UNLOCK_FAILED`; only a structurally-invalid record yields `BAD_RECORD`.
+- **Version dispatch:** `decryptEntropy` reads `record.version` and routes to the V2 (wasm-binding)
+  or V1 (legacy JS) decode path — never both. `needsUpgrade(record)` reports `true` for ANY V1
+  record (nothing currently forces re-encryption to V2; V1 stays readable forever regardless).
+- **Additive versioning:** newer readers keep decoding every prior `version`; ids are never removed
+  or repurposed. A golden-fixture test (`digwx1.test.ts`) pins a REAL V1 record (captured once from
+  the pre-migration writer) and asserts it still decrypts to the exact original entropy — the
+  concrete backwards-compatibility proof.
+- Fresh salt + nonce (V1) / fresh salt + nonce inside the wasm container (V2) are drawn on every
+  (re)encryption; RNG is `crypto.getRandomValues` (V1) / `getrandom`'s "js" backend (V2, inside the
+  wasm binding).
 
 ### 18.3 Custody lifecycle & session
 

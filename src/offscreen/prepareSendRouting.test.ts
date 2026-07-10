@@ -7,6 +7,7 @@ import type { ChainClient, ChainCoin, ChainCoinSpend, ChainSpendBundle } from '@
 import { mnemonicToSeed } from '@/lib/keystore/bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
 import golden from '@/lib/keystore/derive.golden.json';
+import { makeFakeKeystoreWasm } from '@/test/keystoreWasmFake';
 
 /**
  * Money-critical regression #121 — CAT vs native-XCH ROUTING through the REAL stack.
@@ -98,7 +99,10 @@ describe('prepareSend routing (#121, Simulator-validated end-to-end)', () => {
     const assetIdHex = await mintCatToWallet(sim, seed);
 
     const vault = new Vault();
-    const imported = await vault.handle({ op: 'importWallet', mnemonic: golden.mnemonic, password: 'test-password-121' });
+    const imported = await vault.handle(
+      { op: 'importWallet', mnemonic: golden.mnemonic, password: 'test-password-121' },
+      { keystoreWasm: makeFakeKeystoreWasm() },
+    );
     expect(imported.success).toBe(true);
 
     const chainDeps = { chia: chia as never, chain: simChain(sim) };

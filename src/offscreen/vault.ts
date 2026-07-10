@@ -17,11 +17,10 @@
 import {
   encryptEntropy,
   decryptEntropy,
-  ARGON2_DEFAULT,
-  ARGON2_STRONG,
   KeystoreError,
   type Digwx1Record,
   type Argon2Fn,
+  type KeystoreWasm,
 } from '@/lib/keystore/digwx1';
 import {
   generateMnemonic,
@@ -485,9 +484,13 @@ export interface VaultResponse {
   signerPublicKey?: string;
 }
 
-/** Test/DI seam. `chia` + `chain` power derivation + the balance scan (offscreen-only at runtime). */
+/** Test/DI seam. `chia` + `chain` power derivation + the balance scan; `keystoreWasm` powers the
+ * V2 vault crypto (dig_ecosystem #147 Phase B) — all offscreen-only at runtime (real wasm/network
+ * deps are lazily loaded by `src/entries/offscreen.ts` and injected here, never imported by this
+ * pure class). `argon2Fn` is a test seam for the LEGACY V1 decode path only. */
 export interface VaultDeps {
   argon2Fn?: Argon2Fn;
+  keystoreWasm?: KeystoreWasm;
   chia?: ScanWasm;
   chain?: ChainClient;
 }
@@ -674,12 +677,13 @@ export class Vault {
 
   private async createWallet(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
     if (!req.password) return { success: false, code: 'BAD_REQUEST', message: 'password required' };
+    if (!deps.keystoreWasm) return { success: false, code: 'WASM_UNAVAILABLE', message: 'keystore crypto unavailable' };
     const mnemonic = generateMnemonic();
     const entropy = mnemonicToEntropy(mnemonic);
     const { record, usedFallback } = await encryptEntropy(entropy, req.password, {
-      argon2Params: req.strong ? ARGON2_STRONG : ARGON2_DEFAULT,
+      keystoreWasm: deps.keystoreWasm,
+      ...(req.strong ? { strong: true } : {}),
       ...(req.label ? { label: req.label } : {}),
-      ...(deps.argon2Fn ? { argon2Fn: deps.argon2Fn } : {}),
     });
     this.hold(entropy, req.walletId);
     return { success: true, hasKey: true, record, mnemonic, usedFallback };
@@ -690,11 +694,12 @@ export class Vault {
     if (!req.mnemonic || !isValidMnemonic(req.mnemonic)) {
       return { success: false, code: 'INVALID_MNEMONIC', message: 'recovery phrase is invalid' };
     }
+    if (!deps.keystoreWasm) return { success: false, code: 'WASM_UNAVAILABLE', message: 'keystore crypto unavailable' };
     const entropy = mnemonicToEntropy(req.mnemonic);
     const { record, usedFallback } = await encryptEntropy(entropy, req.password, {
-      argon2Params: req.strong ? ARGON2_STRONG : ARGON2_DEFAULT,
+      keystoreWasm: deps.keystoreWasm,
+      ...(req.strong ? { strong: true } : {}),
       ...(req.label ? { label: req.label } : {}),
-      ...(deps.argon2Fn ? { argon2Fn: deps.argon2Fn } : {}),
     });
     this.hold(entropy, req.walletId);
     return { success: true, hasKey: true, record, usedFallback };
@@ -704,7 +709,10 @@ export class Vault {
     if (!req.password || !req.record) {
       return { success: false, code: 'BAD_REQUEST', message: 'password and record required' };
     }
-    const entropy = await decryptEntropy(req.record, req.password, deps.argon2Fn);
+    const entropy = await decryptEntropy(req.record, req.password, {
+      argon2Fn: deps.argon2Fn,
+      keystoreWasm: deps.keystoreWasm,
+    });
     this.hold(entropy, req.walletId);
     return { success: true, hasKey: true };
   }
@@ -747,7 +755,10 @@ export class Vault {
     if (!req.password || !req.record) {
       return { success: false, code: 'BAD_REQUEST', message: 'password and record required' };
     }
-    const entropy = await decryptEntropy(req.record, req.password, deps.argon2Fn);
+    const entropy = await decryptEntropy(req.record, req.password, {
+      argon2Fn: deps.argon2Fn,
+      keystoreWasm: deps.keystoreWasm,
+    });
     const mnemonic = entropyToMnemonic(entropy);
     entropy.fill(0);
     return { success: true, mnemonic };
@@ -764,7 +775,10 @@ export class Vault {
       return { success: false, code: 'BAD_REQUEST', message: 'password and record required' };
     }
     if (!deps.chia) return { success: false, code: 'WASM_UNAVAILABLE', message: 'derivation unavailable' };
-    const entropy = await decryptEntropy(req.record, req.password, deps.argon2Fn);
+    const entropy = await decryptEntropy(req.record, req.password, {
+      argon2Fn: deps.argon2Fn,
+      keystoreWasm: deps.keystoreWasm,
+    });
     const seed = await mnemonicToSeed(entropyToMnemonic(entropy));
     entropy.fill(0);
     const master = masterFromSeed(deps.chia, seed);

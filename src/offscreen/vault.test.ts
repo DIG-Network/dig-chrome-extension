@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { Vault } from './vault';
 import type { Argon2Fn } from '@/lib/keystore/digwx1';
+import { encryptEntropyLegacyV1 } from '@/lib/keystore/digwx1';
 import { isValidMnemonic, mnemonicToEntropy } from '@/lib/keystore/bip39';
 import { mnemonicToSeed } from '@/lib/keystore/bip39';
 import { loadChiaWasmNode } from '@/test/chiaWasm';
@@ -12,6 +13,7 @@ import { TESTNET11_AGG_SIG_ME } from '@/offscreen/signing';
 import { prepareClawbackAction, type ClawbackInfo, type ClawbackWasm } from '@/offscreen/clawback';
 import { masterFromSeed, deriveWalletSecretKeyHex } from '@/lib/keystore/derive';
 import golden from '@/lib/keystore/derive.golden.json';
+import { makeFakeKeystoreWasm } from '@/test/keystoreWasmFake';
 
 // Fast, deterministic Argon2 stand-in so the vault's create/unlock cycle doesn't pay the 64 MiB KDF
 // cost per test. The real hash-wasm Argon2id is covered by digwx1.test.ts.
@@ -26,7 +28,10 @@ const fakeArgon2: Argon2Fn = (async (opts: {
   return out;
 }) as unknown as Argon2Fn;
 
-const deps = { argon2Fn: fakeArgon2 };
+// dig_ecosystem #147 Phase B: createWallet/importWallet (V2 writer) and unlock/reveal/export (V2
+// reader) all need `keystoreWasm` — see `@/test/keystoreWasmFake`'s module doc for why a fake
+// stands in here instead of the real `@dignetwork/dig-keystore-wasm`.
+const deps = { argon2Fn: fakeArgon2, keystoreWasm: makeFakeKeystoreWasm() };
 const PW = 'a-strong-password';
 
 describe('offscreen Vault', () => {
@@ -53,10 +58,45 @@ describe('offscreen Vault', () => {
     expect(rev.mnemonic).toBe(res.mnemonic);
   });
 
-  it('createWallet honours the STRONG preset', async () => {
+  it('createWallet honours the STRONG preset (dig_ecosystem #147 Phase B — calls sealStrong, not seal)', async () => {
     const v = new Vault();
     const res = await v.handle({ op: 'createWallet', password: PW, strong: true }, deps);
-    if (res.record?.kdf.id === 'argon2id') expect(res.record.kdf.memKiB).toBe(262144);
+    expect(res.record?.version).toBe(2);
+    // The fake keystoreWasm tags a sealStrong-produced blob with 'S' as its first byte.
+    const raw = Uint8Array.from(atob(res.record!.ciphertext), (c) => c.charCodeAt(0));
+    expect(String.fromCharCode(raw[0])).toBe('S');
+    // ... and the DEFAULT (non-strong) path tags with 'D'.
+    const def = await new Vault().handle({ op: 'createWallet', password: PW }, deps);
+    const defRaw = Uint8Array.from(atob(def.record!.ciphertext), (c) => c.charCodeAt(0));
+    expect(String.fromCharCode(defRaw[0])).toBe('D');
+  });
+
+  describe('dig_ecosystem #147 Phase B — keystoreWasm wiring', () => {
+    it('createWallet/importWallet report WASM_UNAVAILABLE without keystoreWasm', async () => {
+      const noWasm = { argon2Fn: fakeArgon2 };
+      const created = await new Vault().handle({ op: 'createWallet', password: PW }, noWasm);
+      expect(created).toMatchObject({ success: false, code: 'WASM_UNAVAILABLE' });
+      const imported = await new Vault().handle(
+        { op: 'importWallet', password: PW, mnemonic: 'abandon '.repeat(23) + 'art' },
+        noWasm,
+      );
+      expect(imported).toMatchObject({ success: false, code: 'WASM_UNAVAILABLE' });
+    });
+
+    it('unlockWallet opens an EXISTING (pre-migration) V1 legacy record with no keystoreWasm at all', async () => {
+      // A real V1 record (the extension's original writer) — representing an existing user's
+      // vault created before this extension migrated to the V2 (dig-keystore-wasm-backed) writer.
+      const entropy = mnemonicToEntropy('abandon '.repeat(23) + 'art');
+      const { record: legacyRecord } = await encryptEntropyLegacyV1(entropy, PW, { argon2Fn: fakeArgon2 });
+      expect(legacyRecord.version).toBe(1);
+
+      // Unlocks fine with ONLY argon2Fn in deps — keystoreWasm is irrelevant to the V1 decode path.
+      const res = await new Vault().handle(
+        { op: 'unlockWallet', password: PW, record: legacyRecord },
+        { argon2Fn: fakeArgon2 },
+      );
+      expect(res).toMatchObject({ success: true, hasKey: true });
+    });
   });
 
   it('importWallet accepts a valid phrase and rejects an invalid one', async () => {

@@ -3,13 +3,15 @@
  * SOLE place the decrypted wallet key ever lives (§5.1). It instantiates one {@link Vault} and
  * answers the SW's forwarded requests (`{ target: OFFSCREEN_TARGET, request }`): keystore ops
  * (create/import/unlock/lock/reveal) plus derivation + the coinset balance scan, for which it lazily
- * loads `chia-wallet-sdk-wasm` and builds a per-URL chain client (both live only here, at runtime).
- * Thin glue only — the crypto/scan logic + tests live in `src/offscreen/*`; this file is
- * coverage-excluded (src/entries/**).
+ * loads `chia-wallet-sdk-wasm` and builds a per-URL chain client (both live only here, at runtime);
+ * the vault CRYPTO itself (dig_ecosystem #147 Phase B) lazily loads `@dignetwork/dig-keystore-wasm`
+ * the same way. Thin glue only — the crypto/scan logic + tests live in `src/offscreen/*`; this file
+ * is coverage-excluded (src/entries/**).
  */
 import { OFFSCREEN_TARGET } from '@/lib/messages';
 import { Vault, type VaultRequest, type VaultResponse, type VaultDeps } from '@/offscreen/vault';
 import { loadChiaWasm } from '@/lib/keystore/derive';
+import type { KeystoreWasm } from '@/lib/keystore/digwx1';
 import { makeWasmChainClient, DEFAULT_COINSET_URL, type ChainClient, type RpcCapableWasm } from '@/offscreen/chain';
 import type { ScanWasm } from '@/offscreen/scan';
 
@@ -18,6 +20,7 @@ type OffscreenWasm = ScanWasm & RpcCapableWasm;
 
 const vault = new Vault();
 let chiaPromise: Promise<OffscreenWasm> | null = null;
+let keystoreWasmPromise: Promise<KeystoreWasm> | null = null;
 const chainByUrl = new Map<string, ChainClient>();
 
 function getChia(): Promise<OffscreenWasm> {
@@ -25,20 +28,37 @@ function getChia(): Promise<OffscreenWasm> {
   return chiaPromise;
 }
 
+/* c8 ignore start -- real wasm module load, exercised by the real-browser Playwright e2e, not jsdom */
+/** Lazily import the real `@dignetwork/dig-keystore-wasm` (offscreen-document runtime only). */
+function getKeystoreWasm(): Promise<KeystoreWasm> {
+  if (!keystoreWasmPromise) {
+    keystoreWasmPromise = import('@dignetwork/dig-keystore-wasm') as unknown as Promise<KeystoreWasm>;
+  }
+  return keystoreWasmPromise;
+}
+/* c8 ignore stop */
+
 const NEEDS_CHIA = new Set<VaultRequest['op']>(['getReceiveAddress', 'scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listDids', 'prepareDidCreate', 'prepareDidTransfer', 'prepareDidProfileUpdate', 'prepareNftDidAssign', 'listCoins', 'prepareSplit', 'prepareCombine', 'listClawbacks', 'prepareClawbackAction', 'getPublicKeys', 'getAssetBalance', 'getAssetCoins', 'decodeDappSpend', 'signDappSpend', 'signMessage', 'broadcastDappBundle']);
 const NEEDS_CHAIN = new Set<VaultRequest['op']>(['scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'makeOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listDids', 'prepareDidCreate', 'prepareDidTransfer', 'prepareDidProfileUpdate', 'prepareNftDidAssign', 'listCoins', 'prepareSplit', 'prepareCombine', 'listClawbacks', 'prepareClawbackAction', 'getAssetBalance', 'getAssetCoins', 'broadcastDappBundle']);
+/** Ops whose crypto goes through `digwx1.ts` (create/import write a V2 record; unlock/reveal/export
+ * decrypt EITHER version) — dig_ecosystem #147 Phase B. */
+const NEEDS_KEYSTORE_WASM = new Set<VaultRequest['op']>(['createWallet', 'importWallet', 'unlockWallet', 'revealPhrase', 'exportPrivateKey']);
 
 async function depsFor(req: VaultRequest & { coinsetUrl?: string }): Promise<VaultDeps> {
-  if (!NEEDS_CHIA.has(req.op)) return {};
+  const deps: VaultDeps = {};
+  if (NEEDS_KEYSTORE_WASM.has(req.op)) deps.keystoreWasm = await getKeystoreWasm();
+  if (!NEEDS_CHIA.has(req.op)) return deps;
   const chia = await getChia();
-  if (!NEEDS_CHAIN.has(req.op)) return { chia };
+  deps.chia = chia;
+  if (!NEEDS_CHAIN.has(req.op)) return deps;
   const url = req.coinsetUrl || DEFAULT_COINSET_URL;
   let chain = chainByUrl.get(url);
   if (!chain) {
     chain = makeWasmChainClient(chia, url);
     chainByUrl.set(url, chain);
   }
-  return { chia, chain };
+  deps.chain = chain;
+  return deps;
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
