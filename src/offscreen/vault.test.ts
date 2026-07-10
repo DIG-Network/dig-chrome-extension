@@ -14,6 +14,7 @@ import { prepareClawbackAction, type ClawbackInfo, type ClawbackWasm } from '@/o
 import { masterFromSeed, deriveWalletSecretKeyHex } from '@/lib/keystore/derive';
 import golden from '@/lib/keystore/derive.golden.json';
 import { makeFakeKeystoreWasm } from '@/test/keystoreWasmFake';
+import { lineageCoinId, type Chip35Wasm, type LineageCoinsetClient } from '@/offscreen/anchoredRoot';
 
 // Fast, deterministic Argon2 stand-in so the vault's create/unlock cycle doesn't pay the 64 MiB KDF
 // cost per test. The real hash-wasm Argon2id is covered by digwx1.test.ts.
@@ -1355,5 +1356,64 @@ describe('Vault dApp broadcast op (sendTransaction)', () => {
   it('requires coinSpends + an aggregated signature', async () => {
     const chain: ChainClient = { totalUnspent: async () => 0, unspentCoins: async () => [], pushSpendBundle: async () => ({ success: true }), coinConfirmed: async () => false, getCoinSpend: async () => null, coinRecords: async () => [] };
     expect((await new Vault().handle({ op: 'broadcastDappBundle', coinSpends: [] }, { ...deps, chia, chain })).code).toBe('BAD_REQUEST');
+  });
+});
+
+describe('offscreen Vault — resolveCoinsetAnchoredRoot (#228, KEYLESS — no wallet involved)', () => {
+  const STORE_ID = 'ab554db9c62e8dc2185914741e06539bacdcc3670762417a5f644b84fd382812';
+
+  function hexToBytes(hex: string): Uint8Array {
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    return out;
+  }
+
+  /** A one-generation fake lineage: the launcher's spend produces a DataStore whose coin is
+   *  IMMEDIATELY unspent (the live tip) — its `rootHash` is the resolved anchored root. */
+  async function fakeLineage(rootHex: string): Promise<{ chip35: Chip35Wasm; lineageClient: LineageCoinsetClient }> {
+    const eveCoin = { parentCoinInfo: new Uint8Array(32).fill(1), puzzleHash: new Uint8Array(32).fill(2), amount: 1n };
+    const eveId = await lineageCoinId(eveCoin);
+    const chip35: Chip35Wasm = {
+      dataStoreFromSpend: () => ({ coin: eveCoin, metadata: { rootHash: hexToBytes(rootHex) }, delegatedPuzzles: [] }),
+    };
+    const lineageClient: LineageCoinsetClient = {
+      getCoinRecord: async (id) => (id === STORE_ID ? { spent: true, spentHeight: 100 } : id === eveId ? { spent: false, spentHeight: 0 } : null),
+      getCoinSpend: async () => ({ coin: eveCoin, puzzleReveal: new Uint8Array([1]), solution: new Uint8Array([2]) }),
+    };
+    return { chip35, lineageClient };
+  }
+
+  it('resolves the chain-anchored root through the injected chip35 + lineage client (no wallet key needed)', async () => {
+    const root = '9e26ff2500930604278dd013c986a3d3ace2565c69e13583e8575c70319bd98b';
+    const { chip35, lineageClient } = await fakeLineage(root);
+    // A fresh, LOCKED vault (no key ever held) — this op must not require an unlocked wallet.
+    const res = await new Vault().handle({ op: 'resolveCoinsetAnchoredRoot', storeId: STORE_ID }, { chip35, lineageClient });
+    expect(res).toEqual({ success: true, root });
+  });
+
+  it('accepts an 0x-prefixed / mixed-case storeId', async () => {
+    const root = 'ab'.repeat(32);
+    const { chip35, lineageClient } = await fakeLineage(root);
+    const res = await new Vault().handle({ op: 'resolveCoinsetAnchoredRoot', storeId: `0x${STORE_ID.toUpperCase()}` }, { chip35, lineageClient });
+    expect(res).toEqual({ success: true, root });
+  });
+
+  it('fails closed with root:null (still success:true) when the walk cannot resolve a root', async () => {
+    const lineageClient: LineageCoinsetClient = { getCoinRecord: async () => null, getCoinSpend: async () => null };
+    const chip35: Chip35Wasm = { dataStoreFromSpend: () => { throw new Error('unreachable'); } };
+    const res = await new Vault().handle({ op: 'resolveCoinsetAnchoredRoot', storeId: STORE_ID }, { chip35, lineageClient });
+    expect(res).toEqual({ success: true, root: null });
+  });
+
+  it('CHAIN_UNAVAILABLE when chip35/lineageClient deps are missing', async () => {
+    const res = await new Vault().handle({ op: 'resolveCoinsetAnchoredRoot', storeId: STORE_ID }, {});
+    expect(res).toEqual({ success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' });
+  });
+
+  it('BAD_REQUEST on a missing/malformed storeId', async () => {
+    const { chip35, lineageClient } = await fakeLineage('ab'.repeat(32));
+    expect((await new Vault().handle({ op: 'resolveCoinsetAnchoredRoot' }, { chip35, lineageClient })).code).toBe('BAD_REQUEST');
+    expect((await new Vault().handle({ op: 'resolveCoinsetAnchoredRoot', storeId: 'not-hex' }, { chip35, lineageClient })).code).toBe('BAD_REQUEST');
+    expect((await new Vault().handle({ op: 'resolveCoinsetAnchoredRoot', storeId: 'ab12' }, { chip35, lineageClient })).code).toBe('BAD_REQUEST');
   });
 });

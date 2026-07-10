@@ -30,11 +30,45 @@ live-node e2e (`e2e/sw/live-node-content-load.spec.ts`, B.1b + B.4) against 127.
   on the node (it walks the DataStore singleton on coinset.org SERVER-SIDE), pin the `dig.getContent`
   fetch to that root (so the proof folds to what we verify against — no `'latest'` race), and verify
   against it. FAIL-CLOSED: `rpc.dig.net` does NOT serve `dig.getAnchoredRoot` (answers `-32601`), so
-  the hosted tier reports UNVERIFIED rather than trusting a host-asserted root. The pure decision lives
-  in `src/lib/trusted-root.ts` (unit-tested); the SW just calls `resolveAnchoredRoot` + the helpers.
-  Follow-up: resolving the anchored root from coinset.org directly on the hosted tier needs the
-  DataLayer store-coin driver wasm the extension does not yet bundle (`@dignetwork/chip35-dl-coin-wasm`,
-  as hub's `lib/lineage.ts` uses) — until then the hosted tier is fail-closed.
+  the hosted tier originally reported UNVERIFIED rather than trusting a host-asserted root. The pure
+  decision lives in `src/lib/trusted-root.ts` (unit-tested); the SW just calls `resolveAnchoredRoot` +
+  the helpers. **#228 closed the hosted-tier gap**: the extension now resolves the SAME anchored-root
+  walk itself, directly against coinset.org, via `@dignetwork/chip35-dl-coin-wasm`'s
+  `dataStoreFromSpend` (see the next entry for where that wasm can and can't load).
+
+## `@dignetwork/chip35-dl-coin-wasm` (and any wasm-bindgen "bundler"-target package) can ONLY load in the Vite-bundled offscreen document, never the esbuild-bundled service worker (#228)
+
+The DataLayer store-coin driver wasm (`@dignetwork/chip35-dl-coin-wasm`, same package hub.dig.net's
+`lib/lineage.ts`/`driver.ts` use) ships as a wasm-bindgen **"bundler" target**:
+`import * as wasm from "./chip35_dl_coin_wasm_bg.wasm"` — a bare ESM import of the `.wasm` binary
+that only a bundler with wasm-ESM support (Vite + `vite-plugin-wasm`, Next/webpack) can turn into
+real `WebAssembly.instantiate` code; neither a plain browser nor esbuild (no wasm loader configured
+here) can resolve it. This is exactly why `dig_client.js`/`dig_client_bg.wasm` (the digstore read
+crypto the SW uses) is built with the DIFFERENT wasm-bindgen **"web" target** instead (explicit
+`init()` + `import.meta.url`, vendored + SRI-pinned at the repo root, kept an EXTERNAL esbuild import)
+— that target is the one a hand-rolled loader in the service worker can actually run. Net: a "bundler"
+-target wasm package can only be added where Vite already bundles code — the offscreen document
+(`vite.config.ts`'s `wasm()` + `topLevelAwait()` plugins, `optimizeDeps.exclude`) — never the
+`src/background/index.ts` SW bundle. Confirmed empirically: `node --experimental-wasm-modules` (or a
+manual `WebAssembly.instantiate` against the `_bg.js` glue + `_bg.wasm` bytes, mirroring
+`src/test/chiaWasm.ts`) loads it fine under Node/Vitest for tests, but that path does NOT exist in a
+shipped Chrome extension's SW without a bundler transform.
+
+## `ensureOffscreenDocument()`'s `await hasOffscreenDocument()` check-then-set race let two concurrent first-time callers both try to create the offscreen document (#228)
+
+`ensureOffscreenDocument()` (`src/background/index.ts`) used to check `if (await hasOffscreenDocument())
+return;` BEFORE checking/setting the `creatingOffscreen` in-flight guard — an `await` (a real yield
+point) sits between "is anything creating it" and "start creating it". Two callers arriving within the
+same window (e.g. dig-viewer.html's own initial content-load fetch racing an explicit `proxyRequest`
+call to the SAME store, both needing the vault's coinset walk for the FIRST time in a session) can both
+observe "no document yet, nothing in flight yet" and both proceed, producing a `chrome.runtime.
+sendMessage` that lands before either document is ready to receive it — `Error: Could not establish
+connection. Receiving end does not exist.` The fix: set the `creatingOffscreen` guard SYNCHRONOUSLY,
+as the very first statement (no `await` before it), then do the `hasOffscreenDocument()` check INSIDE
+the guarded async IIFE. Any op that is the FIRST to need the offscreen vault (not just wallet ops —
+`resolveCoinsetAnchoredRoot`, #228, is keyless and can now be that first caller) can trigger this if two
+call sites race; symptom is an intermittent, cold-start-only "Receiving end does not exist" that
+disappears once the offscreen document is warm (a strong tell it's this race, not a logic bug).
 
 ## The dig-node wallet-data source (#217) reflects the NODE's wallet, and its reads are read-only — signing NEVER leaves the vault
 

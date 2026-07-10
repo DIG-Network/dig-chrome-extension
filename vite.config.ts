@@ -19,10 +19,12 @@ const pkg = JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8')) a
 export default defineConfig({
   base: './',
   // wasm() + topLevelAwait() let the offscreen bundle import the wasm-bindgen bundler-target
-  // `chia-wallet-sdk-wasm` (self-custody HD derivation + coinset scan); the wasm self-inits via
-  // top-level await. The extension_pages CSP already allows `'wasm-unsafe-eval'`.
+  // `chia-wallet-sdk-wasm` (self-custody HD derivation + coinset scan) and
+  // `@dignetwork/chip35-dl-coin-wasm` (#228 — the DataLayer store-coin driver, for the coinset
+  // chain-anchored-root walk); the wasm self-inits via top-level await. The extension_pages CSP
+  // already allows `'wasm-unsafe-eval'`.
   plugins: [react(), wasm(), topLevelAwait()],
-  optimizeDeps: { exclude: ['chia-wallet-sdk-wasm'] },
+  optimizeDeps: { exclude: ['chia-wallet-sdk-wasm', '@dignetwork/chip35-dl-coin-wasm'] },
   define: {
     // App semver baked into the JS bundle for window.__APP_VERSION__ + footer (§6.7). The HTML
     // <meta name="app-version"> placeholder is replaced separately by build.js at copy time.

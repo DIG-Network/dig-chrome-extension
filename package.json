@@ -1,6 +1,6 @@
 {
   "name": "dig-browser-extension",
-  "version": "1.80.0",
+  "version": "1.81.0",
   "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
   "types": "messages.d.ts",
@@ -36,6 +36,7 @@
   "license": "MIT",
   "dependencies": {
     "@dignetwork/chia-provider": "github:DIG-Network/chia-provider#v0.2.0",
+    "@dignetwork/chip35-dl-coin-wasm": "^0.12.1",
     "@dignetwork/components": "^0.1.2",
     "@dignetwork/dig-keystore-wasm": "file:./third_party/dig-keystore-wasm",
     "@fontsource/space-grotesk": "^5.2.10",

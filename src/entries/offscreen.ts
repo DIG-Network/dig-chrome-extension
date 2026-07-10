@@ -14,6 +14,9 @@ import { loadChiaWasm } from '@/lib/keystore/derive';
 import type { KeystoreWasm } from '@/lib/keystore/digwx1';
 import { makeWasmChainClient, DEFAULT_COINSET_URL, type ChainClient, type RpcCapableWasm } from '@/offscreen/chain';
 import type { ScanWasm } from '@/offscreen/scan';
+// #228: the DataLayer store-coin driver wasm + the plain-fetch coinset client for the
+// coinset-direct chain-anchored-root walk (hosted rpc.dig.net tier fallback for a rootless read).
+import { makeFetchLineageClient, type Chip35Wasm, type LineageCoinsetClient } from '@/offscreen/anchoredRoot';
 
 /** The wasm as used in the offscreen document: derivation + CAT + coinset RpcClient. */
 type OffscreenWasm = ScanWasm & RpcCapableWasm;
@@ -21,7 +24,9 @@ type OffscreenWasm = ScanWasm & RpcCapableWasm;
 const vault = new Vault();
 let chiaPromise: Promise<OffscreenWasm> | null = null;
 let keystoreWasmPromise: Promise<KeystoreWasm> | null = null;
+let chip35Promise: Promise<Chip35Wasm> | null = null;
 const chainByUrl = new Map<string, ChainClient>();
+const lineageClientByUrl = new Map<string, LineageCoinsetClient>();
 
 function getChia(): Promise<OffscreenWasm> {
   if (!chiaPromise) chiaPromise = loadChiaWasm() as unknown as Promise<OffscreenWasm>;
@@ -36,6 +41,12 @@ function getKeystoreWasm(): Promise<KeystoreWasm> {
   }
   return keystoreWasmPromise;
 }
+/** Lazily import the real `@dignetwork/chip35-dl-coin-wasm` (#228, offscreen-document runtime
+ *  only — the DataLayer store-coin driver, for the coinset chain-anchored-root walk). */
+function getChip35(): Promise<Chip35Wasm> {
+  if (!chip35Promise) chip35Promise = import('@dignetwork/chip35-dl-coin-wasm') as unknown as Promise<Chip35Wasm>;
+  return chip35Promise;
+}
 /* c8 ignore stop */
 
 const NEEDS_CHIA = new Set<VaultRequest['op']>(['getReceiveAddress', 'scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listDids', 'prepareDidCreate', 'prepareDidTransfer', 'prepareDidProfileUpdate', 'prepareNftDidAssign', 'listCoins', 'prepareSplit', 'prepareCombine', 'listClawbacks', 'prepareClawbackAction', 'getPublicKeys', 'getAssetBalance', 'getAssetCoins', 'decodeDappSpend', 'signDappSpend', 'signMessage', 'broadcastDappBundle']);
@@ -43,10 +54,23 @@ const NEEDS_CHAIN = new Set<VaultRequest['op']>(['scanBalances', 'prepareSend', 
 /** Ops whose crypto goes through `digwx1.ts` (create/import write a V2 record; unlock/reveal/export
  * decrypt EITHER version) — dig_ecosystem #147 Phase B. */
 const NEEDS_KEYSTORE_WASM = new Set<VaultRequest['op']>(['createWallet', 'importWallet', 'unlockWallet', 'revealPhrase', 'exportPrivateKey']);
+/** #228: the coinset-direct chain-anchored-root walk — independent of NEEDS_CHIA/NEEDS_CHAIN (it
+ * needs neither chia-wallet-sdk-wasm nor its wasm RpcClient; see anchoredRoot.ts's doc comment). */
+const NEEDS_CHIP35 = new Set<VaultRequest['op']>(['resolveCoinsetAnchoredRoot']);
 
 async function depsFor(req: VaultRequest & { coinsetUrl?: string }): Promise<VaultDeps> {
   const deps: VaultDeps = {};
   if (NEEDS_KEYSTORE_WASM.has(req.op)) deps.keystoreWasm = await getKeystoreWasm();
+  if (NEEDS_CHIP35.has(req.op)) {
+    deps.chip35 = await getChip35();
+    const lineageUrl = req.coinsetUrl || DEFAULT_COINSET_URL;
+    let lineageClient = lineageClientByUrl.get(lineageUrl);
+    if (!lineageClient) {
+      lineageClient = makeFetchLineageClient(lineageUrl);
+      lineageClientByUrl.set(lineageUrl, lineageClient);
+    }
+    deps.lineageClient = lineageClient;
+  }
   if (!NEEDS_CHIA.has(req.op)) return deps;
   const chia = await getChia();
   deps.chia = chia;
