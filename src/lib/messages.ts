@@ -222,8 +222,16 @@ import { DIG_ERR } from './error-codes';
  * §5.3 ladder for the WALLET-data read path (distinct from `getDigNodeStatus`'s content path) and
  * reports the selected mode + the resolved source, backing the "Local dig-node detected" indicator
  * `ChainSourceSetting` shows when Auto mode auto-selects a local node. Purely additive.
+ *
+ * v31 (#278/#281 dig-node control panel): added the control-panel action set the SW routes to the
+ * node's 9778 browser control surface — `getNodeLiveStatus` (the cached `/ws/status` live snapshot,
+ * §239), the OPEN cache/LRU family (`cacheGetConfig`, `cacheSetCap`, `cacheList`, `cacheRemove`,
+ * `cacheClear`, `cacheStats` — no control token), the pairing controls (`pairingStart`,
+ * `pairingState`, `pairingCancel`, `pairingUnpair`), and `controlAuthed` (a single dispatcher that
+ * attaches the SW-held paired token to any token-gated `control.*` method — the token is NEVER
+ * exposed to a page/UI). Purely additive.
  */
-export const MESSAGE_PROTOCOL_VERSION = 30;
+export const MESSAGE_PROTOCOL_VERSION = 31;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault

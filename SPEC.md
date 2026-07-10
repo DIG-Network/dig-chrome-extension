@@ -717,6 +717,13 @@ bare on-chain option carries no recoverable terms. Both confirm actions reuse th
 the selected mode + the resolved source, backing the "Local dig-node detected" indicator. Purely
 additive — no existing action/shape changed.
 
+`MESSAGE_PROTOCOL_VERSION` `31` (#278/#281 dig-node control panel, §11) added the control-panel
+action set the SW routes to the node's 9778 browser control surface — `getNodeLiveStatus` (the
+cached `/ws/status` live snapshot), the OPEN cache/LRU family (`cacheGetConfig`, `cacheSetCap`,
+`cacheList`, `cacheRemove`, `cacheClear`, `cacheStats`), the pairing controls (`pairingStart`,
+`pairingState`, `pairingCancel`, `pairingUnpair`), and `controlAuthed` (the token-attaching
+dispatcher for gated `control.*`). Purely additive — no existing action/shape changed.
+
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
 
@@ -1009,7 +1016,17 @@ byte-mirror of the native browser's shields ledger.
 
 ---
 
-## 11. DIG Control Panel (`dig-control.mjs`)
+## 11. DIG Control Panel (`dig://control`, #278/#281)
+
+The Control Panel manages EVERYTHING about the user's local dig-node from the extension. It targets
+the node's **browser control surface on port `9778`** (plain HTTP + CORS `chrome-extension://` +
+the `/ws/status` WebSocket) — an MV3 extension cannot present the `9257` mTLS client cert, so it
+uses the CORS-enabled browser tier. All shapes below are consumed AS SHIPPED by dig-node v0.12.0;
+the normative node contract is dig-node `SPEC.md` (§4.5 WS, §6/§10 cache + control RPC, §7.11
+pairing) and the superproject `SYSTEM.md` "dig-node control interface". The extension implements a
+SUBSET of that surface.
+
+### 11.1. Install vs manage decision (`dig-control.mjs`)
 
 `getControlStatus` (mirroring the native `dig://control`) returns
 `{ mode: 'manage'|'install', localNode, base, controlEndpoint, readFallback, status, authRequired, controlMethods }`.
@@ -1018,7 +1035,7 @@ byte-mirror of the native browser's shields ledger.
 - `CONTROL_METHODS` (`control.*`) and `CONTROL_ERR` MUST be byte-consistent with the dig-node
   control RPC contract.
 - When only the hosted read tier is reachable, the view falls back honestly (no fabricated
-  manage state).
+  manage state) — reads still resolve via `rpc.dig.net`.
 - **`controlPanelViewModel` returns react-intl message ids, not prose (#82).** The view model stays
   a plain, DOM-free ES module (no `react-intl`/JSX dependency) importable by the background script;
   every piece of copy it selects is a `{ id, values? }` pair (`noteId`, `readFallback`,
@@ -1026,6 +1043,105 @@ byte-mirror of the native browser's shields ledger.
   consumer — renders. The actual English source lives in `src/i18n/messages/en.ts` (content-quality
   guarded by `dig-control-copy.test.ts`) and is translated across all 14 locales (completeness
   guarded by `locales.test.ts`).
+
+### 11.2. Surface tiering (§6.4)
+
+`ControlTab.tsx` renders two shapes from ONE component:
+
+- **Fullscreen (`app.html`, wide):** the FULL panel — Live status + Cache/LRU +, behind the pairing
+  gate, the token-gated management sections (Upstream · Hosted stores · Sync · Peers).
+- **Popup (toolbar, constrained):** a COMPACT summary — Live status + the OPEN Cache/LRU controls +
+  an "Open the full Control Panel" button (`popOutToFullpage('#network/control')`). The popup NEVER
+  embeds the paired management forms; advanced ops are fullscreen-only.
+
+Every async section renders four explicit states via `<FourState>` (loading skeleton · recoverable
+error with retry · empty · success). All server interaction goes through the ONE RTK Query `api`
+slice with tag invalidation — no ad-hoc fetch.
+
+### 11.3. Live status — the WS client (`src/lib/dig-node-ws.ts`, #239)
+
+The service worker holds ONE persistent WebSocket to the node's `GET <base>/ws/status` (dig-node
+`SPEC.md` §4.5) — the OPEN socket is itself the node's liveness signal. `createNodeWsController` is
+a pure, chrome-free state machine (`connecting → connected → disconnected → connecting …`), fully
+dependency-injected (socket ctor, clock, RNG, timer scheduler, base resolver) so it is unit-tested
+with a fake `WebSocketLike`:
+
+- Resolves the local base via the SAME §5.3 ladder (`dig.local` > `localhost:9778` > custom
+  override — NEVER `rpc.dig.net`, which is not a local node), maps it to `ws(s)://…/ws/status`
+  (`wsUrlFor`), and opens the socket.
+- Parses `status` (on connect) and `heartbeat` (every ~5 s) frames — `{ type, service, version,
+  commit, addr, … }`; any other/unrecognized `type` is ignored (forward-compat), never a tear-down.
+- **Reconnects with exponential backoff + equal jitter** (`nextReconnectDelayMs`, 1 s base → 30 s
+  cap), resetting the backoff the instant a real frame proves the connection healthy.
+- Runs a **client-side staleness watchdog** (`DEFAULT_STALE_AFTER_MS` = 20 s, 4× the node's
+  heartbeat): a nominally-connected socket that goes quiet is force-closed + reconnected. The
+  browser `WebSocket` API never surfaces raw ping/pong to script, so liveness is judged from the
+  application frames actually received (the node's transport-level Ping is the server-side half).
+- A `cycleId` guard prevents a straggling async `resolveBase()`/timer from a prior cycle applying
+  after a newer cycle started.
+
+`src/background/index.ts` wires the real `WebSocket` + ladder resolver and broadcasts every
+`NodeLiveStatus` transition (`nodeLiveStatusChanged`). The panel/popup read the cached snapshot on
+mount via the `getNodeLiveStatus` action and live-patch it from that broadcast — no polling for the
+live tier. A node offline→online transition flips the status pill Connected/Connecting/Offline with
+no user action.
+
+### 11.4. Cache / LRU management — OPEN (no token) (`cacheApi.ts`, `src/lib/dig-cache.ts`, #279)
+
+The headline capability: manage the disk space the node reserves for `.dig` content under its LRU
+eviction scheme. These `cache.*` methods are OPEN (loopback, no control token), so the panel drives
+them without pairing. Every query provides the `Cache` tag; the cap/evict/clear mutations
+invalidate it so all views refetch one shared picture.
+
+- `cache.getConfig` → `{ cap_bytes, used_bytes, cache_dir?, shared? }` — the used/cap bar.
+- `cache.stats` → session telemetry (`entry_count`, `total_bytes`, `evicted_count`,
+  `evicted_bytes`, `content_cache:{ hits, misses }`).
+- `cache.listCached` → `{ cached: [{ store_id, root, size_bytes, last_used_unix_ms, lru_rank }] }` —
+  the cached-capsule list rendered in **eviction (LRU) order** by `lru_rank` (rank 0 = next evicted),
+  each row showing size + last-access.
+- `cache.setCapBytes { cap_bytes }` → `{ cap_bytes }` — SET RESERVED CAP; the node **floors it at
+  64 MiB** and returns the effective value.
+- `cache.removeCached { store_id, root }` → `{ removed }` — evict a single capsule.
+- `cache.clear` → `{}` — clear all cached content.
+
+### 11.5. Control-token pairing (`src/lib/dig-pairing.ts`, #280)
+
+`control.*` MUTATIONS are token-gated (loopback + a `<config_dir>/control-token` file the node
+generates). An MV3 extension cannot read that file, so it obtains a SCOPED, revocable controller
+token through the compare-codes pairing flow (dig-node `SPEC.md` §7.11). `createPairingController`
+is a pure, chrome-free, dependency-injected state machine
+(`unpaired → requesting → awaiting → paired`, plus `expired`/`error`) the SW drives:
+
+1. `pairing.request { client_name }` (OPEN) → `{ pairing_id, pairing_code, expires_ms }`. The UI
+   shows the 6-digit `pairing_code`.
+2. The operator runs `dig-node pair approve <pairing_id>` on the machine and confirms the code
+   matches (consent is gated on local-machine control; the compare-codes step defeats a rogue
+   concurrent request).
+3. `pairing.poll { pairing_id }` (OPEN, polled every ~3 s until the deadline) → `{ status, token? }`;
+   on `status:"approved"` the token is delivered once, persisted by the SW (`chrome.storage.local`),
+   and the phase goes `paired`.
+
+The token value is **NEVER surfaced beyond `phase:"paired"`** and never returned to any page — the
+SW holds it and attaches it as `X-Dig-Control-Token` on `control.*` calls (the `controlAuthed`
+action). `unpair()` clears it locally (node-side revocation is the operator's `dig-node pair
+revoke`). A revoked/absent token surfaces as `-32030 UNAUTHORIZED`; the SW clears the stored token
+and the panel drops back to "pair to manage" automatically.
+
+### 11.6. Token-gated management sections (`controlApi.ts`, `ManageSections.tsx`, fullscreen-only)
+
+Behind the pairing gate (fullscreen), each section routes through the SW's `controlAuthed` action
+(which attaches the paired token) and invalidates its tag on mutation:
+
+- **Upstream** — `control.config.get` → `{ upstream, upstream_override?, addr?, cache_dir? }`;
+  `control.config.setUpstream { upstream }` → `{ upstream, requires_restart? }`.
+- **Hosted stores** — `control.hostedStores.list` → `{ stores: [{ store_id, pinned, capsule_count,
+  total_bytes }] }`; `control.hostedStores.pin/unpin { store }` (also invalidate `Cache`).
+- **Sync (§21)** — `control.sync.status` → `{ available, method?, pinned_total?, pinned_synced? }`;
+  `control.sync.trigger { store }`.
+- **Peers** — `control.peerStatus` → the node's peer/relay snapshot.
+
+Unpairing invalidates every token-gated tag (`Upstream`/`HostedStores`/`Sync`/`Peers`), reverting
+each section to the "pair to manage" prompt.
 
 ---
 
