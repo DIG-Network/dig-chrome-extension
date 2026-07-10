@@ -1114,21 +1114,27 @@ The extension denies this by default rather than trusting the dependency tree:
 
 ### 15.4 Key custody core (vault + at-rest keystore)
 
-Normative contract: §18.1 (key derivation) + §18.2 (`DIGWX1` at-rest keystore) + §18.3 (custody
-lifecycle & session). Summary of the invariants those sections specify:
+Normative contract: §18.1 (key derivation) + §18.2 (`DIGWX1` at-rest keystore, V2 current /
+V1 legacy decode-only, dig_ecosystem #147 Phase B) + §18.3 (custody lifecycle & session). Summary
+of the invariants those sections specify:
 
 - The decrypted key/entropy exists ONLY inside the long-lived offscreen document's memory — never
   the service worker, never `chrome.storage`, never persisted or logged in plaintext anywhere.
-- At rest, the entropy is encrypted as a single `DIGWX1` record: Argon2id (memory-hard) at a
-  DEFAULT cost of 64 MiB / 3 iterations / 4 lanes, with a STRONG 256 MiB preset offered for
-  high-value wallets (surfaced as an onboarding toggle, §15.9), feeding AES-256-GCM with the full
-  header (KDF params, salt, cipher id, nonce) bound as AAD — tampering with any of them fails the
-  GCM tag closed. The derived AES key is a non-extractable `CryptoKey`, never serialized. Any
-  decrypt failure (wrong password OR a tampered blob) collapses to one opaque `UNLOCK_FAILED` —
-  the wallet never tells an attacker which one.
-- A bounded PBKDF2-HMAC-SHA-512 (≥600,000 iterations) fallback engages ONLY if the Argon2 wasm
-  fails to instantiate, and the wallet schedules forced re-encryption to Argon2id on the next
-  successful unlock — it is a degrade-gracefully path, never the default.
+- At rest, the entropy is encrypted as a single `DIGWX1` record. The CURRENT (V2) writer delegates
+  to the canonical `dig-keystore` crate's wasm binding (`@dignetwork/dig-keystore-wasm`): Argon2id
+  (memory-hard) at a DEFAULT cost of 64 MiB / 3 iterations / 4 lanes, with a STRONG 256 MiB preset
+  offered for high-value wallets (surfaced as an onboarding toggle, §15.9), feeding AES-256-GCM with
+  the full header (KDF params, salt, cipher id, nonce) bound as AAD inside the wasm binding's own
+  self-describing container — tampering with any of them fails the GCM tag closed. An OLDER V1
+  record (written before this migration) decodes via the extension's original hand-rolled path
+  (native WebCrypto AES-256-GCM, same AAD binding) — see §18.2 for the full V1/V2 split. Either
+  path's derived AES key is a non-extractable `CryptoKey`, never serialized. Any decrypt failure
+  (wrong password OR a tampered blob) collapses to one opaque `UNLOCK_FAILED` — the wallet never
+  tells an attacker which one.
+- A bounded PBKDF2-HMAC-SHA-512 (≥600,000 iterations) fallback was part of the legacy V1 writer,
+  engaging ONLY if the Argon2 wasm failed to instantiate; `decryptEntropy` still opens a
+  PBKDF2-fallback V1 record forever (§18.2). The V2 writer has no analogous fallback — see §18.2's
+  `EncryptResult.usedFallback` note for why.
 - `storage.sync` is NEVER used for wallet key material (§18.4) — it would replicate the encrypted
   seed to every device signed into the browser profile, widening the at-rest attack surface beyond
   what the user chose.
