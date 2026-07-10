@@ -88,8 +88,26 @@ function startProxy(): Promise<void> {
   });
 }
 
+/** Is a live dig-node answering at 127.0.0.1:9778? LEG B is a local-only regression (live node +
+ *  mainnet); in CI (no node) the whole suite SKIPS rather than failing on an unreachable upstream. */
+async function liveNodeReachable(): Promise<boolean> {
+  try {
+    const res = await fetch(NODE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'dig.getAnchoredRoot', params: { store_id: STORE_ID } }),
+      signal: AbortSignal.timeout(2500),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 test.beforeAll(async () => {
   if (!existsSync(resolve(EXT_PATH, 'manifest.json'))) throw new Error(`run \`npm run build\` first — no ${EXT_PATH}`);
+  // Self-skip when there is no live node (e.g. CI): this leg needs a real dig-node + mainnet.
+  test.skip(!(await liveNodeReachable()), 'LEG B requires a live dig-node at 127.0.0.1:9778 + mainnet');
   await startProxy();
   context = await chromium.launchPersistentContext('', {
     channel: 'chromium',
