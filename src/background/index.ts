@@ -33,6 +33,11 @@ import initDigClient, {
 // background.js previously inlined a divergent copy; it now imports the one parser.
 import { parseURN } from '@/lib/dig-urn';
 
+// The TRUSTED-root decision (#226): a rootless ('latest') URN must verify against the store's
+// chain-ANCHORED root, never the literal string 'latest'. These pure helpers own the fail-closed
+// verdict; resolveAnchoredRoot() below fetches the anchored root from the node.
+import { resolveReadRoots, decideVerified, isRootlessRoot } from '@/lib/trusted-root';
+
 // Branded, plain-language chia:// error page (white theme; never leaks crypto strings).
 import { buildErrorPageHtml } from '@/lib/error-page';
 // Catalogued, stable chia:// loader error codes (DIG_ERR_*) + the coded-error envelope.
@@ -644,6 +649,29 @@ async function fetchVerified(endpoint, storeId, rk, root) {
 }
 
 /**
+ * Resolve a store's CHAIN-ANCHORED tip root (lowercase 64-hex) — the TRUSTED root a rootless
+ * ('latest') URN must verify against (#226). The root MUST come from the chain, NEVER the serving
+ * host: the local dig-node exposes `dig.getAnchoredRoot`, which walks the store's DataStore
+ * singleton lineage on coinset.org SERVER-SIDE and returns `result.root`. The hosted rpc.dig.net
+ * gateway does NOT serve this method (it answers -32601) and must not be trusted to assert a root,
+ * so when no node answers this returns null and the caller FAILS CLOSED (content still loads, but is
+ * reported unverified). Non-throwing: any RPC/transport error resolves to null.
+ *
+ * (A future enhancement can resolve the anchored root directly from coinset.org on the hosted tier
+ * — that needs the DataLayer store-coin driver wasm the extension does not yet bundle; until then
+ * the hosted tier is fail-closed, which never regresses trust.)
+ */
+async function resolveAnchoredRoot(endpoint, storeId) {
+  try {
+    const r = await rpcCall(endpoint, 'dig.getAnchoredRoot', { store_id: storeId });
+    const root = r && typeof r.root === 'string' ? r.root.replace(/^0x/i, '').toLowerCase() : '';
+    return /^[0-9a-f]{64}$/.test(root) ? root : null;
+  } catch {
+    return null; // method unavailable (e.g. rpc.dig.net -32601) or a transport error → fail closed
+  }
+}
+
+/**
  * Decrypt multi-chunk ciphertext.  Mirrors decryptResourceChunks() in
  * apps/web/lib/dig-client.js.  `chunkLens` are the per-chunk CIPHERTEXT byte
  * lengths (may be null/empty for a single-chunk resource).
@@ -700,8 +728,10 @@ async function fetchContentViaRPC(urn, endpoint) {
     const storeId     = parsed.storeId;
     // Capsule selection (canonical term — see ../../SYSTEM.md): a rooted URN pins a
     // SPECIFIC capsule (the immutable generation storeId:roothash); a rootless URN
-    // ('latest') resolves to the store's current/latest capsule.
-    const root        = parsed.roothash || 'latest';
+    // ('latest') resolves to the store's current/latest capsule. The TRUSTED root a read is
+    // verified against is decided below (#226) — for a rootless URN it is the CHAIN-anchored
+    // root, never the literal 'latest'.
+    const urnRoot     = parsed.roothash || null;
     const resourceKey = parsed.resourceKey || 'index.html';
     // salt: extracted from ?salt=<hex> by parseURN; null means public store
     const salt        = parsed.salt ?? null;
@@ -717,16 +747,27 @@ async function fetchContentViaRPC(urn, endpoint) {
     // 3. Compute retrieval key = SHA-256(canonical rootless URN), hex
     const rk = dig.retrievalKey(storeId, resourceKey);
 
-    // 4. Fetch ciphertext (chunked, up to 3 MiB windows)
-    const { ciphertext, proof, chunkLens } = await fetchVerified(ep, storeId, rk, root);
+    // 3b. Resolve the TRUSTED root (#226). A rooted URN pins its own generation; a rootless URN's
+    //     trusted root is the store's CHAIN-anchored tip (resolved from the node), NEVER the literal
+    //     'latest'. Content is fetched pinned to the resolved generation so the proof it returns
+    //     folds to the same root we verify against (no 'latest' race).
+    const anchoredRoot = isRootlessRoot(urnRoot) ? await resolveAnchoredRoot(ep, storeId) : null;
+    const { trustedRoot, fetchRoot } = resolveReadRoots(urnRoot, anchoredRoot);
 
-    // 5. Verify merkle inclusion proof (non-throwing; decoys return false)
-    let verified = false;
-    try {
-      verified = !!dig.verifyInclusion(ciphertext, proof, root);
-    } catch {
-      verified = false;
+    // 4. Fetch ciphertext (chunked, up to 3 MiB windows), pinned to fetchRoot.
+    const { ciphertext, proof, chunkLens } = await fetchVerified(ep, storeId, rk, fetchRoot);
+
+    // 5. Verify merkle inclusion against the TRUSTED root (non-throwing; decoys/tamper return false).
+    //    Fail-closed: with no resolvable trusted root, `verified` is false regardless of the proof.
+    let proofOk = false;
+    if (trustedRoot) {
+      try {
+        proofOk = !!dig.verifyInclusion(ciphertext, proof, trustedRoot);
+      } catch {
+        proofOk = false;
+      }
     }
+    const verified = decideVerified(trustedRoot, proofOk);
 
     // 6. Derive per-resource AES-256 key (salt is the private-store hex salt, or null)
     const keyHex = dig.deriveKey(storeId, resourceKey, salt);

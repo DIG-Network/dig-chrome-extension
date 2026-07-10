@@ -36,7 +36,7 @@ interface ProxyResponse {
 /** A message posted from the sandboxed store frame's in-page interceptor to this page. */
 interface DigFrameMessage {
   __dig?: boolean;
-  type?: 'read' | 'ready' | 'nav' | 'entry-error' | 'nav-error';
+  type?: 'frame-ready' | 'read' | 'ready' | 'nav' | 'entry-error' | 'nav-error';
   id?: unknown;
   ref?: StoreRef;
   verified?: boolean;
@@ -226,21 +226,6 @@ function serveRead(source: Window, id: unknown, ref: StoreRef | undefined): void
   });
 }
 
-// Build the sandboxed store-frame document: an opaque-origin `data:` document (isolated from the
-// extension — no chrome.* access) that boots the in-page interceptor with the capsule config. The
-// interceptor requests the entry + every relative asset back through this page's message bridge.
-function storeFrameDoc(cfg: FrameConfig, interceptorSrc: string): string {
-  const cfgJson = JSON.stringify(cfg);
-  const html =
-    '<!doctype html><html><head><meta charset="utf-8">' +
-    '<meta name="color-scheme" content="light dark"><title>DIG Network Content</title>' +
-    '<style>html,body{margin:0;padding:0;min-height:100%;background:#fff}</style>' +
-    '<script>window.__DIG_CFG=' + cfgJson + ';</scr' + 'ipt>' +
-    '<script>' + interceptorSrc + '</scr' + 'ipt>' +
-    '</head><body></body></html>';
-  return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
-}
-
 async function init(): Promise<void> {
   const urlParams = new URLSearchParams(window.location.search);
   // URLSearchParams decodes the value ONCE; some navigation paths encode the chia:// URL twice, so
@@ -268,17 +253,19 @@ async function init(): Promise<void> {
     entryKey: parsed.resourceKey || 'index.html',
   };
 
-  // Load the interceptor bundle (self-contained IIFE) so it can be inlined into the opaque frame —
-  // an opaque `data:` document cannot import a module or fetch a cross-origin script.
-  let interceptorSrc: string;
-  try {
-    interceptorSrc = await (await fetch(chrome.runtime.getURL('store-interceptor.js'))).text();
-  } catch {
-    showError(digUrl, 'Failed to fetch', DIG_ERR.DIG_ERR_NETWORK);
-    return;
-  }
-
   const iframe = document.createElement('iframe');
+
+  // Hand the capsule config to the sandboxed frame's interceptor over postMessage. It has an opaque
+  // origin and its own CSP forbids the inline `window.__DIG_CFG` the old data:-frame used, so config
+  // is delivered by message. Sent when the frame announces 'frame-ready' AND on iframe.onload as a
+  // fallback; the interceptor's boot() is idempotent, so a duplicate cfg is harmless.
+  const sendCfg = (): void => {
+    try {
+      iframe.contentWindow?.postMessage({ __dig: true, type: 'cfg', cfg }, '*');
+    } catch {
+      /* frame not ready / gone */
+    }
+  };
 
   // Bridge: serve the interceptor's reads + react to its lifecycle notifications.
   const onMessage = (event: MessageEvent): void => {
@@ -286,6 +273,10 @@ async function init(): Promise<void> {
     const d = event.data as DigFrameMessage | null;
     if (!d || d.__dig !== true) return;
     switch (d.type) {
+      case 'frame-ready':
+        // The sandboxed interceptor armed its listener and is ready for the capsule config.
+        sendCfg();
+        break;
       case 'read':
         serveRead(event.source as Window, d.id, d.ref);
         break;
@@ -314,7 +305,12 @@ async function init(): Promise<void> {
   };
   window.addEventListener('message', onMessage);
 
-  iframe.src = storeFrameDoc(cfg, interceptorSrc);
+  // Render the store in the MV3 SANDBOXED extension page (dig-store-frame.html): an opaque-origin
+  // frame with NO chrome.* access and its own relaxed CSP, so arbitrary decrypted store HTML/JS
+  // runs SAFELY isolated from this privileged page. `frame-src 'self'` already covers it — no
+  // `data:` frame (blocked by the manifest CSP) and no inline scripts (also blocked) are involved.
+  iframe.src = chrome.runtime.getURL('dig-store-frame.html');
+  iframe.onload = sendCfg; // fallback config delivery (in case 'frame-ready' raced the listener)
   iframe.onerror = () => showError(digUrl, 'Failed to fetch');
   document.body.appendChild(iframe);
 }
