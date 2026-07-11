@@ -19,6 +19,7 @@ export default defineConfig({
     '**/fee-estimate.spec.ts',
     '**/wallet-switcher.spec.ts',
     '**/home-balance.spec.ts',
+    '**/home-toolbar-toggle.spec.ts',
     '**/did-create-errors.spec.ts',
     '**/send-receive-trio.spec.ts',
     '**/qr-scanner-camera.spec.ts',

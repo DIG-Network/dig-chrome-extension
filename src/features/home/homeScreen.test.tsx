@@ -65,15 +65,22 @@ afterEach(() => {
 });
 
 describe('HomeScreen (mobile-OS home)', () => {
-  it('renders the balance widget, quick actions, status, open-by-URN input, and dApp launcher', async () => {
+  it('renders the toolbar toggle (top), balance widget, quick actions, status, open-by-URN input, and dApp launcher', async () => {
     renderWithProviders(<HomeScreen />);
     expect(screen.getByTestId('home-screen')).toBeInTheDocument();
+    expect(screen.getByTestId('home-toolbar-toggle-widget')).toBeInTheDocument();
     expect(screen.getByTestId('home-quickactions')).toBeInTheDocument();
     expect(screen.getByTestId('home-status')).toBeInTheDocument();
     expect(screen.getByTestId('home-openurn')).toBeInTheDocument();
     expect(await screen.findByTestId('home-balance-value')).toBeInTheDocument();
     expect(await screen.findByTestId('home-apps-grid')).toBeInTheDocument();
     expect(screen.getByTestId('app-tile-chia-offer')).toBeInTheDocument();
+  });
+
+  it('#293 — the toolbar toggle is the FIRST element on the Home screen (top, quick activate/deactivate)', () => {
+    renderWithProviders(<HomeScreen />);
+    const home = screen.getByTestId('home-screen');
+    expect(home.firstElementChild).toHaveAttribute('data-testid', 'home-toolbar-toggle-widget');
   });
 
   it('prompts to open the wallet when locked', async () => {

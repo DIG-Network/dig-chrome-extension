@@ -43,6 +43,7 @@ export const zhCN: Record<string, string> = {
   'home.open.placeholder': 'chia://… 或 urn:dig:…',
   'home.open.go': '打开',
   'home.open.error.invalid': '不是有效的 chia:// 地址或 URN。',
+  'home.toolbar.label': 'DIG 工具栏',
 
   // ── generic four-state ──
   'state.loading': '加载中…',

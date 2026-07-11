@@ -1,25 +1,37 @@
 /**
- * dig-toolbar — MV3 content-script that injects the #292 page toolbar.
+ * dig-toolbar — MV3 content-script that injects the page toolbar (#292, restyled as native browser
+ * chrome by #293).
  *
- * When the persisted toggle (`toolbar.enabled`) is ON, this injects a native-looking, chia://-aware
- * toolbar atop EVERY ordinary web page — shadow-DOM isolated (page CSS can't touch it, its CSS can't
- * leak), a fixed top bar with the page body offset below it. The bar carries per-page icons that
- * open the full-page extension surfaces (#140/#141: Wallet / DIG Shields / Control Panel) plus two
- * live badges read from the node's serve headers (#289): "Verified on Chia" (`X-Dig-Verified`) and
- * "Loaded from local" (`X-Dig-Source: local`). Toggling the setting injects or removes the bar live.
+ * When the persisted toggle (`toolbar.enabled`) is ON, this injects a NATIVE-looking toolbar atop
+ * EVERY ordinary web page — shadow-DOM isolated (page CSS can't touch it, its CSS can't leak), a
+ * fixed top bar with the page body offset below it, colored the same neutral grey as ordinary
+ * browser chrome (no DIG gradient/brand fills — it must read as browser UI, not a branded widget).
+ * The bar carries:
+ *   - a dedicated `chia://`/URN address bar (NOT the page's own address bar — its placeholder makes
+ *     that explicit). Enter resolves the typed value against the single shared URN grammar and, when
+ *     valid, hands the canonical `chia://` URL to the background `navigateToDigUrl` action — the
+ *     SAME §5.3 node-or-sandbox navigation (`handleDigUrlNavigation`) the #289 nav + `dig` omnibox
+ *     already use. Invalid input shows an inline error instead of navigating;
+ *   - two live badges read from the node's serve headers (#289): "Verified on Chia"
+ *     (`X-Dig-Verified`) and "Loaded from local" (`X-Dig-Source: local`);
+ *   - ONE button that opens the fullscreen extension surface (`openExtensionPage`) — replacing the
+ *     earlier per-page Wallet/DIG Shields/Control Panel icon row.
+ * Toggling the setting injects or removes the bar live.
  *
- * This is DOM + chrome.* mounting glue; the decision logic (toggle key/default, icon→page map,
- * inject-or-not, badge state, localized labels) lives in the unit-tested pure core `@/lib/toolbar`.
- * esbuild bundles it into a self-contained classic script (dist/dig-toolbar.js), inlining the pure
- * imports; the built-extension Playwright e2e (e2e/sw/page-toolbar.spec.ts) validates the behaviour.
+ * This is DOM + chrome.* mounting glue; the decision logic (toggle key/default, inject-or-not,
+ * URN-bar submit resolution, badge state, localized labels) lives in the unit-tested pure core
+ * `@/lib/toolbar`. esbuild bundles it into a self-contained classic script (dist/dig-toolbar.js),
+ * inlining the pure imports; the built-extension Playwright e2e
+ * (e2e/sw/node-serve-omnibox-toolbar.spec.ts) validates the behaviour.
  */
 import {
   TOOLBAR_ENABLED_KEY,
   TOOLBAR_ENABLED_DEFAULT,
-  TOOLBAR_ITEMS,
+  TOOLBAR_OPEN_PAGE,
   shouldInjectToolbar,
   badgesFromHeaders,
   toolbarBadges,
+  resolveUrnBarSubmit,
   toolbarLabels,
   type BadgeState,
 } from '@/lib/toolbar';
@@ -28,7 +40,7 @@ import { ACTIONS } from '@/lib/messages';
 console.log('DIG Extension: page toolbar content script loaded');
 
 const HOST_ID = 'dig-toolbar-host';
-const BAR_HEIGHT = '40px';
+const BAR_HEIGHT = '38px';
 const isTop = window.top === window.self;
 
 /**
@@ -56,6 +68,18 @@ function removeToolbar(): void {
   }
 }
 
+/** Ask the background SW to run the §5.3 node-or-sandbox navigation for a resolved `chia://` URL
+ *  (the SAME path #289's nav + the `dig` omnibox use — no second resolve/decrypt implementation). */
+function navigateToDigUrl(url: string): void {
+  try {
+    chrome.runtime.sendMessage({ action: ACTIONS.navigateToDigUrl, url }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch {
+    /* SW gone / context invalidated */
+  }
+}
+
 /** Build the shadow-DOM toolbar and mount it. Idempotent — a second call replaces the first. */
 function mountToolbar(badges: BadgeState | null): void {
   removeToolbar();
@@ -72,37 +96,56 @@ function mountToolbar(badges: BadgeState | null): void {
   const shadow = host.attachShadow({ mode: 'open' });
 
   const style = document.createElement('style');
+  // Native browser-chrome palette (neutral grey, matches an ordinary Chrome toolbar) — deliberately
+  // NOT the DIG brand gradient (#293 item 2): this bar must read as browser UI, not a branded widget.
   style.textContent = `
     :host { all: initial; }
     .bar {
-      box-sizing: border-box; display: flex; align-items: center; gap: 12px;
-      height: ${BAR_HEIGHT}; padding: 0 14px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 13px; color: #fff;
-      background: linear-gradient(135deg, #5800D6 0%, #FF00DE 100%);
-      box-shadow: 0 1px 6px rgba(20,18,43,0.25);
+      box-sizing: border-box; display: flex; align-items: center; gap: 8px;
+      height: ${BAR_HEIGHT}; padding: 0 8px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: 13px; color: #3c4043;
+      background: #f1f3f4;
+      border-bottom: 1px solid #dadce0;
     }
-    .brand { display: flex; align-items: center; gap: 7px; font-weight: 700; letter-spacing: .2px; }
-    .brand .mark {
-      width: 20px; height: 20px; border-radius: 5px; display: inline-flex; align-items: center;
-      justify-content: center; background: rgba(255,255,255,0.18); font-size: 11px; font-weight: 800;
+    .mark {
+      flex: 0 0 auto; width: 20px; height: 20px; display: inline-flex; align-items: center;
+      justify-content: center; font-size: 13px; color: #5f6368;
     }
-    .spacer { flex: 1 1 auto; }
-    .badges { display: flex; align-items: center; gap: 8px; }
+    .urnbar { flex: 1 1 auto; min-width: 0; }
+    .urn-input {
+      box-sizing: border-box; width: 100%; height: 26px; padding: 0 10px;
+      font: inherit; font-size: 12.5px; color: #202124;
+      background: #ffffff; border: 1px solid #dadce0; border-radius: 13px;
+      outline: none;
+    }
+    .urn-input::placeholder { color: #80868b; }
+    .urn-input:focus { border-color: #1a73e8; box-shadow: 0 0 0 1px #1a73e8; }
+    .urn-input[aria-invalid="true"] { border-color: #c5221f; box-shadow: 0 0 0 1px #c5221f; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    .badges { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
     .badge {
-      display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px;
-      border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap;
-      background: rgba(255,255,255,0.16);
+      display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px;
+      border-radius: 11px; font-size: 11.5px; font-weight: 500; white-space: nowrap;
+      background: #e8eaed; color: #3c4043;
     }
-    .badge.ok { background: rgba(20,160,90,0.95); }
-    .badge.warn { background: rgba(200,60,60,0.95); }
-    .icons { display: flex; align-items: center; gap: 4px; }
-    .icon {
-      appearance: none; border: 0; cursor: pointer; background: transparent; color: #fff;
-      width: 28px; height: 28px; border-radius: 7px; font-size: 15px; line-height: 1;
+    .badge.ok { background: #e6f4ea; color: #137333; }
+    .badge.warn { background: #fce8e6; color: #c5221f; }
+    .open-btn {
+      flex: 0 0 auto; appearance: none; border: 0; cursor: pointer; background: transparent;
+      color: #5f6368; width: 26px; height: 26px; border-radius: 6px; font-size: 15px; line-height: 1;
       display: inline-flex; align-items: center; justify-content: center;
     }
-    .icon:hover, .icon:focus-visible { background: rgba(255,255,255,0.2); outline: none; }
+    .open-btn:hover, .open-btn:focus-visible { background: rgba(0,0,0,0.06); outline: none; }
+    /* Narrow (mobile-width) viewports: the URN bar + the single open button are the two essential
+       elements — collapse the decorative mark + the supplementary DIG-verdict badges so the input
+       keeps a usable width instead of shrinking to a sliver (§6.5 clean-spacing bar). */
+    @media (max-width: 460px) {
+      .mark, .badges { display: none; }
+    }
   `;
   shadow.appendChild(style);
 
@@ -112,18 +155,42 @@ function mountToolbar(badges: BadgeState | null): void {
   bar.setAttribute('aria-label', labels.toolbar);
   bar.setAttribute('data-testid', 'dig-toolbar');
 
-  const brand = document.createElement('div');
-  brand.className = 'brand';
   const mark = document.createElement('span');
   mark.className = 'mark';
-  mark.textContent = 'D';
   mark.setAttribute('aria-hidden', 'true');
-  const wordmark = document.createElement('span');
-  wordmark.textContent = 'DIG';
-  brand.append(mark, wordmark);
+  mark.textContent = '◈';
 
-  const spacer = document.createElement('div');
-  spacer.className = 'spacer';
+  const urnbar = document.createElement('div');
+  urnbar.className = 'urnbar';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'urn-input';
+  input.placeholder = labels.urnPlaceholder;
+  input.setAttribute('aria-label', labels.urnLabel);
+  input.setAttribute('data-testid', 'dig-toolbar-urn-input');
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  const error = document.createElement('span');
+  error.className = 'sr-only';
+  error.setAttribute('role', 'alert');
+  error.setAttribute('data-testid', 'dig-toolbar-urn-error');
+  input.addEventListener('input', () => {
+    input.removeAttribute('aria-invalid');
+    error.textContent = '';
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const result = resolveUrnBarSubmit(input.value);
+    if (result.ok && result.url) {
+      input.removeAttribute('aria-invalid');
+      error.textContent = '';
+      navigateToDigUrl(result.url);
+    } else if (input.value.trim()) {
+      input.setAttribute('aria-invalid', 'true');
+      error.textContent = labels.urnInvalid;
+    }
+  });
+  urnbar.append(input);
 
   const badgesEl = document.createElement('div');
   badgesEl.className = 'badges';
@@ -144,34 +211,26 @@ function mountToolbar(badges: BadgeState | null): void {
     badgesEl.appendChild(b);
   }
 
-  const iconsEl = document.createElement('div');
-  iconsEl.className = 'icons';
-  const iconLabel: Record<(typeof TOOLBAR_ITEMS)[number]['id'], string> = {
-    wallet: labels.wallet,
-    shields: labels.shields,
-    control: labels.control,
-  };
-  for (const item of TOOLBAR_ITEMS) {
-    const btn = document.createElement('button');
-    btn.className = 'icon';
-    btn.type = 'button';
-    btn.textContent = item.glyph;
-    btn.title = iconLabel[item.id];
-    btn.setAttribute('aria-label', iconLabel[item.id]);
-    btn.setAttribute('data-testid', `dig-toolbar-icon-${item.id}`);
-    btn.addEventListener('click', () => {
-      try {
-        chrome.runtime.sendMessage({ action: ACTIONS.openExtensionPage, page: item.page }, () => {
-          void chrome.runtime.lastError;
-        });
-      } catch {
-        /* SW gone / context invalidated */
-      }
-    });
-    iconsEl.appendChild(btn);
-  }
+  // #293 item 4 — ONE button opens the fullscreen extension surface (replaces the earlier
+  // per-page Wallet/DIG Shields/Control Panel icon row).
+  const openBtn = document.createElement('button');
+  openBtn.className = 'open-btn';
+  openBtn.type = 'button';
+  openBtn.textContent = '⛶';
+  openBtn.title = labels.open;
+  openBtn.setAttribute('aria-label', labels.open);
+  openBtn.setAttribute('data-testid', 'dig-toolbar-open');
+  openBtn.addEventListener('click', () => {
+    try {
+      chrome.runtime.sendMessage({ action: ACTIONS.openExtensionPage, page: TOOLBAR_OPEN_PAGE }, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch {
+      /* SW gone / context invalidated */
+    }
+  });
 
-  bar.append(brand, spacer, badgesEl, iconsEl);
+  bar.append(mark, urnbar, badgesEl, openBtn, error);
   shadow.appendChild(bar);
 
   (document.documentElement || document.body).appendChild(host);
@@ -199,7 +258,7 @@ async function refresh(): Promise<void> {
   mountToolbar(await readVerdict());
 }
 
-// React to live toggles from the options page / popup.
+// React to live toggles from the Home tab / options page.
 try {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && Object.prototype.hasOwnProperty.call(changes, TOOLBAR_ENABLED_KEY)) {

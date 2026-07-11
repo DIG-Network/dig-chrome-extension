@@ -43,6 +43,7 @@ export const ja: Record<string, string> = {
   'home.open.placeholder': 'chia://… または urn:dig:…',
   'home.open.go': '開く',
   'home.open.error.invalid': '有効な chia:// アドレスまたは URN ではありません。',
+  'home.toolbar.label': 'DIG ツールバー',
 
   // ── generic four-state ──
   'state.loading': '読み込んでいます…',

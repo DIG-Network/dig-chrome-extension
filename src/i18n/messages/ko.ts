@@ -43,6 +43,7 @@ export const ko: Record<string, string> = {
   'home.open.placeholder': 'chia://… 또는 urn:dig:…',
   'home.open.go': '열기',
   'home.open.error.invalid': '유효한 chia:// 주소 또는 URN이 아닙니다.',
+  'home.toolbar.label': 'DIG 도구 모음',
 
   // ── generic four-state ──
   'state.loading': '불러오는 중…',

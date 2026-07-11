@@ -17,6 +17,8 @@
     - DIG RPC endpoint: the upstream used when no dig-node is configured (rpc.dig.net).
   The extension is a self-custody wallet (its own key, no external pairing), so there is no
   wallet-connection setting here — wallet setup happens in the popup.
+  #293: the injected page-toolbar (#292) enable/disable switch moved to the TOP of the Home tab
+  (popup/full-page) for quick activate/deactivate — it is no longer duplicated here.
 -->
 <link rel="stylesheet" href="/src/entries/options.css">
 </head>
@@ -45,21 +47,6 @@
           <option value="dark">Dark</option>
           <option value="system">System</option>
         </select>
-      </div>
-    </section>
-
-    <!-- Page toolbar (#292) — a shadow-DOM-isolated, chia://-aware toolbar injected atop every
-         page: quick icons to the Wallet / DIG Shields / Control Panel surfaces, plus live
-         "Verified on Chia" / "Loaded from local" badges on node-served DIG content. Off by default
-         (opt-in, since it shows on every page); the choice persists to `toolbar.enabled`. -->
-    <section class="card">
-      <h2>Page toolbar</h2>
-      <p class="desc">Show a slim DIG toolbar at the top of every page — one-click access to your
-        Wallet, DIG Shields, and the Control Panel, plus "Verified on Chia" / "Loaded from local"
-        badges when you are viewing DIG Network content. Off by default.</p>
-      <div class="row">
-        <label class="lbl" for="toolbarToggle" style="flex:1">Show the DIG toolbar on every page</label>
-        <input type="checkbox" id="toolbarToggle" data-testid="toolbar-toggle" autocomplete="off">
       </div>
     </section>
 

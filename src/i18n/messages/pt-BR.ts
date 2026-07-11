@@ -43,6 +43,7 @@ export const ptBR: Record<string, string> = {
   'home.open.placeholder': 'chia://… ou urn:dig:…',
   'home.open.go': 'Abrir',
   'home.open.error.invalid': 'Não é um endereço chia:// ou URN válido.',
+  'home.toolbar.label': 'Barra DIG',
 
   // ── generic four-state ──
   'state.loading': 'Carregando…',
