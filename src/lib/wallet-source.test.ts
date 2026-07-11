@@ -51,8 +51,8 @@ function deps(
 }
 
 describe('chain-source mode constants', () => {
-  it('lists the four states with auto as the default', () => {
-    expect(CHAIN_SOURCE_MODES).toEqual(['auto', 'node', 'coinset', 'custom']);
+  it('lists the wallet-backend modes with auto as the default (incl. Sage RPC, #394)', () => {
+    expect(CHAIN_SOURCE_MODES).toEqual(['auto', 'node', 'coinset', 'custom', 'sage']);
     expect(DEFAULT_CHAIN_SOURCE_MODE).toBe('auto');
   });
 
@@ -66,15 +66,24 @@ describe('chain-source mode constants', () => {
 
 describe('readChainSourceSetting', () => {
   it('defaults to auto with no custom url when unset', () => {
-    expect(readChainSourceSetting(undefined)).toEqual({ mode: 'auto', customUrl: '' });
-    expect(readChainSourceSetting({})).toEqual({ mode: 'auto', customUrl: '' });
+    expect(readChainSourceSetting(undefined)).toEqual({ mode: 'auto', customUrl: '', sageUrl: '' });
+    expect(readChainSourceSetting({})).toEqual({ mode: 'auto', customUrl: '', sageUrl: '' });
   });
 
   it('reads a persisted mode + custom url', () => {
-    expect(readChainSourceSetting({ chainSourceMode: 'node' })).toEqual({ mode: 'node', customUrl: '' });
+    expect(readChainSourceSetting({ chainSourceMode: 'node' })).toEqual({ mode: 'node', customUrl: '', sageUrl: '' });
     expect(readChainSourceSetting({ chainSourceMode: 'custom', chainSourceUrl: 'http://my-node:9778' })).toEqual({
       mode: 'custom',
       customUrl: 'http://my-node:9778',
+      sageUrl: '',
+    });
+  });
+
+  it('reads a persisted Sage endpoint (#394)', () => {
+    expect(readChainSourceSetting({ chainSourceMode: 'sage', sageUrl: 'http://localhost:9257' })).toEqual({
+      mode: 'sage',
+      customUrl: '',
+      sageUrl: 'http://localhost:9257',
     });
   });
 
@@ -168,6 +177,38 @@ describe('resolveWalletSource — custom mode (explicit URL overrides the ladder
     expect(await resolveWalletSource({ mode: 'custom', customUrl: 'http://down:9778' }, d)).toEqual({
       kind: 'unavailable',
       reason: 'custom-unreachable',
+    });
+  });
+});
+
+describe('resolveWalletSource — Sage RPC mode (#394)', () => {
+  it('probes the Sage endpoint and uses it (strict), WITHOUT the node-tracking gate (user owns Sage)', async () => {
+    const { deps: d, calls } = deps({ probe: (b) => (b === 'http://localhost:9257' ? b : null) });
+    expect(await resolveWalletSource({ mode: 'sage', sageUrl: 'localhost:9257' }, d)).toEqual({
+      kind: 'node',
+      base: 'http://localhost:9257',
+      strict: true,
+    });
+    // Sage is the user's OWN wallet → trusted; the #399/#407 tracking gate is NOT consulted.
+    expect(calls.verified).toEqual([]);
+    expect(calls.ladder).toBe(0);
+    expect(calls.probed).toEqual(['http://localhost:9257']);
+  });
+
+  it('is unavailable (sage-missing) when no Sage endpoint is configured', async () => {
+    const { deps: d, calls } = deps({});
+    expect(await resolveWalletSource({ mode: 'sage', sageUrl: '' }, d)).toEqual({
+      kind: 'unavailable',
+      reason: 'sage-missing',
+    });
+    expect(calls.probed).toEqual([]);
+  });
+
+  it('is unavailable (sage-unreachable) when the Sage endpoint does not answer — never silently coinset', async () => {
+    const { deps: d } = deps({ probe: () => null });
+    expect(await resolveWalletSource({ mode: 'sage', sageUrl: 'http://localhost:9257' }, d)).toEqual({
+      kind: 'unavailable',
+      reason: 'sage-unreachable',
     });
   });
 });

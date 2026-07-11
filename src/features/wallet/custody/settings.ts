@@ -17,10 +17,12 @@ export interface WalletSettings {
   theme?: string;
   /** Active chain network: mainnet | testnet (#108). Mainnet is real funds. */
   network?: string;
-  /** Wallet-data source mode (#217): auto | node | coinset | custom. Missing → 'auto' (node-first). */
+  /** Wallet-data source mode (#217/#394): auto | node | coinset | custom | sage. Missing → 'auto'. */
   chainSourceMode?: string;
   /** The node RPC base URL used when `chainSourceMode === 'custom'` (#217). */
   chainSourceUrl?: string;
+  /** The Sage RPC endpoint used when `chainSourceMode === 'sage'` (#394). */
+  sageUrl?: string;
   [k: string]: unknown;
 }
 

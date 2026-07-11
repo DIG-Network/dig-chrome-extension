@@ -84,6 +84,37 @@ body {
   accent-color: var(--dig-accent);
 }
 
+/* ── shared app-shell root (#421) ──
+   The one wrapper both layouts render inside: the built-in DIG URN toolbar pins flush to the very
+   top edge of the window (full width, no container inset), and the active layout fills the rest.
+   Mounting the bar here — not per page — is what makes every extension surface inherit one bar. */
+.dig-shell-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.dig-shell-root[data-surface='popup'] {
+  width: 372px;
+}
+.dig-shell-root[data-surface='fullpage'] {
+  min-height: 100vh;
+}
+/* The popup is a fixed-height "phone"; the toolbar (when shown) shares that height with the layout
+   so the popup never exceeds Chromium's ~600px cap (the layout scrolls, the bar stays pinned). */
+.dig-shell-root[data-layout='compact'][data-surface='popup'] {
+  height: 600px;
+  overflow: hidden;
+}
+/* The built-in bar is a fixed strip at the top; the layout takes the remaining height. */
+.dig-shell-root > .dig-builtin-toolbar {
+  flex: none;
+}
+.dig-shell-root > .dig-app,
+.dig-shell-root > .dig-shell-expanded {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .dig-app {
   display: flex;
   flex-direction: column;

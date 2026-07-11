@@ -21,6 +21,7 @@ export default defineConfig({
     '**/home-balance.spec.ts',
     '**/wallet-balance-source.spec.ts',
     '**/home-flush-urn.spec.ts',
+    '**/fullscreen-ui-batch.spec.ts',
     '**/loader-toolbar-shots.spec.ts',
     '**/did-create-errors.spec.ts',
     '**/send-receive-trio.spec.ts',

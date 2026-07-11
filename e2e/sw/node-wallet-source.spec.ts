@@ -6,20 +6,25 @@ import type { AddressInfo } from 'node:net';
 
 /**
  * END-USER e2e for #217 (phase 3 of #205) — proves, against the BUILT unpacked extension in a real
- * browser, that the extension consumes the dig-node's Sage-parity `get_*` wallet-data surface as its
+ * browser, that the extension consumes a node's Sage-parity `get_*` wallet-data surface as its
  * source, with a coinset fallback, and that the Settings switch drives it. Mirrors the "real loopback
  * socket, no mocked fetch" bar of `e2e/sw/dig-node-control.spec.ts`: a tiny Node HTTP server on
  * {@link LOOPBACK_IP} speaks the Sage v0.12.11 `POST /{method}` contract (byte-shaped per
- * `src/lib/node-wallet.ts`), and the Custom-URL source mode points the wallet-data resolver at it.
+ * `src/lib/node-wallet.ts`), and the source mode points the wallet-data resolver at it.
+ *
+ * The TRUSTED node-sourcing backend post-#399 is **Sage RPC** (#394): a Sage wallet the user runs
+ * holds their own keys + tracks their own wallet, so it is used for wallet data directly — WITHOUT
+ * the #399/#407 tracking gate that keeps `auto`/`node`/`custom` on the self-custody scan until a node
+ * proves it tracks the connected wallet. So these cases drive the get_* surface via the Sage backend.
  *
  * Cases:
- *   1. **Node present (Custom URL)** → balances / NFTs / DIDs / coins / activity all load from the
- *      node's `get_sync_status`/`get_cats`/`get_nfts`/`get_dids`/`get_coins`/`get_transactions`.
- *   2. **Node killed (Custom URL, strict)** → the read surfaces a `NODE_UNAVAILABLE` error, never a
+ *   1. **Sage backend present** → balances / NFTs / DIDs / coins / activity all load from the node's
+ *      `get_sync_status`/`get_cats`/`get_nfts`/`get_dids`/`get_coins`/`get_transactions`.
+ *   2. **Sage backend killed (strict)** → the read surfaces a `NODE_UNAVAILABLE` error, never a
  *      silent coinset downgrade.
  *   3. **Coinset-only mode** → the read goes to coinset (a wired live round-trip), never the node.
  *   4. **Auto mode, no node** → clean coinset fallback (wired, never the unknown-action stub).
- *   5. **Settings switch** persists across the four states and screenshots the control (§6.5).
+ *   5. **Settings switch** persists across the states and screenshots the control (§6.5).
  *
  * Signing is NEVER exercised here — this milestone is read-only source consumption; the offscreen
  * vault keeps every key (issue #217 HARD gate).
@@ -83,14 +88,16 @@ function swSend<T>(page: Page, message: Record<string, unknown>): Promise<T> {
   return page.evaluate((msg) => new Promise<T>((res) => chrome.runtime.sendMessage(msg, res as (r: unknown) => void)), message);
 }
 
-/** Write the wallet-data source selection straight into `wallet.settings` (what the SW reads). */
-async function setSource(page: Page, mode: string, customUrl = ''): Promise<void> {
+/** Write the wallet-data source selection straight into `wallet.settings` (what the SW reads). The
+ * endpoint url is written to BOTH `chainSourceUrl` (custom mode) and `sageUrl` (sage mode) so a
+ * single helper drives either backend. */
+async function setSource(page: Page, mode: string, url = ''): Promise<void> {
   await page.evaluate(
-    async ({ mode, customUrl }) => {
+    async ({ mode, url }) => {
       const cur = (await chrome.storage.local.get('wallet.settings'))['wallet.settings'] || {};
-      await chrome.storage.local.set({ 'wallet.settings': { ...cur, chainSourceMode: mode, chainSourceUrl: customUrl } });
+      await chrome.storage.local.set({ 'wallet.settings': { ...cur, chainSourceMode: mode, chainSourceUrl: url, sageUrl: url } });
     },
-    { mode, customUrl },
+    { mode, url },
   );
 }
 
@@ -162,12 +169,14 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-test('Custom-URL node present — all wallet data loads from the Sage-parity get_* surface', async () => {
+test('Sage backend present — all wallet data loads from the Sage-parity get_* surface', async () => {
   const { server, port } = await startFakeNode();
   try {
     const page = await context.newPage();
     await page.goto(`chrome-extension://${extensionId}/popup.html`);
-    await setSource(page, 'custom', `http://${LOOPBACK_IP}:${port}`);
+    // Sage is the TRUSTED node-sourcing backend (#394) — used directly, WITHOUT the #399/#407
+    // tracking gate that keeps auto/node/custom on the self-custody scan.
+    await setSource(page, 'sage', `http://${LOOPBACK_IP}:${port}`);
 
     // Balances from get_sync_status (XCH) + get_cats.
     const bal = await swSend<{ balances?: { xch?: number; cats?: Record<string, number> }; message?: string }>(page, {
@@ -204,15 +213,15 @@ test('Custom-URL node present — all wallet data loads from the Sage-parity get
   }
 });
 
-test('Custom-URL node killed (strict) — surfaces NODE_UNAVAILABLE, never a silent coinset downgrade', async () => {
+test('Sage backend killed (strict) — surfaces NODE_UNAVAILABLE, never a silent coinset downgrade', async () => {
   const { server, port } = await startFakeNode();
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
-  await setSource(page, 'custom', `http://${LOOPBACK_IP}:${port}`);
+  await setSource(page, 'sage', `http://${LOOPBACK_IP}:${port}`);
   // Confirm it works while up…
   const up = await swSend<{ balances?: { xch?: number } }>(page, { action: 'getCustodyBalances' });
   expect(up.balances?.xch).toBe(SYNC_STATUS.selectable_balance);
-  // …then kill it: the forced custom source must report unavailable, not fall back.
+  // …then kill it: the forced Sage source must report unavailable, not fall back.
   await stopFakeNode(server);
   const down = await swSend<{ success?: boolean; code?: string }>(page, { action: 'getCustodyBalances' });
   expect(down.success).toBe(false);

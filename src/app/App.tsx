@@ -6,6 +6,7 @@ import { store as defaultStore, type AppStore } from '@/app/store';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/app/hooks';
 import { CompactLayout } from '@/layouts/CompactLayout';
 import { ExpandedLayout } from '@/layouts/ExpandedLayout';
+import { DigToolbar } from '@/features/toolbar/DigToolbar';
 import { useLayoutMode, type Surface } from '@/app/layout';
 import { routeFromHash } from '@/features/ui/uiSlice';
 import { routeToHash } from '@/app/tabs';
@@ -83,7 +84,16 @@ function Shell({ surface }: { surface: Surface }) {
 
   return (
     <>
-      {mode === 'expanded' ? <ExpandedLayout surface={surface} /> : <CompactLayout surface={surface} />}
+      {/* #421 — the built-in DIG URN bar mounts ONCE here in the shared app-shell, flush to the very
+          top edge of the window (full width, no container inset), so EVERY extension surface that
+          renders this shell inherits it — not hand-added per page. It self-hides when the toolbar
+          toggle is OFF. The injected content-script bar (`dig-toolbar.ts`) never renders on
+          chrome-extension:// origins (guarded by `shouldInjectToolbar`), so there is never a double
+          bar: built-in here on extension pages, injected on web pages. */}
+      <div className="dig-shell-root" data-testid="shell-root" data-surface={surface} data-layout={mode}>
+        <DigToolbar />
+        {mode === 'expanded' ? <ExpandedLayout surface={surface} /> : <CompactLayout surface={surface} />}
+      </div>
       {/* The in-window dApp app-view overlays either layout when a dApp is launched (§2.4a). */}
       <AppView />
     </>

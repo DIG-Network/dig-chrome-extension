@@ -1,12 +1,16 @@
 import { FormattedMessage } from 'react-intl';
 import { TABS, tabPanelId, tabTestId, type Tab } from '@/app/tabs';
 
-/** Glyph + copy id for each bottom-nav screen. Glyphs are emoji (self-contained, no icon font). */
+/** Glyph + copy id for each top-level screen. Glyphs are emoji (self-contained, no icon font).
+ *  The fullscreen-only tabs (peers/advertise) carry metadata for completeness but are not rendered
+ *  in the compact bottom nav (this component maps over the compact {@link TABS} set only). */
 const TAB_META: Record<Tab, { glyph: string; labelId: string }> = {
   home: { glyph: '🏠', labelId: 'tab.home' },
   wallet: { glyph: '👛', labelId: 'tab.wallet' },
   apps: { glyph: '🧩', labelId: 'tab.apps' },
   network: { glyph: '🌐', labelId: 'tab.network' },
+  peers: { glyph: '🛰️', labelId: 'tab.peers' },
+  advertise: { glyph: '📣', labelId: 'tab.advertise' },
 };
 
 /**

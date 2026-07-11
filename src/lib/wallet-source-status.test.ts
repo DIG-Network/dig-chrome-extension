@@ -51,4 +51,20 @@ describe('walletSourceIndicatorView', () => {
     expect(walletSourceIndicatorView('auto', undefined).visible).toBe(false);
     expect(walletSourceIndicatorView('auto', null).visible).toBe(false);
   });
+
+  // #394 — the Sage backend surfaces its OWN connection status (which backend is active + reachable).
+  it('shows Sage connected (good) with the endpoint when Sage resolved to a node', () => {
+    const view = walletSourceIndicatorView('sage', { kind: 'node', base: 'http://localhost:9257', strict: true });
+    expect(view.visible).toBe(true);
+    expect(view.tone).toBe('good');
+    expect(view.labelId).toBe('custody.source.sage.connected');
+    expect(view.endpoint).toBe('http://localhost:9257');
+  });
+
+  it('shows Sage unreachable (warn) when the Sage endpoint is unavailable', () => {
+    const view = walletSourceIndicatorView('sage', { kind: 'unavailable', reason: 'sage-unreachable' });
+    expect(view.visible).toBe(true);
+    expect(view.tone).toBe('warn');
+    expect(view.labelId).toBe('custody.source.sage.unreachable');
+  });
 });

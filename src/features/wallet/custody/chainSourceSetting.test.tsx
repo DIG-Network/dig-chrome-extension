@@ -23,13 +23,26 @@ beforeEach(async () => {
 });
 
 describe('ChainSourceSetting (#217)', () => {
-  it('renders the four source modes, defaulting to auto', async () => {
+  it('renders the wallet-backend modes (incl. Sage RPC, #394), defaulting to auto', async () => {
     renderWithProviders(<ChainSourceSetting />);
     const select = (await screen.findByTestId('chain-source-select')) as HTMLSelectElement;
-    expect([...select.options].map((o) => o.value)).toEqual(['auto', 'node', 'coinset', 'custom']);
+    expect([...select.options].map((o) => o.value)).toEqual(['auto', 'node', 'coinset', 'custom', 'sage']);
     await waitFor(() => expect(select.value).toBe('auto'));
-    // No custom-URL field while not in custom mode.
+    // No custom-URL / Sage-endpoint field while not in those modes.
     expect(screen.queryByTestId('chain-source-custom')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chain-source-sage')).not.toBeInTheDocument();
+  });
+
+  it('reveals the Sage endpoint field in Sage mode and persists it on blur (#394)', async () => {
+    renderWithProviders(<ChainSourceSetting />);
+    const select = await screen.findByTestId('chain-source-select');
+    fireEvent.change(select, { target: { value: 'sage' } });
+    const input = await screen.findByTestId('chain-source-sage-url');
+    fireEvent.change(input, { target: { value: 'http://localhost:9257' } });
+    fireEvent.blur(input);
+    await waitFor(async () => expect((await readStored()).sageUrl).toBe('http://localhost:9257'));
+    const stored = await readStored();
+    expect(stored.chainSourceMode).toBe('sage');
   });
 
   it('hydrates the persisted mode from wallet.settings', async () => {

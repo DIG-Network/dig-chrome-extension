@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
   TABS,
+  FULLSCREEN_ONLY_TABS,
+  ALL_TABS,
   WALLET_VIEWS,
   DEFAULT_TAB,
   DEFAULT_WALLET_VIEW,
   DEFAULT_NETWORK_VIEW,
   isTab,
+  isCompactTab,
   isWalletView,
   isNetworkView,
   resolveRoute,
@@ -37,6 +40,25 @@ describe('tab model (mobile-OS IA)', () => {
     expect(resolveRoute('')).toEqual({ tab: 'home', ...base });
     expect(resolveRoute('#bogus')).toEqual({ tab: 'home', ...base });
     expect(resolveRoute('#wallet/bogus')).toEqual({ tab: 'wallet', ...base });
+  });
+
+  it('adds fullscreen-only tabs (#393 Peers, #411 Advertise) — routable + deep-linkable, NOT in the compact bottom nav', () => {
+    // TABS stays the clean 4-item compact bottom nav.
+    expect(TABS).toEqual(['home', 'wallet', 'apps', 'network']);
+    // The fullscreen-only tabs are separate, and ALL_TABS is the union.
+    expect(FULLSCREEN_ONLY_TABS).toEqual(['peers', 'advertise']);
+    expect(ALL_TABS).toEqual(['home', 'wallet', 'apps', 'network', 'peers', 'advertise']);
+    // They are valid top-level tabs (deep-linkable), but not compact tabs (no bottom-nav entry).
+    expect(isTab('peers')).toBe(true);
+    expect(isTab('advertise')).toBe(true);
+    expect(isCompactTab('peers')).toBe(false);
+    expect(isCompactTab('advertise')).toBe(false);
+    expect(isCompactTab('home')).toBe(true);
+    // Deep-links resolve to the tab (no sub-views).
+    expect(resolveRoute('#peers')).toEqual({ tab: 'peers', walletView: DEFAULT_WALLET_VIEW, networkView: DEFAULT_NETWORK_VIEW });
+    expect(resolveRoute('#advertise')).toEqual({ tab: 'advertise', walletView: DEFAULT_WALLET_VIEW, networkView: DEFAULT_NETWORK_VIEW });
+    expect(routeToHash('peers')).toBe('#peers');
+    expect(routeToHash('advertise')).toBe('#advertise');
   });
 
   it('maps legacy bare network deep-links to the Network screen sub-view (back-compat)', () => {

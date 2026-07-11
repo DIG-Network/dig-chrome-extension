@@ -12,7 +12,22 @@
 
 /** The ordered bottom-nav screens. Order === the visual (bottom-bar / rail) order. HOME first. */
 export const TABS = ['home', 'wallet', 'apps', 'network'] as const;
-export type Tab = (typeof TABS)[number];
+
+/**
+ * Fullscreen-only top-level tabs (#393 Peers, #411 Advertise). They are reachable from the desktop
+ * (fullscreen) sidebar {@link DESKTOP_NAV} and via deep-links (`#peers`/`#advertise`), but are NOT
+ * rendered in the compact phone bottom nav — which stays a clean 4-item bar. This mirrors the
+ * advanced-surface tiering the wallet views use (§145): advanced surfaces live fullscreen-only.
+ */
+export const FULLSCREEN_ONLY_TABS = ['peers', 'advertise'] as const;
+
+/** Every routable top-level tab: the compact bottom-nav set plus the fullscreen-only tabs. */
+export const ALL_TABS = [...TABS, ...FULLSCREEN_ONLY_TABS] as const;
+
+/** A routable top-level tab. */
+export type Tab = (typeof ALL_TABS)[number];
+/** A tab that renders in the compact phone bottom nav (the {@link TABS} subset). */
+export type CompactTab = (typeof TABS)[number];
 
 /** The screen shown when the surface opens with no deep-link — the mobile-OS Home launcher. */
 export const DEFAULT_TAB: Tab = 'home';
@@ -48,9 +63,14 @@ export type NetworkView = (typeof NETWORK_VIEWS)[number];
 /** The default Network sub-view. */
 export const DEFAULT_NETWORK_VIEW: NetworkView = 'resolver';
 
-/** True if `name` is one of the known bottom-nav tabs. */
+/** True if `name` is one of the known top-level tabs (compact bottom-nav OR fullscreen-only). */
 export function isTab(name: string): name is Tab {
-  return (TABS as readonly string[]).includes(name);
+  return (ALL_TABS as readonly string[]).includes(name);
+}
+
+/** True if `tab` renders in the compact phone bottom nav (excludes the fullscreen-only tabs). */
+export function isCompactTab(tab: Tab): tab is CompactTab {
+  return (TABS as readonly string[]).includes(tab);
 }
 
 /** True if `name` is one of the known wallet sub-views. */

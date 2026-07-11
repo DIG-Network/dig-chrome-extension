@@ -37,7 +37,21 @@ export function walletSourceIndicatorView(
   mode: ChainSourceMode,
   resolved: ResolvedWalletSource | null | undefined,
 ): WalletSourceIndicatorView {
-  if (mode !== 'auto' || !resolved || resolved.kind !== 'node') return HIDDEN;
+  if (!resolved) return HIDDEN;
+  // #394 — the Sage backend shows its live connection status directly (which backend is active +
+  // whether it is reachable), since Sage is a user-configured endpoint the user needs feedback on.
+  if (mode === 'sage') {
+    if (resolved.kind === 'node') {
+      return { visible: true, tone: 'good', labelId: 'custody.source.sage.connected', endpoint: resolved.base };
+    }
+    if (resolved.kind === 'unavailable') {
+      return { visible: true, tone: 'warn', labelId: 'custody.source.sage.unreachable' };
+    }
+    return HIDDEN;
+  }
+  // Auto mode: surface a zero-config local node the §5.3 ladder auto-selected. Other forced modes
+  // stay quiet (their mode-specific hint + the four-state error UI already tell the story).
+  if (mode !== 'auto' || resolved.kind !== 'node') return HIDDEN;
   return {
     visible: true,
     tone: 'good',
