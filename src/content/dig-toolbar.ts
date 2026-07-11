@@ -33,6 +33,8 @@ import {
   toolbarBadges,
   resolveUrnBarSubmit,
   toolbarLabels,
+  toolbarTheme,
+  TOOLBAR_PALETTES,
   type BadgeState,
 } from '@/lib/toolbar';
 import { ACTIONS } from '@/lib/messages';
@@ -41,7 +43,17 @@ console.log('DIG Extension: page toolbar content script loaded');
 
 const HOST_ID = 'dig-toolbar-host';
 const BAR_HEIGHT = '38px';
+const DARK_QUERY = '(prefers-color-scheme: dark)';
 const isTop = window.top === window.self;
+
+/** The browser's current dark-mode preference (drives the theme-matched palette, #306 item 2). */
+function prefersDark(): boolean {
+  try {
+    return typeof window.matchMedia === 'function' && window.matchMedia(DARK_QUERY).matches;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Best-effort: read the node's DIG Shields serve headers for a node-served page (`/s/…`). A
@@ -68,7 +80,7 @@ function removeToolbar(): void {
   }
 }
 
-/** Ask the background SW to run the §5.3 node-or-sandbox navigation for a resolved `chia://` URL
+/** Ask the background SW to run the §5.4 node-or-sandbox navigation for a resolved `chia://` URL
  *  (the SAME path #289's nav + the `dig` omnibox use — no second resolve/decrypt implementation). */
 function navigateToDigUrl(url: string): void {
   try {
@@ -80,10 +92,25 @@ function navigateToDigUrl(url: string): void {
   }
 }
 
+/** Ask the background SW to classify + resolve + navigate a raw entry input — used for the
+ *  `*.on.dig.net` / `<name>.dig` shorthand, which must be resolved HEAD→URN (#308) from the
+ *  extension origin (a page content script can't read the CORS-exposed `X-Dig-URN`). */
+function navigateDigInput(input: string): void {
+  try {
+    chrome.runtime.sendMessage({ action: ACTIONS.navigateDigInput, input }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch {
+    /* SW gone / context invalidated */
+  }
+}
+
 /** Build the shadow-DOM toolbar and mount it. Idempotent — a second call replaces the first. */
 function mountToolbar(badges: BadgeState | null): void {
   removeToolbar();
   const labels = toolbarLabels(navigator.languages);
+  // Theme-match the browser (#306 item 2): the SAME palette the built-in fullscreen bar uses.
+  const c = TOOLBAR_PALETTES[toolbarTheme(prefersDark())];
 
   const host = document.createElement('div');
   host.id = HOST_ID;
@@ -96,32 +123,34 @@ function mountToolbar(badges: BadgeState | null): void {
   const shadow = host.attachShadow({ mode: 'open' });
 
   const style = document.createElement('style');
-  // Native browser-chrome palette (neutral grey, matches an ordinary Chrome toolbar) — deliberately
-  // NOT the DIG brand gradient (#293 item 2): this bar must read as browser UI, not a branded widget.
+  // Native browser-chrome palette (neutral grey in light, a dark toolbar surface in dark — matched
+  // to the browser via prefers-color-scheme, #306 item 2) — deliberately NOT the DIG brand gradient
+  // (#293 item 2): this bar must read as browser UI, not a branded widget. Colours come from the ONE
+  // shared TOOLBAR_PALETTES the built-in fullscreen bar also uses, so the two mounts stay identical.
   style.textContent = `
     :host { all: initial; }
     .bar {
       box-sizing: border-box; display: flex; align-items: center; gap: 8px;
       height: ${BAR_HEIGHT}; padding: 0 8px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-      font-size: 13px; color: #3c4043;
-      background: #f1f3f4;
-      border-bottom: 1px solid #dadce0;
+      font-size: 13px; color: ${c.text};
+      background: ${c.bar};
+      border-bottom: 1px solid ${c.border};
     }
     .mark {
       flex: 0 0 auto; width: 20px; height: 20px; display: inline-flex; align-items: center;
-      justify-content: center; font-size: 13px; color: #5f6368;
+      justify-content: center; font-size: 13px; color: ${c.mark};
     }
     .urnbar { flex: 1 1 auto; min-width: 0; }
     .urn-input {
       box-sizing: border-box; width: 100%; height: 26px; padding: 0 10px;
-      font: inherit; font-size: 12.5px; color: #202124;
-      background: #ffffff; border: 1px solid #dadce0; border-radius: 13px;
+      font: inherit; font-size: 12.5px; color: ${c.inputText};
+      background: ${c.inputBg}; border: 1px solid ${c.inputBorder}; border-radius: 13px;
       outline: none;
     }
-    .urn-input::placeholder { color: #80868b; }
-    .urn-input:focus { border-color: #1a73e8; box-shadow: 0 0 0 1px #1a73e8; }
-    .urn-input[aria-invalid="true"] { border-color: #c5221f; box-shadow: 0 0 0 1px #c5221f; }
+    .urn-input::placeholder { color: ${c.placeholder}; }
+    .urn-input:focus { border-color: ${c.focus}; box-shadow: 0 0 0 1px ${c.focus}; }
+    .urn-input[aria-invalid="true"] { border-color: ${c.warnText}; box-shadow: 0 0 0 1px ${c.warnText}; }
     .sr-only {
       position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
       clip: rect(0,0,0,0); white-space: nowrap; border: 0;
@@ -130,16 +159,16 @@ function mountToolbar(badges: BadgeState | null): void {
     .badge {
       display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px;
       border-radius: 11px; font-size: 11.5px; font-weight: 500; white-space: nowrap;
-      background: #e8eaed; color: #3c4043;
+      background: ${c.badgeBg}; color: ${c.badgeText};
     }
-    .badge.ok { background: #e6f4ea; color: #137333; }
-    .badge.warn { background: #fce8e6; color: #c5221f; }
+    .badge.ok { background: ${c.okBg}; color: ${c.okText}; }
+    .badge.warn { background: ${c.warnBg}; color: ${c.warnText}; }
     .open-btn {
       flex: 0 0 auto; appearance: none; border: 0; cursor: pointer; background: transparent;
-      color: #5f6368; width: 26px; height: 26px; border-radius: 6px; font-size: 15px; line-height: 1;
+      color: ${c.btn}; width: 26px; height: 26px; border-radius: 6px; font-size: 15px; line-height: 1;
       display: inline-flex; align-items: center; justify-content: center;
     }
-    .open-btn:hover, .open-btn:focus-visible { background: rgba(0,0,0,0.06); outline: none; }
+    .open-btn:hover, .open-btn:focus-visible { background: ${c.btnHover}; outline: none; }
     /* Narrow (mobile-width) viewports: the URN bar + the single open button are the two essential
        elements — collapse the decorative mark + the supplementary DIG-verdict badges so the input
        keeps a usable width instead of shrinking to a sliver (§6.5 clean-spacing bar). */
@@ -181,10 +210,15 @@ function mountToolbar(badges: BadgeState | null): void {
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     const result = resolveUrnBarSubmit(input.value);
-    if (result.ok && result.url) {
+    if (result.ok && result.kind === 'urn') {
       input.removeAttribute('aria-invalid');
       error.textContent = '';
       navigateToDigUrl(result.url);
+    } else if (result.ok && result.kind === 'on-dig-net') {
+      // <sub>.on.dig.net / <name>.dig → the SW resolves HEAD→URN (#308) from the extension origin.
+      input.removeAttribute('aria-invalid');
+      error.textContent = '';
+      navigateDigInput(result.host);
     } else if (input.value.trim()) {
       input.setAttribute('aria-invalid', 'true');
       error.textContent = labels.urnInvalid;
@@ -258,13 +292,25 @@ async function refresh(): Promise<void> {
   mountToolbar(await readVerdict());
 }
 
-// React to live toggles from the Home tab / options page.
+// React to live toggles from the window-header switch / options page.
 try {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && Object.prototype.hasOwnProperty.call(changes, TOOLBAR_ENABLED_KEY)) {
       void refresh();
     }
   });
+} catch {
+  /* ignore */
+}
+
+// Re-paint the bar when the browser's light/dark preference flips (#306 item 2) — re-mount so the
+// theme-matched palette is recomputed for the injected bar just like the built-in one.
+try {
+  if (typeof window.matchMedia === 'function') {
+    window.matchMedia(DARK_QUERY).addEventListener('change', () => {
+      if (document.getElementById(HOST_ID)) void refresh();
+    });
+  }
 } catch {
   /* ignore */
 }

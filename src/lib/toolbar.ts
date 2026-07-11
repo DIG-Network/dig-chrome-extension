@@ -27,7 +27,7 @@
  */
 import { readServeHeaders, type ServeVerdict } from '@/lib/dig-serve-headers';
 import { detectLocale, type LocaleCode } from '@/i18n/locales';
-import { parseOpenUrnInput, buildContentViewUrl } from '@/lib/open-urn';
+import { classifyDigInput } from '@/lib/dig-nav';
 
 /** chrome.storage.local key persisting the toolbar toggle. */
 export const TOOLBAR_ENABLED_KEY = 'toolbar.enabled';
@@ -73,28 +73,110 @@ export function badgesFromHeaders(headers: Parameters<typeof readServeHeaders>[0
   return toolbarBadges(readServeHeaders(headers));
 }
 
-/** The outcome of resolving what the toolbar's URN bar should do on Enter (#293). */
-export interface UrnBarSubmitResult {
-  /** True when `raw` parsed to a valid DIG address. */
-  ok: boolean;
-  /** The canonical `chia://` URL to hand to the background `navigateToDigUrl` action — set only
-   *  when `ok`. `null` for empty/invalid input, so the caller can show an inline error instead of
-   *  navigating. */
-  url: string | null;
-}
+/**
+ * The outcome of resolving what the toolbar's URN bar should do on Enter (#293/#306/#310/#362).
+ * A discriminated union so the DOM/React glue routes each DIG-address FORM through the right
+ * background action:
+ *   - `urn` — a `chia://` / `urn:dig:chia:` / bare-hex / dig-dns `.dig` address that already parses
+ *     to a canonical `chia://` URL → hand `url` to the `navigateToDigUrl` action (the SAME §5.4
+ *     node-or-sandbox path #289/#291 use);
+ *   - `on-dig-net` — an `*.on.dig.net` / `<name>.dig` subdomain that must be resolved HEAD→URN (#308)
+ *     from the EXTENSION origin → hand `host` to the `navigateDigInput` action (the SW does the HEAD);
+ *   - `{ ok: false }` — empty / non-DIG (a web URL or free text) → the caller shows an inline error
+ *     (the URN bar accepts DIG addresses only).
+ */
+export type UrnBarSubmit =
+  | { ok: true; kind: 'urn'; url: string }
+  | { ok: true; kind: 'on-dig-net'; host: string }
+  | { ok: false };
 
 /**
- * Resolve the toolbar's dedicated URN-bar submit: parse the typed value against the single shared
- * URN grammar (reused via `open-urn.ts`'s `parseOpenUrnInput`, itself built on `parseURN`) and, when
- * valid, build the canonical `chia://` URL (`buildContentViewUrl`) to hand to the background
- * `navigateToDigUrl` action — the SAME §5.3 node-or-sandbox path (`handleDigUrlNavigation`) the #289
- * nav and the `dig` omnibox already use. There is no second resolve/decrypt implementation here.
+ * Resolve the toolbar's dedicated URN-bar submit against the ONE shared entry classifier
+ * ({@link classifyDigInput} in `dig-nav.ts`), so the injected + built-in toolbars accept EXACTLY the
+ * forms every other entry tier does (raw `chia://`, `urn:dig:chia:`, a bare store id, a dig-dns
+ * `<label>.dig`, and `*.on.dig.net` / `<name>.dig` shorthands) and route them through the identical
+ * §5.4 node-or-sandbox path — no second resolve/decrypt implementation. A non-DIG value (a web URL
+ * or free text) is rejected so the caller shows an inline error.
  */
-export function resolveUrnBarSubmit(raw: string): UrnBarSubmitResult {
-  const parsed = parseOpenUrnInput(raw);
-  if (!parsed) return { ok: false, url: null };
-  return { ok: true, url: buildContentViewUrl(parsed) };
+export function resolveUrnBarSubmit(raw: string): UrnBarSubmit {
+  const c = classifyDigInput(raw);
+  if (c.kind === 'urn') return { ok: true, kind: 'urn', url: c.chiaUrl };
+  if (c.kind === 'on-dig-net') return { ok: true, kind: 'on-dig-net', host: c.host };
+  return { ok: false };
 }
+
+/** The toolbar's light/dark theme — matched to the browser via `prefers-color-scheme` (#306). */
+export type ToolbarTheme = 'light' | 'dark';
+
+/** Choose the toolbar theme from the OS/browser dark-mode signal (`prefers-color-scheme: dark`). */
+export function toolbarTheme(prefersDark: boolean): ToolbarTheme {
+  return prefersDark ? 'dark' : 'light';
+}
+
+/** The colour tokens the toolbar renders with, per theme. ONE palette source shared by the injected
+ *  shadow-DOM bar (`dig-toolbar.ts`) and the built-in fullscreen React bar (`DigToolbar.tsx`) so the
+ *  two mounts stay pixel-consistent (#306 item 2). Light = neutral Chrome grey; dark = Chrome's dark
+ *  toolbar surface — NOT the DIG brand gradient (§5.5: it must read as browser chrome). */
+export interface ToolbarPalette {
+  bar: string;
+  border: string;
+  text: string;
+  mark: string;
+  inputBg: string;
+  inputBorder: string;
+  inputText: string;
+  placeholder: string;
+  focus: string;
+  badgeBg: string;
+  badgeText: string;
+  okBg: string;
+  okText: string;
+  warnBg: string;
+  warnText: string;
+  btn: string;
+  btnHover: string;
+}
+
+export const TOOLBAR_PALETTES: Record<ToolbarTheme, ToolbarPalette> = {
+  light: {
+    bar: '#f1f3f4',
+    border: '#dadce0',
+    text: '#3c4043',
+    mark: '#5f6368',
+    inputBg: '#ffffff',
+    inputBorder: '#dadce0',
+    inputText: '#202124',
+    placeholder: '#80868b',
+    focus: '#1a73e8',
+    badgeBg: '#e8eaed',
+    badgeText: '#3c4043',
+    okBg: '#e6f4ea',
+    okText: '#137333',
+    warnBg: '#fce8e6',
+    warnText: '#c5221f',
+    btn: '#5f6368',
+    btnHover: 'rgba(0,0,0,0.06)',
+  },
+  dark: {
+    bar: '#292a2d',
+    border: '#3c4043',
+    text: '#e8eaed',
+    mark: '#9aa0a6',
+    inputBg: '#202124',
+    inputBorder: '#5f6368',
+    inputText: '#e8eaed',
+    placeholder: '#9aa0a6',
+    focus: '#8ab4f8',
+    badgeBg: '#3c4043',
+    badgeText: '#e8eaed',
+    okBg: '#0f5223',
+    okText: '#81c995',
+    warnBg: '#5c1a17',
+    warnText: '#f28b82',
+    btn: '#9aa0a6',
+    btnHover: 'rgba(255,255,255,0.10)',
+  },
+};
 
 /** The toolbar's localized string set. */
 export interface ToolbarLabels {

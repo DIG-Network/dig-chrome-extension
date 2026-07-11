@@ -10,7 +10,6 @@ import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetNodeStatusQuery } from '@/features/resolver/resolverApi';
 import { OpenByUrnInput } from '@/features/home/OpenByUrnInput';
-import { ToolbarToggle } from '@/features/home/ToolbarToggle';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance } from '@/features/wallet/portfolio';
 import { assetUsdValue } from '@/features/wallet/portfolioValue';
@@ -50,13 +49,12 @@ const KIND_GLYPH: Record<ActivityRow['kind'], string> = {
  * launcher grid, and status widgets (lock state, node/network status, a recent-activity peek). Every
  * widget deep-links into its full screen. Four states drive the launcher; the wallet widgets degrade
  * gracefully when the wallet is locked or absent. Responsive: one column on the phone popup, a
- * multi-column widget board on the wide tablet/desktop surface. The injected page-toolbar (#292)
- * enable/disable switch (#293) renders FIRST, above the widget board, for quick activate/deactivate.
+ * multi-column widget board on the wide tablet/desktop surface. The DIG toolbar enable/disable
+ * switch moved OUT of here into the window header (#306, `HeaderToolbarToggle`).
  */
 export function HomeScreen() {
   return (
     <div className="dig-home" data-testid="home-screen">
-      <ToolbarToggle />
       <div className="dig-home-board">
         <BalanceWidget />
         <QuickActions />

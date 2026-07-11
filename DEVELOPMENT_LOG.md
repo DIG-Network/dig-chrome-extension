@@ -3,6 +3,41 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## The DIG search provider CANNOT point `search_url` at an extension page; use an HTTPS sentinel + local redirect (#362)
+
+Chrome's `chrome_settings_overrides.search_provider.search_url` MUST be an **HTTPS URL on a
+Search-Console-verified domain** — a `chrome-extension://` `search_url` is rejected (confirmed against
+the Chrome + MDN manifest docs). So the DIG search provider's `search_url` is a **sentinel** on a DIG
+domain (`https://dig.net/dig-search?q={searchTerms}`) that the extension intercepts LOCALLY and
+rewrites to the in-extension resolver page — the query never actually hits dig.net. Two intercept
+mechanisms, both converging on `dig-search.html?q=…`: a dynamic `declarativeNetRequest` redirect rule
+registered at SW startup (pre-network, bounce-free; its `regexSubstitution` must embed the runtime
+`chrome.runtime.getURL(...)` — DNR has NO extension-id token, so a STATIC ruleset can't target the
+extension page while preserving the query), plus a `webNavigation.onBeforeNavigate` `matchDigSearchSentinel`
+catch as the guaranteed fallback. `is_default:false` — forcing default triggers a disruptive prompt;
+the user opts in. NOTE: for a PUBLISHED build the sentinel domain must be verified in Search Console
+or the override won't apply.
+
+## Two different `.dig` host forms — disambiguate by label shape (#362/#308)
+
+`<x>.dig` is overloaded: (a) the **dig-dns** host form where the label is a 52-char base32 STORE ID
+(`dig-dns-host.digLabelToStoreHex`, byte-mirror of the Rust `label.rs`), and (b) the **on.dig.net**
+human-name shorthand (`<name>.dig` → `<name>.on.dig.net`, #308). `classifyDigInput` disambiguates by
+label shape: a 52-char base32 label that decodes to 32 bytes → a dig-dns store → canonical `chia://`;
+anything else → an on.dig.net shorthand → resolved HEAD→URN. `*.on.dig.net` is checked BEFORE `.dig`
+so it never mis-hits the `.dig` branch. The HEAD→URN resolve (`resolveOnDigNetUrn`) MUST run from the
+EXTENSION origin (SW / extension page), never a content script — a page-origin fetch can't read the
+CORS-exposed `X-Dig-URN` header.
+
+## MV3 extension SW e2e (`test:sw`) won't launch on this Windows box — it's CI (Linux) only
+
+`playwright.sw.config.ts` uses `channel: 'chromium'` + `--load-extension` + a persistent context and
+waits for the MV3 service worker to register. On this Windows dev box the SW never registers
+(`waitForEvent('serviceworker')` times out) with BOTH the `chromium` channel and Playwright's bundled
+chromium — a local headless-extension limitation. The suite is green in CI (`npx playwright install
+--with-deps chromium` on the Linux runner). Validate SW/e2e behaviour there; locally rely on the
+vitest unit suite + `npm run build`.
+
 ## chia:// content only RENDERS in an MV3 SANDBOXED page; a rootless URN's trusted root is the CHAIN-anchored root, never 'latest' (#225, #226)
 
 Two coupled bugs that made `chia://` content NOT display in the browser window, both proven by the

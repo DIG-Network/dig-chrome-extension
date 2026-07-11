@@ -8,6 +8,7 @@
  * This is an ES module so it can be unit-tested under `node --test` and imported by the
  * new-tab page (newtab.js) as a module; the values are the same the browser NTP hard-codes.
  */
+import { isDigShapedInput } from '@/lib/dig-nav';
 
 /**
  * Ordered app-directory entries shown in the "App Store" tab of DIG Home.
@@ -92,20 +93,25 @@ export const DIG_HOME_FOOTER_LINKS: FooterLink[] = [
 export const WEB_SEARCH_URL = 'https://duckduckgo.com/?q=';
 
 /**
- * Classify an omnibox value the same way the native DIG Browser NTP does:
- *   - 'dig'    → a chia:// URL, urn:dig:, or a bare 64-hex store id (open on the DIG Network)
+ * Classify an omnibox value into the three destination kinds:
+ *   - 'dig'    → a DIG address (a `chia://` URL, `urn:dig:`, a bare 64-hex store id, a dig-dns
+ *                `<label>.dig` host, OR an `*.on.dig.net` / `<name>.dig` shorthand) → open on the
+ *                DIG Network
  *   - 'url'    → an http(s) URL or a bare domain (navigate)
- *   - 'search' → anything else (web search via DuckDuckGo)
+ *   - 'search' → anything else (web search)
  *
- * Mirrors `classify()` in dig_newtab.html so the two stay behaviourally identical.
+ * The DIG-vs-not recognition delegates to the SHARED {@link isDigShapedInput} (dig-nav.ts) so the
+ * omnibox, the raw URL-bar interception (#310), the toolbar URN bars (#306), and the custom DIG
+ * search provider (#362) all agree on what counts as a DIG address — one classifier, no drift. (This
+ * ADDS `.dig` / `.on.dig.net` recognition over the earlier NTP-mirrored form; the `chia://`, `urn:`,
+ * and bare-hex cases are unchanged.)
  * @param {string} v raw omnibox value
  * @returns {'dig'|'url'|'search'}
  */
 export function classifyOmnibox(v: string): 'dig' | 'url' | 'search' {
   v = (v || '').trim();
   if (!v) return 'search';
-  if (/^chia:\/\//i.test(v) || /^urn:dig:/i.test(v)) return 'dig';
-  if (/^[0-9a-f]{64}([:/].*)?$/i.test(v)) return 'dig';
+  if (isDigShapedInput(v)) return 'dig';
   if (/^https?:\/\//i.test(v)) return 'url';
   if (/^[^\s]+\.[^\s]{2,}([/?#].*)?$/.test(v) && !/\s/.test(v)) return 'url';
   return 'search';

@@ -118,6 +118,18 @@ async function navigateToDigUrl(page: Page, digUrl: string): Promise<void> {
     });
 }
 
+/** Fire the shared classify→resolve→navigate core for ANY raw input (#362) against the active tab —
+ *  the path the raw `urn:`/`chia://` interception (#310) + the toolbar on-dig-net form (#306) use. */
+async function navigateDigInput(page: Page, input: string): Promise<void> {
+  await page
+    .evaluate((i) => {
+      chrome.runtime.sendMessage({ action: 'navigateDigInput', input: i });
+    }, input)
+    .catch(() => {
+      /* the navigation may tear the context down — the waitForURL is the assertion */
+    });
+}
+
 test.beforeAll(async () => {
   if (!existsSync(resolve(EXT_PATH, 'manifest.json'))) throw new Error(`run \`npm run build\` first — no ${EXT_PATH}`);
   await startFixture();
@@ -306,5 +318,110 @@ test('#292 — toggling the setting OFF removes the toolbar live', async () => {
 
   await setToolbarViaWorker(false); // storage.onChanged → live removal
   await expect(page.locator('#dig-toolbar-host')).toHaveCount(0, { timeout: 10_000 });
+  await page.close();
+});
+
+// ── #306 — the header toggle-switch + the built-in fullscreen URN toolbar ──────────────────────────
+
+test('#306 — the header control is a role="switch" that turns the built-in toolbar on/off live', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, false);
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/app.html`);
+  const sw = page.getByTestId('header-toolbar-toggle');
+  await expect(sw).toBeVisible({ timeout: 10_000 });
+  await expect(sw).toHaveAttribute('role', 'switch'); // a switch, NOT a checkbox (#306 item 3)
+  await expect(sw).toHaveAttribute('aria-checked', 'false');
+  // Off → the built-in toolbar is not mounted.
+  await expect(page.getByTestId('builtin-dig-toolbar')).toHaveCount(0);
+  // Flip it on from the header → the built-in URN bar appears live (same toolbar.enabled key).
+  await sw.click();
+  await expect(sw).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('builtin-dig-toolbar')).toBeVisible({ timeout: 10_000 });
+  await page.close();
+});
+
+test('#306 — the built-in fullscreen URN bar resolves a chia:// value through the local node', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await setServerHost(cfg, nodeBase); // §5.3 override → the fixture node
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/app.html`);
+  const input = page.getByTestId('builtin-dig-toolbar-urn-input');
+  await expect(input).toBeVisible({ timeout: 10_000 });
+  await input.fill(CHIA_URL);
+  await input.press('Enter');
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
+  await expect(page.locator('h1')).toHaveText(MARKER);
+  await page.close();
+});
+
+// ── #310 — the bare urn:dig:chia: form routes through the shared core to the node serve ─────────────
+
+test('#310/#362 — a bare urn:dig:chia: input resolves via the shared core to the node-served surface', async () => {
+  const page = await extPage();
+  await setServerHost(page, nodeBase);
+  await navigateDigInput(page, `urn:dig:chia:${STORE}/index.html`);
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
+  await expect(page.locator('h1')).toHaveText(MARKER);
+  await page.close();
+});
+
+// ── #362 Tier 4 — the custom DIG search resolver page ───────────────────────────────────────────────
+
+test('#362 — the DIG search resolver loads a DIG query through the local node', async () => {
+  const cfg = await extPage();
+  await setServerHost(cfg, nodeBase);
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/dig-search.html?q=${encodeURIComponent(CHIA_URL)}`);
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
+  await expect(page.locator('h1')).toHaveText(MARKER);
+  await page.close();
+});
+
+test('#362 — the DIG search resolver sends a NON-DIG query to the configured fallback engine (loop-free)', async () => {
+  const page = await context.newPage();
+  // Stub DuckDuckGo so the assertion is offline-robust: we only prove the resolver redirects THERE.
+  await page.route('https://duckduckgo.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>ddg</title>ok' }),
+  );
+  await page.goto(`chrome-extension://${extensionId}/dig-search.html?q=${encodeURIComponent('best chia wallet')}`);
+  await page.waitForURL(/duckduckgo\.com/, { timeout: 15_000 });
+  expect(page.url()).toContain('duckduckgo.com/?q=');
+  expect(decodeURIComponent(page.url())).toContain('best chia wallet');
+  await page.close();
+});
+
+// ── #306 item 2 — screenshots: the built-in toolbar light + dark, desktop + mobile (§6.5) ───────────
+
+test('#306 — screenshot the built-in toolbar + header switch (light/dark, desktop/mobile)', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await cfg.close();
+
+  const page = await context.newPage();
+  const widths = [
+    { label: 'desktop', size: { width: 1280, height: 820 } },
+    { label: 'mobile', size: { width: 390, height: 780 } },
+  ];
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const w of widths) {
+      await page.setViewportSize(w.size);
+      await page.goto(`chrome-extension://${extensionId}/app.html`);
+      await expect(page.getByTestId('builtin-dig-toolbar')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('header-toolbar-toggle')).toBeVisible();
+      await page.screenshot({ path: `e2e/__screenshots__/urn-toolbar-${scheme}-${w.label}.png` });
+    }
+  }
   await page.close();
 });

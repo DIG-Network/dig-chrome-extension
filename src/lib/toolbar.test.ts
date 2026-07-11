@@ -8,6 +8,8 @@ import {
   badgesFromHeaders,
   resolveUrnBarSubmit,
   toolbarLabels,
+  toolbarTheme,
+  TOOLBAR_PALETTES,
 } from '@/lib/toolbar';
 
 const STORE_ID = 'a'.repeat(64);
@@ -71,33 +73,57 @@ describe('toolbarBadges', () => {
   });
 });
 
-describe('resolveUrnBarSubmit (#293 URN address bar)', () => {
-  it('resolves a chia:// URL to the canonical content-view URL', () => {
+describe('resolveUrnBarSubmit (#293/#306/#310/#362 URN address bar — all entry forms)', () => {
+  it('resolves a chia:// URL to a urn submit with the canonical content-view URL', () => {
     const r = resolveUrnBarSubmit(`chia://${STORE_ID}/index.html`);
-    expect(r.ok).toBe(true);
-    expect(r.url).toBe(`chia://chia:${STORE_ID}/index.html`);
+    expect(r).toEqual({ ok: true, kind: 'urn', url: `chia://chia:${STORE_ID}/index.html` });
   });
 
-  it('resolves a bare 64-hex store id (no scheme) the same way', () => {
+  it('resolves a bare 64-hex store id (no scheme) as a urn submit', () => {
     const r = resolveUrnBarSubmit(STORE_ID);
     expect(r.ok).toBe(true);
-    expect(r.url).toContain(STORE_ID);
+    if (r.ok && r.kind === 'urn') expect(r.url).toContain(STORE_ID);
   });
 
-  it('resolves a urn:dig: URN', () => {
+  it('resolves the bare urn:dig:chia: scheme form as a urn submit (#310)', () => {
     const r = resolveUrnBarSubmit(`urn:dig:chia:${STORE_ID}`);
     expect(r.ok).toBe(true);
-    expect(r.url).toContain(STORE_ID);
+    if (r.ok && r.kind === 'urn') expect(r.url).toContain(STORE_ID);
   });
 
-  it('rejects garbage / unparseable input without a url', () => {
-    expect(resolveUrnBarSubmit('not a urn')).toEqual({ ok: false, url: null });
-    expect(resolveUrnBarSubmit('https://example.com')).toEqual({ ok: false, url: null });
+  it('resolves an *.on.dig.net / <name>.dig shorthand as an on-dig-net submit (#308)', () => {
+    expect(resolveUrnBarSubmit('shop.on.dig.net')).toEqual({ ok: true, kind: 'on-dig-net', host: 'shop.on.dig.net' });
+    expect(resolveUrnBarSubmit('alice.dig')).toEqual({ ok: true, kind: 'on-dig-net', host: 'alice.on.dig.net' });
+  });
+
+  it('rejects a plain web URL / free text (the URN bar accepts DIG addresses only)', () => {
+    expect(resolveUrnBarSubmit('https://example.com')).toEqual({ ok: false });
+    expect(resolveUrnBarSubmit('not a urn')).toEqual({ ok: false });
   });
 
   it('rejects empty / whitespace-only input', () => {
-    expect(resolveUrnBarSubmit('')).toEqual({ ok: false, url: null });
-    expect(resolveUrnBarSubmit('   ')).toEqual({ ok: false, url: null });
+    expect(resolveUrnBarSubmit('')).toEqual({ ok: false });
+    expect(resolveUrnBarSubmit('   ')).toEqual({ ok: false });
+  });
+});
+
+describe('toolbar theme (#306 — prefers-color-scheme match, both mounts share one palette)', () => {
+  it('selects dark under prefers-color-scheme: dark, else light', () => {
+    expect(toolbarTheme(true)).toBe('dark');
+    expect(toolbarTheme(false)).toBe('light');
+  });
+
+  it('light is neutral Chrome grey; dark is a dark toolbar surface (NOT the DIG brand gradient)', () => {
+    expect(TOOLBAR_PALETTES.light.bar).toBe('#f1f3f4');
+    expect(TOOLBAR_PALETTES.dark.bar).toBe('#292a2d');
+    // Distinct text colours prove the two themes actually differ.
+    expect(TOOLBAR_PALETTES.light.text).not.toBe(TOOLBAR_PALETTES.dark.text);
+    for (const t of ['light', 'dark'] as const) {
+      const p = TOOLBAR_PALETTES[t];
+      expect(p.bar).toMatch(/^#/);
+      expect(p.okText).toMatch(/^#/);
+      expect(p.warnText).toMatch(/^#/);
+    }
   });
 });
 

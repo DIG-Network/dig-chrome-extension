@@ -1,6 +1,7 @@
 import { FormattedMessage } from 'react-intl';
 import { useAppSelector } from '@/app/hooks';
 import { DESKTOP_NAV, activeNavKey } from '@/layouts/desktopNav';
+import { HeaderToolbarToggle } from '@/features/toolbar/HeaderToolbarToggle';
 
 /**
  * The desktop workspace app-bar (#85) — a slim header above the content that names the active
@@ -19,6 +20,9 @@ export function WalletTopbar() {
       <h1 className="dig-topbar-title" data-testid="topbar-title">
         <FormattedMessage id={item.labelId} />
       </h1>
+      <span className="dig-spacer" />
+      {/* #306 item 4 — the DIG toolbar switch, inline in the desktop app-bar. */}
+      <HeaderToolbarToggle />
     </header>
   );
 }

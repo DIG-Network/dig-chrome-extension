@@ -17,8 +17,8 @@
     - DIG RPC endpoint: the upstream used when no dig-node is configured (rpc.dig.net).
   The extension is a self-custody wallet (its own key, no external pairing), so there is no
   wallet-connection setting here — wallet setup happens in the popup.
-  #293: the injected page-toolbar (#292) enable/disable switch moved to the TOP of the Home tab
-  (popup/full-page) for quick activate/deactivate — it is no longer duplicated here.
+  #306: the DIG toolbar enable/disable switch lives inline in the extension window HEADER (a real
+  toggle switch), not here. The DIG-search fallback engine (#362 Tier 4) IS configured here.
 -->
 <link rel="stylesheet" href="/src/entries/options.css">
 </head>
@@ -73,6 +73,24 @@
       <div class="row">
         <input type="text" id="rpcEndpoint" class="input" placeholder="https://rpc.dig.net/" autocomplete="off" data-testid="rpc-endpoint-input">
         <button id="rpcDefaultBtn" class="btn ghost" title="Restore default" data-testid="rpc-endpoint-reset">↺</button>
+      </div>
+    </section>
+
+    <!-- DIG search: fallback engine (#362 Tier 4). When you set DIG as a search engine, a DIG
+         address (chia:// / urn:dig:chia: / a .dig or *.on.dig.net name) resolves through your node;
+         every OTHER query goes to the engine chosen here (DuckDuckGo out of the box). -->
+    <section class="card">
+      <h2>DIG search — fallback engine</h2>
+      <p class="desc">With the DIG search engine active, DIG addresses (<code>chia://</code>,
+        <code>urn:dig:chia:</code>, a <code>.dig</code> or <code>*.on.dig.net</code> name) load
+        through your DIG node. Every other search goes to the engine you pick here.</p>
+      <label class="lbl" for="fallbackEngineSelect">Fallback search engine</label>
+      <div class="row">
+        <select id="fallbackEngineSelect" class="select" data-testid="search-fallback-select" autocomplete="off"></select>
+      </div>
+      <label class="lbl" for="fallbackCustomUrl" id="fallbackCustomLabel" hidden>Custom search URL (use <code>%s</code> for the query)</label>
+      <div class="row" id="fallbackCustomRow" hidden>
+        <input type="text" id="fallbackCustomUrl" class="input" placeholder="https://example.com/search?q=%s" autocomplete="off" data-testid="search-fallback-custom">
       </div>
     </section>
 
