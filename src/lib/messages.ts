@@ -896,7 +896,7 @@ export const MESSAGE_CATALOGUE = Object.freeze({
       "Wallet-data source auto-detect (#222): resolve the §5.3 ladder for the WALLET read path (distinct from getDigNodeStatus's content path) and report the selected mode + the resolved source (a reachable node's base/strict, coinset, or unavailable+reason). Backs the 'Local dig-node detected' indicator ChainSourceSetting shows when Auto mode auto-selects a local node.",
     request: '{ action }',
     response:
-      "{ mode:'auto'|'node'|'coinset'|'custom', resolved:{kind:'node',base:string,strict:boolean}|{kind:'coinset'}|{kind:'unavailable',reason:'node-unreachable'|'custom-unreachable'|'custom-missing'} }",
+      "{ mode:'auto'|'node'|'coinset'|'custom', resolved:{kind:'node',base:string,strict:boolean}|{kind:'coinset'}|{kind:'unavailable',reason:'node-unreachable'|'custom-unreachable'|'custom-missing'|'node-not-tracking'} }",
   },
   [ACTIONS.getDigDnsStatus]: {
     summary:

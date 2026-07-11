@@ -159,7 +159,7 @@ import {
 // #217 — the WALLET-DATA source (design D.1/D.2): pick the dig-node's Sage-parity get_* surface
 // (node-first, §5.3 ladder) or coinset, per the persisted 4-state chain-source setting. READ-ONLY —
 // signing stays in the offscreen vault; the node never receives a key.
-import { readChainSourceSetting, resolveWalletSource } from '@/lib/wallet-source';
+import { readChainSourceSetting, resolveWalletSource, verifyNodeTracksConnectedWallet } from '@/lib/wallet-source';
 import { makeNodeWalletClient } from '@/lib/node-wallet';
 
 // DIG Control Panel decision logic (the dig://control parity surface): detect a local dig-node
@@ -311,6 +311,12 @@ async function resolveWalletDataSource() {
   const resolved = await resolveWalletSource(setting, {
     resolveLadderNode: () => resolveLocalDigNode(),
     probeNode: async (base) => ((await probeDigNode(base).catch(() => false)) ? base : null),
+    // #399: the connected self-custody wallet's balances/tokens/coins/activity are sourced from the
+    // node ONLY when it is verified to track that wallet's identity. Until the #407 identity
+    // handshake is wired, this is false → connected-wallet reads use the self-custody coinset/vault
+    // scan of the extension's OWN addresses (never the node's identity-less 0 XCH / 0 $DIG). The
+    // node stays the source for CONTENT reads (getRpcEndpoint) — this gate is wallet-data only.
+    verifyNodeTracksWallet: verifyNodeTracksConnectedWallet,
   });
   return { mode: setting.mode, resolved };
 }

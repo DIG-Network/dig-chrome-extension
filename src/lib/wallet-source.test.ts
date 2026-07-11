@@ -6,14 +6,25 @@ import {
   readChainSourceSetting,
   normalizeCustomNodeUrl,
   resolveWalletSource,
+  verifyNodeTracksConnectedWallet,
   type ResolveWalletSourceDeps,
 } from '@/lib/wallet-source';
 
-/** A `ResolveWalletSourceDeps` whose probes are scripted per-call, recording what was asked. */
+/**
+ * A `ResolveWalletSourceDeps` whose probes are scripted per-call, recording what was asked.
+ * `tracks` scripts the verified-tracking gate (#399/#407) and defaults to `true` here — most cases
+ * exercise the "node tracks the connected wallet" branch; pass `tracks: false` for the not-tracking
+ * (self-custody fallback) cases. This test convenience is DISTINCT from the SHIPPED production
+ * default `verifyNodeTracksConnectedWallet`, which is `false` (see its own describe block below).
+ */
 function deps(
-  overrides: Partial<ResolveWalletSourceDeps> & { ladder?: string | null; probe?: (base: string) => string | null } = {},
-): { deps: ResolveWalletSourceDeps; calls: { ladder: number; probed: string[] } } {
-  const calls = { ladder: 0, probed: [] as string[] };
+  overrides: Partial<ResolveWalletSourceDeps> & {
+    ladder?: string | null;
+    probe?: (base: string) => string | null;
+    tracks?: boolean;
+  } = {},
+): { deps: ResolveWalletSourceDeps; calls: { ladder: number; probed: string[]; verified: string[] } } {
+  const calls = { ladder: 0, probed: [] as string[], verified: [] as string[] };
   return {
     calls,
     deps: {
@@ -28,6 +39,12 @@ function deps(
         (async (base: string) => {
           calls.probed.push(base);
           return overrides.probe ? overrides.probe(base) : null;
+        }),
+      verifyNodeTracksWallet:
+        overrides.verifyNodeTracksWallet ??
+        (async (base: string) => {
+          calls.verified.push(base);
+          return overrides.tracks ?? true;
         }),
     },
   };
@@ -152,5 +169,67 @@ describe('resolveWalletSource — custom mode (explicit URL overrides the ladder
       kind: 'unavailable',
       reason: 'custom-unreachable',
     });
+  });
+});
+
+describe('resolveWalletSource — verified-tracking gate (#399/#407)', () => {
+  // #399 root cause: a reachable dig-node answered wallet reads from its OWN identity-less/unsynced
+  // wallet (0 XCH / [] CATs), so both balances read 0 by construction. Node-sourced wallet data is
+  // now used ONLY when the node is VERIFIED to track the connected wallet's identity.
+
+  it('auto: a reachable node that does NOT track the connected wallet falls through to coinset (never its 0/0)', async () => {
+    const { deps: d, calls } = deps({ ladder: 'http://localhost:9778', tracks: false });
+    expect(await resolveWalletSource({ mode: 'auto' }, d)).toEqual({ kind: 'coinset' });
+    expect(calls.verified).toEqual(['http://localhost:9778']);
+  });
+
+  it('auto: a reachable node that DOES track the wallet is used (non-strict)', async () => {
+    const { deps: d } = deps({ ladder: 'http://dig.local', tracks: true });
+    expect(await resolveWalletSource({ mode: 'auto' }, d)).toEqual({
+      kind: 'node',
+      base: 'http://dig.local',
+      strict: false,
+    });
+  });
+
+  it('auto: never verifies (or uses) a node when none is reachable', async () => {
+    const { deps: d, calls } = deps({ ladder: null });
+    expect(await resolveWalletSource({ mode: 'auto' }, d)).toEqual({ kind: 'coinset' });
+    expect(calls.verified).toEqual([]);
+  });
+
+  it('node (strict): a reachable-but-not-tracking node surfaces node-not-tracking, never a silent 0', async () => {
+    const { deps: d } = deps({ ladder: 'http://localhost:9778', tracks: false });
+    expect(await resolveWalletSource({ mode: 'node' }, d)).toEqual({
+      kind: 'unavailable',
+      reason: 'node-not-tracking',
+    });
+  });
+
+  it('custom (strict): a reachable-but-not-tracking node surfaces node-not-tracking', async () => {
+    const { deps: d } = deps({ probe: (b) => b, tracks: false });
+    expect(await resolveWalletSource({ mode: 'custom', customUrl: 'http://my-node:9778' }, d)).toEqual({
+      kind: 'unavailable',
+      reason: 'node-not-tracking',
+    });
+  });
+});
+
+describe('verifyNodeTracksConnectedWallet — shipped P0 default (self-custody until #407 handshake)', () => {
+  it('reports NO node as verified-tracking, so connected-wallet reads use the self-custody scan', async () => {
+    expect(await verifyNodeTracksConnectedWallet('http://localhost:9778')).toBe(false);
+    expect(await verifyNodeTracksConnectedWallet('http://dig.local')).toBe(false);
+  });
+
+  it('#399 regression: auto mode with the SHIPPED verifier + a reachable node resolves to coinset (self-custody), NEVER the node 0/0', async () => {
+    const source = await resolveWalletSource(
+      { mode: 'auto' },
+      {
+        resolveLadderNode: async () => 'http://localhost:9778',
+        probeNode: async (b) => b,
+        verifyNodeTracksWallet: verifyNodeTracksConnectedWallet,
+      },
+    );
+    expect(source).toEqual({ kind: 'coinset' });
   });
 });
