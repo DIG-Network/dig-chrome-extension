@@ -22,13 +22,18 @@ governs and this SPEC is the defect.
 The extension delivers the DIG Network experience on any Chromium browser:
 
 1. **`chia://` resolution** — intercept `chia://` URIs and page-embedded `chia://` resource
-   references, resolve them to verified + decrypted bytes, and hand them to the page.
+   references, resolve them to verified + decrypted bytes, and hand them to the page. With a local
+   dig-node reachable, a `chia://` navigation lands the tab directly on the node's plaintext serve
+   surface (§5.4); with no local node it renders in the sandbox viewer over the ciphertext read path.
 2. **`window.chia` wallet provider** — inject a CHIP-0002 / Goby-compatible provider backed by the
    extension's own **self-custody wallet** (§18): connect + reads are served from the offscreen key
    vault; sign/message requests are approved in a dedicated window. There is no WalletConnect.
 3. **DIG Shields** — a per-resource inclusion-proof ledger surfaced in the popup.
 4. **DIG Control Panel** — detect a local dig-node and expose manage-vs-install actions.
-5. **DIG Home / omnibox / search** — a new-tab surface and a `dig`-keyword omnibox.
+5. **DIG Home / omnibox / search** — a new-tab surface and a `dig`-keyword omnibox (Enter routes a
+   DIG address through the §5.4 node-or-sandbox navigation; live suggestions + a default suggestion).
+6. **Injected page toolbar** — an opt-in, shadow-DOM-isolated toolbar atop every page with quick
+   icons to the Wallet / Shields / Control Panel surfaces and live DIG-verdict badges (§5.5).
 
 The primary surface is a **dark-themed 4-tab popup** (§2.1): **Resolver · Wallet · Shield ·
 Control Panel** (§2.1). It carries an **Explore DIG Network** action → `explore.dig.net`, a
@@ -570,6 +575,71 @@ emitted CHAIN-PREFIXED as `chia://chia:<storeId>[:<root>]/<resourceKey>[?salt=<h
 root is emitted rootless), which `parseURN` (§4) parses to the correct `{ storeId, roothash }` — a
 bare `chia://<storeId>:<root>/…` would be mis-parsed (the storeId taken as the chain).
 
+### 5.4 `chia://` navigation — node-served plaintext vs sandbox viewer (`dig-nav.ts`, #289)
+
+When the extension intercepts a `chia://` navigation (`webNavigation` onBeforeNavigate / onCommitted /
+onUpdated, the omnibox §7.1, or the home open-by-URN §2.1b), `handleDigUrlNavigation` MUST choose the
+render path by the §5.3/§8 node-resolution result — resolve the local dig-node with `resolveDigNode`
+(the §8 ladder: an explicit custom host wins entirely, else `dig.local`, then `127.0.0.1:<port>`),
+then `chooseNavTarget({ digUrl, nodeBase })`:
+
+- **A local node IS reachable** → navigate the TAB DIRECTLY to the node's plaintext content-serve
+  surface `http://<nodeBase>/s/<storeId>[:<root>]/<resourceKey>[?salt=<hex>]` — an ordinary website.
+  The trusted, loopback, key-holding node decrypts server-side; plaintext only ever crosses loopback.
+  A rootless URN omits the `:root` segment (the node serves the latest capsule); a bare capsule serves
+  the store's entry document via a trailing slash. This REPLACES the sandbox viewer for the local-node
+  case. The node MUST set the DIG Shields response headers (§5.6) so verification state survives even
+  though the browser no longer verifies on this path.
+- **NO local node** → keep the sandbox `dig-viewer.html?urn=…` path (§5.3) + the `rpc.dig.net`
+  ciphertext + in-browser-decrypt read (§5). A browser CANNOT obtain plaintext from the public
+  gateway, so privacy is preserved: the ciphertext path stays in-browser-verified-and-decrypted.
+
+The node path is taken ONLY when a local node is reachable AND the address parses to a valid capsule;
+EVERY other case (no local node, or an unparseable/garbage address) falls back to the sandbox viewer
+(which renders a valid capsule and shows the branded friendly-error, §9, for a bad one). So node-serve
+is purely additive — it changes behaviour only for the (local-node-up + valid-URN) case.
+
+`chooseNavTarget` + `buildNodeServeUrl` are pure and shared (`dig-nav.ts`); the `/s/<store>[:root]/`
+serve mount is the node's contract (docs.dig.net + dig-node `SPEC.md`). The public `rpc.dig.net`
+gateway MUST NOT serve `/s/` plaintext — it stays ciphertext-only.
+
+### 5.5 Injected page toolbar (`toolbar.ts` + `dig-toolbar.js`, #292)
+
+A persisted toggle (`toolbar.enabled` in `chrome.storage.local`, default OFF/opt-in, set on the
+options page §14) gates a content script that injects a native-looking, `chia://`-aware toolbar atop
+EVERY ordinary top-frame web page (`http`/`https`; never `chrome://`/`chrome-extension://`/`about:`
+or sub-frames — `shouldInjectToolbar`). The bar is **shadow-DOM isolated** (open shadow root, `:host {
+all: initial }`) so page CSS cannot alter it and its CSS cannot leak; it is `position: fixed` at the
+top with the page offset below it (`padding-top` on `documentElement`). Toggling the setting injects
+or removes the bar live (via `storage.onChanged`). The bar carries:
+
+- **Icons** opening the full-page extension surfaces (#140/#141) in a NEW tab via `openExtensionPage`
+  (§7.1): Wallet (`app.html#wallet`), DIG Shields (`app.html#network/shield`), Control Panel
+  (`app.html#network/control`).
+- **Badges** derived from the node's serve headers (§5.6, read via a same-origin `HEAD` of a
+  node-served `/s/…` URL): a "Verified on Chia" badge (green when `X-Dig-Verified: true`, a warning
+  state when `false`, hidden when absent) and a "Loaded from local" badge (shown only for
+  `X-Dig-Source: local`). On an ordinary (non-node) page neither DIG-verdict badge shows.
+
+Labels are localized from a compact self-contained table (`toolbarLabels`) rather than the full shell
+catalog (the content script runs on every page and must stay lean); the brand phrases "Verified on
+Chia" and "DIG Shields" are preserved verbatim across locales.
+
+### 5.6 DIG Shields serve headers (`dig-serve-headers.ts`, #289)
+
+On the node-served path (§5.4) the browser no longer verifies content itself — the node verifies
+inclusion + the chain-anchored root server-side and exposes the verdict via response headers, parsed
+by `readServeHeaders`:
+
+| Header | Meaning |
+|---|---|
+| `X-Dig-Verified: true\|false` | inclusion + chain-anchored-root result (verified server-side). Absent ⇒ not a DIG node-served response. |
+| `X-Dig-Root: <hex64>` | the anchored root the content was proven against. |
+| `X-Dig-Source: local\|peer\|rpc` | where the MAIN resource was served from (drives the "Loaded from local" badge). |
+
+These feed the DIG Shields ledger (§10) and the toolbar badges (§5.5), keeping DIG Shields working on
+the node-served path without the browser re-verifying.
+
 ---
 
 ## 6. Crypto & verification invariants
@@ -754,7 +824,8 @@ fix is entirely extension-side — on.dig.net's headers are not modified.
 |---|---|
 | `proxyRequest` | Resolve a `chia://` URL to verified, decrypted content (primary read, no caching). |
 | `convertDigUrl` | Resolve a `chia://` URL to a `data:` URL (one-shot, no caching). |
-| `navigateToDigUrl` | Open a `chia://` URL in the dig-viewer for the sender/active tab. |
+| `navigateToDigUrl` | Open a `chia://` URL for the sender/active tab via the §5.4 node-or-sandbox decision (node-served plaintext when a local node is up, else the sandbox dig-viewer). |
+| `openExtensionPage` | Open a full-page extension surface (an `app.html` deep-link, allowlisted to `app.html`) in a NEW tab — used by the #292 injected page toolbar (a content script has no `tabs` permission). |
 | `navigate` | Navigate the active tab to a URL. |
 | `toggleExtension` | Toggle `chia://` resolution on/off. |
 | `updateServerConfig` | Persist the dig-node/RPC host config. |
@@ -913,6 +984,7 @@ State persists in `chrome.storage.local`. Canonical keys:
 | `digRpcEndpoint` | hosted fallback RPC endpoint (default `https://rpc.dig.net/`). |
 | `wallet.pendingOrigins` | origins awaiting per-origin wallet consent. |
 | `wallet.origins` | per-origin wallet consent / connected-sites permissions (§18.12). |
+| `toolbar.enabled` | boolean — the injected page toolbar toggle (§5.5), default OFF (opt-in). |
 
 ### 8.5 dig-dns Path-B proxy fallback (#175, Component C of #174)
 

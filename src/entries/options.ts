@@ -24,6 +24,7 @@ import { digNodeInstallPrompt } from '@/lib/dig-node-status';
 import { readWalletSettings, updateWalletSettings, type WalletSettings } from '@/features/wallet/custody/settings';
 import { DEFAULT_THEME_MODE, isThemeMode, resolveEffectiveTheme, type ThemeMode } from '@/lib/theme';
 import { versionLabel, publishVersionGlobal } from '@/lib/version';
+import { TOOLBAR_ENABLED_KEY, TOOLBAR_ENABLED_DEFAULT } from '@/lib/toolbar';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.getElementById(id) as T | null;
@@ -137,6 +138,25 @@ async function saveTheme(): Promise<void> {
   await updateWalletSettings({ theme: mode });
 }
 
+// ---- Page toolbar toggle (#292) ----
+async function loadToolbar(): Promise<void> {
+  const box = $<HTMLInputElement>('toolbarToggle');
+  if (!box) return;
+  try {
+    const got = await chrome.storage.local.get(TOOLBAR_ENABLED_KEY);
+    const v = got[TOOLBAR_ENABLED_KEY];
+    box.checked = typeof v === 'boolean' ? v : TOOLBAR_ENABLED_DEFAULT;
+  } catch {
+    box.checked = TOOLBAR_ENABLED_DEFAULT;
+  }
+}
+
+async function saveToolbar(): Promise<void> {
+  const box = $<HTMLInputElement>('toolbarToggle');
+  if (!box) return;
+  await chrome.storage.local.set({ [TOOLBAR_ENABLED_KEY]: box.checked });
+}
+
 function debounce(fn: () => void, ms: number): () => void {
   let t: ReturnType<typeof setTimeout>;
   return () => {
@@ -160,9 +180,11 @@ function init(): void {
   void loadTheme();
   void loadCompanion();
   void loadRpc();
+  void loadToolbar();
   mountBugReportAndVersion();
 
   $<HTMLSelectElement>('themeSelect')?.addEventListener('change', () => void saveTheme());
+  $<HTMLInputElement>('toolbarToggle')?.addEventListener('change', () => void saveToolbar());
 
   const companionHost = $<HTMLInputElement>('companionHost');
   companionHost?.addEventListener('input', debounce(() => void saveCompanion(), 400));

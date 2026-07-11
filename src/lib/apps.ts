@@ -131,3 +131,59 @@ export function omniboxTarget(v: string): string {
   }
   return WEB_SEARCH_URL + encodeURIComponent(v);
 }
+
+/** One omnibox autocomplete row: `content` is navigated on accept; `description` is the shown text. */
+export interface OmniboxSuggestion {
+  content: string;
+  description: string;
+}
+
+/** The reply the `dig` omnibox keyword renders as the user types (#291). */
+export interface OmniboxSuggestReply {
+  defaultSuggestion: { description: string };
+  suggestions: OmniboxSuggestion[];
+}
+
+/**
+ * XML-escape a value for a `chrome.omnibox` description. The description string is parsed as XML
+ * markup by Chrome (it supports `<match>`/`<url>`/`<dim>`), so a raw `&`, `<`, or `>` in a URL or
+ * query throws — escape them. Applied to every dynamic fragment interpolated into a description.
+ */
+export function escapeOmnibox(s: string): string {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Build the omnibox suggestions the `dig` keyword shows as the user types (#291): a
+ * `setDefaultSuggestion` description plus the single best autocomplete row, classified the same way
+ * as {@link classifyOmnibox} — a DIG address opens on the DIG Network (routed through the §5.3
+ * node-or-sandbox navigation), a URL navigates, anything else is a web search. Malformed / empty
+ * input yields a helpful default with no rows. All interpolated text is XML-escaped
+ * ({@link escapeOmnibox}) so `chrome.omnibox` never throws on a `&`/`<`/`>`.
+ */
+export function omniboxSuggestions(v: string): OmniboxSuggestReply {
+  const text = (v || '').trim();
+  if (!text) {
+    return { defaultSuggestion: { description: 'Type a chia:// address, a store id, or a search' }, suggestions: [] };
+  }
+  const kind = classifyOmnibox(text);
+  const target = omniboxTarget(text);
+  const safeTarget = escapeOmnibox(target);
+  if (kind === 'dig') {
+    return {
+      defaultSuggestion: { description: `Open on the DIG Network: ${safeTarget}` },
+      suggestions: [{ content: target, description: `Open ${safeTarget}` }],
+    };
+  }
+  if (kind === 'url') {
+    return {
+      defaultSuggestion: { description: `Go to ${safeTarget}` },
+      suggestions: [{ content: target, description: `Go to ${safeTarget}` }],
+    };
+  }
+  const safeText = escapeOmnibox(text);
+  return {
+    defaultSuggestion: { description: `Search the web for "${safeText}"` },
+    suggestions: [{ content: target, description: `Search for ${safeText}` }],
+  };
+}

@@ -200,6 +200,13 @@ test('B.2 — opening a chia:// address routes the tab into the in-window viewer
     };
   });
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
+  // #289: with a LOCAL node reachable a chia:// nav now lands on the node's plaintext /s/ surface;
+  // this case asserts the SANDBOX dig-viewer loader shell, so pin a dead custom-node override (a
+  // non-alias loopback + dead port wins the §5.3 ladder, then fails to connect) → no local node →
+  // sandbox path, deterministically. The node-served navigation is covered by
+  // e2e/sw/node-serve-omnibox-toolbar.spec.ts (a fixture node) + is exercised for real once the
+  // node's /s/ serve surface ships.
+  await page.evaluate(() => chrome.storage.local.set({ 'server.host': 'http://127.0.0.5:9' }));
   await page.getByTestId('home-openurn-input').fill(URN_ROOTLESS);
   await page.getByTestId('home-openurn-go').click();
 

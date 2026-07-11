@@ -400,6 +400,9 @@ export const ACTIONS = Object.freeze({
   updateSearchConfig: 'updateSearchConfig',
   // ── self-description ──
   getCapabilities: 'getCapabilities',
+  // ── injected page toolbar (#292): the content script asks the SW to open a full-page extension
+  // surface in a NEW tab (a content script has no `tabs` permission of its own) ──
+  openExtensionPage: 'openExtensionPage',
 });
 
 /**
@@ -1008,6 +1011,11 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     request: '{ action }',
     response:
       '{ version, messageProtocol, actions:string[], walletMethods:string[], stateChangingMethods:string[], errorCodes:string[], bridge:object }',
+  },
+  [ACTIONS.openExtensionPage]: {
+    summary: 'Open a full-page extension surface (an app.html deep-link) in a new tab — used by the #292 injected page toolbar.',
+    request: '{ action, page:string /* app.html#wallet | app.html#network/shield | app.html#network/control */ }',
+    response: '{ success:boolean, error?:string }',
   },
 });
 

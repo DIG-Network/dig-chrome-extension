@@ -69,6 +69,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'updateRpcHost',
     // capability/version self-description (added for agent-friendliness):
     'getCapabilities',
+    // injected page toolbar (#292): open a full-page surface in a new tab:
+    'openExtensionPage',
   ];
   for (const a of handled) {
     assert.equal((ACTIONS as Record<string, string>)[a], a, `ACTIONS is missing "${a}"`);
