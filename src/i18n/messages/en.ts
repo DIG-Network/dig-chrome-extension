@@ -46,6 +46,8 @@ export const en: Record<string, string> = {
   'home.open.placeholder': 'chia://… or urn:dig:…',
   'home.open.go': 'Open',
   'home.open.error.invalid': 'Not a valid chia:// address or URN.',
+  // ── #293 injected-toolbar enable/disable switch (moved to the top of the Home tab) ──
+  'home.toolbar.label': 'DIG toolbar',
 
   // ── generic four-state ──
   'state.loading': 'Loading…',

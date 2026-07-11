@@ -442,7 +442,8 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     response: `{ url:dataUrl, dataUrl:dataUrl } | ${CODED_ERROR}`,
   },
   [ACTIONS.navigateToDigUrl]: {
-    summary: 'Open a chia:// URL in the dig-viewer for the sender (or active) tab.',
+    summary:
+      "Run the §5.3 node-or-sandbox navigation (handleDigUrlNavigation) for a chia:// URL against the sender (or active) tab: a reachable local dig-node lands the tab on its plaintext /s/ serve surface (#289); otherwise the sandbox dig-viewer. Callers: the home open-by-URN input, the injected page toolbar's URN bar (#293), and the `dig` omnibox.",
     request: '{ action, url:string }',
     response: `{ success:true, url:viewerUrl } | ${CODED_ERROR}`,
   },

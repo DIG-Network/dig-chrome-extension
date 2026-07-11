@@ -2,12 +2,15 @@ import { describe, it, expect } from 'vitest';
 import {
   TOOLBAR_ENABLED_KEY,
   TOOLBAR_ENABLED_DEFAULT,
-  TOOLBAR_ITEMS,
+  TOOLBAR_OPEN_PAGE,
   shouldInjectToolbar,
   toolbarBadges,
   badgesFromHeaders,
+  resolveUrnBarSubmit,
   toolbarLabels,
 } from '@/lib/toolbar';
+
+const STORE_ID = 'a'.repeat(64);
 
 describe('toolbar toggle contract', () => {
   it('persists under a stable key and defaults OFF (opt-in — it injects into every page)', () => {
@@ -16,17 +19,9 @@ describe('toolbar toggle contract', () => {
   });
 });
 
-describe('TOOLBAR_ITEMS', () => {
-  it('opens the three full-page surfaces (#140/#141): Wallet, DIG Shields, Control Panel', () => {
-    expect(TOOLBAR_ITEMS.map((i) => i.id)).toEqual(['wallet', 'shields', 'control']);
-    const byId = Object.fromEntries(TOOLBAR_ITEMS.map((i) => [i.id, i.page]));
-    expect(byId.wallet).toBe('app.html#wallet');
-    expect(byId.shields).toBe('app.html#network/shield');
-    expect(byId.control).toBe('app.html#network/control');
-  });
-
-  it('every item has a glyph', () => {
-    for (const i of TOOLBAR_ITEMS) expect(i.glyph.length).toBeGreaterThan(0);
+describe('TOOLBAR_OPEN_PAGE (#293 single button)', () => {
+  it('opens the fullscreen extension surface with no sub-view deep-link', () => {
+    expect(TOOLBAR_OPEN_PAGE).toBe('app.html');
   });
 });
 
@@ -76,22 +71,56 @@ describe('toolbarBadges', () => {
   });
 });
 
+describe('resolveUrnBarSubmit (#293 URN address bar)', () => {
+  it('resolves a chia:// URL to the canonical content-view URL', () => {
+    const r = resolveUrnBarSubmit(`chia://${STORE_ID}/index.html`);
+    expect(r.ok).toBe(true);
+    expect(r.url).toBe(`chia://chia:${STORE_ID}/index.html`);
+  });
+
+  it('resolves a bare 64-hex store id (no scheme) the same way', () => {
+    const r = resolveUrnBarSubmit(STORE_ID);
+    expect(r.ok).toBe(true);
+    expect(r.url).toContain(STORE_ID);
+  });
+
+  it('resolves a urn:dig: URN', () => {
+    const r = resolveUrnBarSubmit(`urn:dig:chia:${STORE_ID}`);
+    expect(r.ok).toBe(true);
+    expect(r.url).toContain(STORE_ID);
+  });
+
+  it('rejects garbage / unparseable input without a url', () => {
+    expect(resolveUrnBarSubmit('not a urn')).toEqual({ ok: false, url: null });
+    expect(resolveUrnBarSubmit('https://example.com')).toEqual({ ok: false, url: null });
+  });
+
+  it('rejects empty / whitespace-only input', () => {
+    expect(resolveUrnBarSubmit('')).toEqual({ ok: false, url: null });
+    expect(resolveUrnBarSubmit('   ')).toEqual({ ok: false, url: null });
+  });
+});
+
 describe('toolbarLabels', () => {
   it('returns English labels by default, "Verified on Chia" preserved verbatim (brand)', () => {
     const l = toolbarLabels(['en']);
     expect(l.verified).toBe('Verified on Chia');
-    expect(l.wallet).toBe('Wallet');
     expect(l.local).toBeTruthy();
+    expect(l.open).toBeTruthy();
+    expect(l.urnPlaceholder).toBeTruthy();
+    expect(l.urnLabel).toBeTruthy();
+    expect(l.urnInvalid).toBeTruthy();
   });
 
   it('localizes for a supported locale, keeping the brand phrase verbatim', () => {
     const de = toolbarLabels(['de-DE', 'en']);
     expect(de.verified).toBe('Verified on Chia'); // brand literal, never translated
-    expect(de.wallet).toBeTruthy();
+    expect(de.open).toBeTruthy();
+    expect(de.urnPlaceholder).toBeTruthy();
   });
 
   it('falls back to English for an unsupported locale', () => {
-    expect(toolbarLabels(['xx']).wallet).toBe('Wallet');
-    expect(toolbarLabels(undefined).wallet).toBe('Wallet');
+    expect(toolbarLabels(['xx']).open).toBe('Open DIG extension');
+    expect(toolbarLabels(undefined).open).toBe('Open DIG extension');
   });
 });

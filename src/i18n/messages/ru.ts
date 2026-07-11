@@ -43,6 +43,7 @@ export const ru: Record<string, string> = {
   'home.open.placeholder': 'chia://… или urn:dig:…',
   'home.open.go': 'Открыть',
   'home.open.error.invalid': 'Недействительный адрес chia:// или URN.',
+  'home.toolbar.label': 'Панель DIG',
 
   // ── generic four-state ──
   'state.loading': 'Загрузка…',

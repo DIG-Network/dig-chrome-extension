@@ -43,6 +43,7 @@ export const tr: Record<string, string> = {
   'home.open.placeholder': 'chia://… veya urn:dig:…',
   'home.open.go': 'Aç',
   'home.open.error.invalid': 'Geçerli bir chia:// adresi veya URN değil.',
+  'home.toolbar.label': 'DIG araç çubuğu',
 
   // ── generic four-state ──
   'state.loading': 'Yükleniyor…',

@@ -43,6 +43,7 @@ export const id: Record<string, string> = {
   'home.open.placeholder': 'chia://… atau urn:dig:…',
   'home.open.go': 'Buka',
   'home.open.error.invalid': 'Bukan alamat chia:// atau URN yang valid.',
+  'home.toolbar.label': 'Bilah DIG',
 
   // ── generic four-state ──
   'state.loading': 'Memuat…',

@@ -5,17 +5,19 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 
 /**
- * #289 / #291 / #292 — the built extension, in real (headless) Chromium, proves the node-serve
- * navigation + injected toolbar batch END-TO-END against a FIXTURE dig-node (a local HTTP server
- * that answers the §5.3 reachability probe AND serves `/s/<store>[:root]/<path>` with the DIG
- * Shields `X-Dig-*` headers — standing in for a live node, which CI has none of):
+ * #289 / #291 / #292 / #293 — the built extension, in real (headless) Chromium, proves the
+ * node-serve navigation + injected toolbar batch END-TO-END against a FIXTURE dig-node (a local
+ * HTTP server that answers the §5.3 reachability probe AND serves `/s/<store>[:root]/<path>` with
+ * the DIG Shields `X-Dig-*` headers — standing in for a live node, which CI has none of):
  *
  *   #289 · with a local node reachable, a chia:// navigation lands the TAB DIRECTLY on the node's
  *          plaintext serve URL (`http://<node>/s/<store>/<path>`) — the real website, not the
  *          sandbox viewer. With NO local node, it keeps the sandbox dig-viewer + rpc path.
- *   #292 · the toggle-gated toolbar injects atop an ordinary page (shadow-DOM isolated), its icons
- *          open the full-page surfaces, and its badges light up from the node's `X-Dig-*` headers
- *          on a node-served page; toggling off removes it.
+ *   #292/#293 · the toggle-gated toolbar injects atop an ordinary page (shadow-DOM isolated), styled
+ *          as NATIVE browser chrome (neutral grey, no DIG gradient); its dedicated `chia://`/URN
+ *          address bar feeds the SAME node-or-sandbox navigation on Enter; its ONE button opens the
+ *          fullscreen extension surface; its badges light up from the node's `X-Dig-*` headers on a
+ *          node-served page; toggling off removes it live.
  *   #291 · the omnibox keyword is wired (`dig`), and its Enter path is the SAME node-or-sandbox
  *          navigation asserted in #289 (the real omnibox keystroke path is not Playwright-scriptable;
  *          the resolve/suggest logic is unit-tested in src/lib/apps.test.ts).
@@ -174,31 +176,94 @@ test('#292 — toolbar injects (shadow-DOM isolated) atop an ordinary page when 
   await page.goto(`${nodeBase}/plain`);
   // The injected toolbar is present and its bar (inside an OPEN shadow root) is visible.
   await expect(page.getByTestId('dig-toolbar')).toBeVisible({ timeout: 10_000 });
-  // Shadow-DOM isolation: the host carries a shadowRoot; its contents are NOT in the page light DOM.
+  // Shadow-DOM isolation: the host carries a shadowRoot, and the bar is reachable ONLY through it —
+  // a plain LIGHT-DOM query (which cannot pierce a shadow boundary) finds nothing.
   const isolated = await page.evaluate(() => {
     const host = document.getElementById('dig-toolbar-host');
-    return !!host?.shadowRoot && !document.body.innerText.includes('Wallet');
+    return !!host?.shadowRoot && document.querySelector('[data-testid="dig-toolbar"]') === null;
   });
   expect(isolated).toBe(true);
   await page.close();
 });
 
-test('#292 — toolbar icons open the full-page extension surfaces (#140/#141)', async () => {
+test('#293 — the bar is native-grey, not the DIG gradient (must read as browser chrome)', async () => {
   const cfg = await extPage();
   await setToolbar(cfg, true);
   await cfg.close();
 
   const page = await context.newPage();
   await page.goto(`${nodeBase}/plain`);
-  await expect(page.getByTestId('dig-toolbar-icon-wallet')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('dig-toolbar')).toBeVisible({ timeout: 10_000 });
+  const bg = await page.evaluate(() => {
+    const host = document.getElementById('dig-toolbar-host');
+    const bar = host?.shadowRoot?.querySelector('.bar');
+    return bar ? getComputedStyle(bar).backgroundImage + '|' + getComputedStyle(bar).backgroundColor : null;
+  });
+  expect(bg).not.toBeNull();
+  expect(bg).not.toContain('gradient'); // no DIG brand gradient
+  expect(bg).toContain('rgb(241, 243, 244)'); // #f1f3f4 — neutral Chrome-toolbar grey
+  await page.close();
+});
+
+test('#293 — the URN address bar resolves a typed chia:// value on Enter via the SAME node-or-sandbox path', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await setServerHost(cfg, nodeBase); // genuine §5.3 override → the fixture node
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  const input = page.getByTestId('dig-toolbar-urn-input');
+  await expect(input).toBeVisible({ timeout: 10_000 });
+  // Placeholder makes clear this is a URN bar, not the page's own address bar.
+  await expect(input).toHaveAttribute('placeholder', /chia:\/\/.*DIG URN/);
+
+  await input.fill(CHIA_URL);
+  await input.press('Enter');
+
+  // Enter feeds handleDigUrlNavigation — with the fixture node reachable, the tab lands on the
+  // node-served plaintext surface (the same #289 path the omnibox/nav use).
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
+  await expect(page.locator('h1')).toHaveText(MARKER);
+});
+
+test('#293 — an invalid URN-bar value shows an inline error and does not navigate', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  const input = page.getByTestId('dig-toolbar-urn-input');
+  await expect(input).toBeVisible({ timeout: 10_000 });
+
+  await input.fill('not a valid urn');
+  await input.press('Enter');
+  await expect(input).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByTestId('dig-toolbar-urn-error')).toHaveText(/not a valid/i);
+  // Never navigated away from the fixture's plain page.
+  expect(page.url()).toBe(`${nodeBase}/plain`);
+  await page.close();
+});
+
+test('#293 — the single button opens the fullscreen extension surface (replaces the old icon row)', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  await expect(page.getByTestId('dig-toolbar-open')).toBeVisible({ timeout: 10_000 });
+  // The old per-page Wallet/Shields/Control icon row is gone.
+  await expect(page.getByTestId('dig-toolbar-icon-wallet')).toHaveCount(0);
 
   const opened = context.waitForEvent('page');
-  await page.getByTestId('dig-toolbar-icon-wallet').click();
-  const walletTab = await opened;
-  await walletTab.waitForLoadState('domcontentloaded').catch(() => {});
-  expect(walletTab.url()).toContain('app.html');
-  expect(walletTab.url()).toContain('#wallet');
-  await walletTab.close();
+  await page.getByTestId('dig-toolbar-open').click();
+  const fullscreenTab = await opened;
+  await fullscreenTab.waitForLoadState('domcontentloaded').catch(() => {});
+  expect(fullscreenTab.url()).toContain('app.html');
+  await fullscreenTab.close();
   await page.close();
 });
 

@@ -43,6 +43,7 @@ export const vi: Record<string, string> = {
   'home.open.placeholder': 'chia://… hoặc urn:dig:…',
   'home.open.go': 'Mở',
   'home.open.error.invalid': 'Không phải là địa chỉ chia:// hoặc URN hợp lệ.',
+  'home.toolbar.label': 'Thanh DIG',
 
   // ── generic four-state ──
   'state.loading': 'Đang tải…',

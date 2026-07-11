@@ -43,6 +43,7 @@ export const fr: Record<string, string> = {
   'home.open.placeholder': 'chia://… ou urn:dig:…',
   'home.open.go': 'Ouvrir',
   'home.open.error.invalid': "Ce n'est pas une adresse chia:// ou un URN valide.",
+  'home.toolbar.label': 'Barre DIG',
 
   // ── generic four-state ──
   'state.loading': 'Chargement…',

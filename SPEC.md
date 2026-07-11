@@ -32,8 +32,9 @@ The extension delivers the DIG Network experience on any Chromium browser:
 4. **DIG Control Panel** — detect a local dig-node and expose manage-vs-install actions.
 5. **DIG Home / omnibox / search** — a new-tab surface and a `dig`-keyword omnibox (Enter routes a
    DIG address through the §5.4 node-or-sandbox navigation; live suggestions + a default suggestion).
-6. **Injected page toolbar** — an opt-in, shadow-DOM-isolated toolbar atop every page with quick
-   icons to the Wallet / Shields / Control Panel surfaces and live DIG-verdict badges (§5.5).
+6. **Injected page toolbar** — an opt-in, shadow-DOM-isolated toolbar atop every page, styled as
+   native browser chrome (neutral grey, no DIG branding): a dedicated `chia://`/URN address bar, live
+   DIG-verdict badges, and one button opening the fullscreen extension surface (§5.5).
 
 The primary surface is a **dark-themed 4-tab popup** (§2.1): **Resolver · Wallet · Shield ·
 Control Panel** (§2.1). It carries an **Explore DIG Network** action → `explore.dig.net`, a
@@ -603,27 +604,40 @@ is purely additive — it changes behaviour only for the (local-node-up + valid-
 serve mount is the node's contract (docs.dig.net + dig-node `SPEC.md`). The public `rpc.dig.net`
 gateway MUST NOT serve `/s/` plaintext — it stays ciphertext-only.
 
-### 5.5 Injected page toolbar (`toolbar.ts` + `dig-toolbar.js`, #292)
+### 5.5 Injected page toolbar (`toolbar.ts` + `dig-toolbar.js`, #292, restyled/rewired as native
+browser chrome by #293)
 
-A persisted toggle (`toolbar.enabled` in `chrome.storage.local`, default OFF/opt-in, set on the
-options page §14) gates a content script that injects a native-looking, `chia://`-aware toolbar atop
-EVERY ordinary top-frame web page (`http`/`https`; never `chrome://`/`chrome-extension://`/`about:`
-or sub-frames — `shouldInjectToolbar`). The bar is **shadow-DOM isolated** (open shadow root, `:host {
-all: initial }`) so page CSS cannot alter it and its CSS cannot leak; it is `position: fixed` at the
-top with the page offset below it (`padding-top` on `documentElement`). Toggling the setting injects
-or removes the bar live (via `storage.onChanged`). The bar carries:
+A persisted toggle (`toolbar.enabled` in `chrome.storage.local`, default OFF/opt-in) gates a content
+script that injects a toolbar atop EVERY ordinary top-frame web page (`http`/`https`; never
+`chrome://`/`chrome-extension://`/`about:` or sub-frames — `shouldInjectToolbar`). The toggle itself
+is surfaced at the TOP of the extension's Home screen (popup/full page, `ToolbarToggle.tsx`) for quick
+activate/deactivate — NOT the options page, which no longer duplicates it. The bar is **shadow-DOM
+isolated** (open shadow root, `:host { all: initial }`) so page CSS cannot alter it and its CSS cannot
+leak; it is `position: fixed` at the top with the page offset below it (`padding-top` on
+`documentElement`). Toggling the setting injects or removes the bar live (via `storage.onChanged`).
 
-- **Icons** opening the full-page extension surfaces (#140/#141) in a NEW tab via `openExtensionPage`
-  (§7.1): Wallet (`app.html#wallet`), DIG Shields (`app.html#network/shield`), Control Panel
-  (`app.html#network/control`).
+The bar is styled as **native browser chrome** — neutral grey (`#f1f3f4` background, `#dadce0`
+border), NOT the DIG brand gradient — so it reads as browser UI, not a branded widget. It carries:
+
+- **A dedicated `chia://`/URN address bar** (`data-testid="dig-toolbar-urn-input"`) — its OWN input,
+  distinct from the page's real address bar; its placeholder ("Enter a chia:// address or DIG URN")
+  makes that explicit. Enter resolves the typed value against the single shared URN grammar
+  (`resolveUrnBarSubmit`, built on `parseOpenUrnInput`/`buildContentViewUrl` from `open-urn.ts` — no
+  second parser) and, when valid, sends the canonical `chia://` URL to the background
+  `navigateToDigUrl` action, which runs the SAME §5.4 node-or-sandbox navigation
+  (`handleDigUrlNavigation`) the #289 nav and the `dig` omnibox already use. Invalid/empty input sets
+  `aria-invalid` on the field and shows an inline `role="alert"` error instead of navigating.
 - **Badges** derived from the node's serve headers (§5.6, read via a same-origin `HEAD` of a
   node-served `/s/…` URL): a "Verified on Chia" badge (green when `X-Dig-Verified: true`, a warning
   state when `false`, hidden when absent) and a "Loaded from local" badge (shown only for
   `X-Dig-Source: local`). On an ordinary (non-node) page neither DIG-verdict badge shows.
+- **ONE button** (`data-testid="dig-toolbar-open"`) that opens the fullscreen extension surface
+  (`app.html`, no sub-view deep-link) in a NEW tab via `openExtensionPage` (§7.1) — replacing the
+  earlier per-page Wallet/DIG Shields/Control Panel icon row.
 
 Labels are localized from a compact self-contained table (`toolbarLabels`) rather than the full shell
-catalog (the content script runs on every page and must stay lean); the brand phrases "Verified on
-Chia" and "DIG Shields" are preserved verbatim across locales.
+catalog (the content script runs on every page and must stay lean); the brand phrase "Verified on
+Chia" is preserved verbatim across locales.
 
 ### 5.6 DIG Shields serve headers (`dig-serve-headers.ts`, #289)
 
@@ -825,7 +839,7 @@ fix is entirely extension-side — on.dig.net's headers are not modified.
 | `proxyRequest` | Resolve a `chia://` URL to verified, decrypted content (primary read, no caching). |
 | `convertDigUrl` | Resolve a `chia://` URL to a `data:` URL (one-shot, no caching). |
 | `navigateToDigUrl` | Open a `chia://` URL for the sender/active tab via the §5.4 node-or-sandbox decision (node-served plaintext when a local node is up, else the sandbox dig-viewer). |
-| `openExtensionPage` | Open a full-page extension surface (an `app.html` deep-link, allowlisted to `app.html`) in a NEW tab — used by the #292 injected page toolbar (a content script has no `tabs` permission). |
+| `openExtensionPage` | Open a full-page extension surface (an `app.html` deep-link, allowlisted to `app.html`) in a NEW tab — used by the #292/#293 injected page toolbar's single button (a content script has no `tabs` permission). |
 | `navigate` | Navigate the active tab to a URL. |
 | `toggleExtension` | Toggle `chia://` resolution on/off. |
 | `updateServerConfig` | Persist the dig-node/RPC host config. |
@@ -984,7 +998,7 @@ State persists in `chrome.storage.local`. Canonical keys:
 | `digRpcEndpoint` | hosted fallback RPC endpoint (default `https://rpc.dig.net/`). |
 | `wallet.pendingOrigins` | origins awaiting per-origin wallet consent. |
 | `wallet.origins` | per-origin wallet consent / connected-sites permissions (§18.12). |
-| `toolbar.enabled` | boolean — the injected page toolbar toggle (§5.5), default OFF (opt-in). |
+| `toolbar.enabled` | boolean — the injected page toolbar toggle (§5.5), default OFF (opt-in); surfaced at the top of the Home screen (#293), not the options page. |
 
 ### 8.5 dig-dns Path-B proxy fallback (#175, Component C of #174)
 
