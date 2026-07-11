@@ -15,12 +15,15 @@ type DigElement = HTMLElement & {
   alt: string;
 };
 
-// Cache for RPC host configuration. Default MUST match the dig-node's actual canonical control
-// port (9778 — server-config.ts DEFAULT_DIG_NODE_PORT, #132), not the http-standard 80. Content
-// scripts are classic (non-module) scripts and can't `import` the shared constant, so it's a
-// literal here — keep it in lockstep with server-config.ts. Promoted onto globalThis so
-// content.js (a separate IIFE in the SAME isolated world) reads the live value.
-globalThis.cachedRpcHost = 'localhost:9778';
+// Cache for RPC host configuration. Default MUST match server-config.ts's DEFAULT_DIG_NODE_HOST:
+// explicit IPv4 `127.0.0.1:9778` (the canonical dig-node control port, #132), NEVER the bare word
+// `localhost` (#287, live user-reported offline) — on Windows `localhost` resolves to `::1`
+// (IPv6) FIRST, but the dig-node binds IPv4 only, so a `localhost` default reported the node
+// offline even while it was running. Content scripts are classic (non-module) scripts and can't
+// `import` the shared constant, so it's a literal here — keep it in lockstep with
+// server-config.ts. Promoted onto globalThis so content.js (a separate IIFE in the SAME isolated
+// world) reads the live value.
+globalThis.cachedRpcHost = '127.0.0.1:9778';
 
 // Get RPC host from storage (async)
 async function updateRpcHostCache(): Promise<void> {
@@ -28,13 +31,13 @@ async function updateRpcHostCache(): Promise<void> {
     if (typeof chrome !== 'undefined' && chrome.storage) {
       const result = await chrome.storage.local.get(['server.host', 'server.url', 'server.port']);
 
-      let newRpcHost = 'localhost:9778';
+      let newRpcHost = '127.0.0.1:9778';
 
       if (result['server.host']) {
         newRpcHost = result['server.host'];
       } else if (result['server.url'] || result['server.port']) {
         // Fallback to old format
-        const url = result['server.url'] || 'localhost';
+        const url = result['server.url'] || '127.0.0.1';
         const port = result['server.port'] || 9778;
         newRpcHost = `${url}:${port}`;
       }

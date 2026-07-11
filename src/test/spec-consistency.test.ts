@@ -36,14 +36,15 @@ test('SPEC documents the branded local dig-node address (dig.local, port 80)', (
   assert.match(SPEC, /dig\.local/);
 });
 
-test('node-resolution ladder tries dig.local before localhost:<port>', () => {
+test('node-resolution ladder tries dig.local before the explicit IPv4 127.0.0.1:<port> (#287)', () => {
   const cands = digNodeCandidates();
-  assert.deepEqual(cands, ['http://dig.local', `http://localhost:${DEFAULT_DIG_NODE_PORT}`]);
-  // SPEC §8.1 must describe this order.
+  assert.deepEqual(cands, ['http://dig.local', `http://127.0.0.1:${DEFAULT_DIG_NODE_PORT}`]);
+  // SPEC §8.1 must describe this order, with the explicit IPv4 fallback (never the bare word
+  // 'localhost' — Windows resolves it to ::1 first, which the IPv4-only dig-node never answers).
   const digLocalIdx = SPEC.indexOf('http://dig.local');
-  const localhostIdx = SPEC.indexOf('http://localhost:<port>');
-  assert.ok(digLocalIdx >= 0 && localhostIdx >= 0, 'SPEC must name both candidates');
-  assert.ok(digLocalIdx < localhostIdx, 'SPEC must list dig.local before localhost');
+  const ipv4Idx = SPEC.indexOf('http://127.0.0.1:<port>');
+  assert.ok(digLocalIdx >= 0 && ipv4Idx >= 0, 'SPEC must name both candidates');
+  assert.ok(digLocalIdx < ipv4Idx, 'SPEC must list dig.local before the IPv4 fallback');
 });
 
 test('SPEC documents the current message-protocol version', () => {

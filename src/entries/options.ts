@@ -64,7 +64,8 @@ async function checkCompanion(): Promise<void> {
   status.className = 'note';
   // Use the SHARED resolver so this reflects the same try-list the background read path uses: an
   // explicitly-configured custom host wins ENTIRELY (§5.3); otherwise dig.local first (branded,
-  // port 80), then localhost:<port>. Reports the reachable address.
+  // port 80), then the explicit IPv4 127.0.0.1:<port> (#287 — never the bare word 'localhost',
+  // which resolves to ::1 first on Windows). Reports the reachable address.
   const base = await resolveDigNode(host, { timeoutMs: 2000 }).catch(() => null);
   if (base) {
     status.textContent = `dig-node reachable at ${base}.`;

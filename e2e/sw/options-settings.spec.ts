@@ -97,9 +97,11 @@ test('custom dig-node host persists (server.host + legacy split) and shows the h
   // Nothing is listening in CI → the honest install/fallback note (never a false "reachable").
   await expect(page.getByTestId('dignode-status')).toContainText(/not found/i);
 
-  // The restore-default affordance resets the host to the canonical default.
+  // The restore-default affordance resets the host to the canonical default — explicit IPv4
+  // (127.0.0.1), never the bare word `localhost` (#287: Windows resolves `localhost` to `::1`
+  // first, which the IPv4-only dig-node never answers on).
   await page.getByTestId('dignode-host-reset').click();
-  await expect.poll(() => readStorage<string>(page, 'server.host')).toBe('localhost:9778');
+  await expect.poll(() => readStorage<string>(page, 'server.host')).toBe('127.0.0.1:9778');
   await page.close();
 });
 

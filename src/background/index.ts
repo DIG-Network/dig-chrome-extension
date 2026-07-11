@@ -126,7 +126,7 @@ import { digNodeInstallPrompt, isDigNodeRequiredError } from '@/lib/dig-node-sta
 import { createDigDnsAvailabilityController, isDotDigNavigationFailure, shouldRefreshDigDnsSnapshot } from '@/lib/dig-dns';
 
 // Shared dig-node host config (one parser/default for the server.host key) + the local-node
-// resolution order (dig.local preferred, localhost:port fallback) and reachability probe.
+// resolution order (dig.local preferred, 127.0.0.1:port fallback, #287) and reachability probe.
 import {
   parseServerHost as parseDigNodeHost,
   resolveDigNode,
@@ -240,7 +240,7 @@ async function getHostedRpcEndpoint() {
 let _localNodeCache = { at: 0, base: undefined };
 const LOCAL_NODE_TTL_MS = 10_000;
 
-// Resolve the local dig-node base URL (dig.local preferred, localhost:<port> fallback),
+// Resolve the local dig-node base URL (dig.local preferred, 127.0.0.1:<port> fallback, #287),
 // caching the result briefly. Returns the reachable base URL string, or null if the
 // dig-node is not running (then the caller uses the hosted endpoint).
 async function resolveLocalDigNode() {
@@ -263,7 +263,7 @@ async function resolveLocalDigNode() {
  * JSON-RPC POST root), falling back to the hosted rpc.dig.net. The local node is the user's
  * own machine — faster, private, offline-capable — so it wins when reachable.
  *
- * Mirrors the shared resolution order in server-config.mjs (dig.local → localhost:port);
+ * Mirrors the shared resolution order in server-config.mjs (dig.local → 127.0.0.1:port);
  * here the chosen base becomes the JSON-RPC POST endpoint (trailing slash).
  */
 async function getRpcEndpoint() {
@@ -921,7 +921,8 @@ async function fetchContentViaRPC(urn, endpoint) {
 
 // Parse the dig-node host (server.host) into { url, port }. Delegates to the shared
 // server-config.mjs parser so the popup, options page, and background all agree on the
-// SAME name, default (localhost:9778 — the canonical dig-node control port, #132), and parse rules.
+// SAME name, default (127.0.0.1:9778 — explicit IPv4, #287; the canonical dig-node control
+// port, #132), and parse rules.
 const parseServerHost = parseDigNodeHost;
 
 // Get the dig-node config from storage.
@@ -963,7 +964,7 @@ const PROCESSED_URL_TTL = 5000; // 5 seconds - URLs expire after this time
 
 // Legacy `isDigLocalResolvable` removed. NOTE: content is NOT hard-defaulted to rpc.dig.net — the
 // §5.3 node ladder is honored by `getRpcEndpoint`/`resolveLocalDigNode`, which probe the local node
-// (dig.local → localhost) FIRST and fall back to the hosted rpc.dig.net gateway only when none is
+// (dig.local → 127.0.0.1) FIRST and fall back to the hosted rpc.dig.net gateway only when none is
 // reachable. This stub is retained only so any surviving reference doesn't crash (always false);
 // all call-sites that acted on a true result have been removed.
 async function isDigLocalResolvable() {
@@ -2840,7 +2841,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Popup: is a local dig-node reachable? Resolves the dig.local → localhost:port try-list
+  // Popup: is a local dig-node reachable? Resolves the dig.local → 127.0.0.1:port try-list
   // and reports the chosen base (or null). Used to show/hide the "install dig-node" prompt.
   if (message.action === 'getDigNodeStatus') {
     (async () => {
