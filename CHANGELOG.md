@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.89.0] - 2026-07-11
+
+### Features
+- **ext:** Creator tips + account-selector consolidation + on.dig.net URN canonicalize (#122)
+
 ## [1.88.0] - 2026-07-11
 
 ### Features
