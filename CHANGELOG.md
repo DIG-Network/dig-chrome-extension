@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.86.1] - 2026-07-11
+
+### Bug Fixes
+- **manifest:** Search_provider.favicon_url must be an absolute URL (v1.86.0 wouldn't load) (#119)
+
 ## [1.86.0] - 2026-07-11
 
 ### Features
