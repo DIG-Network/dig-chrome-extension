@@ -1599,6 +1599,13 @@ button.dig-widget:focus-visible {
   color: var(--loader-muted);
   letter-spacing: 0.2px;
   margin: 0;
+  /* #311 — a long chia:// address must never overflow the card edges (§6.5). Fit-to-width with a
+     single-line ellipsis, like a URL bar, regardless of the address length. Harmless for the short
+     phrase the React DigLoader passes elsewhere (AppView). */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
   .dig-loader-spinner {

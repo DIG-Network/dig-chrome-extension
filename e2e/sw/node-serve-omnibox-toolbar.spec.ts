@@ -401,6 +401,98 @@ test('#362 — the DIG search resolver sends a NON-DIG query to the configured f
   await page.close();
 });
 
+// ── #311 — the instant DIG loader interstitial ──────────────────────────────────────────────────────
+
+test('#311 — a URN-bar submit paints the DIG loader instantly, then swaps to the resolved content', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await setServerHost(cfg, nodeBase); // §5.3 override → the fixture node
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  const input = page.getByTestId('dig-toolbar-urn-input');
+  await expect(input).toBeVisible({ timeout: 10_000 });
+  await input.fill(CHIA_URL);
+  await input.press('Enter');
+
+  // The branded DIG loader is flashed FIRST (an extension page) — instant, never-blank — before the
+  // node resolve swaps the tab to the plaintext /s/ surface.
+  await page.waitForURL((u) => u.pathname.endsWith('/dig-loader.html'), { timeout: 15_000 });
+  expect(new URL(page.url()).protocol).toBe('chrome-extension:');
+  await expect(page.getByTestId('dig-loader-page')).toBeVisible();
+  await expect(page.getByTestId('dig-loader-address')).toContainText('Resolving');
+
+  // …then the SW swaps to the resolved node-served plaintext content.
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
+  await expect(page.locator('h1')).toHaveText(MARKER);
+  await page.close();
+});
+
+test('#311 — the loader page renders the branded shell directly (screenshots, light + dark)', async () => {
+  const page = await context.newPage();
+  const loaderUrl = `chrome-extension://${extensionId}/dig-loader.html?input=${encodeURIComponent(CHIA_URL)}`;
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const w of [
+      { label: 'desktop', size: { width: 1280, height: 820 } },
+      { label: 'mobile', size: { width: 390, height: 780 } },
+    ]) {
+      await page.setViewportSize(w.size);
+      await page.goto(loaderUrl);
+      await expect(page.getByTestId('dig-loader-page')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('dig-loader-spinner')).toBeVisible();
+      await page.screenshot({ path: `e2e/__screenshots__/dig-loader-${scheme}-${w.label}.png` });
+    }
+  }
+  await page.close();
+});
+
+// ── #366 — toolbar hide control + keyboard show/hide + shortcut hint ──────────────────────────────────
+
+test('#366 — the injected toolbar shows a shortcut hint and the hide button removes it live', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  await expect(page.getByTestId('dig-toolbar')).toBeVisible({ timeout: 10_000 });
+
+  // The muted show/hide shortcut hint is present in the bar (default Alt+Shift+D until rebinding).
+  await expect(page.getByTestId('dig-toolbar-shortcut-hint')).toContainText('Alt+Shift+D');
+
+  // Clicking hide flips toolbar.enabled off → the bar is removed live on this page.
+  await page.getByTestId('dig-toolbar-hide').click();
+  await expect(page.locator('#dig-toolbar-host')).toHaveCount(0, { timeout: 10_000 });
+
+  // The persisted toggle is now off (a fresh page does NOT inject the bar).
+  const enabled = await worker.evaluate(async () => (await chrome.storage.local.get('toolbar.enabled'))['toolbar.enabled']);
+  expect(enabled).toBe(false);
+  await page.close();
+});
+
+test('#366 — re-enabling toolbar.enabled (as the header switch/keyboard command do) re-injects the bar', async () => {
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  // Off from the previous test → no bar.
+  await expect(page.getByTestId('dig-toolbar')).toHaveCount(0, { timeout: 10_000 });
+  // Flip it back on via the SAME storage key the header switch + chrome.commands listener drive.
+  await setToolbarViaWorker(true);
+  await expect(page.getByTestId('dig-toolbar')).toBeVisible({ timeout: 10_000 });
+  await page.close();
+});
+
+test('#366 — the manifest registers the toggle-dig-toolbar keyboard command (Alt+Shift+D default)', async () => {
+  const cmd = await worker.evaluate(() => {
+    const cmds = chrome.runtime.getManifest().commands || {};
+    return cmds['toggle-dig-toolbar'];
+  });
+  expect(cmd).toBeTruthy();
+  expect(cmd?.suggested_key?.default).toBe('Alt+Shift+D');
+});
+
 // ── #306 item 2 — screenshots: the built-in toolbar light + dark, desktop + mobile (§6.5) ───────────
 
 test('#306 — screenshot the built-in toolbar + header switch (light/dark, desktop/mobile)', async () => {
