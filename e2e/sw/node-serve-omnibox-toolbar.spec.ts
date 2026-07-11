@@ -415,21 +415,31 @@ test('#311 — a URN-bar submit paints the DIG loader instantly, then swaps to t
 
   const page = await context.newPage();
   await page.goto(`${nodeBase}/plain`);
+  // Record every main-frame navigation. The loader is a TRANSIENT interstitial the SW swaps away
+  // once the resolve completes, so asserting its DOM on the live tab races the swap; the reliable
+  // proof is the navigation SEQUENCE (the ~1.2s probe guarantees the loader hop fully commits →
+  // `framenavigated` fires for it) — the loader's own DOM render is proven by the direct-navigation
+  // test below.
+  const visited: string[] = [];
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) visited.push(frame.url());
+  });
+
   const input = page.getByTestId('dig-toolbar-urn-input');
   await expect(input).toBeVisible({ timeout: 10_000 });
   await input.fill(CHIA_URL);
   await input.press('Enter');
 
-  // The branded DIG loader is flashed FIRST (an extension page) — instant, never-blank — while the
-  // node probe runs, before the resolve swaps the tab to its destination.
-  await page.waitForURL((u) => u.pathname.endsWith('/dig-loader.html'), { timeout: 15_000 });
-  expect(new URL(page.url()).protocol).toBe('chrome-extension:');
-  await expect(page.getByTestId('dig-loader-page')).toBeVisible();
-  await expect(page.getByTestId('dig-loader-address')).toContainText('Resolving');
-
-  // …then the SW swaps to the resolved destination (no local node → the sandbox dig-viewer).
-  await page.waitForURL((u) => u.pathname.endsWith('/dig-viewer.html'), { timeout: 15_000 });
+  // The SW settles the tab on the resolved destination (no local node → the sandbox dig-viewer).
+  await page.waitForURL((u) => u.pathname.endsWith('/dig-viewer.html'), { timeout: 20_000 });
   expect(page.url()).toContain('urn=');
+
+  // The branded DIG loader was flashed FIRST (an extension page), as an instant never-blank
+  // interstitial, BEFORE the destination — proven by the recorded sequence (loader precedes viewer).
+  const loaderIdx = visited.findIndex((u) => u.includes('/dig-loader.html'));
+  const viewerIdx = visited.findIndex((u) => u.includes('/dig-viewer.html'));
+  expect(loaderIdx, `loader hop in ${JSON.stringify(visited)}`).toBeGreaterThanOrEqual(0);
+  expect(loaderIdx).toBeLessThan(viewerIdx);
   await page.close();
 });
 
