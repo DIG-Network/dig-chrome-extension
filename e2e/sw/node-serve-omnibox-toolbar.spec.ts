@@ -103,18 +103,17 @@ async function extPage(): Promise<Page> {
 }
 
 /** Fire the real SW navigation for a chia:// URL against the active tab (the same path the omnibox
- *  Enter + address-bar interception drive → handleDigUrlNavigation → §5.3 node-or-sandbox). */
+ *  Enter + address-bar interception drive → handleDigUrlNavigation → §5.3 node-or-sandbox). The
+ *  message is fire-and-forget: it navigates THIS tab, so awaiting the sendMessage callback would race
+ *  the navigation destroying the page's execution context — the assertion is the resulting tab URL. */
 async function navigateToDigUrl(page: Page, digUrl: string): Promise<void> {
-  await page.evaluate(
-    (u) =>
-      new Promise<void>((r) => {
-        chrome.runtime.sendMessage({ action: 'navigateToDigUrl', url: u }, () => {
-          void chrome.runtime.lastError;
-          r();
-        });
-      }),
-    digUrl,
-  );
+  await page
+    .evaluate((u) => {
+      chrome.runtime.sendMessage({ action: 'navigateToDigUrl', url: u });
+    }, digUrl)
+    .catch(() => {
+      /* context may already be tearing down from the navigation — the waitForURL is the assertion */
+    });
 }
 
 test.beforeAll(async () => {
