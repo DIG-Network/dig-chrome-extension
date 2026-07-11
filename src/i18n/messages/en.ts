@@ -43,6 +43,26 @@ export const en: Record<string, string> = {
   'home.status.node.local': 'Local node',
   'home.status.node.gateway': 'Public gateway',
   'home.activity.empty': 'No recent activity',
+  // ── tip the creator (#379) ──
+  'tip.creator.title': 'Tip the creator',
+  'tip.creator.subtitle': 'Enjoying this? Send the creator some $DIG.',
+  'tip.creator.amount.label': 'Tip amount ($DIG)',
+  'tip.creator.send': 'Tip {amount} $DIG',
+  'tip.creator.sending': 'Sending…',
+  'tip.creator.setup': 'Set up auto-tip',
+  'tip.creator.dismiss': 'Not now',
+  'tip.creator.sent': 'Thanks! Your tip is on its way.',
+  'tip.creator.error': 'Tipping needs the DIG node tipping service, coming soon.',
+  // ── auto-tip setting (#379) ──
+  'autotip.title': 'Auto-tip creators',
+  'autotip.enable.label': 'Enable auto-tip',
+  'autotip.disclosure':
+    'Auto-tip automatically sends real $DIG on mainnet to the creators of DIG content you view, within your caps. It stays off until you turn it on, and you can turn it off anytime. Unattended tipping runs in your DIG node (coming soon); until then your preference is saved.',
+  'autotip.amount.label': 'Amount per tip ($DIG)',
+  'autotip.amount.invalid': 'Enter an amount greater than zero.',
+  'autotip.mode.label': 'How often',
+  'autotip.mode.perSitePerDay': 'Once per site, per day',
+  'autotip.mode.perDayPeriod': 'Daily budget, all sites',
   // ── #172 open-by-URN home input ──
   'home.open.label': 'Open a chia:// address or DIG URN',
   'home.open.placeholder': 'chia://… or urn:dig:…',
@@ -983,10 +1003,6 @@ export const en: Record<string, string> = {
   'wallet.switcher.address.unknown': 'Switch to this wallet to reveal its address',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Index {index}',
-  'wallet.index.prev': 'Previous index',
-  'wallet.index.next': 'Next index',
-  'wallet.index.jump': 'Jump to index',
-  'wallet.index.error': 'Could not switch index. Please try again.',
   // derived-address list (#106) — an Advanced list of derived addresses (both HD schemes)
   'addresses.title': 'Derived addresses',
   'addresses.subtitle': 'View or copy any of your wallet’s derived addresses.',

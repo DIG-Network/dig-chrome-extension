@@ -39,6 +39,27 @@ export const fr: Record<string, string> = {
   'home.status.node.local': 'Nœud local',
   'home.status.node.gateway': 'Passerelle publique',
   'home.activity.empty': 'Aucune activité récente',
+  // ── tip the creator (#379) ──
+  'tip.creator.title': 'Donner un pourboire au créateur',
+  'tip.creator.subtitle': 'Vous aimez ce contenu ? Envoyez un peu de $DIG au créateur.',
+  'tip.creator.amount.label': 'Montant du pourboire ($DIG)',
+  'tip.creator.send': 'Envoyer {amount} $DIG de pourboire',
+  'tip.creator.sending': 'Envoi en cours…',
+  'tip.creator.setup': 'Configurer le pourboire automatique',
+  'tip.creator.dismiss': 'Pas maintenant',
+  'tip.creator.sent': 'Merci ! Votre pourboire est en route.',
+  'tip.creator.error':
+    'Les pourboires nécessitent le service de pourboires du nœud DIG, disponible bientôt.',
+  // ── auto-tip setting (#379) ──
+  'autotip.title': 'Pourboire automatique aux créateurs',
+  'autotip.enable.label': 'Activer le pourboire automatique',
+  'autotip.disclosure':
+    'Le pourboire automatique envoie automatiquement de vrais $DIG sur le réseau principal aux créateurs du contenu DIG que vous consultez, dans la limite de vos plafonds. Il reste désactivé tant que vous ne l’activez pas, et vous pouvez le désactiver à tout moment. L’envoi sans intervention s’exécute dans votre nœud DIG (disponible bientôt) ; en attendant, seule votre préférence est enregistrée.',
+  'autotip.amount.label': 'Montant par pourboire ($DIG)',
+  'autotip.amount.invalid': 'Saisissez un montant supérieur à zéro.',
+  'autotip.mode.label': 'Fréquence',
+  'autotip.mode.perSitePerDay': 'Une fois par site, par jour',
+  'autotip.mode.perDayPeriod': 'Budget quotidien pour tous les sites',
   'home.open.label': 'Ouvrir une adresse chia:// ou un URN DIG',
   'home.open.placeholder': 'chia://… ou urn:dig:…',
   'home.open.go': 'Ouvrir',
@@ -845,10 +866,6 @@ export const fr: Record<string, string> = {
   'wallet.switcher.address.unknown': 'Changez vers ce portefeuille pour afficher son adresse',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Index {index}',
-  'wallet.index.prev': 'Index précédent',
-  'wallet.index.next': 'Index suivant',
-  'wallet.index.jump': 'Aller à l’index',
-  'wallet.index.error': 'Impossible de changer d’index. Veuillez réessayer.',
   'addresses.title': 'Adresses dérivées',
   'addresses.subtitle': 'Affichez ou copiez les adresses dérivées de votre portefeuille.',
   'addresses.scheme.unhardened': 'Non renforcée',

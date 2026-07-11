@@ -39,6 +39,27 @@ export const de: Record<string, string> = {
   'home.status.node.local': 'Lokaler Node',
   'home.status.node.gateway': 'Öffentliches Gateway',
   'home.activity.empty': 'Keine aktuelle Aktivität',
+  // ── tip the creator (#379) ──
+  'tip.creator.title': 'Dem Ersteller Trinkgeld geben',
+  'tip.creator.subtitle': 'Gefällt Ihnen das? Schicken Sie dem Ersteller etwas $DIG.',
+  'tip.creator.amount.label': 'Trinkgeldbetrag ($DIG)',
+  'tip.creator.send': '{amount} $DIG Trinkgeld geben',
+  'tip.creator.sending': 'Wird gesendet…',
+  'tip.creator.setup': 'Automatisches Trinkgeld einrichten',
+  'tip.creator.dismiss': 'Nicht jetzt',
+  'tip.creator.sent': 'Danke! Ihr Trinkgeld ist auf dem Weg.',
+  'tip.creator.error':
+    'Trinkgeld erfordert den Trinkgeld-Dienst des DIG-Node, bald verfügbar.',
+  // ── auto-tip setting (#379) ──
+  'autotip.title': 'Automatisches Trinkgeld für Ersteller',
+  'autotip.enable.label': 'Automatisches Trinkgeld aktivieren',
+  'autotip.disclosure':
+    'Automatisches Trinkgeld sendet automatisch echte $DIG im Hauptnetz an die Ersteller der DIG-Inhalte, die Sie ansehen, innerhalb Ihrer Obergrenzen. Es bleibt deaktiviert, bis Sie es einschalten, und Sie können es jederzeit wieder ausschalten. Die unbeaufsichtigte Übermittlung läuft in Ihrem DIG-Node (bald verfügbar); bis dahin wird nur Ihre Einstellung gespeichert.',
+  'autotip.amount.label': 'Betrag pro Trinkgeld ($DIG)',
+  'autotip.amount.invalid': 'Geben Sie einen Betrag größer als null ein.',
+  'autotip.mode.label': 'Wie oft',
+  'autotip.mode.perSitePerDay': 'Einmal pro Website und Tag',
+  'autotip.mode.perDayPeriod': 'Tägliches Budget für alle Websites',
   'home.open.label': 'Eine chia://-Adresse oder DIG-URN öffnen',
   'home.open.placeholder': 'chia://… oder urn:dig:…',
   'home.open.go': 'Öffnen',
@@ -845,10 +866,6 @@ export const de: Record<string, string> = {
   'wallet.switcher.address.unknown': 'Wechseln Sie zu dieser Wallet, um ihre Adresse anzuzeigen',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Index {index}',
-  'wallet.index.prev': 'Vorheriger Index',
-  'wallet.index.next': 'Nächster Index',
-  'wallet.index.jump': 'Zu Index springen',
-  'wallet.index.error': 'Index konnte nicht gewechselt werden. Bitte erneut versuchen.',
   'addresses.title': 'Abgeleitete Adressen',
   'addresses.subtitle': 'Zeigen oder kopieren Sie die abgeleiteten Adressen Ihrer Wallet.',
   'addresses.scheme.unhardened': 'Ungehärtet',

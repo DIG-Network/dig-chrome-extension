@@ -10,6 +10,7 @@ import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetNodeStatusQuery } from '@/features/resolver/resolverApi';
 import { OpenByUrnInput } from '@/features/home/OpenByUrnInput';
+import { TipCreatorWidget } from '@/features/home/TipCreatorWidget';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { pickHeroBalance } from '@/features/wallet/portfolio';
 import { assetUsdValue } from '@/features/wallet/portfolioValue';
@@ -58,6 +59,9 @@ export function HomeScreen() {
       {/* #312 — the URN entry input is the TOP-most Home element, docked flush to the top edge. */}
       <OpenByUrnInput />
       <div className="dig-home-board">
+        {/* #379 — the tip-the-creator prompt self-hides unless a DIG resource is loaded on the active
+            tab AND auto-tip is off, so it surfaces above the balance only when it's relevant. */}
+        <TipCreatorWidget />
         <BalanceWidget />
         <QuickActions />
         <StatusWidget />

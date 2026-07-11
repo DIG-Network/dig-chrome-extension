@@ -239,7 +239,7 @@ import { DIG_ERR } from './error-codes';
  * the existing `toolbar.enabled` storage key directly, which both toolbar mounts already react to
  * live via `storage.onChanged`).
  */
-export const MESSAGE_PROTOCOL_VERSION = 32;
+export const MESSAGE_PROTOCOL_VERSION = 33;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -379,6 +379,10 @@ export const ACTIONS = Object.freeze({
   // ── DIG Shields (per-resource proof ledger) — mirrors the browser dig://shields #134 ──
   recordLedgerEntry: 'recordLedgerEntry',
   getShieldLedger: 'getShieldLedger',
+  // ── creator tips (#379, child of #377): one-tap manual $DIG tip for the active DIG resource's
+  // creator. EXECUTION lives in the dig-node tipping subsystem (#377/#369 WS), NOT yet built — the SW
+  // handler is a flagged stub until that ships (returns TIP_SUBSYSTEM_UNAVAILABLE). ──
+  tipCreator: 'tipCreator',
   // ── DIG Control Panel (node management) — mirrors the browser dig://control ──
   getControlStatus: 'getControlStatus',
   // ── dig-node control panel (#278/#281): live WS status, OPEN cache/LRU, pairing, authed control ──
@@ -914,6 +918,12 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: "DIG Shields: the active tab's capsule + grouped per-resource proof ledger (verified/failed) + aggregate verdict.",
     request: '{ action }',
     response: "{ capsule:{storeId,rootHash}|null, verification:{state}|null, group:{passed,failed,passedCount,failedCount,total,allPassed,empty}, entries:object[] }",
+  },
+  [ACTIONS.tipCreator]: {
+    summary:
+      "Creator tips (#379, child of #377): one-tap manual $DIG tip for the active DIG resource's creator. Execution is the dig-node tipping subsystem's job (#377/#369 WS) — NOT yet built, so the SW handler is a flagged stub returning code TIP_SUBSYSTEM_UNAVAILABLE until it ships.",
+    request: '{ action, storeId:string, amountDig:string }',
+    response: "{ success:boolean, txId?:string, code?:string, message?:string }",
   },
   [ACTIONS.getControlStatus]: {
     summary: 'DIG Control Panel: detect a local dig-node (manage vs install) + best-effort control.status; honest hosted-RPC fallback. Mirrors dig://control.',

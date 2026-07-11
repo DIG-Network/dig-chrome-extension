@@ -39,6 +39,27 @@ export const tr: Record<string, string> = {
   'home.status.node.local': 'Yerel düğüm',
   'home.status.node.gateway': 'Genel ağ geçidi',
   'home.activity.empty': 'Son etkinlik yok',
+  // ── tip the creator (#379) ──
+  'tip.creator.title': 'İçerik üreticisine bahşiş ver',
+  'tip.creator.subtitle': 'Beğendiniz mi? İçerik üreticisine biraz $DIG gönderin.',
+  'tip.creator.amount.label': 'Bahşiş tutarı ($DIG)',
+  'tip.creator.send': '{amount} $DIG bahşiş ver',
+  'tip.creator.sending': 'Gönderiliyor…',
+  'tip.creator.setup': 'Otomatik bahşişi ayarla',
+  'tip.creator.dismiss': 'Şimdi değil',
+  'tip.creator.sent': 'Teşekkürler! Bahşişiniz yolda.',
+  'tip.creator.error':
+    'Bahşiş göndermek için DIG düğümü bahşiş hizmeti gerekir, yakında geliyor.',
+  // ── auto-tip setting (#379) ──
+  'autotip.title': 'İçerik üreticilerine otomatik bahşiş',
+  'autotip.enable.label': 'Otomatik bahşişi etkinleştir',
+  'autotip.disclosure':
+    'Otomatik bahşiş, belirlediğiniz sınırlar dahilinde, izlediğiniz DIG içeriğinin üreticilerine ana ağda gerçek $DIG gönderir. Siz açana kadar kapalı kalır ve istediğiniz zaman kapatabilirsiniz. Gözetimsiz gönderim DIG düğümünüzde çalışır (yakında); o zamana kadar yalnızca tercihiniz kaydedilir.',
+  'autotip.amount.label': 'Bahşiş başına tutar ($DIG)',
+  'autotip.amount.invalid': 'Sıfırdan büyük bir tutar girin.',
+  'autotip.mode.label': 'Ne sıklıkla',
+  'autotip.mode.perSitePerDay': 'Site başına günde bir kez',
+  'autotip.mode.perDayPeriod': 'Tüm siteler için günlük bütçe',
   'home.open.label': 'Bir chia:// adresi veya DIG URN açın',
   'home.open.placeholder': 'chia://… veya urn:dig:…',
   'home.open.go': 'Aç',
@@ -845,10 +866,6 @@ export const tr: Record<string, string> = {
   'wallet.switcher.address.unknown': 'Adresini görmek için bu cüzdana geçin',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Dizin {index}',
-  'wallet.index.prev': 'Önceki dizin',
-  'wallet.index.next': 'Sonraki dizin',
-  'wallet.index.jump': 'Dizine git',
-  'wallet.index.error': 'Dizin değiştirilemedi. Lütfen tekrar deneyin.',
   'addresses.title': 'Türetilmiş adresler',
   'addresses.subtitle': 'Cüzdanınızın türetilmiş adreslerini görüntüleyin veya kopyalayın.',
   'addresses.scheme.unhardened': 'Sertleştirilmemiş',

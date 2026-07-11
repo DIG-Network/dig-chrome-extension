@@ -258,6 +258,8 @@ function mountToolbar(badges: BadgeState | null): void {
       // <sub>.on.dig.net / <name>.dig → the SW resolves HEAD→URN (#308) from the extension origin.
       input.removeAttribute('aria-invalid');
       error.textContent = '';
+      // Canonicalize the bar to `chia://<sub>.on.dig.net` (never the local node /s/ URL the tab loads).
+      input.value = `chia://${result.host}`;
       navigateDigInput(result.host);
     } else if (input.value.trim()) {
       input.setAttribute('aria-invalid', 'true');

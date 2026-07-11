@@ -10,7 +10,10 @@ import { useGetShieldLedgerQuery } from '@/features/shield/shieldApi';
  * background `getShieldLedger` query; never re-verifies (fail-closed by construction). Four states.
  */
 export function ShieldTab() {
-  const ledger = useGetShieldLedgerQuery();
+  // The per-tab ledger accrues entries as resources load, and OTHER surfaces (the Home creator-tip
+  // prompt, #379) now also subscribe to `getShieldLedger` — so a cached empty result could predate
+  // the entries this tab recorded. Always refetch on mount so the panel reflects the CURRENT ledger.
+  const ledger = useGetShieldLedgerQuery(undefined, { refetchOnMountOrArgChange: true });
   const data = ledger.data;
   const group = data?.group;
   const empty = !ledger.isLoading && !ledger.isError && (!group || group.empty);

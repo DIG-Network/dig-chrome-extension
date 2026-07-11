@@ -84,6 +84,38 @@ describe('CustodyWallet', () => {
     expect(await screen.findByTestId('balances-cached')).toBeInTheDocument();
   });
 
+  /**
+   * #388 — the redundant derivation-index navigator (active index + prev/next) is removed; the named
+   * AccountSwitcher is the SOLE active-account control. Rendering the wallet shell must show the
+   * account switcher and NEVER the retired `index-navigator` (both drove the identical `setActiveIndex`
+   * op, so one UI was pure duplication). Account switching itself is regression-tested in
+   * accountSwitcher.test.tsx (`setActiveIndex` with the chosen account's index still fires).
+   */
+  it('shows the account switcher as the only active-account control — no derivation-index navigator (#388)', async () => {
+    mockSw((m) => {
+      if (m.action === 'getCustodyBalances') return { balances: { xch: 0, cats: {} } };
+      if (m.action === 'getReceiveAddress') return { address: 'xch1receive' };
+      if (m.action === 'listWallets')
+        return {
+          wallets: [
+            {
+              id: 'w1',
+              label: 'Main',
+              createdAt: 1,
+              active: true,
+              activeIndex: 0,
+              accounts: [{ id: 'a0', label: 'Main', index: 0 }],
+            },
+          ],
+          activeWalletId: 'w1',
+        };
+      return { success: true };
+    });
+    renderWithProviders(<CustodyWallet />);
+    expect(await screen.findByTestId('account-switcher')).toBeInTheDocument();
+    expect(screen.queryByTestId('index-navigator')).not.toBeInTheDocument();
+  });
+
   it('renders the activity ledger on the activity sub-view, "coming soon" for trade', async () => {
     mockSw((m) => {
       if (m.action === 'getReceiveAddress') return { address: 'xch1receive' };

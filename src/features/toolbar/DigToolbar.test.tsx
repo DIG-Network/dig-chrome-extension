@@ -51,6 +51,30 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
     );
   });
 
+  it('#308 — rewrites a bare *.on.dig.net submit to the canonical chia:// form (never to localhost)', async () => {
+    await enable(true);
+    render(<DigToolbar />);
+    const input = (await screen.findByTestId('builtin-dig-toolbar-urn-input')) as HTMLInputElement;
+    await userEvent.type(input, 'shop.on.dig.net{Enter}');
+    // The visible URN bar shows the canonical chia:// address for the subdomain — NOT the local
+    // node URL the content actually loads from (the tab navigates to the node /s/ surface separately).
+    await waitFor(() => expect(input.value).toBe('chia://shop.on.dig.net'));
+  });
+
+  it('#308 — accepts the canonical chia://<sub>.on.dig.net form and routes it HEAD→URN', async () => {
+    await enable(true);
+    render(<DigToolbar />);
+    const input = (await screen.findByTestId('builtin-dig-toolbar-urn-input')) as HTMLInputElement;
+    await userEvent.type(input, 'chia://shop.on.dig.net{Enter}');
+    await waitFor(() =>
+      expect(sendMessage()).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'navigateDigInput', input: 'shop.on.dig.net' }),
+        expect.any(Function),
+      ),
+    );
+    expect(input.value).toBe('chia://shop.on.dig.net');
+  });
+
   it('marks the field invalid on non-DIG input instead of navigating', async () => {
     await enable(true);
     render(<DigToolbar />);
