@@ -3,6 +3,21 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## The rewards-vault / badge-staking view is hub.dig.net, NOT the extension (#409 triage)
+
+A bug report titled "extension rewards vault (staking) fails" (`StakeView.container-*.js`,
+`/v1/achievements` 401, `getStakedPositions`/`getStakeCandidates` "chain read didn't come back") is a
+**hub.dig.net** bug, not an extension bug. The staking/rewards-vault feature lives at
+`hub.dig.net/apps/web/features/staking/` (`StakeView.container.tsx`, `stakingApi.ts`), lazy-loaded from
+hub `App.tsx`; `/v1/achievements` is the hub badge API (Sign-In-with-Chia bearer JWT). The extension
+has **no** staking view, no `/v1/*` client, and no bearer-token path — its RTK Query baseQuery is the
+service-worker seam (`chrome.runtime.sendMessage`). When a bug is captured on a hub page with the DIG
+extension installed, the console carries **incidental** extension content-script lines —
+`ObjectMultiplex - orphaned data for stream "app-init-liveness"/"background-liveness"` (the provider
+bridge) and `DIG Extension: Found 0 elements with chia:// URLs` (the link scan). These are NOT errors
+and NOT the cause; don't mistake them for an extension fault. Triage such reports by the FAILING
+symbols' bundle/endpoint origin, not by which extension console noise rides along.
+
 ## The DIG search provider CANNOT point `search_url` at an extension page; use an HTTPS sentinel + local redirect (#362)
 
 Chrome's `chrome_settings_overrides.search_provider.search_url` MUST be an **HTTPS URL on a

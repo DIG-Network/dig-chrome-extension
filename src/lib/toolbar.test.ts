@@ -38,8 +38,15 @@ describe('shouldInjectToolbar', () => {
     expect(shouldInjectToolbar(false, 'https://example.com')).toBe(false);
   });
 
-  it('never injects on extension/chrome/about pages or in sub-frames', () => {
+  // #421 rule 2 — the injected content-script toolbar must NEVER render on chrome-extension://
+  // origins (every extension surface gets the BUILT-IN bar instead), so there is never a double
+  // toolbar. Locked for every extension page, not just app.html.
+  it('never injects on extension/chrome/about pages or in sub-frames (#421 — no double toolbar)', () => {
     expect(shouldInjectToolbar(true, 'chrome-extension://x/app.html')).toBe(false);
+    expect(shouldInjectToolbar(true, 'chrome-extension://x/newtab.html')).toBe(false);
+    expect(shouldInjectToolbar(true, 'chrome-extension://x/dig-viewer.html')).toBe(false);
+    expect(shouldInjectToolbar(true, 'chrome-extension://x/options.html')).toBe(false);
+    expect(shouldInjectToolbar(true, 'moz-extension://x/app.html')).toBe(false);
     expect(shouldInjectToolbar(true, 'chrome://settings')).toBe(false);
     expect(shouldInjectToolbar(true, 'about:blank')).toBe(false);
     expect(shouldInjectToolbar(true, 'https://example.com', false)).toBe(false);

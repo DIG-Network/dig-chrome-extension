@@ -1,7 +1,6 @@
 import { AppHeader } from '@/components/AppHeader';
 import { AppFooter } from '@/components/AppFooter';
 import { TabBar } from '@/components/TabBar';
-import { DigToolbar } from '@/features/toolbar/DigToolbar';
 import { ActiveTabPanel } from '@/app/ActiveTabPanel';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { setTab } from '@/features/ui/uiSlice';
@@ -20,8 +19,6 @@ export function CompactLayout({ surface }: { surface: Surface }) {
   return (
     <div className="dig-app" data-surface={surface} data-layout="compact">
       <AppHeader surface={surface} />
-      {/* #306 item 1 — the built-in URN toolbar (shown when the header toggle is ON). */}
-      <DigToolbar />
       <main className="dig-main" role="main" data-testid="popup-root">
         <ActiveTabPanel />
         <AppFooter />

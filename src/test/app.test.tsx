@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from '@/app/App';
 import { createStore } from '@/app/store';
 import type { Surface } from '@/app/layout';
+import { TOOLBAR_ENABLED_KEY } from '@/lib/toolbar';
 
 function renderApp(surface: Surface) {
   const store = createStore();
@@ -123,5 +124,47 @@ describe('App shell', () => {
     })) as unknown as typeof window.matchMedia;
     renderApp('fullpage');
     expect(screen.getByTestId('popup-root')).toHaveAttribute('data-layout', 'expanded');
+  });
+});
+
+describe('App shell — built-in DIG URN toolbar placement (#421)', () => {
+  // The jsdom storage stub is module-level and persists across tests — clear the toggle each time.
+  afterEach(async () => {
+    await chrome.storage.local.remove(TOOLBAR_ENABLED_KEY);
+  });
+
+  it('renders NO built-in toolbar while the toggle is OFF (opt-in default)', async () => {
+    renderApp('popup');
+    await screen.findByTestId('popup-root');
+    expect(screen.queryByTestId('builtin-dig-toolbar')).toBeNull();
+  });
+
+  it('mounts the built-in URN bar flush at the TOP of the shared shell when enabled (compact popup)', async () => {
+    await chrome.storage.local.set({ [TOOLBAR_ENABLED_KEY]: true });
+    renderApp('popup');
+    // Mounted exactly once, in the shared app-shell (not per-page / not duplicated).
+    const bars = await screen.findAllByTestId('builtin-dig-toolbar');
+    expect(bars).toHaveLength(1);
+    // Flush-top: the toolbar is the FIRST child of the shared shell — nothing (no header/container
+    // inset) renders above it.
+    const shell = screen.getByTestId('shell-root');
+    expect(shell.firstElementChild).toBe(bars[0]);
+  });
+
+  it('mounts the built-in bar above the sidebar workspace on the expanded (fullscreen) surface', async () => {
+    window.matchMedia = vi.fn().mockImplementation((q: string) => ({
+      matches: true,
+      media: q,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+    await chrome.storage.local.set({ [TOOLBAR_ENABLED_KEY]: true });
+    renderApp('fullpage');
+    const bar = await screen.findByTestId('builtin-dig-toolbar');
+    const shell = screen.getByTestId('shell-root');
+    expect(shell.firstElementChild).toBe(bar);
+    // …and it sits ABOVE the expanded layout root (the sidebar + workspace), spanning the window.
+    const layout = screen.getByTestId('popup-root');
+    expect(bar.compareDocumentPosition(layout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

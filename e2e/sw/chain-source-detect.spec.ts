@@ -5,19 +5,21 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 
 /**
- * END-USER e2e for #222 — proves, against the BUILT unpacked extension in a real browser, that the
- * extension ACTIVELY surfaces a locally-reachable dig-node as the wallet-data source WITHOUT a
- * separate `chainSourceUrl` override, and shows the new "Local dig-node detected" indicator:
+ * END-USER e2e for #222/#399/#394 — proves, against the BUILT unpacked extension in a real browser,
+ * the wallet-data source resolution + its live Settings indicator:
  *
  *   1. Auto mode + ONLY `server.host` configured (the SAME host the content/chia:// path already
- *      used, §5.3) — zero `chainSourceUrl` — auto-SELECTs the reachable node as the wallet-data
- *      source (`getChainSourceStatus` reports `{ mode:'auto', resolved:{ kind:'node', strict:false } }`).
- *      Before #222 this path had no live status surface for the UI to show; #222 adds the
- *      `getChainSourceStatus` action + the indicator this test proves.
- *   2. The Settings panel renders the indicator naming the resolved endpoint, screenshotted (§6.5).
- *   3. Auto mode falls back to coinset — never a false "detected" — when nothing answers.
- *   4. A user-FORCED mode (node/custom/coinset) shows no indicator even though the same node
- *      answers — the indicator is scoped to Auto's zero-config detection only.
+ *      used, §5.3) — a reachable node is NOT auto-selected for WALLET data: per #399, the connected
+ *      wallet's data comes from the self-custody scan (coinset/vault of the extension's OWN
+ *      addresses), NOT an unverified node, until the node proves it tracks this wallet (#407). So
+ *      `getChainSourceStatus` reports `{ mode:'auto', resolved:{ kind:'coinset' } }` even with a
+ *      reachable node. (`getChainSourceStatus` + the resolver were added in #222; the DEFAULT they
+ *      resolve to changed to self-custody in #399.)
+ *   2. Auto mode falls back to coinset — the same self-custody result — when nothing answers.
+ *   3. The TRUSTED Sage backend (#394) — a Sage wallet the user runs — IS used for wallet data, and
+ *      the Settings panel renders its live "Sage connected" indicator naming the endpoint (§6.5).
+ *   4. A user-FORCED node mode shows no auto-detect indicator (the reachable node isn't verified to
+ *      track the wallet, so it isn't used) — the indicator is scoped to the trusted/detected cases.
  *
  * Binds the fake node to the {@link LOOPBACK_IP} literal `127.0.0.5` — the SAME real-socket
  * convention `dig-node-control.spec.ts` documents: an IPv4-only Node test server bound to bare
@@ -145,7 +147,7 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-test('Auto mode, zero chainSourceUrl — a node reachable via server.host is auto-selected as the wallet-data source', async () => {
+test('Auto mode, zero chainSourceUrl — a reachable node is NOT auto-selected for wallet data (self-custody default, #399/#407)', async () => {
   const { server, port } = await startFakeNode();
   try {
     const page = await context.newPage();
@@ -157,9 +159,10 @@ test('Auto mode, zero chainSourceUrl — a node reachable via server.host is aut
       action: 'getChainSourceStatus',
     });
     expect(status.mode).toBe('auto');
-    expect(status.resolved?.kind).toBe('node');
-    expect(status.resolved?.base).toBe(`http://${LOOPBACK_IP}:${port}`);
-    expect(status.resolved?.strict).toBe(false);
+    // #399: even though the node is reachable, the connected wallet's data is sourced from the
+    // self-custody scan (coinset/vault), NOT the node — until the node proves it tracks this wallet
+    // (#407). So the resolved wallet-data source is coinset, never the reachable node.
+    expect(status.resolved?.kind).toBe('coinset');
     await page.close();
   } finally {
     await stopFakeNode(server);
@@ -178,17 +181,25 @@ test('Auto mode, no node reachable — resolves to coinset (clean fallback, neve
   await page.close();
 });
 
-test('"Local dig-node detected" indicator renders in Auto mode + screenshots the panel (§6.5)', async () => {
+test('Sage backend (#394) — the trusted-node "Sage connected" indicator renders + screenshots the panel (§6.5)', async () => {
   const { server, port } = await startFakeNode();
   try {
     const page = await context.newPage();
     await page.setViewportSize({ width: 1200, height: 900 });
     // Configure storage + re-confirm unlocked from an already-loaded extension page FIRST, then
-    // navigate to the settings screen — so the panel mounts with the node already reachable and the
-    // wallet already unlocked, not racing a fetch/unlock-gate fired before the writes landed.
+    // navigate to the settings screen — so the panel mounts with the Sage endpoint already reachable
+    // and the wallet already unlocked, not racing a fetch/unlock-gate fired before the writes landed.
     await page.goto(`chrome-extension://${extensionId}/popup.html`);
-    await setServerHost(page, `${LOOPBACK_IP}:${port}`);
-    await setChainSourceMode(page, 'auto');
+    // Pick the Sage backend pointed at the reachable fake node. Sage is TRUSTED (#394), so it IS used
+    // for wallet data (unlike auto/node, which stay on the self-custody scan until #407) and its live
+    // connection indicator shows.
+    await page.evaluate(
+      async ({ base }) => {
+        const cur = (await chrome.storage.local.get('wallet.settings'))['wallet.settings'] || {};
+        await chrome.storage.local.set({ 'wallet.settings': { ...cur, chainSourceMode: 'sage', sageUrl: base } });
+      },
+      { base: `http://${LOOPBACK_IP}:${port}` },
+    );
     await ensureUnlocked(page);
     await page.goto(`chrome-extension://${extensionId}/app.html#wallet/home`);
 
@@ -196,19 +207,19 @@ test('"Local dig-node detected" indicator renders in Auto mode + screenshots the
 
     const pill = page.getByTestId('chain-source-detected-pill');
     await expect(pill).toBeVisible({ timeout: 20_000 });
-    await expect(pill).toContainText('Local dig-node detected');
+    await expect(pill).toContainText('Sage connected');
     await expect(pill).toContainText(`${LOOPBACK_IP}:${port}`);
 
     await page.getByTestId('chain-source-setting').scrollIntoViewIfNeeded();
     await page.waitForTimeout(150);
-    await page.screenshot({ path: 'e2e/__screenshots__/chain-source-detected-indicator-fullscreen.png' });
+    await page.screenshot({ path: 'e2e/__screenshots__/chain-source-sage-connected-fullscreen.png' });
     await page.close();
   } finally {
     await stopFakeNode(server);
   }
 });
 
-test('override wins — a user-FORCED mode shows no indicator even though the same node answers', async () => {
+test('a user-FORCED node mode shows no auto-detect indicator even though the same node answers', async () => {
   const { server, port } = await startFakeNode();
   try {
     const page = await context.newPage();

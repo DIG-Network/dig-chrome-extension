@@ -10,8 +10,14 @@
  * (issue #217 HARD gate).
  */
 
-/** The four user-selectable wallet-data sources (design D.3; issue #217 EXT-2). Auto is the default. */
-export const CHAIN_SOURCE_MODES = ['auto', 'node', 'coinset', 'custom'] as const;
+/**
+ * The user-selectable wallet-RPC backends (design D.3; issue #217 EXT-2; #394). Auto is the default.
+ * `sage` (#394) points the wallet reads at a Sage wallet the user runs — the SAME Sage-parity RPC
+ * the dig-node speaks (#205), so it is a backend-URL swap, not a reimplementation. This selector
+ * governs the WALLET RPC target ONLY (balances/tokens/NFTs/DIDs/coins/activity); content resolution,
+ * control, peers, tipping, verification and publishing keep using the dig-node regardless (#394).
+ */
+export const CHAIN_SOURCE_MODES = ['auto', 'node', 'coinset', 'custom', 'sage'] as const;
 export type ChainSourceMode = (typeof CHAIN_SOURCE_MODES)[number];
 
 /** Auto = node-first (§5.3 ladder) with a clean coinset fallback. */
@@ -28,18 +34,23 @@ export function isChainSourceMode(value: unknown): value is ChainSourceMode {
 export const CHAIN_SOURCE_MODE_KEY = 'chainSourceMode';
 /** `chrome.storage` (`wallet.settings`) key: the node RPC base URL used when mode === 'custom'. */
 export const CHAIN_SOURCE_URL_KEY = 'chainSourceUrl';
+/** `chrome.storage` (`wallet.settings`) key: the Sage RPC endpoint used when mode === 'sage' (#394). */
+export const SAGE_URL_KEY = 'sageUrl';
 
 /** The resolved chain-source selection read from the persisted `wallet.settings` blob. */
 export interface ChainSourceSetting {
   mode: ChainSourceMode;
   /** The node RPC base URL used ONLY when `mode === 'custom'` (may be empty). */
   customUrl?: string;
+  /** The Sage RPC endpoint used ONLY when `mode === 'sage'` (#394; may be empty). */
+  sageUrl?: string;
 }
 
-/** A loose view of the persisted settings blob (only the two keys this module reads). */
+/** A loose view of the persisted settings blob (only the keys this module reads). */
 interface ChainSourceSettingsBlob {
   [CHAIN_SOURCE_MODE_KEY]?: unknown;
   [CHAIN_SOURCE_URL_KEY]?: unknown;
+  [SAGE_URL_KEY]?: unknown;
   [k: string]: unknown;
 }
 
@@ -53,7 +64,9 @@ export function readChainSourceSetting(settings?: ChainSourceSettingsBlob | null
   const mode = isChainSourceMode(rawMode) ? rawMode : DEFAULT_CHAIN_SOURCE_MODE;
   const rawUrl = settings?.[CHAIN_SOURCE_URL_KEY];
   const customUrl = typeof rawUrl === 'string' ? rawUrl.trim() : '';
-  return { mode, customUrl };
+  const rawSage = settings?.[SAGE_URL_KEY];
+  const sageUrl = typeof rawSage === 'string' ? rawSage.trim() : '';
+  return { mode, customUrl, sageUrl };
 }
 
 /**
@@ -80,7 +93,16 @@ export function normalizeCustomNodeUrl(url?: string | null): string {
 export type ResolvedWalletSource =
   | { kind: 'node'; base: string; strict: boolean }
   | { kind: 'coinset' }
-  | { kind: 'unavailable'; reason: 'node-unreachable' | 'custom-unreachable' | 'custom-missing' | 'node-not-tracking' };
+  | {
+      kind: 'unavailable';
+      reason:
+        | 'node-unreachable'
+        | 'custom-unreachable'
+        | 'custom-missing'
+        | 'node-not-tracking'
+        | 'sage-missing'
+        | 'sage-unreachable';
+    };
 
 /** The injected node-reachability probes (the SW wires these to its cached §5.3 resolver + probe). */
 export interface ResolveWalletSourceDeps {
@@ -115,6 +137,8 @@ export interface ResolveWalletSourceDeps {
  *  - **custom** → the explicit `customUrl` (strict, overrides the ladder entirely, §5.3); a blank
  *    url is `custom-missing`, an unreachable one `custom-unreachable`, a reachable-but-not-tracking
  *    one `node-not-tracking`.
+ *  - **sage** (#394) → the explicit `sageUrl` (strict); a blank url is `sage-missing`, an unreachable
+ *    one `sage-unreachable`. TRUSTED without the tracking gate — it is the user's OWN Sage wallet.
  */
 export async function resolveWalletSource(
   setting: ChainSourceSetting,
@@ -145,6 +169,19 @@ export async function resolveWalletSource(
       return (await deps.verifyNodeTracksWallet(base))
         ? { kind: 'node', base, strict: true }
         : { kind: 'unavailable', reason: 'node-not-tracking' };
+    }
+    case 'sage': {
+      // #394 — a Sage wallet the USER runs speaks the SAME Sage-parity RPC (#205), so it reads over
+      // the identical node-client path (strict; a blank/unreachable endpoint surfaces an error, never
+      // a silent coinset downgrade). Sage holds the user's OWN keys + tracks their OWN wallet, so it
+      // is a TRUSTED wallet-data backend independent of the #399/#407 node-tracking gate — the gate
+      // guards against an arbitrary node reporting a DIFFERENT wallet, which does not apply to the
+      // user's own Sage. Signing still NEVER routes here (reads only, #217 HARD gate).
+      const normalized = normalizeCustomNodeUrl(setting.sageUrl);
+      if (!normalized) return { kind: 'unavailable', reason: 'sage-missing' };
+      const base = await deps.probeNode(normalized);
+      if (!base) return { kind: 'unavailable', reason: 'sage-unreachable' };
+      return { kind: 'node', base, strict: true };
     }
   }
 }

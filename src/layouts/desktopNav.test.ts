@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DESKTOP_NAV, activeNavKey } from '@/layouts/desktopNav';
-import { TABS, WALLET_VIEWS } from '@/app/tabs';
+import { ALL_TABS, WALLET_VIEWS } from '@/app/tabs';
 
 describe('desktopNav model (#85)', () => {
   it('exposes a flat, wallet-centric sidebar model that flattens the wallet sub-views', () => {
@@ -14,6 +14,9 @@ describe('desktopNav model (#85)', () => {
     expect(keys).toContain('home');
     expect(keys).toContain('apps');
     expect(keys).toContain('network');
+    // Fullscreen-only tabs (#393 Peers, #411 Advertise) are first-class sidebar entries.
+    expect(keys).toContain('peers');
+    expect(keys).toContain('advertise');
     expect(new Set(keys).size).toBe(keys.length);
   });
 
@@ -21,8 +24,13 @@ describe('desktopNav model (#85)', () => {
     for (const item of DESKTOP_NAV) {
       expect(item.labelId).toMatch(/\./); // namespaced id
       expect(item.glyph.length).toBeGreaterThan(0);
-      expect((TABS as readonly string[]).includes(item.tab)).toBe(true);
+      expect((ALL_TABS as readonly string[]).includes(item.tab)).toBe(true);
     }
+  });
+
+  it('resolves the fullscreen-only tabs as their own active nav key', () => {
+    expect(activeNavKey('peers', 'home')).toBe('peers');
+    expect(activeNavKey('advertise', 'home')).toBe('advertise');
   });
 
   it('resolves the active item from the route: wallet sub-views match walletView, other tabs match tab', () => {

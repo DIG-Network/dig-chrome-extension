@@ -39,6 +39,7 @@ export function ChainSourceSetting() {
   const intl = useIntl();
   const [mode, setMode] = useState<ChainSourceMode>(DEFAULT_CHAIN_SOURCE_MODE);
   const [customUrl, setCustomUrl] = useState('');
+  const [sageUrl, setSageUrl] = useState('');
   const [saved, setSaved] = useState(false);
   // #222: actively probe the §5.3 ladder for the wallet-data path (on mount + a live poll) so a
   // zero-config local node is surfaced the moment it's reachable, not only once a balance/NFT/etc.
@@ -52,16 +53,18 @@ export function ChainSourceSetting() {
       if (!live) return;
       if (isChainSourceMode(s.chainSourceMode)) setMode(s.chainSourceMode);
       if (typeof s.chainSourceUrl === 'string') setCustomUrl(s.chainSourceUrl);
+      if (typeof s.sageUrl === 'string') setSageUrl(s.sageUrl);
     });
     return () => {
       live = false;
     };
   }, []);
 
-  /** Persist the source selection, mirror it into the slice, and re-fetch every wallet-data view. */
-  const persist = (nextMode: ChainSourceMode, nextUrl: string) => {
-    void updateWalletSettings({ chainSourceMode: nextMode, chainSourceUrl: nextUrl }).then(() => {
-      dispatch(setChainSource({ mode: nextMode, customUrl: nextUrl }));
+  /** Persist the source selection (+ both endpoint URLs), mirror the mode into the slice, and
+   *  re-fetch every wallet-data view so the new backend takes effect immediately. */
+  const persist = (nextMode: ChainSourceMode, nextCustomUrl: string, nextSageUrl: string) => {
+    void updateWalletSettings({ chainSourceMode: nextMode, chainSourceUrl: nextCustomUrl, sageUrl: nextSageUrl }).then(() => {
+      dispatch(setChainSource({ mode: nextMode, customUrl: nextCustomUrl }));
       dispatch(custodyApi.util.invalidateTags([...SOURCE_DEPENDENT_TAGS]));
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2000);
@@ -70,8 +73,9 @@ export function ChainSourceSetting() {
 
   const onModeChange = (next: ChainSourceMode) => {
     setMode(next);
-    // A non-custom mode saves immediately; custom waits for a URL (saved via the field's blur/submit).
-    if (next !== 'custom') persist(next, customUrl);
+    // Modes with an endpoint field (custom / sage) wait for the URL (saved via the field's
+    // blur/submit); every other mode saves immediately.
+    if (next !== 'custom' && next !== 'sage') persist(next, customUrl, sageUrl);
     else setSaved(false);
   };
 
@@ -113,7 +117,7 @@ export function ChainSourceSetting() {
           data-testid="chain-source-custom"
           onSubmit={(e) => {
             e.preventDefault();
-            persist('custom', customUrl.trim());
+            persist('custom', customUrl.trim(), sageUrl);
           }}
         >
           <label className="dig-field">
@@ -126,7 +130,7 @@ export function ChainSourceSetting() {
               aria-labelledby="chain-source-url-label"
               value={customUrl}
               onChange={(e) => setCustomUrl(e.target.value)}
-              onBlur={() => persist('custom', customUrl.trim())}
+              onBlur={() => persist('custom', customUrl.trim(), sageUrl)}
               placeholder="http://my-node:9778"
               autoComplete="off"
               spellCheck={false}
@@ -135,6 +139,38 @@ export function ChainSourceSetting() {
           </label>
           <button type="submit" className="dig-btn dig-btn--block" data-testid="chain-source-save">
             <FormattedMessage id="custody.source.custom.save" />
+          </button>
+        </form>
+      )}
+
+      {mode === 'sage' && (
+        <form
+          className="dig-field"
+          data-testid="chain-source-sage"
+          onSubmit={(e) => {
+            e.preventDefault();
+            persist('sage', customUrl, sageUrl.trim());
+          }}
+        >
+          <label className="dig-field">
+            <span id="chain-source-sage-label">
+              <FormattedMessage id="custody.source.sage.label" />
+            </span>
+            <input
+              className="dig-input"
+              data-testid="chain-source-sage-url"
+              aria-labelledby="chain-source-sage-label"
+              value={sageUrl}
+              onChange={(e) => setSageUrl(e.target.value)}
+              onBlur={() => persist('sage', customUrl, sageUrl.trim())}
+              placeholder="http://localhost:9257"
+              autoComplete="off"
+              spellCheck={false}
+              inputMode="url"
+            />
+          </label>
+          <button type="submit" className="dig-btn dig-btn--block" data-testid="chain-source-sage-save">
+            <FormattedMessage id="custody.source.sage.save" />
           </button>
         </form>
       )}
