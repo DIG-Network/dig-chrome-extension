@@ -25,11 +25,11 @@ import { FiatCurrencySetting } from '@/features/wallet/custody/FiatCurrencySetti
 import { PrivacyNote } from '@/features/wallet/custody/PrivacyNote';
 import { WalletSwitcher } from '@/features/wallet/custody/WalletSwitcher';
 import { AccountSwitcher } from '@/features/wallet/custody/AccountSwitcher';
-import { IndexNavigator } from '@/features/wallet/custody/IndexNavigator';
 import { ExportPrivateKey } from '@/features/wallet/custody/ExportPrivateKey';
 import { ChainNodeSetting } from '@/features/wallet/custody/ChainNodeSetting';
 import { ChainSourceSetting } from '@/features/wallet/custody/ChainSourceSetting';
 import { AutoLockSetting } from '@/features/wallet/custody/AutoLockSetting';
+import { AutoTipSetting } from '@/features/wallet/custody/AutoTipSetting';
 import { SessionStatus } from '@/features/wallet/custody/SessionStatus';
 import { NetworkSetting } from '@/features/wallet/custody/NetworkSetting';
 import { ConnectedSites } from '@/features/wallet/custody/ConnectedSites';
@@ -165,7 +165,6 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
       <div className="dig-toggle-row" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <WalletSwitcher />
         <AccountSwitcher />
-        <IndexNavigator />
       </div>
       <PrivacyNote />
 
@@ -319,6 +318,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
               <ChainSourceSetting />
               <ChainNodeSetting />
               <AutoLockSetting />
+              <AutoTipSetting />
               <SessionStatus />
               <ConnectedSites />
               <DerivedAddressList />

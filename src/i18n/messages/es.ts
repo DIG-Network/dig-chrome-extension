@@ -39,6 +39,27 @@ export const es: Record<string, string> = {
   'home.status.node.local': 'Nodo local',
   'home.status.node.gateway': 'Gateway público',
   'home.activity.empty': 'Sin actividad reciente',
+  // ── tip the creator (#379) ──
+  'tip.creator.title': 'Dar propina al creador',
+  'tip.creator.subtitle': '¿Te está gustando? Envía algo de $DIG al creador.',
+  'tip.creator.amount.label': 'Importe de la propina ($DIG)',
+  'tip.creator.send': 'Dar propina de {amount} $DIG',
+  'tip.creator.sending': 'Enviando…',
+  'tip.creator.setup': 'Configurar propina automática',
+  'tip.creator.dismiss': 'Ahora no',
+  'tip.creator.sent': '¡Gracias! Tu propina va en camino.',
+  'tip.creator.error':
+    'Dar propinas requiere el servicio de propinas del nodo DIG, disponible próximamente.',
+  // ── auto-tip setting (#379) ──
+  'autotip.title': 'Propina automática a creadores',
+  'autotip.enable.label': 'Activar propina automática',
+  'autotip.disclosure':
+    'La propina automática envía $DIG real en la red principal a los creadores del contenido DIG que ves, dentro de tus límites. Permanece desactivada hasta que la actives, y puedes desactivarla en cualquier momento. El envío automático se ejecuta en tu nodo DIG (disponible próximamente); hasta entonces solo se guarda tu preferencia.',
+  'autotip.amount.label': 'Importe por propina ($DIG)',
+  'autotip.amount.invalid': 'Introduce un importe mayor que cero.',
+  'autotip.mode.label': 'Frecuencia',
+  'autotip.mode.perSitePerDay': 'Una vez por sitio, al día',
+  'autotip.mode.perDayPeriod': 'Presupuesto diario para todos los sitios',
   'home.open.label': 'Abrir una dirección chia:// o URN de DIG',
   'home.open.placeholder': 'chia://… o urn:dig:…',
   'home.open.go': 'Abrir',
@@ -845,10 +866,6 @@ export const es: Record<string, string> = {
   'wallet.switcher.address.unknown': 'Cambia a esta billetera para ver su dirección',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Índice {index}',
-  'wallet.index.prev': 'Índice anterior',
-  'wallet.index.next': 'Índice siguiente',
-  'wallet.index.jump': 'Ir al índice',
-  'wallet.index.error': 'No se pudo cambiar de índice. Inténtalo de nuevo.',
   'addresses.title': 'Direcciones derivadas',
   'addresses.subtitle': 'Consulta o copia las direcciones derivadas de tu monedero.',
   'addresses.scheme.unhardened': 'No reforzada',

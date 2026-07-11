@@ -82,6 +82,27 @@ test.beforeAll(async () => {
           mock.activeIndex = typeof m.index === 'number' ? m.index : mock.activeIndex;
           reply = { success: true, activeIndex: mock.activeIndex };
           break;
+        case 'listWallets':
+          // Two accounts (index 0 + 1) so the account selector — the sole active-account control
+          // after the index navigator was removed (#388) — offers a switch target. `activeIndex`
+          // tracks the mock so the UI reflects the switch.
+          reply = {
+            wallets: [
+              {
+                id: 'e2e-168',
+                label: 'Main',
+                createdAt: 1,
+                active: true,
+                activeIndex: mock.activeIndex,
+                accounts: [
+                  { id: 'a0', label: 'Main', index: 0 },
+                  { id: 'a1', label: 'Second', index: 1 },
+                ],
+              },
+            ],
+            activeWalletId: 'e2e-168',
+          };
+          break;
         default:
           reply = { success: true };
       }
@@ -136,8 +157,12 @@ test.describe('Background prefetch on unlock (#168)', () => {
     await expect.poll(() => callCount(page, 'listNfts')).toBeGreaterThanOrEqual(1);
     const beforeSwitch = await callCount(page, 'listNfts');
 
-    await page.getByTestId('index-nav-next').click();
-    await expect(page.getByTestId('index-nav-current')).toContainText('1');
+    // #388 removed the prev/next index navigator; the account selector is now the sole active-account
+    // control. Switching to the second account fires the same setActiveIndex op (#165), re-scoping the
+    // background prefetch to the new (wallet, index=1) context.
+    await page.getByTestId('account-switcher-toggle').click();
+    await page.getByTestId('account-switch-a1').click();
+    await expect.poll(() => callCount(page, 'setActiveIndex')).toBeGreaterThanOrEqual(1);
 
     // A fresh round fires for the new (wallet, index=1) context — #165 single-index re-prefetch.
     await expect.poll(() => callCount(page, 'listNfts')).toBeGreaterThan(beforeSwitch);

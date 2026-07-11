@@ -9,6 +9,8 @@ import { walletReducer } from '@/features/wallet/walletSlice';
 import '@/features/wallet/custodyApi';
 import '@/features/resolver/resolverApi';
 import '@/features/shield/shieldApi';
+// Creator tips (#379): one-tap manual $DIG tip for the active DIG resource's creator.
+import '@/features/home/tipApi';
 import '@/features/control/controlApi';
 // dig-node control panel (#278/#281): live status, OPEN cache/LRU, and control-token pairing.
 import '@/features/control/nodeApi';

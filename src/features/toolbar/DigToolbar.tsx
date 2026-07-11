@@ -100,6 +100,11 @@ export function DigToolbar({ verdict = null }: { verdict?: ServeVerdict | null }
       send({ action: ACTIONS.navigateToDigUrl, url: r.url });
     } else if (r.ok && r.kind === 'on-dig-net') {
       setInvalid(false);
+      // #308 — canonicalize the visible URN bar to `chia://<sub>.on.dig.net` (covers the bare
+      // `<sub>.on.dig.net`, the `<sub>.dig` shorthand, and the already-canonical form). This keeps
+      // the bar showing the DIG address the user opened — NEVER the local node `/s/` URL the tab
+      // actually loads from (the SW navigates the tab to the node surface separately, #289).
+      setValue(`chia://${r.host}`);
       send({ action: ACTIONS.navigateDigInput, input: r.host });
     } else if (value.trim()) {
       setInvalid(true);

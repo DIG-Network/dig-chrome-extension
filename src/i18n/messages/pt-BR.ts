@@ -39,6 +39,27 @@ export const ptBR: Record<string, string> = {
   'home.status.node.local': 'Nó local',
   'home.status.node.gateway': 'Gateway público',
   'home.activity.empty': 'Nenhuma atividade recente',
+  // ── tip the creator (#379) ──
+  'tip.creator.title': 'Dar gorjeta ao criador',
+  'tip.creator.subtitle': 'Está gostando? Envie um pouco de $DIG ao criador.',
+  'tip.creator.amount.label': 'Valor da gorjeta ($DIG)',
+  'tip.creator.send': 'Dar gorjeta de {amount} $DIG',
+  'tip.creator.sending': 'Enviando…',
+  'tip.creator.setup': 'Configurar gorjeta automática',
+  'tip.creator.dismiss': 'Agora não',
+  'tip.creator.sent': 'Obrigado! Sua gorjeta está a caminho.',
+  'tip.creator.error':
+    'Dar gorjetas requer o serviço de gorjetas do nó DIG, em breve.',
+  // ── auto-tip setting (#379) ──
+  'autotip.title': 'Gorjeta automática para criadores',
+  'autotip.enable.label': 'Ativar gorjeta automática',
+  'autotip.disclosure':
+    'A gorjeta automática envia $DIG real na rede principal para os criadores do conteúdo DIG que você vê, dentro dos seus limites. Ela fica desativada até você ativá-la, e você pode desativá-la quando quiser. O envio automático é executado no seu nó DIG (em breve); até lá, apenas sua preferência é salva.',
+  'autotip.amount.label': 'Valor por gorjeta ($DIG)',
+  'autotip.amount.invalid': 'Informe um valor maior que zero.',
+  'autotip.mode.label': 'Com que frequência',
+  'autotip.mode.perSitePerDay': 'Uma vez por site, por dia',
+  'autotip.mode.perDayPeriod': 'Orçamento diário para todos os sites',
   'home.open.label': 'Abrir um endereço chia:// ou URN DIG',
   'home.open.placeholder': 'chia://… ou urn:dig:…',
   'home.open.go': 'Abrir',
@@ -845,10 +866,6 @@ export const ptBR: Record<string, string> = {
   'wallet.switcher.address.unknown': 'Troque para esta carteira para ver o endereço dela',
   // Single active derivation index (#165) — prev/next/jump between HD indexes.
   'wallet.index.label': 'Índice {index}',
-  'wallet.index.prev': 'Índice anterior',
-  'wallet.index.next': 'Próximo índice',
-  'wallet.index.jump': 'Ir para o índice',
-  'wallet.index.error': 'Não foi possível trocar de índice. Tente novamente.',
   'addresses.title': 'Endereços derivados',
   'addresses.subtitle': 'Veja ou copie os endereços derivados da sua carteira.',
   'addresses.scheme.unhardened': 'Não reforçado',

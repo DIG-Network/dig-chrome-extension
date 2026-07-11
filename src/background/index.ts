@@ -2994,6 +2994,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Creator tips (#379, child of #377): one-tap manual $DIG tip for the active DIG resource's
+  // creator. EXECUTION is the dig-node tipping subsystem's job (#377/#369 WS): the node resolves the
+  // store's creator, builds + broadcasts the $DIG spend, and (with auto-tip) runs it unattended under
+  // the configured caps. That subsystem is NOT built yet, so this is a FLAGGED STUB — it returns the
+  // catalogued code TIP_SUBSYSTEM_UNAVAILABLE so the widget can honestly say tipping is coming soon.
+  // When #377 lands, replace the stub body with the node tipping RPC/WS call
+  // (`controlRpc`/`rpcCall(endpoint, 'dig.tipCreator', { store_id, amount_dig })`) and return its txId.
+  if (message.action === ACTIONS.tipCreator) {
+    sendResponse({
+      success: false,
+      code: 'TIP_SUBSYSTEM_UNAVAILABLE',
+      message: 'The DIG node tipping service is not available yet.',
+    });
+    return true;
+  }
+
   // DIG Control Panel (popup Control Panel action): detect a local dig-node and decide
   // manage-vs-install (mirrors the browser's dig://control), then best-effort read
   // control.status from the node. The mutating control.* surface is gated by a local control
