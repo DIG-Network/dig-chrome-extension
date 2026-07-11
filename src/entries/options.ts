@@ -24,6 +24,11 @@ import { digNodeInstallPrompt } from '@/lib/dig-node-status';
 import { readWalletSettings, updateWalletSettings, type WalletSettings } from '@/features/wallet/custody/settings';
 import { DEFAULT_THEME_MODE, isThemeMode, resolveEffectiveTheme, type ThemeMode } from '@/lib/theme';
 import { versionLabel, publishVersionGlobal } from '@/lib/version';
+import {
+  SEARCH_FALLBACK_PRESETS,
+  SEARCH_FALLBACK_KEY,
+  DEFAULT_SEARCH_FALLBACK,
+} from '@/lib/search-fallback';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.getElementById(id) as T | null;
@@ -137,6 +142,61 @@ async function saveTheme(): Promise<void> {
   await updateWalletSettings({ theme: mode });
 }
 
+// ---- DIG search fallback engine (#362 Tier 4) ----
+const FALLBACK_CUSTOM_ID = 'custom';
+
+/** Populate the preset dropdown + reflect the persisted choice; a stored URL not matching a preset
+ *  selects "Custom" and reveals the custom-URL input. */
+async function loadFallbackEngine(): Promise<void> {
+  const select = $<HTMLSelectElement>('fallbackEngineSelect');
+  if (!select) return;
+  select.replaceChildren(
+    ...SEARCH_FALLBACK_PRESETS.map((p) => new Option(p.label, p.template)),
+    new Option('Custom…', FALLBACK_CUSTOM_ID),
+  );
+  let stored = DEFAULT_SEARCH_FALLBACK;
+  try {
+    const got = await chrome.storage.local.get(SEARCH_FALLBACK_KEY);
+    if (typeof got[SEARCH_FALLBACK_KEY] === 'string' && (got[SEARCH_FALLBACK_KEY] as string).includes('%s')) {
+      stored = got[SEARCH_FALLBACK_KEY] as string;
+    }
+  } catch {
+    /* keep default */
+  }
+  const preset = SEARCH_FALLBACK_PRESETS.find((p) => p.template === stored);
+  if (preset) {
+    select.value = preset.template;
+    toggleCustomRow(false);
+  } else {
+    select.value = FALLBACK_CUSTOM_ID;
+    const custom = $<HTMLInputElement>('fallbackCustomUrl');
+    if (custom) custom.value = stored;
+    toggleCustomRow(true);
+  }
+}
+
+function toggleCustomRow(show: boolean): void {
+  const row = $('fallbackCustomRow');
+  const label = $('fallbackCustomLabel');
+  if (row) row.hidden = !show;
+  if (label) label.hidden = !show;
+}
+
+async function saveFallbackEngine(): Promise<void> {
+  const select = $<HTMLSelectElement>('fallbackEngineSelect');
+  if (!select) return;
+  if (select.value === FALLBACK_CUSTOM_ID) {
+    toggleCustomRow(true);
+    const custom = $<HTMLInputElement>('fallbackCustomUrl');
+    const url = (custom?.value || '').trim();
+    // Only persist a usable custom template (must carry the %s query placeholder); else leave prior.
+    if (url.includes('%s')) await chrome.storage.local.set({ [SEARCH_FALLBACK_KEY]: url });
+    return;
+  }
+  toggleCustomRow(false);
+  await chrome.storage.local.set({ [SEARCH_FALLBACK_KEY]: select.value });
+}
+
 function debounce(fn: () => void, ms: number): () => void {
   let t: ReturnType<typeof setTimeout>;
   return () => {
@@ -160,9 +220,15 @@ function init(): void {
   void loadTheme();
   void loadCompanion();
   void loadRpc();
+  void loadFallbackEngine();
   mountBugReportAndVersion();
 
   $<HTMLSelectElement>('themeSelect')?.addEventListener('change', () => void saveTheme());
+
+  $<HTMLSelectElement>('fallbackEngineSelect')?.addEventListener('change', () => void saveFallbackEngine());
+  const fallbackCustom = $<HTMLInputElement>('fallbackCustomUrl');
+  fallbackCustom?.addEventListener('input', debounce(() => void saveFallbackEngine(), 400));
+  fallbackCustom?.addEventListener('blur', () => void saveFallbackEngine());
 
   const companionHost = $<HTMLInputElement>('companionHost');
   companionHost?.addEventListener('input', debounce(() => void saveCompanion(), 400));

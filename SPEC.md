@@ -30,11 +30,14 @@ The extension delivers the DIG Network experience on any Chromium browser:
    vault; sign/message requests are approved in a dedicated window. There is no WalletConnect.
 3. **DIG Shields** — a per-resource inclusion-proof ledger surfaced in the popup.
 4. **DIG Control Panel** — detect a local dig-node and expose manage-vs-install actions.
-5. **DIG Home / omnibox / search** — a new-tab surface and a `dig`-keyword omnibox (Enter routes a
-   DIG address through the §5.4 node-or-sandbox navigation; live suggestions + a default suggestion).
-6. **Injected page toolbar** — an opt-in, shadow-DOM-isolated toolbar atop every page, styled as
-   native browser chrome (neutral grey, no DIG branding): a dedicated `chia://`/URN address bar, live
-   DIG-verdict badges, and one button opening the fullscreen extension surface (§5.5).
+5. **Multi-tier URN entry** — one shared classify/resolve core (`classifyDigInput`) behind four entry
+   tiers: the `dig` omnibox, raw `chia://`/`urn:` URL-bar interception, the toolbar URN bars, and a
+   custom DIG search provider that resolves DIG addresses through the local node and sends every other
+   query to a configurable fallback web-search engine (§5.7).
+6. **DIG URN toolbar** — an opt-in, theme-matched toolbar in TWO mounts of one core: injected atop
+   every web page (shadow-DOM isolated) and built into the fullscreen app shell; a dedicated
+   `chia://`/URN address bar + live DIG-verdict badges; enabled by a switch inline in the window
+   header (§5.5).
 
 The primary surface is a **dark-themed 4-tab popup** (§2.1): **Resolver · Wallet · Shield ·
 Control Panel** (§2.1). It carries an **Explore DIG Network** action → `explore.dig.net`, a
@@ -604,36 +607,55 @@ is purely additive — it changes behaviour only for the (local-node-up + valid-
 serve mount is the node's contract (docs.dig.net + dig-node `SPEC.md`). The public `rpc.dig.net`
 gateway MUST NOT serve `/s/` plaintext — it stays ciphertext-only.
 
-### 5.5 Injected page toolbar (`toolbar.ts` + `dig-toolbar.js`, #292, restyled/rewired as native
-browser chrome by #293)
+### 5.5 DIG URN toolbar — injected + built-in (`toolbar.ts` core; `dig-toolbar.js` injected,
+`DigToolbar.tsx` built-in; #292/#293/#306)
 
-A persisted toggle (`toolbar.enabled` in `chrome.storage.local`, default OFF/opt-in) gates a content
-script that injects a toolbar atop EVERY ordinary top-frame web page (`http`/`https`; never
-`chrome://`/`chrome-extension://`/`about:` or sub-frames — `shouldInjectToolbar`). The toggle itself
-is surfaced at the TOP of the extension's Home screen (popup/full page, `ToolbarToggle.tsx`) for quick
-activate/deactivate — NOT the options page, which no longer duplicates it. The bar is **shadow-DOM
-isolated** (open shadow root, `:host { all: initial }`) so page CSS cannot alter it and its CSS cannot
-leak; it is `position: fixed` at the top with the page offset below it (`padding-top` on
-`documentElement`). Toggling the setting injects or removes the bar live (via `storage.onChanged`).
+The DIG URN toolbar exists as TWO mounts of ONE shared pure core (`@/lib/toolbar`:
+`resolveUrnBarSubmit`, `toolbarLabels`, `toolbarBadges`, `toolbarTheme`, `TOOLBAR_PALETTES`) so the two
+never diverge:
 
-The bar is styled as **native browser chrome** — neutral grey (`#f1f3f4` background, `#dadce0`
-border), NOT the DIG brand gradient — so it reads as browser UI, not a branded widget. It carries:
+1. **Injected** (`dig-toolbar.js`, a `<all_urls>` content script) — atop EVERY ordinary top-frame web
+   page (`http`/`https`; never `chrome://`/`chrome-extension://`/`about:` or sub-frames —
+   `shouldInjectToolbar`), **shadow-DOM isolated** (open shadow root, `:host { all: initial }`) so page
+   CSS cannot alter it and its CSS cannot leak; `position: fixed` at the top with the page offset below
+   it (`padding-top` on `documentElement`).
+2. **Built-in** (`DigToolbar.tsx`, a React component in the fullscreen app shell) — the extension
+   CANNOT inject a content script into its OWN pages, so `app.html`/the popup render the SAME URN bar +
+   badges natively at the top of the layout content. It reuses the shared core, so its behaviour is
+   identical to the injected bar.
 
-- **A dedicated `chia://`/URN address bar** (`data-testid="dig-toolbar-urn-input"`) — its OWN input,
-  distinct from the page's real address bar; its placeholder ("Enter a chia:// address or DIG URN")
-  makes that explicit. Enter resolves the typed value against the single shared URN grammar
-  (`resolveUrnBarSubmit`, built on `parseOpenUrnInput`/`buildContentViewUrl` from `open-urn.ts` — no
-  second parser) and, when valid, sends the canonical `chia://` URL to the background
-  `navigateToDigUrl` action, which runs the SAME §5.4 node-or-sandbox navigation
-  (`handleDigUrlNavigation`) the #289 nav and the `dig` omnibox already use. Invalid/empty input sets
-  `aria-invalid` on the field and shows an inline `role="alert"` error instead of navigating.
+A single persisted toggle (`toolbar.enabled` in `chrome.storage.local`, default OFF/opt-in) gates
+BOTH mounts. The toggle is a **real switch component** (`ToggleSwitch`, `role="switch"` — NOT a
+checkbox) inline in the extension **window header** (`HeaderToolbarToggle`, in `AppHeader` for the
+compact popup and `WalletTopbar` for the desktop workspace) — NOT the Home tab (superseded) and NOT
+the options page. Flipping it shows/hides both mounts live (injected via `storage.onChanged`;
+built-in via the store-bridged key).
+
+The bar is styled as **native browser chrome** and **theme-matched to the browser** via
+`prefers-color-scheme` (`toolbarTheme` → `TOOLBAR_PALETTES`, shared by both mounts): light mode is a
+neutral Chrome grey (`#f1f3f4` background, `#dadce0` border), dark mode a dark Chrome toolbar surface
+(`#292a2d`) — NEVER the DIG brand gradient, so it reads as browser UI, not a branded widget. The
+injected bar re-mounts on a live `prefers-color-scheme` change; the built-in bar subscribes to the
+same media query. It carries:
+
+- **A dedicated `chia://`/URN address bar** (`data-testid="dig-toolbar-urn-input"` injected /
+  `builtin-dig-toolbar-urn-input` built-in) — its OWN input, distinct from the page's real address
+  bar; its placeholder ("Enter a chia:// address or DIG URN") makes that explicit. Enter resolves the
+  typed value against the ONE shared entry classifier (`resolveUrnBarSubmit` → `classifyDigInput`,
+  §5.7 — no second parser), accepting EVERY entry form (`chia://`, `urn:dig:chia:`, a bare store id, a
+  dig-dns `<label>.dig`, and `*.on.dig.net` / `<name>.dig` shorthands): a `urn` form sends the
+  canonical `chia://` URL to the background `navigateToDigUrl` action; an `on-dig-net` form sends the
+  subdomain to `navigateDigInput` (the SW resolves HEAD→URN #308 from the extension origin). Both run
+  the SAME §5.4 node-or-sandbox navigation. A non-DIG value (a web URL or free text) is rejected — it
+  sets `aria-invalid` and shows an inline `role="alert"` error instead of navigating.
 - **Badges** derived from the node's serve headers (§5.6, read via a same-origin `HEAD` of a
   node-served `/s/…` URL): a "Verified on Chia" badge (green when `X-Dig-Verified: true`, a warning
   state when `false`, hidden when absent) and a "Loaded from local" badge (shown only for
   `X-Dig-Source: local`). On an ordinary (non-node) page neither DIG-verdict badge shows.
-- **ONE button** (`data-testid="dig-toolbar-open"`) that opens the fullscreen extension surface
-  (`app.html`, no sub-view deep-link) in a NEW tab via `openExtensionPage` (§7.1) — replacing the
-  earlier per-page Wallet/DIG Shields/Control Panel icon row.
+- **ONE button** (`data-testid="dig-toolbar-open"`, INJECTED bar only — the built-in bar is already
+  in the fullscreen surface) that opens the fullscreen extension surface (`app.html`, no sub-view
+  deep-link) in a NEW tab via `openExtensionPage` (§7.1) — replacing the earlier per-page
+  Wallet/DIG Shields/Control Panel icon row.
 
 Labels are localized from a compact self-contained table (`toolbarLabels`) rather than the full shell
 catalog (the content script runs on every page and must stay lean); the brand phrase "Verified on
@@ -653,6 +675,67 @@ by `readServeHeaders`:
 
 These feed the DIG Shields ledger (§10) and the toolbar badges (§5.5), keeping DIG Shields working on
 the node-served path without the browser re-verifying.
+
+### 5.7 Multi-tier URN entry model (`dig-nav.classifyDigInput` + the four tiers, #362/#310)
+
+Every way a user can open DIG content funnels its RAW input through ONE shared classifier,
+`classifyDigInput` (`src/lib/dig-nav.ts`) — there is no per-tier reimplementation. It returns a
+discriminated result:
+
+| Input form (with or without a leading `chia://`) | Class | Canonical target |
+|---|---|---|
+| `chia://<storeId>[:<root>][/<path>]` | `urn` | canonical `chia://` (via `open-urn.buildContentViewUrl`) |
+| `urn:dig:chia:<storeId>[:<root>][/<path>]` (the bare `urn:` scheme, #310) | `urn` | canonical `chia://` |
+| `urn:dig:<storeId>…` / bare `<64-hex>[:root][/path]` | `urn` | canonical `chia://` |
+| `<label>.dig` / `<rootLabel>.<label>.dig` — a 52-char base32 store label (dig-dns §5.5 host form) | `urn` | `chia://<storeId>[:<root>]` (decoded via `dig-dns-host.digLabelToStoreHex`) |
+| `<name>.dig` — a HUMAN label (not a base32 store id) | `on-dig-net` | shorthand for `<name>.on.dig.net` |
+| `<sub>.on.dig.net` | `on-dig-net` | resolved HEAD→URN (`resolveOnDigNetUrn`, #308) |
+| `http(s)://…` / a bare domain | `url` | navigate as-is |
+| anything else | `web` | the configurable fallback search engine (§5.7 Tier 4) |
+
+An `on-dig-net` reference resolves to a `chia://` URL by `resolveOnDigNetUrn(host)`: a
+`HEAD https://<host>/` reads the resolver's `X-Dig-URN` header (#308) and returns the canonical
+`chia://` so the store loads through the LOCAL NODE (`/s/` §5.4), NOT the on.dig.net CDN; this MUST
+run from the extension origin (the SW / an extension page) so the CORS-exposed header is readable.
+The background `navigateDigInput` action (§7.1) applies the whole classify → resolve → §5.4-navigate
+core to any raw input, and `isDigShapedInput` is the shared DIG-vs-not test the omnibox classifier
+(`apps.classifyOmnibox`) and the DIG search resolver both reuse.
+
+**Vanilla Chrome MV3 canNOT keep a literal `chia://` in the browser's NATIVE address bar while
+serving localhost.** So where the extension does not control the bar, content renders on the
+node-served `/s/` surface (or the sandbox viewer), and the DIG **toolbar's** URN bar (§5.5) shows the
+`chia://…` address. True native-bar `chia://` persistence is the DIG Browser's job (out of scope).
+
+The four entry tiers, each feeding the shared core:
+
+1. **Omnibox `dig` keyword** — `dig <input>`; `onInputEntered` routes through `handleResolvedNavigation`.
+2. **Raw URL-bar interception** — `webNavigation.onBeforeNavigate` (filter schemes `chia`, `urn`,
+   `http`, `https`) catches a typed/clicked `chia://…` OR `urn:…` and routes it through the shared
+   core. (Unknown-scheme address-bar typing is unreliable in vanilla Chrome — Tier 4 covers the
+   typed-address case bounce-free.)
+3. **Toolbar URN bars (injected + built-in, §5.5)** — accept every form above NATIVELY; the best-UX
+   tier (no bounce, node-served + verified).
+4. **Custom DIG search provider** (`chrome_settings_overrides.search_provider`) — the bounce killer.
+   Chrome requires `search_url` be an HTTPS URL on a Search-Console-verified domain (a
+   `chrome-extension://` `search_url` is NOT permitted), so the provider's `search_url` is a sentinel
+   `https://dig.net/dig-search?q={searchTerms}` (`is_default:false` — the user opts in; keyword
+   `digsearch`). The extension intercepts that sentinel LOCALLY — a dynamic `declarativeNetRequest`
+   redirect rule (registered at SW startup; `regexSubstitution` embeds the runtime extension id +
+   preserves `?q=…`) as the pre-network path, with the `onBeforeNavigate` sentinel catch
+   (`matchDigSearchSentinel`) as a guaranteed fallback — and rewrites it to the in-extension resolver
+   page `dig-search.html?q=<query>`. That page (`decideSearchRoute` → `classifyDigInput`) loads a DIG
+   query through the local node (a `chia`/`on-dig-net` route → the background actions above) or
+   redirects a NON-DIG query to the user's configurable fallback web-search engine. This eliminates
+   the "type an address → bounce to Google → redirect" lag. (The domain must be Search-Console
+   verified for the override to apply in a published build.)
+
+**Configurable fallback search engine** (`src/lib/search-fallback.ts`): Chrome exposes NO API to
+read the user's real default engine, and routing a non-DIG query back through the default would loop
+if DIG IS the default — so the extension does NOT auto-detect it. Instead it ships a preset list
+(DuckDuckGo default, Google, Brave, Bing, + a custom `%s` template), persisted at
+`search.fallback.url` and configured in DIG settings (`options.html`). `buildFallbackSearchUrl`
+interpolates the query at `%s` (falling back to DuckDuckGo for a malformed template). Loop-free: a
+non-DIG query goes to the chosen fallback, never back through the DIG sentinel.
 
 ---
 
@@ -839,7 +922,8 @@ fix is entirely extension-side — on.dig.net's headers are not modified.
 | `proxyRequest` | Resolve a `chia://` URL to verified, decrypted content (primary read, no caching). |
 | `convertDigUrl` | Resolve a `chia://` URL to a `data:` URL (one-shot, no caching). |
 | `navigateToDigUrl` | Open a `chia://` URL for the sender/active tab via the §5.4 node-or-sandbox decision (node-served plaintext when a local node is up, else the sandbox dig-viewer). |
-| `openExtensionPage` | Open a full-page extension surface (an `app.html` deep-link, allowlisted to `app.html`) in a NEW tab — used by the #292/#293 injected page toolbar's single button (a content script has no `tabs` permission). |
+| `navigateDigInput` | Classify + resolve + navigate ANY raw entry input for the sender/active tab (§5.7): a DIG address → the §5.4 nav; an `*.on.dig.net`/`<name>.dig` shorthand → HEAD→URN (#308) → the §5.4 nav; a URL → navigate; free text → the configurable fallback search engine. Callers: the raw `urn:`/`chia://` interception, the toolbar on-dig-net form, the `dig` omnibox, and the DIG search resolver. |
+| `openExtensionPage` | Open a full-page extension surface (an `app.html` deep-link, allowlisted to `app.html`) in a NEW tab — used by the injected page toolbar's single button (a content script has no `tabs` permission). |
 | `navigate` | Navigate the active tab to a URL. |
 | `toggleExtension` | Toggle `chia://` resolution on/off. |
 | `updateServerConfig` | Persist the dig-node/RPC host config. |
@@ -998,7 +1082,8 @@ State persists in `chrome.storage.local`. Canonical keys:
 | `digRpcEndpoint` | hosted fallback RPC endpoint (default `https://rpc.dig.net/`). |
 | `wallet.pendingOrigins` | origins awaiting per-origin wallet consent. |
 | `wallet.origins` | per-origin wallet consent / connected-sites permissions (§18.12). |
-| `toolbar.enabled` | boolean — the injected page toolbar toggle (§5.5), default OFF (opt-in); surfaced at the top of the Home screen (#293), not the options page. |
+| `toolbar.enabled` | boolean — the DIG URN toolbar toggle (§5.5) gating BOTH the injected + built-in mounts, default OFF (opt-in); flipped by the switch inline in the window header (`HeaderToolbarToggle`), not the Home tab or options page. |
+| `search.fallback.url` | string — the DIG search provider's fallback web-search-engine URL template (with `%s`), default DuckDuckGo (§5.7); set in DIG settings. |
 
 ### 8.5 dig-dns Path-B proxy fallback (#175, Component C of #174)
 

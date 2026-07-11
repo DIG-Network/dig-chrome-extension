@@ -2,6 +2,7 @@ import { AppFooter } from '@/components/AppFooter';
 import { ActiveTabPanel } from '@/app/ActiveTabPanel';
 import { WalletSidebar } from '@/layouts/WalletSidebar';
 import { WalletTopbar } from '@/layouts/WalletTopbar';
+import { DigToolbar } from '@/features/toolbar/DigToolbar';
 import type { Surface } from '@/app/layout';
 
 /**
@@ -18,6 +19,8 @@ export function ExpandedLayout({ surface }: { surface: Surface }) {
       <WalletSidebar surface={surface} />
       <div className="dig-workspace">
         <WalletTopbar />
+        {/* #306 item 1 — the built-in URN toolbar (shown when the header toggle is ON). */}
+        <DigToolbar />
         <main className="dig-content-wide" role="main">
           <ActiveTabPanel />
         </main>

@@ -62,6 +62,10 @@ export default defineConfig({
         // TS entry can import the shared #shared/* view-models (error-page / messages / dig-urn /
         // error-codes / store-refs) it renders + bridges with.
         digViewer: resolve(rootDir, 'dig-viewer.html'),
+        // DIG search resolver (#362 Tier 4) — the custom DIG search provider's target page: it
+        // classifies the query and either loads a DIG address via the local node or redirects to the
+        // configured fallback engine. Vanilla-TS extension page, same rationale as welcome.
+        digSearch: resolve(rootDir, 'dig-search.html'),
         // DIG Home (new-tab override) — vanilla-TS extension page, same rationale as welcome.
         newtab: resolve(rootDir, 'newtab.html'),
       },

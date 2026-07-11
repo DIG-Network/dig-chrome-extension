@@ -36,10 +36,22 @@ import { parseURN } from '@/lib/dig-urn';
 // #289 — §5.3 navigation-target decision: with a LOCAL dig-node reachable, navigate the tab DIRECTLY
 // to the node's plaintext serve surface (http://dig.local/s/<store>[:root]/<path>); with no local
 // node, keep the sandbox dig-viewer + rpc.dig.net ciphertext path. Pure, unit-tested (dig-nav.test).
-import { chooseNavTarget } from '@/lib/dig-nav';
-// #291 — the omnibox (`dig` keyword): the shared classify/resolve + live-suggestion helpers, so the
-// address-bar path and the DIG Home NTP behave identically (pure, unit-tested in apps.test).
-import { classifyOmnibox, omniboxTarget, omniboxSuggestions } from '@/lib/apps';
+// #362/#310 — classifyDigInput + resolveOnDigNetUrn are the ONE shared entry classify/resolve core
+// every entry surface funnels through (omnibox, raw urn:/chia:// interception, the toolbar URN bars,
+// the custom DIG search resolver) so there is no per-tier reimplementation.
+import { chooseNavTarget, classifyDigInput, resolveOnDigNetUrn } from '@/lib/dig-nav';
+// #362 Tier 4 — the custom DIG search provider: the sentinel matcher (recognize the search-provider
+// hop), the resolver page target, and the configurable fallback web-search engine.
+import {
+  matchDigSearchSentinel,
+  buildFallbackSearchUrl,
+  getFallbackTemplate,
+  DIG_SEARCH_RESOLVER_PAGE,
+} from '@/lib/search-fallback';
+// #291 — the omnibox (`dig` keyword) live-suggestion helper, so the address-bar path and the DIG
+// Home NTP behave identically (pure, unit-tested in apps.test). Entry NAVIGATION routes through the
+// shared `handleResolvedNavigation` core (below); suggestions read `omniboxSuggestions`.
+import { omniboxSuggestions } from '@/lib/apps';
 
 // The TRUSTED-root decision (#226): a rootless ('latest') URN must verify against the store's
 // chain-ANCHORED root, never the literal string 'latest'. These pure helpers own the fail-closed
@@ -2454,6 +2466,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
   
+  if (message.action === 'navigateDigInput') {
+    // #362 — classify + resolve + navigate ANY raw entry input against the sender (or active) tab.
+    (async () => {
+      try {
+        let tabId = sender.tab ? sender.tab.id : null;
+        if (!tabId) {
+          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tabs.length === 0) {
+            try { sendResponse({ error: 'No active tab found' }); } catch { /* port closed */ }
+            return;
+          }
+          tabId = tabs[0].id;
+        }
+        await handleResolvedNavigation(tabId, message.input);
+        try { sendResponse({ success: true }); } catch { /* port closed by navigation, expected */ }
+      } catch (error) {
+        try { sendResponse({ error: error.message }); } catch { /* port closed */ }
+      }
+    })();
+    return true; // keep the channel open for the async response
+  }
+
   if (message.action === 'navigateToDigUrl') {
     // Convert chia:// URL to server URL (subdomain format) and navigate tab
     // IMPORTANT: Must return true immediately to keep channel open, then call sendResponse in async
@@ -3237,6 +3271,39 @@ async function handleDigUrlNavigation(tabId, digUrl) {
   }
 }
 
+// #362 — the ONE shared entry-navigation core. Every entry surface (the `dig` omnibox, the raw
+// `urn:`/`chia://` URL-bar interception #310, the toolbar URN bars' on-dig-net form #306, and the
+// custom DIG search resolver page #362) hands its RAW input here, so the classify → resolve → load
+// decision lives in exactly one place. `classifyDigInput` (dig-nav) does the pure classification:
+//   - `urn`        → a canonical chia:// → the §5.4 node-or-sandbox nav (handleDigUrlNavigation);
+//   - `on-dig-net` → HEAD→URN (#308, from the EXTENSION origin so the X-Dig-URN CORS header is
+//                    readable), then the §5.4 nav; a failed resolve opens the on.dig.net subdomain;
+//   - `url`        → navigate the tab straight to it;
+//   - `web`        → the user's configurable fallback web-search engine (search-fallback).
+async function handleResolvedNavigation(tabId, rawInput) {
+  const c = classifyDigInput(rawInput);
+  if (c.kind === 'urn') {
+    await handleDigUrlNavigation(tabId, c.chiaUrl);
+    return;
+  }
+  if (c.kind === 'on-dig-net') {
+    const chiaUrl = await resolveOnDigNetUrn(c.host).catch(() => null);
+    if (chiaUrl) {
+      await handleDigUrlNavigation(tabId, chiaUrl);
+    } else {
+      // Unmapped / no header — fall back to opening the on.dig.net subdomain directly.
+      await chrome.tabs.update(tabId, { url: `https://${c.host}/` });
+    }
+    return;
+  }
+  if (c.kind === 'url') {
+    await chrome.tabs.update(tabId, { url: c.url });
+    return;
+  }
+  const dest = buildFallbackSearchUrl(await getFallbackTemplate(), c.query);
+  await chrome.tabs.update(tabId, { url: dest });
+}
+
 // Helper function to convert chia:// URL and redirect to viewer
 // This is now just a wrapper around handleDigUrlNavigation
 async function redirectDigUrlToLocalhost(tabId, digUrl) {
@@ -3292,7 +3359,34 @@ chrome.webNavigation.onBeforeNavigate.addListener(
     if (isLocalhostUrl(details.url)) {
       return;
     }
-    
+
+    // #362 Tier 4 — a DIG-search sentinel navigation (the search provider's search_url). Land it on
+    // the in-extension resolver page locally (the declarativeNetRequest rule below is the pre-network
+    // path; this is the guaranteed fallback), so a DIG-search query never round-trips to dig.net.
+    if (details.url && details.frameId === 0) {
+      const q = matchDigSearchSentinel(details.url);
+      if (q != null) {
+        await chrome.tabs.update(details.tabId, {
+          url: chrome.runtime.getURL(`${DIG_SEARCH_RESOLVER_PAGE}?q=${encodeURIComponent(q)}`),
+        });
+        return;
+      }
+    }
+
+    // #310 — a bare `urn:` scheme (a typed/clicked `urn:dig:chia:…`). Route through the SAME shared
+    // classify → resolve → node-load core as `chia://` and the `dig` omnibox.
+    if (details.url && /^urn:/i.test(details.url) && details.frameId === 0) {
+      const enabled = (await chrome.storage.local.get(['extensionEnabled'])).extensionEnabled !== false;
+      if (enabled) {
+        try {
+          await handleResolvedNavigation(details.tabId, details.url);
+        } catch (error) {
+          console.error('DIG Extension: Error handling urn: navigation:', error);
+        }
+      }
+      return;
+    }
+
     // Handle chia:// URLs - fetch content and stream as data URL while keeping chia:// in URL bar
     if (details.url && details.url.startsWith('chia://')) {
       console.log('DIG Extension: onBeforeNavigate caught chia:// URL:', details.url);
@@ -3413,7 +3507,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(
       return;
     }
   },
-  { url: [{ schemes: ['chia', 'http', 'https'] }] }
+  { url: [{ schemes: ['chia', 'urn', 'http', 'https'] }] }
 );
 
 // Also handle chia:// links clicked in pages (using content script approach)
@@ -4025,49 +4119,27 @@ setInterval(async () => {
   }
 }, 3000); // Low-frequency backstop (was 100ms); the primary path is event-driven.
 
-// Omnibox `dig` keyword (#291) — type `dig <chia:// | urn | storeId[:root] | url | words>`. Resolves
-// the typed identifier with the SHARED classifier (parity with the DIG Home NTP), then:
-//   - a DIG address → the §5.3 node-or-sandbox navigation (handleDigUrlNavigation), matching #289;
-//   - a URL         → navigate to it;
-//   - anything else → a web search (the user's custom search engine if configured, else the shared
-//                     DuckDuckGo default from omniboxTarget).
-// `currentTab` reuses the active tab; any other disposition opens a new tab.
+// Omnibox `dig` keyword (#291) — type `dig <chia:// | urn:dig: | storeId[:root] | <label>.dig |
+// <sub>.on.dig.net | url | words>`. Routes the typed input through the ONE shared classify → resolve
+// → load core (`handleResolvedNavigation`, #362), the SAME path the raw `urn:`/`chia://` URL-bar
+// interception (#310) and the DIG search resolver (#362) use: a DIG address → the §5.4
+// node-or-sandbox nav; an `*.on.dig.net`/`.dig` shorthand → HEAD→URN (#308); a URL → navigate; free
+// text → the configurable fallback web-search engine. `currentTab` reuses the active tab; any other
+// disposition opens a new tab.
 chrome.omnibox.onInputEntered.addListener(
   async (text, disposition) => {
     const trimmed = (text || '').trim();
     if (!trimmed) return;
     console.log('DIG Extension: Omnibox input:', trimmed, '(', disposition, ')');
 
-    const kind = classifyOmnibox(trimmed);
-    const target = omniboxTarget(trimmed); // chia://… for DIG, https://… for URL, DDG for search
-
     const openInCurrent = disposition === 'currentTab';
-    const activeTab = openInCurrent
-      ? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]
-      : null;
-
-    if (kind === 'dig') {
-      // Route through the same node-or-sandbox path address-bar navigation uses (#289). A new tab
-      // starts blank, then the SAME decision drives it.
-      const tabId = openInCurrent && activeTab?.id != null ? activeTab.id : (await chrome.tabs.create({ url: 'about:blank' })).id;
-      if (tabId != null) await handleDigUrlNavigation(tabId, target);
-      return;
+    let tabId = null;
+    if (openInCurrent) {
+      const active = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+      tabId = active?.id ?? null;
     }
-
-    // Non-DIG: a URL navigates to `target`; a search prefers the configured custom search engine,
-    // falling back to the shared default (`target`).
-    let dest = target;
-    if (kind === 'search') {
-      const cfg = await chrome.storage.local.get(['search.enabled', 'search.url']);
-      if (cfg['search.enabled'] !== false && cfg['search.url']) {
-        dest = String(cfg['search.url']).replace('%s', encodeURIComponent(trimmed));
-      }
-    }
-    if (openInCurrent && activeTab?.id != null) {
-      await chrome.tabs.update(activeTab.id, { url: dest });
-    } else {
-      await chrome.tabs.create({ url: dest });
-    }
+    if (tabId == null) tabId = (await chrome.tabs.create({ url: 'about:blank' })).id ?? null;
+    if (tabId != null) await handleResolvedNavigation(tabId, trimmed);
   }
 );
 
@@ -4083,6 +4155,37 @@ chrome.omnibox.onInputChanged.addListener((text, suggest) => {
   }
   suggest(suggestions);
 });
+
+// #362 Tier 4 — redirect the DIG-search sentinel (the search provider's search_url on dig.net) to the
+// in-extension resolver page BEFORE the request leaves the browser, so a DIG-search query never
+// round-trips to a third party (bounce-free). A dynamic declarativeNetRequest rule is registered at
+// startup: its `regexSubstitution` embeds the concrete extension id (only known at runtime) and
+// preserves the `?q=…` query. Best-effort — the `webNavigation` sentinel catch above is the fallback
+// if the DNR redirect is unavailable.
+const DIG_SEARCH_DNR_RULE_ID = 3620;
+async function registerDigSearchRedirect() {
+  try {
+    if (!chrome.declarativeNetRequest?.updateDynamicRules) return;
+    const resolver = chrome.runtime.getURL(DIG_SEARCH_RESOLVER_PAGE); // chrome-extension://<id>/dig-search.html
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [DIG_SEARCH_DNR_RULE_ID],
+      addRules: [
+        {
+          id: DIG_SEARCH_DNR_RULE_ID,
+          priority: 1,
+          action: { type: 'redirect', redirect: { regexSubstitution: `${resolver}?q=\\1` } },
+          condition: {
+            regexFilter: '^https?://(?:www\\.)?dig\\.net/dig-search\\?(?:[^#]*&)?q=([^&#]*)',
+            resourceTypes: ['main_frame'],
+          },
+        },
+      ],
+    });
+  } catch (e) {
+    console.warn('DIG Extension: could not register DIG-search redirect rule', e);
+  }
+}
+void registerDigSearchRedirect();
 
 // ============================================================================
 // Search Engine Management

@@ -255,6 +255,7 @@ export const ACTIONS = Object.freeze({
   proxyRequest: 'proxyRequest',
   convertDigUrl: 'convertDigUrl',
   navigateToDigUrl: 'navigateToDigUrl',
+  navigateDigInput: 'navigateDigInput', // #362 — classify+resolve+navigate ANY raw entry input
   navigateToDataUrl: 'navigateToDataUrl', // deprecated; navigates a legacy server URL
   getDataUrl: 'getDataUrl', // deprecated; returns a data: URL
   navigate: 'navigate',
@@ -446,6 +447,12 @@ export const MESSAGE_CATALOGUE = Object.freeze({
       "Run the §5.3 node-or-sandbox navigation (handleDigUrlNavigation) for a chia:// URL against the sender (or active) tab: a reachable local dig-node lands the tab on its plaintext /s/ serve surface (#289); otherwise the sandbox dig-viewer. Callers: the home open-by-URN input, the injected page toolbar's URN bar (#293), and the `dig` omnibox.",
     request: '{ action, url:string }',
     response: `{ success:true, url:viewerUrl } | ${CODED_ERROR}`,
+  },
+  [ACTIONS.navigateDigInput]: {
+    summary:
+      "Classify + resolve + navigate ANY raw entry-surface input against the sender (or active) tab (#362): the shared classifier (dig-nav classifyDigInput) decides a DIG address (chia:// / urn:dig:chia: / bare store id / dig-dns .dig) → the §5.4 node-or-sandbox nav; an *.on.dig.net / <name>.dig subdomain → HEAD→URN (#308, resolved from the extension origin) → the §5.4 nav; a plain URL → navigate to it; free text → the configurable fallback search engine (search-fallback). Callers: the raw urn:/chia:// URL-bar interception (#310), the toolbar URN bars' on-dig-net form (#306), the `dig` omnibox, and the custom DIG search resolver page (#362).",
+    request: '{ action, input:string }',
+    response: `{ success:true } | ${CODED_ERROR}`,
   },
   [ACTIONS.navigateToDataUrl]: {
     summary: 'DEPRECATED — navigate a tab to a legacy content-server URL.',
