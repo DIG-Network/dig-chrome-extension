@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.87.1] - 2026-07-11
+
+### Bug Fixes
+- Source connected-wallet balances from self-custody scan, not an unverified node (#399) (#120)
+
 ## [1.87.0] - 2026-07-11
 
 ### Features
