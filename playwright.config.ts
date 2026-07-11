@@ -19,6 +19,7 @@ export default defineConfig({
     '**/fee-estimate.spec.ts',
     '**/wallet-switcher.spec.ts',
     '**/home-balance.spec.ts',
+    '**/wallet-balance-source.spec.ts',
     '**/home-flush-urn.spec.ts',
     '**/loader-toolbar-shots.spec.ts',
     '**/did-create-errors.spec.ts',
