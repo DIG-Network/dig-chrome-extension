@@ -158,12 +158,20 @@ test('chia:// resolution path reaches the SW and redirects the tab to the dig-vi
   // chia:// resolution path runs in the SW.
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
-  await page.evaluate(() =>
-    chrome.runtime.sendMessage({
-      action: 'navigateToDigUrl',
-      url: 'chia://harness-example.dig/index.html',
-    }),
-  );
+  // Fire-and-forget: the SW now flashes the tab to the #311 loader page IMMEDIATELY (before the
+  // node probe), which destroys this popup's execution context mid-evaluate — so we must NOT await
+  // the evaluate (awaiting it races the navigation → "Execution context was destroyed"). The
+  // waitForURL below is the real assertion: the tab settles on dig-viewer.html (loader → viewer).
+  await page
+    .evaluate(() =>
+      chrome.runtime.sendMessage({
+        action: 'navigateToDigUrl',
+        url: 'chia://harness-example.dig/index.html',
+      }),
+    )
+    .catch(() => {
+      /* context torn down by the immediate loader navigation — expected */
+    });
   await page.waitForURL(/\/dig-viewer\.html/, { timeout: 15_000 });
   expect(page.url()).toContain('/dig-viewer.html');
   expect(page.url()).toContain(extensionId);

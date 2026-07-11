@@ -27,6 +27,15 @@ describe('OpenByUrnInput (#172 home-screen open-by-URN)', () => {
     expect(screen.getByLabelText(/chia:\/\/|urn/i)).toBeInTheDocument();
   });
 
+  it('#312 — renders as a flush docked bar, not a floating .dig-widget card', () => {
+    mockDigDnsStatus({ phase: 'unavailable' });
+    renderWithProviders(<OpenByUrnInput />);
+    const root = screen.getByTestId('home-openurn');
+    // Docked-flush marker present; the old floating-card class is gone.
+    expect(root).toHaveClass('dig-openurn--flush');
+    expect(root).not.toHaveClass('dig-widget');
+  });
+
   it('shows an inline error for a non-empty invalid address and does not navigate', async () => {
     mockDigDnsStatus({ phase: 'unavailable' });
     const send = chrome.runtime.sendMessage as unknown as ReturnType<typeof vi.fn>;

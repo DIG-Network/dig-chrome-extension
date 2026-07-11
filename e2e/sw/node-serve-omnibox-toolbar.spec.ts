@@ -401,6 +401,111 @@ test('#362 — the DIG search resolver sends a NON-DIG query to the configured f
   await page.close();
 });
 
+// ── #311 — the instant DIG loader interstitial ──────────────────────────────────────────────────────
+
+test('#311 — a URN-bar submit paints the DIG loader instantly, then swaps to the resolved content', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  // A DEAD node port makes the §5.3 probe take its full ~1.2s timeout — a REAL resolve latency the
+  // loader is designed to cover — so the interstitial is deterministically visible for >1s (no race
+  // with an instant swap), then the tab settles on the sandbox dig-viewer. This is the honest proof
+  // of the never-blank loader; the fast node-reachable swap is covered by #289/#293 above.
+  await setServerHost(cfg, 'http://127.0.0.5:9');
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  // Record every main-frame navigation. The loader is a TRANSIENT interstitial the SW swaps away
+  // once the resolve completes, so asserting its DOM on the live tab races the swap; the reliable
+  // proof is the navigation SEQUENCE (the ~1.2s probe guarantees the loader hop fully commits →
+  // `framenavigated` fires for it) — the loader's own DOM render is proven by the direct-navigation
+  // test below.
+  const visited: string[] = [];
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) visited.push(frame.url());
+  });
+
+  const input = page.getByTestId('dig-toolbar-urn-input');
+  await expect(input).toBeVisible({ timeout: 10_000 });
+  await input.fill(CHIA_URL);
+  await input.press('Enter');
+
+  // The SW settles the tab on the resolved destination (no local node → the sandbox dig-viewer).
+  await page.waitForURL((u) => u.pathname.endsWith('/dig-viewer.html'), { timeout: 20_000 });
+  expect(page.url()).toContain('urn=');
+
+  // The branded DIG loader was flashed FIRST (an extension page), as an instant never-blank
+  // interstitial, BEFORE the destination — proven by the recorded sequence (loader precedes viewer).
+  const loaderIdx = visited.findIndex((u) => u.includes('/dig-loader.html'));
+  const viewerIdx = visited.findIndex((u) => u.includes('/dig-viewer.html'));
+  expect(loaderIdx, `loader hop in ${JSON.stringify(visited)}`).toBeGreaterThanOrEqual(0);
+  expect(loaderIdx).toBeLessThan(viewerIdx);
+  await page.close();
+});
+
+test('#311 — the loader page renders the branded shell directly (screenshots, light + dark)', async () => {
+  const page = await context.newPage();
+  const loaderUrl = `chrome-extension://${extensionId}/dig-loader.html?input=${encodeURIComponent(CHIA_URL)}`;
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const w of [
+      { label: 'desktop', size: { width: 1280, height: 820 } },
+      { label: 'mobile', size: { width: 390, height: 780 } },
+    ]) {
+      await page.setViewportSize(w.size);
+      await page.goto(loaderUrl);
+      await expect(page.getByTestId('dig-loader-page')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('dig-loader-spinner')).toBeVisible();
+      await page.screenshot({ path: `e2e/__screenshots__/dig-loader-${scheme}-${w.label}.png` });
+    }
+  }
+  await page.close();
+});
+
+// ── #366 — toolbar hide control + keyboard show/hide + shortcut hint ──────────────────────────────────
+
+test('#366 — the injected toolbar shows a shortcut hint and the hide button removes it live', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  await expect(page.getByTestId('dig-toolbar')).toBeVisible({ timeout: 10_000 });
+
+  // The muted show/hide shortcut hint is present in the bar (default Alt+Shift+D until rebinding).
+  await expect(page.getByTestId('dig-toolbar-shortcut-hint')).toContainText('Alt+Shift+D');
+
+  // Clicking hide flips toolbar.enabled off → the bar is removed live on this page.
+  await page.getByTestId('dig-toolbar-hide').click();
+  await expect(page.locator('#dig-toolbar-host')).toHaveCount(0, { timeout: 10_000 });
+
+  // The persisted toggle is now off (a fresh page does NOT inject the bar).
+  const enabled = await worker.evaluate(async () => (await chrome.storage.local.get('toolbar.enabled'))['toolbar.enabled']);
+  expect(enabled).toBe(false);
+  await page.close();
+});
+
+test('#366 — re-enabling toolbar.enabled (as the header switch/keyboard command do) re-injects the bar', async () => {
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  // Off from the previous test → no bar.
+  await expect(page.getByTestId('dig-toolbar')).toHaveCount(0, { timeout: 10_000 });
+  // Flip it back on via the SAME storage key the header switch + chrome.commands listener drive.
+  await setToolbarViaWorker(true);
+  await expect(page.getByTestId('dig-toolbar')).toBeVisible({ timeout: 10_000 });
+  await page.close();
+});
+
+test('#366 — the manifest registers the toggle-dig-toolbar keyboard command (Alt+Shift+D default)', async () => {
+  const cmd = await worker.evaluate(() => {
+    const cmds = chrome.runtime.getManifest().commands || {};
+    return cmds['toggle-dig-toolbar'];
+  });
+  expect(cmd).toBeTruthy();
+  expect(cmd?.suggested_key?.default).toBe('Alt+Shift+D');
+});
+
 // ── #306 item 2 — screenshots: the built-in toolbar light + dark, desktop + mobile (§6.5) ───────────
 
 test('#306 — screenshot the built-in toolbar + header switch (light/dark, desktop/mobile)', async () => {

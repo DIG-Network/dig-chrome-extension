@@ -81,6 +81,14 @@ describe('HomeScreen (mobile-OS home)', () => {
     expect(screen.queryByTestId('home-toolbar-toggle-widget')).toBeNull();
   });
 
+  it('#312 — the URN entry input is the TOP-most Home element (docked flush to the top edge)', () => {
+    renderWithProviders(<HomeScreen />);
+    const home = screen.getByTestId('home-screen');
+    // The first child of the Home column is the flush URN input, before the widget board.
+    expect(home.firstElementChild).toBe(screen.getByTestId('home-openurn'));
+    expect(screen.getByTestId('home-openurn')).toHaveClass('dig-openurn--flush');
+  });
+
   it('prompts to open the wallet when locked', async () => {
     mockSw(false);
     renderWithProviders(<HomeScreen />);

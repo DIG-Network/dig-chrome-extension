@@ -52,6 +52,9 @@ import {
 // Home NTP behave identically (pure, unit-tested in apps.test). Entry NAVIGATION routes through the
 // shared `handleResolvedNavigation` core (below); suggestions read `omniboxSuggestions`.
 import { omniboxSuggestions } from '@/lib/apps';
+// #366 — the toolbar show/hide keyboard command id + the persisted enable/disable key both toolbar
+// mounts already react to live via storage.onChanged (no new toggle path needed).
+import { TOOLBAR_ENABLED_KEY, TOOLBAR_ENABLED_DEFAULT, TOOLBAR_TOGGLE_COMMAND } from '@/lib/toolbar';
 
 // The TRUSTED-root decision (#226): a rootless ('latest') URN must verify against the store's
 // chain-ANCHORED root, never the literal string 'latest'. These pure helpers own the fail-closed
@@ -3141,6 +3144,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // #366 — resolve the ACTUAL bound keyboard shortcut for the show/hide command. A content script
+  // (the injected toolbar) can't call chrome.commands itself, so it asks the SW. `shortcut` is the
+  // empty string when the command exists but the user cleared its binding — the caller then falls
+  // back to the manifest default via `toolbarShortcutHint`.
+  if (message.action === ACTIONS.getToolbarShortcut) {
+    (async () => {
+      let shortcut = '';
+      try {
+        const cmds = await chrome.commands.getAll();
+        const cmd = Array.isArray(cmds) ? cmds.find((c) => c && c.name === TOOLBAR_TOGGLE_COMMAND) : null;
+        shortcut = (cmd && cmd.shortcut) || '';
+      } catch {
+        /* chrome.commands unavailable — the caller falls back to the manifest default */
+      }
+      try { sendResponse({ shortcut }); } catch { /* port closed */ }
+    })();
+    return true;
+  }
+
   // Popup approves/revokes a per-origin wallet connection request.
   if (message.action === 'walletConsent') {
     (async () => {
@@ -3231,7 +3253,7 @@ async function handleDigUrlNavigation(tabId, digUrl) {
   
   // Mark this URL as processed
   processedUrls.set(urlKey, Date.now());
-  
+
   // Clean up old entries periodically
   if (processedUrls.size > 100) {
     const now = Date.now();
@@ -3241,7 +3263,20 @@ async function handleDigUrlNavigation(tabId, digUrl) {
       }
     }
   }
-  
+
+  // #311 — instant, never-blank paint: flash the tab to the branded DIG loader page FIRST (an
+  // extension page that paints immediately, mirroring on.dig.net's loader-shell UX) BEFORE the §5.3
+  // node probe + resolve below, which can take up to ~1.2s. The loader does no resolving itself —
+  // it is a purely visual interstitial; the resolve below swaps the tab to the real destination (or
+  // the branded recoverable error page, on failure) once ready. Best-effort: a failure to paint the
+  // loader must never block the real resolve/navigate that follows.
+  try {
+    const loaderUrl = chrome.runtime.getURL(`dig-loader.html?input=${encodeURIComponent(digUrl)}`);
+    await chrome.tabs.update(tabId, { url: loaderUrl });
+  } catch (e) {
+    console.warn('DIG Extension: could not paint the DIG loader page first', e);
+  }
+
   try {
     // #289 — §5.3 node-or-sandbox decision. Resolve the LOCAL dig-node (dig.local preferred, then
     // 127.0.0.1:<port>; an explicitly-configured custom host wins the ladder entirely). A short
@@ -4142,6 +4177,26 @@ chrome.omnibox.onInputEntered.addListener(
     if (tabId != null) await handleResolvedNavigation(tabId, trimmed);
   }
 );
+
+// #366 — the show/hide keyboard command. `chrome.commands.onCommand` fires when the user presses the
+// bound shortcut (default Alt+Shift+D, rebindable at chrome://extensions/shortcuts). It FLIPS the
+// existing `toolbar.enabled` storage key; both toolbar mounts (the injected content script + the
+// built-in fullscreen React bar) already re-render live off `storage.onChanged`, so no new toggle
+// path is needed — this reuses the exact wiring the header switch drives.
+try {
+  if (chrome.commands && chrome.commands.onCommand) {
+    chrome.commands.onCommand.addListener(async (command) => {
+      if (command !== TOOLBAR_TOGGLE_COMMAND) return;
+      try {
+        const got = await chrome.storage.local.get(TOOLBAR_ENABLED_KEY);
+        const current = typeof got[TOOLBAR_ENABLED_KEY] === 'boolean' ? got[TOOLBAR_ENABLED_KEY] : TOOLBAR_ENABLED_DEFAULT;
+        await chrome.storage.local.set({ [TOOLBAR_ENABLED_KEY]: !current });
+      } catch (e) {
+        console.warn('DIG Extension: toggle-dig-toolbar command failed', e);
+      }
+    });
+  }
+} catch { /* chrome.commands unavailable in some contexts */ }
 
 // Live omnibox suggestions as the user types (#291): a `setDefaultSuggestion` line describing what
 // Enter will do + the single best autocomplete row, from the SHARED classifier. Malformed / empty

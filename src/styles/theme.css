@@ -1458,6 +1458,49 @@ button.dig-widget:focus-visible {
   flex-direction: column;
   gap: 8px;
 }
+
+/* ── #312 open-by-URN input, docked FLUSH to the top edge of the Home tab ──────────────────────
+   A streamlined top bar (NOT a floating card): full width, no radius/shadow, only a bottom divider,
+   negative margins that cancel the scroll area's own padding so it straps edge-to-edge to the very
+   top of the extension view. `.dig-home`'s column `gap` still gives clean breathing room below it
+   before the widget board (§6.5). The negative-margin amount matches each layout's content padding
+   (compact `.dig-main` = 18px; expanded `.dig-content-wide` = 28px top / 40px sides). */
+.dig-openurn--flush {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: color-mix(in srgb, var(--dig-bg) 92%, var(--dig-accent));
+  border-bottom: 1px solid var(--dig-border);
+}
+.dig-app[data-layout='compact'] .dig-openurn--flush {
+  margin: -18px -18px 0;
+  padding: 12px 18px 14px;
+}
+.dig-app[data-layout='expanded'] .dig-openurn--flush {
+  margin: -28px -40px 0;
+  padding: 16px 40px 18px;
+}
+.dig-openurn-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dig-text-faint);
+}
+.dig-openurn-row {
+  display: flex;
+  gap: 8px;
+}
+.dig-openurn-input {
+  flex: 1;
+  min-width: 0;
+}
+.dig-openurn-go {
+  flex: 0 0 auto;
+}
+.dig-openurn-error {
+  margin: 0;
+}
 @media (prefers-reduced-motion: reduce) {
   .dig-screen {
     animation: none;
@@ -1556,6 +1599,13 @@ button.dig-widget:focus-visible {
   color: var(--loader-muted);
   letter-spacing: 0.2px;
   margin: 0;
+  /* #311 — a long chia:// address must never overflow the card edges (§6.5). Fit-to-width with a
+     single-line ellipsis, like a URL bar, regardless of the address length. Harmless for the short
+     phrase the React DigLoader passes elsewhere (AppView). */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
   .dig-loader-spinner {

@@ -70,14 +70,17 @@ export function OpenByUrnInput() {
   };
 
   return (
-    <div className="dig-widget dig-openurn" data-testid="home-openurn">
-      <label htmlFor="home-openurn-input" className="dig-widget-label">
+    // #312 — docked flush to the TOP edge of the Home tab (edge-to-edge, no margins), a streamlined
+    // bar rather than a floating card: `.dig-openurn--flush` cancels the scroll area's padding so it
+    // straps to the top of the extension view. Behaviour/resolve path is unchanged from #172.
+    <div className="dig-openurn dig-openurn--flush" data-testid="home-openurn">
+      <label htmlFor="home-openurn-input" className="dig-openurn-label">
         <FormattedMessage id="home.open.label" />
       </label>
-      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+      <div className="dig-openurn-row">
         <input
           id="home-openurn-input"
-          className="dig-input dig-mono"
+          className="dig-input dig-mono dig-openurn-input"
           data-testid="home-openurn-input"
           placeholder={intl.formatMessage({ id: 'home.open.placeholder' })}
           value={value}
@@ -88,12 +91,12 @@ export function OpenByUrnInput() {
           autoComplete="off"
           spellCheck={false}
         />
-        <button type="button" className="dig-btn dig-btn--primary" data-testid="home-openurn-go" onClick={submit}>
+        <button type="button" className="dig-btn dig-btn--primary dig-openurn-go" data-testid="home-openurn-go" onClick={submit}>
           <FormattedMessage id="home.open.go" />
         </button>
       </div>
       {invalid && (
-        <p className="dig-error-text" role="alert" id="home-openurn-error" data-testid="home-openurn-error">
+        <p className="dig-error-text dig-openurn-error" role="alert" id="home-openurn-error" data-testid="home-openurn-error">
           <FormattedMessage id="home.open.error.invalid" />
         </p>
       )}

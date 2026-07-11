@@ -71,6 +71,8 @@ test('ACTIONS covers EVERY action the background service worker handles', () => 
     'getCapabilities',
     // injected page toolbar (#292): open a full-page surface in a new tab:
     'openExtensionPage',
+    // toolbar hide + keyboard show/hide (#366): resolve the actual bound chrome.commands shortcut:
+    'getToolbarShortcut',
   ];
   for (const a of handled) {
     assert.equal((ACTIONS as Record<string, string>)[a], a, `ACTIONS is missing "${a}"`);
