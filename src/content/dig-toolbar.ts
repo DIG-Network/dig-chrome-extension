@@ -34,8 +34,10 @@ import {
   resolveUrnBarSubmit,
   toolbarLabels,
   toolbarTheme,
+  toolbarShortcutHint,
   TOOLBAR_PALETTES,
   type BadgeState,
+  type ToolbarLabels,
 } from '@/lib/toolbar';
 import { ACTIONS } from '@/lib/messages';
 
@@ -105,6 +107,32 @@ function navigateDigInput(input: string): void {
   }
 }
 
+/** #366 — hide the toolbar on this page by flipping the persisted `toolbar.enabled` toggle OFF.
+ *  storage.onChanged (below) then removes the bar live on THIS page and every other, and the header
+ *  switch / keyboard command / re-enable affordance flip it back on. */
+function hideToolbar(): void {
+  try {
+    void chrome.storage.local.set({ [TOOLBAR_ENABLED_KEY]: false });
+  } catch {
+    /* storage unavailable — best effort */
+  }
+}
+
+/** #366 — ask the SW for the ACTUAL bound show/hide shortcut (a content script has no
+ *  `chrome.commands` access), then paint it into the hint element. Falls back to the manifest
+ *  default via `toolbarShortcutHint` on any failure/empty binding — never blank. */
+function refreshShortcutHint(hintEl: HTMLElement, labels: ToolbarLabels): void {
+  hintEl.textContent = toolbarShortcutHint(labels, null); // instant default; upgraded below if resolvable
+  try {
+    chrome.runtime.sendMessage({ action: ACTIONS.getToolbarShortcut }, (res?: { shortcut?: string }) => {
+      if (chrome.runtime.lastError) return; // SW asleep / no receiver — keep the default
+      hintEl.textContent = toolbarShortcutHint(labels, res && res.shortcut ? res.shortcut : null);
+    });
+  } catch {
+    /* SW gone / context invalidated — the default hint stays */
+  }
+}
+
 /** Build the shadow-DOM toolbar and mount it. Idempotent — a second call replaces the first. */
 function mountToolbar(badges: BadgeState | null): void {
   removeToolbar();
@@ -141,9 +169,9 @@ function mountToolbar(badges: BadgeState | null): void {
       flex: 0 0 auto; width: 20px; height: 20px; display: inline-flex; align-items: center;
       justify-content: center; font-size: 13px; color: ${c.mark};
     }
-    .urnbar { flex: 1 1 auto; min-width: 0; }
+    .urnbar { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
     .urn-input {
-      box-sizing: border-box; width: 100%; height: 26px; padding: 0 10px;
+      box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 10px;
       font: inherit; font-size: 12.5px; color: ${c.inputText};
       background: ${c.inputBg}; border: 1px solid ${c.inputBorder}; border-radius: 13px;
       outline: none;
@@ -151,6 +179,11 @@ function mountToolbar(badges: BadgeState | null): void {
     .urn-input::placeholder { color: ${c.placeholder}; }
     .urn-input:focus { border-color: ${c.focus}; box-shadow: 0 0 0 1px ${c.focus}; }
     .urn-input[aria-invalid="true"] { border-color: ${c.warnText}; box-shadow: 0 0 0 1px ${c.warnText}; }
+    /* #366 — the muted show/hide keyboard-shortcut hint, unobtrusive beside the input. */
+    .shortcut-hint {
+      flex: 0 0 auto; font-size: 11px; color: ${c.placeholder}; white-space: nowrap;
+      user-select: none;
+    }
     .sr-only {
       position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
       clip: rect(0,0,0,0); white-space: nowrap; border: 0;
@@ -169,11 +202,18 @@ function mountToolbar(badges: BadgeState | null): void {
       display: inline-flex; align-items: center; justify-content: center;
     }
     .open-btn:hover, .open-btn:focus-visible { background: ${c.btnHover}; outline: none; }
-    /* Narrow (mobile-width) viewports: the URN bar + the single open button are the two essential
-       elements — collapse the decorative mark + the supplementary DIG-verdict badges so the input
+    /* #366 — the hide (×) control, same affordance/shape as the open button. */
+    .hide-btn {
+      flex: 0 0 auto; appearance: none; border: 0; cursor: pointer; background: transparent;
+      color: ${c.btn}; width: 26px; height: 26px; border-radius: 6px; font-size: 18px; line-height: 1;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .hide-btn:hover, .hide-btn:focus-visible { background: ${c.btnHover}; outline: none; }
+    /* Narrow (mobile-width) viewports: the URN bar + the essential buttons stay — collapse the
+       decorative mark, the supplementary DIG-verdict badges, and the shortcut hint so the input
        keeps a usable width instead of shrinking to a sliver (§6.5 clean-spacing bar). */
     @media (max-width: 460px) {
-      .mark, .badges { display: none; }
+      .mark, .badges, .shortcut-hint { display: none; }
     }
   `;
   shadow.appendChild(style);
@@ -224,7 +264,13 @@ function mountToolbar(badges: BadgeState | null): void {
       error.textContent = labels.urnInvalid;
     }
   });
-  urnbar.append(input);
+  // #366 — a muted show/hide keyboard-shortcut hint beside the input (resolved from the SW below).
+  const hint = document.createElement('span');
+  hint.className = 'shortcut-hint';
+  hint.setAttribute('data-testid', 'dig-toolbar-shortcut-hint');
+  hint.setAttribute('aria-hidden', 'true');
+  refreshShortcutHint(hint, labels);
+  urnbar.append(input, hint);
 
   const badgesEl = document.createElement('div');
   badgesEl.className = 'badges';
@@ -264,7 +310,18 @@ function mountToolbar(badges: BadgeState | null): void {
     }
   });
 
-  bar.append(mark, urnbar, badgesEl, openBtn, error);
+  // #366 — the hide (×) control: flip the toggle OFF (removes the bar live everywhere). Re-enable
+  // via the window-header switch, the keyboard command, or chrome://extensions/shortcuts.
+  const hideBtn = document.createElement('button');
+  hideBtn.className = 'hide-btn';
+  hideBtn.type = 'button';
+  hideBtn.textContent = '×';
+  hideBtn.title = labels.hide;
+  hideBtn.setAttribute('aria-label', labels.hide);
+  hideBtn.setAttribute('data-testid', 'dig-toolbar-hide');
+  hideBtn.addEventListener('click', hideToolbar);
+
+  bar.append(mark, urnbar, badgesEl, openBtn, hideBtn, error);
   shadow.appendChild(bar);
 
   (document.documentElement || document.body).appendChild(host);

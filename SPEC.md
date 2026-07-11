@@ -230,7 +230,11 @@ below the fold at the bottom of a growable body (a long form, a coin picker, an 
 
 The mobile-OS Home screen (§2.1) carries a compact "open a chia:// address or DIG URN" input
 (`OpenByUrnInput`, `src/features/home/OpenByUrnInput.tsx`) — a labeled text field + a "Go"
-enter-to-submit action, rendered in both the popup and fullscreen surfaces.
+enter-to-submit action, rendered in both the popup and fullscreen surfaces. It is the **TOP-most
+Home element**, docked **flush to the top edge** (#312): a streamlined bar (`.dig-openurn--flush`),
+NOT a floating card — negative margins cancel the scroll area's own padding so it straps edge-to-edge
+to the very top of the extension view, with the Home column's `gap` giving clean spacing below it
+before the widget board.
 
 - **Validation (shape only, no fetch).** On submit the typed value is parsed by the single shared
   `parseURN` (§4) — the SAME parser every other entry point uses, no second copy. Empty/whitespace
@@ -607,6 +611,17 @@ is purely additive — it changes behaviour only for the (local-node-up + valid-
 serve mount is the node's contract (docs.dig.net + dig-node `SPEC.md`). The public `rpc.dig.net`
 gateway MUST NOT serve `/s/` plaintext — it stays ciphertext-only.
 
+**Instant loader interstitial (#311).** Before the node probe + resolve (which can take up to the
+~1.2 s probe timeout), `handleDigUrlNavigation` FIRST flashes the tab to an extension-served,
+never-blank branded loader page (`dig-loader.html?input=<digUrl>`, a `web_accessible_resource`),
+mirroring `*.on.dig.net`'s loader-shell UX (instant paint, async resolve). The loader renders the
+SAME `.dig-loader` markup as the React `DigLoader` (theme.css, light/dark matched) showing which
+address is resolving; it does NO resolving itself — the SW swaps the tab PAST it to the resolved
+`/s/` (or sandbox viewer) destination, or to the branded recoverable error page (§9) on failure. A
+defensive failsafe on the loader page (retry / DIG Home) guards the pathological case where the SW
+never follows up, so the tab is never blank or spinner-forever. The pure query-param + display
+helpers live in `src/lib/dig-loader.ts`; `src/entries/dig-loader.ts` is the DOM glue.
+
 ### 5.5 DIG URN toolbar — injected + built-in (`toolbar.ts` core; `dig-toolbar.js` injected,
 `DigToolbar.tsx` built-in; #292/#293/#306)
 
@@ -656,6 +671,19 @@ same media query. It carries:
   in the fullscreen surface) that opens the fullscreen extension surface (`app.html`, no sub-view
   deep-link) in a NEW tab via `openExtensionPage` (§7.1) — replacing the earlier per-page
   Wallet/DIG Shields/Control Panel icon row.
+- **A hide (×) control** (`data-testid="dig-toolbar-hide"`, injected bar) that turns the bar OFF by
+  flipping `toolbar.enabled` to `false` — instant removal on this page and every other, live via
+  `storage.onChanged`. Re-enable is one action from any of: the window-header switch (§5.5 above), the
+  keyboard command below, or `chrome://extensions/shortcuts`.
+- **A keyboard show/hide command** (#366): the manifest registers a `chrome.commands` command
+  `toggle-dig-toolbar` with `suggested_key.default` = `Alt+Shift+D` (user-rebindable at
+  `chrome://extensions/shortcuts`). The SW's `chrome.commands.onCommand` listener flips
+  `toolbar.enabled` — the SAME toggle both mounts already react to, so no separate toggle path exists.
+- **A muted shortcut hint in the URN bar** (`data-testid="dig-toolbar-shortcut-hint"` injected /
+  `builtin-dig-toolbar-shortcut-hint` built-in) showing the command's key so users discover it. It
+  reflects the ACTUAL bound key when resolvable — the injected bar asks the SW (`getToolbarShortcut`,
+  §7), the built-in bar calls `chrome.commands.getAll()` directly — falling back to the manifest
+  default (`Alt+Shift+D`) via `toolbarShortcutHint` until resolved / when the binding is cleared.
 
 Labels are localized from a compact self-contained table (`toolbarLabels`) rather than the full shell
 catalog (the content script runs on every page and must stay lean); the brand phrase "Verified on
@@ -766,7 +794,7 @@ non-DIG query goes to the chosen fallback, never back through the DIG sentinel.
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `27`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `32`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -890,6 +918,14 @@ cached `/ws/status` live snapshot), the OPEN cache/LRU family (`cacheGetConfig`,
 `cacheList`, `cacheRemove`, `cacheClear`, `cacheStats`), the pairing controls (`pairingStart`,
 `pairingState`, `pairingCancel`, `pairingUnpair`), and `controlAuthed` (the token-attaching
 dispatcher for gated `control.*`). Purely additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `32` (#366 toolbar hide + keyboard show/hide, §5.5) added
+`getToolbarShortcut` — a content script cannot call `chrome.commands.getAll()` (an extension-page-only
+API), so the injected toolbar asks the SW to resolve the ACTUAL bound key for the `toggle-dig-toolbar`
+command (empty string when the user cleared the binding → the caller falls back to the manifest
+default). The SW also registers a `chrome.commands.onCommand` listener that flips the existing
+`toolbar.enabled` storage key (no new action — both toolbar mounts already react live via
+`storage.onChanged`). Purely additive — no existing action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.

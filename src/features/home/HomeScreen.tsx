@@ -55,13 +55,14 @@ const KIND_GLYPH: Record<ActivityRow['kind'], string> = {
 export function HomeScreen() {
   return (
     <div className="dig-home" data-testid="home-screen">
+      {/* #312 — the URN entry input is the TOP-most Home element, docked flush to the top edge. */}
+      <OpenByUrnInput />
       <div className="dig-home-board">
         <BalanceWidget />
         <QuickActions />
         <StatusWidget />
         <ActivityPeek />
       </div>
-      <OpenByUrnInput />
       <LauncherWidget />
     </div>
   );

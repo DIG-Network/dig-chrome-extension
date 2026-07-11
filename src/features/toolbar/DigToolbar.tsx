@@ -5,15 +5,38 @@ import { ACTIONS } from '@/lib/messages';
 import {
   TOOLBAR_ENABLED_KEY,
   TOOLBAR_ENABLED_DEFAULT,
+  TOOLBAR_TOGGLE_COMMAND,
   resolveUrnBarSubmit,
   toolbarLabels,
   toolbarBadges,
   toolbarTheme,
+  toolbarShortcutHint,
   TOOLBAR_PALETTES,
 } from '@/lib/toolbar';
 import type { ServeVerdict } from '@/lib/dig-serve-headers';
 
 const DARK_QUERY = '(prefers-color-scheme: dark)';
+
+/** Resolve the ACTUAL bound show/hide shortcut (#366). An extension page CAN call
+ *  `chrome.commands.getAll()` directly (unlike a content script, which asks the SW); we return
+ *  `null` until resolved so `toolbarShortcutHint` shows the manifest default in the meantime. */
+function useToolbarShortcut(): string | null {
+  const [shortcut, setShortcut] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      if (hasRuntime() && chrome.commands?.getAll) {
+        chrome.commands.getAll((cmds) => {
+          if (chrome.runtime.lastError) return;
+          const cmd = Array.isArray(cmds) ? cmds.find((c) => c && c.name === TOOLBAR_TOGGLE_COMMAND) : undefined;
+          setShortcut((cmd && cmd.shortcut) || '');
+        });
+      }
+    } catch {
+      /* chrome.commands unavailable — keep the default */
+    }
+  }, []);
+  return shortcut;
+}
 
 /** Track the browser's `prefers-color-scheme: dark` signal, live (#306 item 2). */
 function usePrefersDark(): boolean {
@@ -63,6 +86,7 @@ export function DigToolbar({ verdict = null }: { verdict?: ServeVerdict | null }
   );
   const [value, setValue] = useState('');
   const [invalid, setInvalid] = useState(false);
+  const shortcut = useToolbarShortcut();
 
   if (!enabled) return null;
 
@@ -127,6 +151,13 @@ export function DigToolbar({ verdict = null }: { verdict?: ServeVerdict | null }
           if (e.key === 'Enter') submit();
         }}
       />
+      <span
+        aria-hidden="true"
+        data-testid="builtin-dig-toolbar-shortcut-hint"
+        style={{ flex: '0 0 auto', fontSize: 11, color: palette.placeholder, whiteSpace: 'nowrap', userSelect: 'none' }}
+      >
+        {toolbarShortcutHint(labels, shortcut)}
+      </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {badges.verified.show && (
           <span

@@ -4178,6 +4178,26 @@ chrome.omnibox.onInputEntered.addListener(
   }
 );
 
+// #366 — the show/hide keyboard command. `chrome.commands.onCommand` fires when the user presses the
+// bound shortcut (default Alt+Shift+D, rebindable at chrome://extensions/shortcuts). It FLIPS the
+// existing `toolbar.enabled` storage key; both toolbar mounts (the injected content script + the
+// built-in fullscreen React bar) already re-render live off `storage.onChanged`, so no new toggle
+// path is needed — this reuses the exact wiring the header switch drives.
+try {
+  if (chrome.commands && chrome.commands.onCommand) {
+    chrome.commands.onCommand.addListener(async (command) => {
+      if (command !== TOOLBAR_TOGGLE_COMMAND) return;
+      try {
+        const got = await chrome.storage.local.get(TOOLBAR_ENABLED_KEY);
+        const current = typeof got[TOOLBAR_ENABLED_KEY] === 'boolean' ? got[TOOLBAR_ENABLED_KEY] : TOOLBAR_ENABLED_DEFAULT;
+        await chrome.storage.local.set({ [TOOLBAR_ENABLED_KEY]: !current });
+      } catch (e) {
+        console.warn('DIG Extension: toggle-dig-toolbar command failed', e);
+      }
+    });
+  }
+} catch { /* chrome.commands unavailable in some contexts */ }
+
 // Live omnibox suggestions as the user types (#291): a `setDefaultSuggestion` line describing what
 // Enter will do + the single best autocomplete row, from the SHARED classifier. Malformed / empty
 // input yields a helpful default with no rows (never throws). Descriptions are XML-escaped upstream.

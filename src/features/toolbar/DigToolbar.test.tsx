@@ -66,4 +66,13 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
     expect(await screen.findByTestId('builtin-dig-toolbar-badge-verified')).toHaveAttribute('data-ok', 'true');
     expect(screen.getByTestId('builtin-dig-toolbar-badge-local')).toBeInTheDocument();
   });
+
+  it('#366 — shows the show/hide keyboard-shortcut hint (default when chrome.commands is unresolved)', async () => {
+    await enable(true);
+    render(<DigToolbar />);
+    const hint = await screen.findByTestId('builtin-dig-toolbar-shortcut-hint');
+    // With no chrome.commands binding resolvable in the unit env, the manifest default is shown.
+    expect(hint).toHaveTextContent('Alt+Shift+D');
+    expect(hint).toHaveTextContent(/show\/hide/i);
+  });
 });
