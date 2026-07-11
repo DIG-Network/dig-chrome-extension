@@ -5,18 +5,24 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 
 /**
- * END-USER e2e for #217 (phase 3 of #205) — proves, against the BUILT unpacked extension in a real
- * browser, that the extension consumes the dig-node's Sage-parity `get_*` wallet-data surface as its
- * source, with a coinset fallback, and that the Settings switch drives it. Mirrors the "real loopback
- * socket, no mocked fetch" bar of `e2e/sw/dig-node-control.spec.ts`: a tiny Node HTTP server on
- * {@link LOOPBACK_IP} speaks the Sage v0.12.11 `POST /{method}` contract (byte-shaped per
- * `src/lib/node-wallet.ts`), and the Custom-URL source mode points the wallet-data resolver at it.
+ * END-USER e2e for #217 (phase 3 of #205) + the #399 verified-tracking gate — proves, against the
+ * BUILT unpacked extension in a real browser, that the extension's WALLET-data source resolves
+ * correctly, and that the Settings switch drives it. Mirrors the "real loopback socket, no mocked
+ * fetch" bar of `e2e/sw/dig-node-control.spec.ts`: a tiny Node HTTP server on {@link LOOPBACK_IP}
+ * speaks the Sage v0.12.11 `POST /{method}` contract (byte-shaped per `src/lib/node-wallet.ts`), and
+ * the Custom-URL source mode points the wallet-data resolver at it.
+ *
+ * #399: a dig-node answers wallet reads from the wallet IT tracks — not necessarily the connected
+ * self-custody wallet — so connected-wallet data is sourced from a node ONLY when the node is
+ * VERIFIED to track that wallet (the #407 handshake, not yet wired). Until then a node source is
+ * gated OFF for connected-wallet data: a forced node/custom source surfaces `NODE_UNAVAILABLE`
+ * (never the node's data, never a silent coinset downgrade, never a silent 0), and auto uses the
+ * self-custody coinset scan. This suite proves that gate end-to-end through the real SW.
  *
  * Cases:
- *   1. **Node present (Custom URL)** → balances / NFTs / DIDs / coins / activity all load from the
- *      node's `get_sync_status`/`get_cats`/`get_nfts`/`get_dids`/`get_coins`/`get_transactions`.
- *   2. **Node killed (Custom URL, strict)** → the read surfaces a `NODE_UNAVAILABLE` error, never a
- *      silent coinset downgrade.
+ *   1. **Node present (Custom URL) but NOT verified-tracking** → every connected-wallet read
+ *      (balances / NFTs / DIDs / coins / activity) returns `NODE_UNAVAILABLE`, never node data (#399).
+ *   2. **Node unreachable (Custom URL, strict)** → `NODE_UNAVAILABLE`, never a silent coinset downgrade.
  *   3. **Coinset-only mode** → the read goes to coinset (a wired live round-trip), never the node.
  *   4. **Auto mode, no node** → clean coinset fallback (wired, never the unknown-action stub).
  *   5. **Settings switch** persists across the four states and screenshots the control (§6.5).
@@ -162,41 +168,24 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-test('Custom-URL node present — all wallet data loads from the Sage-parity get_* surface', async () => {
+test('Custom-URL node present but NOT verified-tracking — connected-wallet reads are NOT sourced from it (#399)', async () => {
   const { server, port } = await startFakeNode();
   try {
     const page = await context.newPage();
     await page.goto(`chrome-extension://${extensionId}/popup.html`);
     await setSource(page, 'custom', `http://${LOOPBACK_IP}:${port}`);
 
-    // Balances from get_sync_status (XCH) + get_cats.
-    const bal = await swSend<{ balances?: { xch?: number; cats?: Record<string, number> }; message?: string }>(page, {
-      action: 'getCustodyBalances',
-    });
-    expect(bal.message).not.toBe(UNKNOWN_ACTION);
-    expect(bal.balances?.xch).toBe(SYNC_STATUS.selectable_balance);
-    expect(bal.balances?.cats?.[CAT_ID]).toBe(4200);
-
-    // NFTs from get_nfts.
-    const nfts = await swSend<{ nfts?: { launcherId?: string; royaltyBasisPoints?: number }[] }>(page, { action: 'listNfts' });
-    expect(nfts.nfts?.[0]?.launcherId).toBe('aa11');
-    expect(nfts.nfts?.[0]?.royaltyBasisPoints).toBe(250);
-
-    // DIDs from get_dids.
-    const dids = await swSend<{ dids?: { launcherId?: string; profileName?: string | null }[] }>(page, { action: 'listDids' });
-    expect(dids.dids?.[0]?.launcherId).toBe('dd44');
-    expect(dids.dids?.[0]?.profileName).toBe('Node DID');
-
-    // Coins from get_coins.
-    const coins = await swSend<{ coins?: { coinId?: string; confirmedHeight?: number }[] }>(page, { action: 'listCoins' });
-    expect(coins.coins?.[0]?.coinId).toBe('ff66');
-    expect(coins.coins?.[0]?.confirmedHeight).toBe(4_242_000);
-
-    // Activity from get_transactions (block-time confirmed).
-    const act = await swSend<{ events?: { kind?: string; amount?: string; status?: string }[] }>(page, { action: 'getActivity' });
-    expect(act.events?.[0]?.kind).toBe('received');
-    expect(act.events?.[0]?.amount).toBe('500');
-    expect(act.events?.[0]?.status).toBe('confirmed');
+    // The node is reachable and DOES serve the Sage-parity surface (get_sync_status/get_cats/…),
+    // but until the extension can VERIFY the node tracks the CONNECTED wallet (#399/#407), a forced
+    // node/custom source must NOT surface the node's wallet data — it would be a different or
+    // identity-less wallet. Every connected-wallet read returns NODE_UNAVAILABLE (node-not-tracking),
+    // never node data, never a silent 0, never the unknown-action stub.
+    for (const action of ['getCustodyBalances', 'listNfts', 'listDids', 'listCoins', 'getActivity'] as const) {
+      const res = await swSend<{ success?: boolean; code?: string; message?: string }>(page, { action });
+      expect(res.message).not.toBe(UNKNOWN_ACTION);
+      expect(res.success).toBe(false);
+      expect(res.code).toBe('NODE_UNAVAILABLE');
+    }
 
     await page.close();
   } finally {
@@ -204,15 +193,16 @@ test('Custom-URL node present — all wallet data loads from the Sage-parity get
   }
 });
 
-test('Custom-URL node killed (strict) — surfaces NODE_UNAVAILABLE, never a silent coinset downgrade', async () => {
+test('Custom-URL forced source — NODE_UNAVAILABLE whether the node is reachable-but-untracked or gone (never a silent coinset downgrade)', async () => {
   const { server, port } = await startFakeNode();
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
   await setSource(page, 'custom', `http://${LOOPBACK_IP}:${port}`);
-  // Confirm it works while up…
-  const up = await swSend<{ balances?: { xch?: number } }>(page, { action: 'getCustodyBalances' });
-  expect(up.balances?.xch).toBe(SYNC_STATUS.selectable_balance);
-  // …then kill it: the forced custom source must report unavailable, not fall back.
+  // Reachable but not verified-tracking → NODE_UNAVAILABLE (never node data, never coinset).
+  const up = await swSend<{ success?: boolean; code?: string }>(page, { action: 'getCustodyBalances' });
+  expect(up.success).toBe(false);
+  expect(up.code).toBe('NODE_UNAVAILABLE');
+  // …then kill it: the forced custom source stays unavailable, never a silent coinset fallback.
   await stopFakeNode(server);
   const down = await swSend<{ success?: boolean; code?: string }>(page, { action: 'getCustodyBalances' });
   expect(down.success).toBe(false);

@@ -5,19 +5,26 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 
 /**
- * END-USER e2e for #222 — proves, against the BUILT unpacked extension in a real browser, that the
- * extension ACTIVELY surfaces a locally-reachable dig-node as the wallet-data source WITHOUT a
- * separate `chainSourceUrl` override, and shows the new "Local dig-node detected" indicator:
+ * END-USER e2e for #222 + the #399 verified-tracking gate — proves, against the BUILT unpacked
+ * extension in a real browser, how the extension resolves the WALLET-data source in Auto mode and
+ * whether the "Local dig-node detected" indicator shows.
+ *
+ * #399: a reachable dig-node answers wallet reads from the wallet IT tracks, not necessarily the
+ * connected self-custody wallet, so Auto mode must NOT auto-adopt a reachable-but-unverified node as
+ * the connected-wallet data source (that surfaced a different/identity-less wallet's 0/0). Until the
+ * #407 verified-tracking handshake is wired, Auto resolves wallet data to the self-custody coinset
+ * scan even when a node is reachable, and the indicator — scoped to `mode:'auto'` + a resolved node
+ * source — stays hidden. The indicator logic is forward-compatible: it lights up once a node
+ * resolves as the wallet-data source (post-#407).
  *
  *   1. Auto mode + ONLY `server.host` configured (the SAME host the content/chia:// path already
- *      used, §5.3) — zero `chainSourceUrl` — auto-SELECTs the reachable node as the wallet-data
- *      source (`getChainSourceStatus` reports `{ mode:'auto', resolved:{ kind:'node', strict:false } }`).
- *      Before #222 this path had no live status surface for the UI to show; #222 adds the
- *      `getChainSourceStatus` action + the indicator this test proves.
- *   2. The Settings panel renders the indicator naming the resolved endpoint, screenshotted (§6.5).
- *   3. Auto mode falls back to coinset — never a false "detected" — when nothing answers.
- *   4. A user-FORCED mode (node/custom/coinset) shows no indicator even though the same node
- *      answers — the indicator is scoped to Auto's zero-config detection only.
+ *      used, §5.3), zero `chainSourceUrl` — a reachable node is NOT sourced for wallet data;
+ *      `getChainSourceStatus` reports `{ mode:'auto', resolved:{ kind:'coinset' } }` (#399).
+ *   2. The Settings panel does not show a false "detected" indicator while the node is reachable but
+ *      not the wallet-data source, screenshotted (§6.5).
+ *   3. Auto mode also resolves to coinset when nothing answers.
+ *   4. A user-FORCED mode (node/custom/coinset) shows no indicator — the indicator is scoped to
+ *      Auto's zero-config detection only.
  *
  * Binds the fake node to the {@link LOOPBACK_IP} literal `127.0.0.5` — the SAME real-socket
  * convention `dig-node-control.spec.ts` documents: an IPv4-only Node test server bound to bare
@@ -145,7 +152,7 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-test('Auto mode, zero chainSourceUrl — a node reachable via server.host is auto-selected as the wallet-data source', async () => {
+test('Auto mode, zero chainSourceUrl — a reachable node is NOT auto-sourced for wallet data until verified-tracking; resolves to the self-custody coinset scan (#399)', async () => {
   const { server, port } = await startFakeNode();
   try {
     const page = await context.newPage();
@@ -157,9 +164,10 @@ test('Auto mode, zero chainSourceUrl — a node reachable via server.host is aut
       action: 'getChainSourceStatus',
     });
     expect(status.mode).toBe('auto');
-    expect(status.resolved?.kind).toBe('node');
-    expect(status.resolved?.base).toBe(`http://${LOOPBACK_IP}:${port}`);
-    expect(status.resolved?.strict).toBe(false);
+    // #399: the node is reachable, but it is not VERIFIED to track the connected wallet, so it is
+    // NOT adopted as the connected-wallet data source — Auto resolves to the self-custody coinset
+    // scan (never the node's identity-less 0/0). Flips to a node source once #407's handshake lands.
+    expect(status.resolved?.kind).toBe('coinset');
     await page.close();
   } finally {
     await stopFakeNode(server);
@@ -178,7 +186,7 @@ test('Auto mode, no node reachable — resolves to coinset (clean fallback, neve
   await page.close();
 });
 
-test('"Local dig-node detected" indicator renders in Auto mode + screenshots the panel (§6.5)', async () => {
+test('Auto mode + node reachable — the "detected" indicator stays hidden (node not the wallet-data source until verified-tracking) + screenshots the panel (§6.5)', async () => {
   const { server, port } = await startFakeNode();
   try {
     const page = await context.newPage();
@@ -194,14 +202,15 @@ test('"Local dig-node detected" indicator renders in Auto mode + screenshots the
 
     await expect(page.getByTestId('chain-source-select')).toBeVisible({ timeout: 20_000 });
 
-    const pill = page.getByTestId('chain-source-detected-pill');
-    await expect(pill).toBeVisible({ timeout: 20_000 });
-    await expect(pill).toContainText('Local dig-node detected');
-    await expect(pill).toContainText(`${LOOPBACK_IP}:${port}`);
+    // #399: the "Local dig-node detected" pill is scoped to `mode:'auto'` + a resolved NODE wallet
+    // source. Since a reachable-but-unverified node is NOT the wallet-data source, Auto resolves to
+    // the self-custody coinset scan and the pill stays hidden — no false "detected" while the node
+    // does not serve the connected wallet. (Lights up once #407's verified-tracking handshake lands.)
+    await expect(page.getByTestId('chain-source-detected-pill')).toHaveCount(0);
 
     await page.getByTestId('chain-source-setting').scrollIntoViewIfNeeded();
     await page.waitForTimeout(150);
-    await page.screenshot({ path: 'e2e/__screenshots__/chain-source-detected-indicator-fullscreen.png' });
+    await page.screenshot({ path: 'e2e/__screenshots__/chain-source-auto-selfcustody-fullscreen.png' });
     await page.close();
   } finally {
     await stopFakeNode(server);
