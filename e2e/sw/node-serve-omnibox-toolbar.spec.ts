@@ -406,7 +406,11 @@ test('#362 — the DIG search resolver sends a NON-DIG query to the configured f
 test('#311 — a URN-bar submit paints the DIG loader instantly, then swaps to the resolved content', async () => {
   const cfg = await extPage();
   await setToolbar(cfg, true);
-  await setServerHost(cfg, nodeBase); // §5.3 override → the fixture node
+  // A DEAD node port makes the §5.3 probe take its full ~1.2s timeout — a REAL resolve latency the
+  // loader is designed to cover — so the interstitial is deterministically visible for >1s (no race
+  // with an instant swap), then the tab settles on the sandbox dig-viewer. This is the honest proof
+  // of the never-blank loader; the fast node-reachable swap is covered by #289/#293 above.
+  await setServerHost(cfg, 'http://127.0.0.5:9');
   await cfg.close();
 
   const page = await context.newPage();
@@ -416,17 +420,16 @@ test('#311 — a URN-bar submit paints the DIG loader instantly, then swaps to t
   await input.fill(CHIA_URL);
   await input.press('Enter');
 
-  // The branded DIG loader is flashed FIRST (an extension page) — instant, never-blank — before the
-  // node resolve swaps the tab to the plaintext /s/ surface.
+  // The branded DIG loader is flashed FIRST (an extension page) — instant, never-blank — while the
+  // node probe runs, before the resolve swaps the tab to its destination.
   await page.waitForURL((u) => u.pathname.endsWith('/dig-loader.html'), { timeout: 15_000 });
   expect(new URL(page.url()).protocol).toBe('chrome-extension:');
   await expect(page.getByTestId('dig-loader-page')).toBeVisible();
   await expect(page.getByTestId('dig-loader-address')).toContainText('Resolving');
 
-  // …then the SW swaps to the resolved node-served plaintext content.
-  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
-  expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
-  await expect(page.locator('h1')).toHaveText(MARKER);
+  // …then the SW swaps to the resolved destination (no local node → the sandbox dig-viewer).
+  await page.waitForURL((u) => u.pathname.endsWith('/dig-viewer.html'), { timeout: 15_000 });
+  expect(page.url()).toContain('urn=');
   await page.close();
 });
 
