@@ -53,3 +53,26 @@ describe('manifest allows every coinset host the chain client uses (#122)', () =
     expect(hostPermissionCovers(origin)).toBe(true);
   });
 });
+
+/**
+ * Regression #287 (P0, live user-reported offline): `probeDigNode`/`resolveDigNode`
+ * (`server-config.ts`) fetch the local dig-node over plain HTTP (`http://localhost:<port>`,
+ * `http://127.0.0.1:<port>`, `http://dig.local`), but the extension-pages CSP `connect-src` only
+ * allowed the WebSocket variants of these hosts (`ws://localhost:*`, `ws://127.0.0.1:*`,
+ * `ws://dig.local`) plus the unrelated `http://127.0.0.5:*` (dig-dns loopback). A Manifest V3
+ * background service worker's `fetch()` IS subject to `connect-src` (SPEC.md §1), so every local
+ * probe was blocked by CSP before it ever reached the network — the extension showed the node
+ * OFFLINE no matter what address it bound to or what the default host was.
+ *
+ * `http://127.0.0.2` is the dig-installer's `dig.local` hosts-entry target: dig-node binds its
+ * bare `dig.local` listener on `127.0.0.2:80`, not `127.0.0.1` (see dig-node's README/SPEC —
+ * `dig_local_addr()` / `DIG_LOCAL_IP`), so it must be allowed too.
+ */
+describe('manifest allows every local dig-node HTTP host the §5.3 ladder probes (#287)', () => {
+  it.each(['http://localhost:*', 'http://127.0.0.1:*', 'http://127.0.0.2:*', 'http://dig.local'])(
+    'CSP connect-src allows %s',
+    (origin) => {
+      expect(connectSrcTokens()).toContain(origin);
+    },
+  );
+});

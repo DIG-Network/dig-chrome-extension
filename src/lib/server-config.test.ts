@@ -26,14 +26,14 @@ import {
 // This test lives at src/lib/, so the repo root is two levels up.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-test('default dig-node host is localhost:9778 (the canonical dig-node control port, #132)', () => {
-  assert.equal(DEFAULT_DIG_NODE_HOST, 'localhost:9778');
+test('default dig-node host is 127.0.0.1:9778 (explicit IPv4 — avoids the Windows localhost→::1 mismatch, #287)', () => {
+  assert.equal(DEFAULT_DIG_NODE_HOST, '127.0.0.1:9778');
   assert.equal(DEFAULT_DIG_NODE_PORT, 9778);
 });
 
-test('empty/blank input falls back to the default dig-node host:port', () => {
+test('empty/blank input falls back to the default dig-node host:port (127.0.0.1, #287)', () => {
   for (const input of ['', '   ', null, undefined]) {
-    assert.deepEqual(parseServerHost(input), { url: 'localhost', port: 9778 });
+    assert.deepEqual(parseServerHost(input), { url: '127.0.0.1', port: 9778 });
   }
 });
 
@@ -66,18 +66,26 @@ test('round-trips parse → format', () => {
   assert.equal(formatServerHost(url, port), 'localhost:9778');
 });
 
-// ---- Port-default unification (#43 / #41 audit; #132 canonical-port migration) --------------
+// ---- Port-default unification (#43 / #41 audit; #132 canonical-port migration; #287 IPv4 fix) -
 //
 // REGRESSION: middleware.js and content.js are classic (non-module) content scripts and can't
-// `import` DEFAULT_DIG_NODE_PORT from this module, so they carried their OWN hardcoded literal
-// default. This test pins the source text so it can't silently drift from the shared constant —
-// first `:80` (the http-standard port, #43/#41), now the retired `:8080` (#132: the canonical
-// dig-node control port moved to 9778, sibling of dig-wallet's 9777).
-test('middleware.js and content.js default the RPC host to the canonical dig-node port (9778)', () => {
+// `import` DEFAULT_DIG_NODE_PORT/DEFAULT_DIG_NODE_HOST from this module, so they carried their OWN
+// hardcoded literal default, kept "in lockstep" with this module's default by convention. This test
+// pins the source text so it can't silently drift — first `:80` (the http-standard port, #43/#41),
+// then the retired `:8080` (#132: the canonical dig-node control port moved to 9778), now the
+// retired bare `localhost:9778` (#287: on Windows `localhost` resolves to `::1` FIRST, but the
+// dig-node binds IPv4 `127.0.0.1` only, so a `localhost` fetch/probe hit a closed `[::1]:9778` and
+// reported the node offline even while running — see the same fix in this module's own default).
+test('middleware.js and content.js default the RPC host to 127.0.0.1:9778 (explicit IPv4, #287)', () => {
   for (const file of ['src/content/middleware.ts', 'src/content/content.ts']) {
     const src = readFileSync(join(ROOT, file), 'utf8');
     assert.ok(!/localhost:80['"`]/.test(src), `${file} must not default to the stale localhost:80`);
     assert.ok(!/localhost:8080['"`]/.test(src), `${file} must not default to the retired localhost:8080`);
-    assert.match(src, /localhost:9778/, `${file} must default to localhost:9778 (the canonical dig-node port)`);
+    assert.ok(
+      !/localhost:9778['"`]/.test(src),
+      `${file} must not default to 'localhost:9778' — Windows resolves localhost to ::1 first, ` +
+        `which the dig-node (IPv4-only 127.0.0.1 bind) never answers on (#287)`,
+    );
+    assert.match(src, /127\.0\.0\.1:9778/, `${file} must default to the explicit IPv4 127.0.0.1:9778`);
   }
 });

@@ -826,7 +826,7 @@ This is the machine-readable self-description; it is also emitted at build time 
 ## 8. Node-resolution ladder & configuration
 
 The extension resolves the content RPC endpoint per the ecosystem-wide client→node resolution
-order: **explicit config > `dig.local` > `localhost` > the hosted read tier**. An
+order: **explicit config > `dig.local` > the loopback IPv4 fallback > the hosted read tier**. An
 explicitly-configured node always wins; absent one, the extension prefers the user's own
 machine, falling back to the hosted read tier only when no local node is reachable.
 
@@ -837,35 +837,56 @@ machine, falling back to the hosted read tier only when no local node is reachab
 
 1. **An explicitly-configured custom host wins ENTIRELY.** When `url` names something other
    than a standard local alias (`localhost`, `127.0.0.1`, `::1`, `dig.local` — case-insensitive),
-   the try-list is the single candidate `['http://<url>:<port>']`; `dig.local` and `localhost`
-   are NOT probed. This is the override precedence: a configured node is a deliberate choice
-   and MUST actually be contacted, never silently ignored in favor of the local-alias ladder.
+   the try-list is the single candidate `['http://<url>:<port>']`; `dig.local` and the loopback
+   fallback are NOT probed. This is the override precedence: a configured node is a deliberate
+   choice and MUST actually be contacted, never silently ignored in favor of the local-alias
+   ladder.
 2. **Otherwise** (no host configured, or one of the local aliases) the ladder is
-   `['http://dig.local', 'http://localhost:<port>']`:
+   `['http://dig.local', 'http://127.0.0.1:<port>']`:
    - `http://dig.local` (port 80, branded) — tried FIRST.
-   - `http://localhost:<port>` — the always-on fallback (`<port>` from the configured
+   - `http://127.0.0.1:<port>` — the always-on fallback (`<port>` from the configured
      `server.host`, default **9778** — the canonical dig-node control port, #132).
 
 An implementation MUST NOT destructure only `{ port }` from the parsed host and discard `url` —
 doing so silently drops a configured custom host and is a conformance defect (the historical
 bug this SPEC section closes: #43 / #41 SoC audit).
 
+**The fallback candidate MUST be the explicit IPv4 literal `127.0.0.1`, NEVER the bare word
+`localhost`** (#287, live user-reported offline). On Windows, `localhost` resolves to `::1`
+(IPv6) FIRST via the OS resolver's address-family preference; the dig-node binds IPv4
+`127.0.0.1` only, so a `localhost` fetch/WS hits a closed `[::1]:<port>` and the extension
+reports the node offline even while it is running. This holds regardless of which local alias
+was configured (`localhost`, `127.0.0.1`, `::1`, or nothing): the fallback candidate itself is
+always `127.0.0.1`, so a user who explicitly configures `127.0.0.1` (to force IPv4) MUST have it
+honoured verbatim, never silently rewritten to `localhost`.
+
 `probeDigNode(baseUrl, {fetch, timeoutMs})` MUST use a `no-cors` GET with a short timeout
 (default 1500 ms) and treat ANY resolved fetch (even opaque) as reachable; a thrown/aborted
 fetch is unreachable. `resolveDigNode(host)` returns the first reachable candidate or `null`.
+
+**CSP requirement (#287).** A Manifest V3 background service worker's own `fetch()` IS subject
+to the `extension_pages` CSP `connect-src` (§1) — so every host `digNodeCandidates`/
+`probeDigNode` can construct MUST be present in `connect-src`, or the browser blocks the fetch
+before it ever reaches the network regardless of what the node binds to or what the configured
+default is. `connect-src` MUST allow the plain-HTTP forms `http://localhost:*`,
+`http://127.0.0.1:*`, `http://127.0.0.2:*`, and `http://dig.local` — the WebSocket forms
+(`ws://localhost:*`, `ws://127.0.0.1:*`, `ws://dig.local`) do NOT cover the plain-HTTP
+probe/JSON-RPC path and are insufficient on their own. `http://127.0.0.2` is the dig-installer's
+`dig.local` hosts-entry target — the dig-node binds its bare `dig.local` listener on
+`127.0.0.2:80`, not `127.0.0.1` (see the dig-node repo's own addressing contract).
 
 ### 8.2 Endpoint selection (`background.js`)
 
 `getRpcEndpoint()` MUST:
 
-1. Resolve a local dig-node (§8.1 — a configured custom host, or the `dig.local`/`localhost`
+1. Resolve a local dig-node (§8.1 — a configured custom host, or the `dig.local`/`127.0.0.1`
    ladder), briefly caching the resolved base URL (default TTL 10 s), and use its JSON-RPC POST
    root (trailing slash) when reachable.
 2. Otherwise fall back to the hosted endpoint from `digRpcEndpoint`, defaulting to
    `https://rpc.dig.net/`.
 
 This is the client→node resolution order, in full: **explicit `server.host` override >
-`dig.local` > `localhost:<port>` > `digRpcEndpoint` (default `rpc.dig.net`)**. The 10 s
+`dig.local` > `127.0.0.1:<port>` > `digRpcEndpoint` (default `rpc.dig.net`)**. The 10 s
 endpoint-resolution memo MUST be invalidated immediately when `server.host` / `server.url` /
 `server.port` change; it caches WHICH endpoint answered, never resolved/decrypted content.
 
@@ -875,7 +896,8 @@ The extension MUST expose a first-class, persisted way for the user to set a cus
 
 - `server.host` (options page) — the local dig-node host (`host`, `host:port`, or
   `http(s)://host[:port]`), parsed by `parseServerHost` into `{ url, port }` with an
-  out-of-range/absent port falling back to 9778. A value naming something other than a local
+  out-of-range/absent port falling back to 9778, and blank/absent input falling back to the full
+  default `127.0.0.1:9778` (#287, explicit IPv4). A value naming something other than a local
   alias (§8.1) overrides the `dig.local`/`localhost` ladder entirely.
 - `digRpcEndpoint` (options page) — the hosted fallback endpoint, overriding `rpc.dig.net`.
 
@@ -1066,7 +1088,7 @@ a pure, chrome-free state machine (`connecting → connected → disconnected �
 dependency-injected (socket ctor, clock, RNG, timer scheduler, base resolver) so it is unit-tested
 with a fake `WebSocketLike`:
 
-- Resolves the local base via the SAME §5.3 ladder (`dig.local` > `localhost:9778` > custom
+- Resolves the local base via the SAME §5.3 ladder (`dig.local` > `127.0.0.1:9778` > custom
   override — NEVER `rpc.dig.net`, which is not a local node), maps it to `ws(s)://…/ws/status`
   (`wsUrlFor`), and opens the socket.
 - Parses `status` (on connect) and `heartbeat` (every ~5 s) frames — `{ type, service, version,
@@ -1206,7 +1228,7 @@ extension MUST NOT diverge from it.
 
 | Setting | Storage key / source | Default | Effect |
 |---|---|---|---|
-| Local dig-node host | `server.host` | `localhost:9778` | a local-alias host (`localhost`/`dig.local`) keeps the `dig.local`-first ladder; a genuinely custom host wins ENTIRELY over that ladder (§8.1) |
+| Local dig-node host | `server.host` | `127.0.0.1:9778` | a local-alias host (`localhost`/`127.0.0.1`/`dig.local`) keeps the `dig.local`-first ladder; a genuinely custom host wins ENTIRELY over that ladder (§8.1) |
 | Hosted RPC endpoint | `digRpcEndpoint` | `https://rpc.dig.net/` | fallback when no local node is reachable |
 | Resolution on/off | popup (`toggleExtension`) | on | disables `chia://` resolution |
 | Search engine | `updateSearchConfig` | DIG omnibox (`dig`) | omnibox/search config |

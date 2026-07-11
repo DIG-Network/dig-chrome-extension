@@ -756,3 +756,43 @@ in-process on `127.0.0.5`; it can never reach a genuinely separate real node pro
 `127.0.0.1`/`localhost`, no matter how "real" that node is.** The ladder's alias-tier ORDERING
 (`dig.local` before `localhost:<port>`) is instead proven at the unit level with an injected `fetch`
 (`dig-node-resolve.test.ts`), which needs no real socket at all.
+
+## Local dig-node HTTP probe blocked by extension-pages CSP `connect-src` — `ws://` local hosts were allowed but `http://` local hosts were not (#287)
+
+A live user ran the dig-node (verified via `netstat`: `127.0.0.1:9778 LISTENING`, no `[::1]`) yet the
+extension showed it permanently OFFLINE. Two contributing bugs, both in `manifest.json`/
+`server-config.ts`, and BOTH were needed to actually fix connectivity — fixing only one leaves the
+node unreachable:
+
+1. **The Windows `localhost`→`::1` mismatch this entry's neighbor above already flagged in a test
+   header comment** (Chrome's `::1`-first resolution) had never actually been fixed in the shipped
+   default: `DEFAULT_DIG_NODE_HOST`/`parseServerHost`/`digNodeCandidates` (`server-config.ts`) all
+   defaulted the local fallback to the bare word `localhost`, which Windows resolves to `::1`
+   FIRST — a dig-node bound to IPv4-only `127.0.0.1` never answers there. Fixed by making the
+   fallback the explicit IPv4 literal `127.0.0.1` everywhere (never a name subject to the OS
+   resolver's address-family preference) — including the `middleware.ts`/`content.ts` classic
+   content-script literals kept "in lockstep" with `server-config.ts`, and a second latent bug:
+   `digNodeCandidates` unconditionally hardcoded the fallback candidate to the word `localhost`
+   regardless of which local alias was configured, so a user who typed `127.0.0.1` to force IPv4 got
+   silently rewritten back to `localhost` and hit the SAME mismatch again.
+2. **The actual root cause the user's live console revealed** (this is the one that matters even
+   after fixing #1): `probeDigNode()`'s `fetch('http://127.0.0.1:9778/')` was blocked by the
+   extension-pages CSP `connect-src` BEFORE it ever reached the network — "Refused to connect
+   because it violates the document's Content Security Policy." `connect-src` allowed the
+   WebSocket variants of every local host (`ws://localhost:*`, `ws://127.0.0.1:*`, `ws://dig.local`)
+   plus the unrelated `http://127.0.0.5:*` (dig-dns loopback, #175), but had NO plain-HTTP entries
+   for `localhost`/`127.0.0.1`/`dig.local` at all — the trailing bare `https:` catch-all (#98, added
+   for `getNftMetadata`) does not cover `http:`. So the local-node HTTP probe/JSON-RPC path was
+   dead on arrival regardless of what the node bound to or what the configured default was. This is
+   the SAME failure mode as the #98 entry above (an MV3 SW's own `fetch()` IS subject to
+   `connect-src`) recurring one call-site later — the WS entries existing for these exact hostnames
+   made it easy to assume HTTP was covered too, when CSP source lists do not fan a scheme in on any
+   other scheme's behalf. Fixed by adding `http://localhost:*`, `http://127.0.0.1:*`,
+   `http://127.0.0.2:*` (the dig-installer's `dig.local` hosts-entry target — dig-node binds its
+   bare `dig.local` listener there, not `127.0.0.1`), and `http://dig.local` to `connect-src`, with a
+   `manifest-coinset-hosts.test.ts` regression test (extended, #122's pattern) pinning that every
+   host the §5.3 ladder can construct is actually in `connect-src`.
+
+**Takeaway:** `connect-src` must list every local origin a client fetches, not just its WebSocket
+sibling — a probe/health-check path and a live-status socket often target the SAME hostname over
+DIFFERENT schemes, and CSP does not infer one from the other.

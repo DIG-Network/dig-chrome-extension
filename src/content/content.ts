@@ -133,9 +133,11 @@ import { parseInboundRequest, buildResponse, postTargetOrigin } from '../lib/pro
 // Uses CSP-safe data attribute instead of inline script
 function injectRpcHostToPage() {
   try {
-    // Use cachedRpcHost from middleware.js scope - always read current value. Default MUST
-    // match the dig-node's actual canonical control port (9778, #132), not the http-standard 80.
-    const rpcHost = typeof cachedRpcHost !== 'undefined' ? cachedRpcHost : 'localhost:9778';
+    // Use cachedRpcHost from middleware.js scope - always read current value. Default MUST match
+    // server-config.ts's DEFAULT_DIG_NODE_HOST: explicit IPv4 127.0.0.1:9778 (the canonical
+    // control port, #132), NEVER the bare word 'localhost' (#287 — Windows resolves localhost to
+    // ::1 first, which the IPv4-only dig-node never answers on).
+    const rpcHost = typeof cachedRpcHost !== 'undefined' ? cachedRpcHost : '127.0.0.1:9778';
     
     // Set data attribute on document element (CSP-safe)
     if (document.documentElement) {
