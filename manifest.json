@@ -129,7 +129,7 @@
       "name": "DIG Network",
       "keyword": "digsearch",
       "search_url": "https://dig.net/dig-search?q={searchTerms}",
-      "favicon_url": "src/icons/icon-32.png",
+      "favicon_url": "https://dig.net/favicon.ico",
       "encoding": "UTF-8",
       "is_default": false
     }
