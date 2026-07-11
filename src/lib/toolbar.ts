@@ -39,6 +39,23 @@ export const TOOLBAR_ENABLED_DEFAULT = false;
 export const TOOLBAR_OPEN_PAGE = 'app.html';
 
 /**
+ * #366 — the `chrome.commands` id for the show/hide keyboard shortcut, registered in
+ * `manifest.json`'s `commands` map with a `suggested_key.default` matching
+ * {@link TOOLBAR_TOGGLE_SHORTCUT_DEFAULT}. The background SW listens via
+ * `chrome.commands.onCommand` and flips {@link TOOLBAR_ENABLED_KEY}; both toolbar mounts react
+ * live through the existing `storage.onChanged` wiring — no new toggle path.
+ */
+export const TOOLBAR_TOGGLE_COMMAND = 'toggle-dig-toolbar';
+
+/**
+ * The cross-platform default shortcut shown in the URN-bar hint (#366 item 4) before a caller
+ * resolves the ACTUAL bound key via `chrome.commands.getAll()` (only available to extension-page
+ * contexts — a content script asks the SW). Matches manifest.json's `suggested_key.default`; the
+ * user may rebind it at `chrome://extensions/shortcuts`, in which case the resolved shortcut wins.
+ */
+export const TOOLBAR_TOGGLE_SHORTCUT_DEFAULT = 'Alt+Shift+D';
+
+/**
  * Should the toolbar inject on this page? Only when enabled AND the page is an ordinary top-frame
  * web page (`http`/`https`, which includes the node-served `dig.local` / loopback) — NEVER on the
  * extension's own pages, `chrome://`, `about:`, `view-source:`, or a sub-frame.
@@ -193,6 +210,13 @@ export interface ToolbarLabels {
   /** Brand phrase — verbatim across locales. */
   verified: string;
   local: string;
+  /** #366 — aria-label/title for the injected bar's hide (×) control. */
+  hide: string;
+  /** #366 item 4 — the muted keyboard-shortcut hint template shown in the URN bar; the literal
+   *  `{key}` placeholder is substituted with the resolved (or default) shortcut string by
+   *  {@link toolbarShortcutHint}. The key combo itself is NOT translated (a keyboard label, like a
+   *  code identifier — §6.6 carve-out), only the surrounding phrase. */
+  shortcutHint: string;
 }
 
 // Brand phrase kept verbatim in every locale (§6.6). "Verified on Chia" also matches the
@@ -208,6 +232,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'Open DIG extension',
     verified: VERIFIED,
     local: 'Loaded from local',
+    hide: 'Hide DIG toolbar',
+    shortcutHint: '{key} to show/hide',
   },
   'zh-CN': {
     toolbar: 'DIG 工具栏',
@@ -217,6 +243,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: '打开 DIG 扩展',
     verified: VERIFIED,
     local: '从本地加载',
+    hide: '隐藏 DIG 工具栏',
+    shortcutHint: '{key} 显示/隐藏',
   },
   'zh-TW': {
     toolbar: 'DIG 工具列',
@@ -226,6 +254,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: '開啟 DIG 擴充功能',
     verified: VERIFIED,
     local: '從本機載入',
+    hide: '隱藏 DIG 工具列',
+    shortcutHint: '{key} 顯示/隱藏',
   },
   ko: {
     toolbar: 'DIG 도구 모음',
@@ -235,6 +265,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'DIG 확장 프로그램 열기',
     verified: VERIFIED,
     local: '로컬에서 로드됨',
+    hide: 'DIG 도구 모음 숨기기',
+    shortcutHint: '{key} 표시/숨기기',
   },
   ja: {
     toolbar: 'DIG ツールバー',
@@ -244,6 +276,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'DIG 拡張機能を開く',
     verified: VERIFIED,
     local: 'ローカルから読み込み',
+    hide: 'DIG ツールバーを非表示',
+    shortcutHint: '{key} で表示/非表示',
   },
   ru: {
     toolbar: 'Панель DIG',
@@ -253,6 +287,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'Открыть расширение DIG',
     verified: VERIFIED,
     local: 'Загружено локально',
+    hide: 'Скрыть панель DIG',
+    shortcutHint: '{key} — показать/скрыть',
   },
   es: {
     toolbar: 'Barra DIG',
@@ -262,6 +298,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'Abrir la extensión DIG',
     verified: VERIFIED,
     local: 'Cargado localmente',
+    hide: 'Ocultar la barra DIG',
+    shortcutHint: '{key} para mostrar/ocultar',
   },
   'pt-BR': {
     toolbar: 'Barra DIG',
@@ -271,6 +309,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'Abrir a extensão DIG',
     verified: VERIFIED,
     local: 'Carregado localmente',
+    hide: 'Ocultar a barra DIG',
+    shortcutHint: '{key} para mostrar/ocultar',
   },
   fr: {
     toolbar: 'Barre DIG',
@@ -280,6 +320,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: "Ouvrir l'extension DIG",
     verified: VERIFIED,
     local: 'Chargé en local',
+    hide: 'Masquer la barre DIG',
+    shortcutHint: '{key} pour afficher/masquer',
   },
   de: {
     toolbar: 'DIG-Leiste',
@@ -289,6 +331,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'DIG-Erweiterung öffnen',
     verified: VERIFIED,
     local: 'Lokal geladen',
+    hide: 'DIG-Leiste ausblenden',
+    shortcutHint: '{key} zum Ein-/Ausblenden',
   },
   tr: {
     toolbar: 'DIG araç çubuğu',
@@ -298,6 +342,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'DIG uzantısını aç',
     verified: VERIFIED,
     local: 'Yerelden yüklendi',
+    hide: 'DIG araç çubuğunu gizle',
+    shortcutHint: 'Göstermek/gizlemek için {key}',
   },
   vi: {
     toolbar: 'Thanh DIG',
@@ -307,6 +353,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'Mở tiện ích DIG',
     verified: VERIFIED,
     local: 'Đã tải từ máy',
+    hide: 'Ẩn thanh DIG',
+    shortcutHint: '{key} để hiện/ẩn',
   },
   id: {
     toolbar: 'Bilah DIG',
@@ -316,6 +364,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'Buka ekstensi DIG',
     verified: VERIFIED,
     local: 'Dimuat dari lokal',
+    hide: 'Sembunyikan bilah DIG',
+    shortcutHint: '{key} untuk tampilkan/sembunyikan',
   },
   hi: {
     toolbar: 'DIG टूलबार',
@@ -325,6 +375,8 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
     open: 'DIG एक्सटेंशन खोलें',
     verified: VERIFIED,
     local: 'लोकल से लोड किया गया',
+    hide: 'DIG टूलबार छिपाएँ',
+    shortcutHint: 'दिखाने/छिपाने के लिए {key}',
   },
 };
 
@@ -334,4 +386,17 @@ const LABELS: Record<LocaleCode, ToolbarLabels> = {
  */
 export function toolbarLabels(preferred?: readonly string[]): ToolbarLabels {
   return LABELS[detectLocale(preferred)] ?? LABELS.en;
+}
+
+/**
+ * Build the muted keyboard-shortcut hint shown in the URN bar (#366 item 4): substitutes the
+ * ACTUAL bound shortcut into `labels.shortcutHint`'s `{key}` placeholder when a caller resolved
+ * one (via `chrome.commands.getAll()` — an extension-page-only API; a content script asks the SW,
+ * see `ACTIONS.getToolbarShortcut`), else falls back to {@link TOOLBAR_TOGGLE_SHORTCUT_DEFAULT} —
+ * the same default `manifest.json`'s `suggested_key.default` carries. Never blank: a still-loading
+ * hint shows the default immediately, then swaps to the real binding once resolved.
+ */
+export function toolbarShortcutHint(labels: ToolbarLabels, shortcut: string | null | undefined): string {
+  const key = shortcut && shortcut.trim() ? shortcut.trim() : TOOLBAR_TOGGLE_SHORTCUT_DEFAULT;
+  return labels.shortcutHint.replace('{key}', key);
 }

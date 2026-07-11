@@ -3,14 +3,18 @@ import {
   TOOLBAR_ENABLED_KEY,
   TOOLBAR_ENABLED_DEFAULT,
   TOOLBAR_OPEN_PAGE,
+  TOOLBAR_TOGGLE_COMMAND,
+  TOOLBAR_TOGGLE_SHORTCUT_DEFAULT,
   shouldInjectToolbar,
   toolbarBadges,
   badgesFromHeaders,
   resolveUrnBarSubmit,
   toolbarLabels,
   toolbarTheme,
+  toolbarShortcutHint,
   TOOLBAR_PALETTES,
 } from '@/lib/toolbar';
+import { LOCALES } from '@/i18n/locales';
 
 const STORE_ID = 'a'.repeat(64);
 
@@ -148,5 +152,41 @@ describe('toolbarLabels', () => {
   it('falls back to English for an unsupported locale', () => {
     expect(toolbarLabels(['xx']).open).toBe('Open DIG extension');
     expect(toolbarLabels(undefined).open).toBe('Open DIG extension');
+  });
+
+  it('every locale carries a non-empty hide label + shortcut-hint template (#366)', () => {
+    for (const { code } of LOCALES) {
+      const l = toolbarLabels([code]);
+      expect(l.hide, `hide (${code})`).toBeTruthy();
+      expect(l.shortcutHint, `shortcutHint (${code})`).toBeTruthy();
+      // The template MUST carry the {key} placeholder toolbarShortcutHint substitutes.
+      expect(l.shortcutHint, `shortcutHint placeholder (${code})`).toContain('{key}');
+    }
+  });
+});
+
+describe('toolbar show/hide keyboard command (#366)', () => {
+  it('names a stable chrome.commands id matching manifest.json', () => {
+    expect(TOOLBAR_TOGGLE_COMMAND).toBe('toggle-dig-toolbar');
+  });
+
+  it('has a sensible cross-platform default shown before the real binding resolves', () => {
+    expect(TOOLBAR_TOGGLE_SHORTCUT_DEFAULT).toBe('Alt+Shift+D');
+  });
+});
+
+describe('toolbarShortcutHint (#366 item 4 — the muted hint shown in the URN bar)', () => {
+  it('uses the resolved shortcut when one is given', () => {
+    const labels = toolbarLabels(['en']);
+    expect(toolbarShortcutHint(labels, 'Alt+Shift+K')).toBe(labels.shortcutHint.replace('{key}', 'Alt+Shift+K'));
+    expect(toolbarShortcutHint(labels, 'Alt+Shift+K')).toContain('Alt+Shift+K');
+  });
+
+  it('falls back to the default when the shortcut is unresolved (null/empty)', () => {
+    const labels = toolbarLabels(['en']);
+    expect(toolbarShortcutHint(labels, null)).toContain(TOOLBAR_TOGGLE_SHORTCUT_DEFAULT);
+    expect(toolbarShortcutHint(labels, undefined)).toContain(TOOLBAR_TOGGLE_SHORTCUT_DEFAULT);
+    expect(toolbarShortcutHint(labels, '')).toContain(TOOLBAR_TOGGLE_SHORTCUT_DEFAULT);
+    expect(toolbarShortcutHint(labels, '   ')).toContain(TOOLBAR_TOGGLE_SHORTCUT_DEFAULT);
   });
 });

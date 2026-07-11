@@ -97,6 +97,7 @@
         "dig-provider.js",
         "logo.png",
         "dig-viewer.html",
+        "dig-loader.html",
         "dig-search.html",
         "agent-surface.json",
         "dig_client.js",
@@ -123,6 +124,14 @@
   ],
   "omnibox": {
     "keyword": "dig"
+  },
+  "commands": {
+    "toggle-dig-toolbar": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "Show or hide the DIG toolbar"
+    }
   },
   "chrome_settings_overrides": {
     "search_provider": {

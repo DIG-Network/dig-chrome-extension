@@ -62,6 +62,11 @@ export default defineConfig({
         // TS entry can import the shared #shared/* view-models (error-page / messages / dig-urn /
         // error-codes / store-refs) it renders + bridges with.
         digViewer: resolve(rootDir, 'dig-viewer.html'),
+        // DIG Loader (#311) — the instant, never-blank branded interstitial `handleDigUrlNavigation`
+        // flashes the tab to FIRST while the §5.3/§5.4 node-or-sandbox resolve runs, then swaps to
+        // the resolved destination. Vanilla-TS extension page, same rationale as dig-viewer/welcome;
+        // imports theme.css so it renders the SAME `.dig-loader` markup as the React `DigLoader`.
+        digLoader: resolve(rootDir, 'dig-loader.html'),
         // DIG search resolver (#362 Tier 4) — the custom DIG search provider's target page: it
         // classifies the query and either loads a DIG address via the local node or redirects to the
         // configured fallback engine. Vanilla-TS extension page, same rationale as welcome.

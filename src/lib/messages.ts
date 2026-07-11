@@ -230,8 +230,16 @@ import { DIG_ERR } from './error-codes';
  * `pairingState`, `pairingCancel`, `pairingUnpair`), and `controlAuthed` (a single dispatcher that
  * attaches the SW-held paired token to any token-gated `control.*` method — the token is NEVER
  * exposed to a page/UI). Purely additive.
+ *
+ * v32 (#366 toolbar hide + keyboard show/hide): added `getToolbarShortcut` — a content script
+ * cannot call `chrome.commands.getAll()` directly (extension-page-only API), so the injected
+ * toolbar asks the SW to resolve the ACTUAL bound key for the `toggle-dig-toolbar` command (falling
+ * back to the manifest's `suggested_key.default` when unbound/unresolved), shown as a muted hint in
+ * the URN bar. The SW also gained a `chrome.commands.onCommand` listener (no new action — it flips
+ * the existing `toolbar.enabled` storage key directly, which both toolbar mounts already react to
+ * live via `storage.onChanged`).
  */
-export const MESSAGE_PROTOCOL_VERSION = 31;
+export const MESSAGE_PROTOCOL_VERSION = 32;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -404,6 +412,9 @@ export const ACTIONS = Object.freeze({
   // ── injected page toolbar (#292): the content script asks the SW to open a full-page extension
   // surface in a NEW tab (a content script has no `tabs` permission of its own) ──
   openExtensionPage: 'openExtensionPage',
+  // ── toolbar hide + keyboard show/hide (#366): resolve the ACTUAL bound chrome.commands
+  // shortcut (a content script has no `chrome.commands` access — only extension pages / the SW do) ──
+  getToolbarShortcut: 'getToolbarShortcut',
 });
 
 /**
@@ -1024,6 +1035,12 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Open a full-page extension surface (an app.html deep-link) in a new tab — used by the #292 injected page toolbar.',
     request: '{ action, page:string /* app.html#wallet | app.html#network/shield | app.html#network/control */ }',
     response: '{ success:boolean, error?:string }',
+  },
+  [ACTIONS.getToolbarShortcut]: {
+    summary:
+      "Toolbar hide + keyboard show/hide (#366): resolve the ACTUAL bound `chrome.commands` shortcut for `toggle-dig-toolbar` via `chrome.commands.getAll()` (an extension-page-only API a content script cannot call itself). `shortcut` is the empty string when the command exists but has no key currently bound (the user cleared it at chrome://extensions/shortcuts) — the caller falls back to the manifest default (`toolbarShortcutHint`).",
+    request: '{ action }',
+    response: '{ shortcut:string }',
   },
 });
 
