@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.85.0] - 2026-07-11
+
+### Features
+- **toolbar:** Native-chrome URN bar, Home-tab toggle, single fullscreen button (#293) (#116)
+
 ## [1.84.0] - 2026-07-11
 
 ### Features
