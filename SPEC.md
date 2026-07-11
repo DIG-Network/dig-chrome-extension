@@ -2170,25 +2170,43 @@ selects which Chia network the wallet's balance/activity/coin reads resolve agai
   than at risk of moving real funds. `NETWORKS.testnet.aggSigMeHex`/`.addressPrefix` are already
   defined and tested (`network.test.ts`) — wiring them through is a scoped follow-up, not a design gap.
 
-### 18.6c Wallet-data source — node-first, coinset fallback (#217, phase 3 of #205)
+### 18.6c Wallet-data source — self-custody default, node only when verified-tracking (#217/#399, phase 3 of #205)
 
 The wallet READS (balances, tokens, NFTs, DIDs, coins, activity) resolve through a **source
-abstraction**: the extension prefers a running **dig-node's Sage-parity `get_*` RPC** (private, fast,
-the user's own machine) and falls back to the coinset path (§18.6) otherwise. Signing is NEVER part
-of this — the dig-node is a **read-only** chain-data source for the extension; every key stays in the
-offscreen DIGWX1 vault and the node never receives one.
+abstraction**. The connected wallet's data is served from the **self-custody coinset/vault scan of
+the extension's OWN addresses** by default; a running **dig-node's Sage-parity `get_*` RPC** is used
+for that data ONLY when the node is VERIFIED to track the connected wallet's identity (#399/#407).
+Signing is NEVER part of this — the dig-node is a **read-only** chain-data source; every key stays in
+the offscreen DIGWX1 vault and the node never receives one. (The node remains the source for CONTENT
+reads, §8/§18.6 `getRpcEndpoint`; this section governs connected-wallet DATA only.)
+
+A dig-node answers wallet reads from the wallet IT tracks — an identity-less/unsynced node reports
+0 XCH / no CATs — so sourcing the connected wallet's balances from a node that is not proven to track
+that wallet reports 0/0 by construction (the #399 P0). Connected-wallet data is therefore gated on a
+**verified-tracking** check and defaults to the self-custody scan when the node is not verified.
 
 - **Source resolution (`src/lib/wallet-source.ts`, pure).** `resolveWalletSource(setting, deps)`
-  maps the persisted 4-state selection to a resolved source over the injected §5.3 ladder:
-  - `auto` (default) — the ladder node when reachable (non-strict: a read error falls back to
-    coinset), else coinset.
-  - `node` — force the ladder node (strict): unreachable ⇒ `unavailable` (surfaced as an error UI),
-    never a silent coinset downgrade.
+  maps the persisted 4-state selection to a resolved source over the injected §5.3 ladder + the
+  injected `verifyNodeTracksWallet(base)` gate:
+  - `auto` (default) — the ladder node when reachable AND verified-tracking (non-strict: a read error
+    falls back to coinset); a reachable-but-not-tracking (or unreachable) node ⇒ the self-custody
+    coinset scan.
+  - `node` — force the ladder node (strict): unreachable ⇒ `unavailable`+`node-unreachable`,
+    reachable-but-not-tracking ⇒ `unavailable`+`node-not-tracking` — surfaced as an error UI, never a
+    silent coinset downgrade and never the node's 0/0.
   - `coinset` — force the coinset path; the node is not consulted for wallet data.
   - `custom` — force an explicit node RPC base URL (overrides the ladder entirely, §5.3); blank ⇒
-    `custom-missing`, unreachable ⇒ `custom-unreachable`.
+    `custom-missing`, unreachable ⇒ `custom-unreachable`, reachable-but-not-tracking ⇒
+    `node-not-tracking`.
   Persisted to `wallet.settings.chainSourceMode` + `.chainSourceUrl`; missing ⇒ `auto` (a pre-#217
-  wallet keeps today's node-first-then-coinset behavior with no migration).
+  wallet keeps the default behavior with no migration).
+- **Verified-tracking gate (`verifyNodeTracksConnectedWallet`, shipped default).** A node is verified
+  to track the connected wallet only when the client has established an identity-scoped session —
+  `login` with the wallet's PUBLIC puzzle hashes (#217-safe: no key) AND the node confirms that
+  identity synced + tracking (dig-node #407). Until that handshake is wired, the shipped verifier
+  returns `false`, so every connected-wallet read uses the self-custody scan and the extension NEVER
+  surfaces a node's identity-less 0 XCH / 0 $DIG. (Wiring the #407 handshake — which flips the gate on
+  when the node proves it tracks the wallet — is the follow-up; see #394/#407.)
 - **Node client (`src/lib/node-wallet.ts`, pure, READ-ONLY).** `makeNodeWalletClient(base)` POSTs the
   Sage v0.12.11 method surface (`POST {base}/{method}`, snake_case; design
   `docs/design/dig-node-sage-parity-rpc.md` Part A) to the node's browser-facing plain-HTTP + CORS
@@ -2201,15 +2219,18 @@ offscreen DIGWX1 vault and the node never receives one.
   - The `WalletNft`/`WalletDid` `p2PuzzleHash` (and `WalletDid.numVerificationsRequired`) have no
     field in the Sage records and are display-only for the node-sourced list — they are blank/default
     (the local signing/transfer path re-derives them from chain in the vault; it never trusts a
-    listed value). It follows that the node source reflects the wallet the **node** tracks; the
-    integration premise is that the user's node tracks the user's wallet.
+    listed value). Because the node source reflects the wallet the **node** tracks — NOT necessarily
+    the connected self-custody wallet — a node is used for connected-wallet data only behind the
+    verified-tracking gate above (#399).
 - **SW wiring (`src/background/index.ts`).** `resolveWalletDataSource()` injects the cached §5.3
-  resolver + a direct probe into the pure resolver; `readFromNodeSource(nodeFn)` runs the node read
-  when the source is a node and returns `{ handled }` so the five read handlers
-  (`getCustodyBalances`/`listNfts`/`listDids`/`listCoins`/`getActivity`) branch node-first and fall
-  through to the existing coinset/vault path when the source is coinset or an `auto` node read fails.
-  A forced (node/custom) source that fails returns `NODE_UNAVAILABLE`/`NODE_READ_FAILED` (four-state
-  error), never a silent downgrade.
+  resolver + a direct probe + the shipped `verifyNodeTracksConnectedWallet` gate into the pure
+  resolver; `readFromNodeSource(nodeFn)` runs the node read only when the resolved source is a
+  (verified-tracking) node and returns `{ handled }` so the five read handlers
+  (`getCustodyBalances`/`listNfts`/`listDids`/`listCoins`/`getActivity`) use the self-custody
+  coinset/vault path whenever the source is coinset (the default until the node is verified) or an
+  `auto` node read fails. A forced (node/custom) source that is unavailable/not-tracking returns
+  `NODE_UNAVAILABLE` (four-state error), a node read failure `NODE_READ_FAILED`, never a silent
+  downgrade and never a silent 0.
 - **Settings switch (`ChainSourceSetting`, fullscreen §145).** The user-facing 4-state control
   (Auto / My dig-node / coinset.org / Custom node URL), persisted + mirrored into the `ui` slice,
   react-intl'd across all 14 locales, a11y-labelled, four RTK-Query states; a change invalidates the
@@ -2219,11 +2240,14 @@ offscreen DIGWX1 vault and the node never receives one.
   local node: `resolveLocalDigNode()` (the shared §5.3 cache backing both the content path and this
   wallet path) is warmed proactively on SW `onStartup`/`onInstalled`, and `ChainSourceSetting` queries
   `getChainSourceStatus` on mount (+ a 15s poll while open) to show the result immediately. When Auto
-  mode's ladder resolves to a reachable node, the panel renders a **"Local dig-node detected"**
-  indicator naming the resolved endpoint (`src/lib/wallet-source-status.ts`
-  `walletSourceIndicatorView`, a pure `{mode, resolved} → {visible, tone, labelId, endpoint}`
-  mapping) — zero-config, no `server.host`/custom-URL entry required. The indicator is scoped to
-  `mode === 'auto'` with a `resolved.kind === 'node'` result; a user-forced mode (node/custom/coinset)
+  mode RESOLVES the wallet-data source to a node (i.e. a reachable, verified-tracking node), the panel
+  renders a **"Local dig-node detected"** indicator naming the resolved endpoint
+  (`src/lib/wallet-source-status.ts` `walletSourceIndicatorView`, a pure
+  `{mode, resolved} → {visible, tone, labelId, endpoint}` mapping) — zero-config, no
+  `server.host`/custom-URL entry required. The indicator is scoped to `mode === 'auto'` with a
+  `resolved.kind === 'node'` result, so it reflects the source actually in use for wallet data (it
+  stays hidden while the node is not verified-tracking and the self-custody scan is in use); a
+  user-forced mode (node/custom/coinset)
   relies on its own `custody.source.hint.*` copy + the four-state error UI instead, so the two never
   disagree.
 

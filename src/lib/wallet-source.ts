@@ -71,11 +71,16 @@ export function normalizeCustomNodeUrl(url?: string | null): string {
  * The resolved wallet-data source. `strict` (on a node source) means the user explicitly forced a
  * node (mode node/custom): a read failure must SURFACE (error UI), NEVER silently fall back to
  * coinset. `auto` yields `strict: false`, so the SW falls through to coinset on a node read error.
+ *
+ * `node-not-tracking` (#399/#407): the node is reachable but is NOT verified to track the connected
+ * wallet's identity — so its wallet reads would report a DIFFERENT (identity-less/unsynced) wallet
+ * (0 XCH / [] CATs). A forced (node/custom) source surfaces this as an honest error; `auto` silently
+ * falls through to the self-custody coinset scan (never the node's 0/0).
  */
 export type ResolvedWalletSource =
   | { kind: 'node'; base: string; strict: boolean }
   | { kind: 'coinset' }
-  | { kind: 'unavailable'; reason: 'node-unreachable' | 'custom-unreachable' | 'custom-missing' };
+  | { kind: 'unavailable'; reason: 'node-unreachable' | 'custom-unreachable' | 'custom-missing' | 'node-not-tracking' };
 
 /** The injected node-reachability probes (the SW wires these to its cached §5.3 resolver + probe). */
 export interface ResolveWalletSourceDeps {
@@ -86,18 +91,30 @@ export interface ResolveWalletSourceDeps {
   resolveLadderNode: () => Promise<string | null>;
   /** Probe ONE explicit (already-normalized) node base URL; return it if reachable, else `null`. */
   probeNode: (base: string) => Promise<string | null>;
+  /**
+   * Verify the reachable node at `base` is tracking the CONNECTED self-custody wallet's identity
+   * (#399/#407) — the gate that prevents sourcing the connected wallet's balances/tokens/coins/
+   * activity from a node that answers for a DIFFERENT wallet. Only when this resolves `true` is a
+   * node used for connected-wallet data. See {@link verifyNodeTracksConnectedWallet} for the shipped
+   * default.
+   */
+  verifyNodeTracksWallet: (base: string) => Promise<boolean>;
 }
 
 /**
  * Resolve the wallet-data source for the current settings (design D.1/D.2). Pure decision — the
- * actual socket probes are injected so this is exhaustively unit-tested:
+ * actual socket probes + the verified-tracking check are injected so this is exhaustively
+ * unit-tested:
  *
  *  - **coinset** → force coinset (never probes a node).
- *  - **auto** → the §5.3 ladder node when reachable (non-strict), else coinset.
- *  - **node** → force the ladder node (strict); `unavailable` when unreachable (surfaced as error,
- *    never a silent coinset fallback).
+ *  - **auto** → the §5.3 ladder node when reachable AND verified-tracking (non-strict), else the
+ *    self-custody coinset scan (a reachable-but-untracked node is NOT used — #399).
+ *  - **node** → force the ladder node (strict); `unavailable` when unreachable (`node-unreachable`)
+ *    or reachable-but-not-tracking (`node-not-tracking`) — surfaced as an error, never a silent
+ *    coinset fallback and never the node's 0/0.
  *  - **custom** → the explicit `customUrl` (strict, overrides the ladder entirely, §5.3); a blank
- *    url is `custom-missing`, an unreachable one `custom-unreachable`.
+ *    url is `custom-missing`, an unreachable one `custom-unreachable`, a reachable-but-not-tracking
+ *    one `node-not-tracking`.
  */
 export async function resolveWalletSource(
   setting: ChainSourceSetting,
@@ -108,17 +125,44 @@ export async function resolveWalletSource(
       return { kind: 'coinset' };
     case 'auto': {
       const base = await deps.resolveLadderNode();
-      return base ? { kind: 'node', base, strict: false } : { kind: 'coinset' };
+      if (!base) return { kind: 'coinset' };
+      return (await deps.verifyNodeTracksWallet(base))
+        ? { kind: 'node', base, strict: false }
+        : { kind: 'coinset' };
     }
     case 'node': {
       const base = await deps.resolveLadderNode();
-      return base ? { kind: 'node', base, strict: true } : { kind: 'unavailable', reason: 'node-unreachable' };
+      if (!base) return { kind: 'unavailable', reason: 'node-unreachable' };
+      return (await deps.verifyNodeTracksWallet(base))
+        ? { kind: 'node', base, strict: true }
+        : { kind: 'unavailable', reason: 'node-not-tracking' };
     }
     case 'custom': {
       const normalized = normalizeCustomNodeUrl(setting.customUrl);
       if (!normalized) return { kind: 'unavailable', reason: 'custom-missing' };
       const base = await deps.probeNode(normalized);
-      return base ? { kind: 'node', base, strict: true } : { kind: 'unavailable', reason: 'custom-unreachable' };
+      if (!base) return { kind: 'unavailable', reason: 'custom-unreachable' };
+      return (await deps.verifyNodeTracksWallet(base))
+        ? { kind: 'node', base, strict: true }
+        : { kind: 'unavailable', reason: 'node-not-tracking' };
     }
   }
+}
+
+/**
+ * The SHIPPED verified-tracking check (#399 P0 restore). A dig-node answers wallet reads (balances,
+ * tokens, coins, activity) from the wallet IT tracks — NOT the extension's connected self-custody
+ * wallet — until the client establishes an identity-scoped session: `login` with the wallet's PUBLIC
+ * puzzle hashes (#217-safe) AND the node confirms that identity synced + tracking (dig-node #407).
+ * That handshake is a follow-up; until it is wired, NO node is verified to track the connected
+ * wallet, so this returns `false` and every connected-wallet read uses the self-custody coinset/vault
+ * scan of the extension's OWN addresses. This is the guaranteed-correct default — the extension never
+ * surfaces the node's identity-less 0 XCH / 0 $DIG for a wallet the node isn't tracking.
+ *
+ * The node remains the source for CONTENT reads (resolver/serve, `getRpcEndpoint`) — this gate is
+ * ONLY about connected-wallet balance/token/coin/activity data. When the #407 handshake lands, this
+ * is replaced by a real check (session established + node reports synced + tracking this identity).
+ */
+export function verifyNodeTracksConnectedWallet(_base: string): Promise<boolean> {
+  return Promise.resolve(false);
 }
