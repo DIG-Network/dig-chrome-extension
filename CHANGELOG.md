@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.83.0] - 2026-07-11
+
+### Bug Fixes
+- **config:** Default dig-node host to 127.0.0.1:9778 + allow local HTTP hosts in CSP (#114)
+
 ## [1.82.0] - 2026-07-10
 
 ### Features
