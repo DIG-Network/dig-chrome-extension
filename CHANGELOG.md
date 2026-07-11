@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.88.0] - 2026-07-11
+
+### Features
+- **ext:** Fullscreen UI batch — flush-top URN bar, Advertise + Peers tabs, Sage backend (#121)
+
 ## [1.87.1] - 2026-07-11
 
 ### Bug Fixes
