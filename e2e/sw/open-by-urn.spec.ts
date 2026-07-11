@@ -105,6 +105,11 @@ test('dig-dns unreachable: opens the address in the chrome-extension:// content 
     phase: 'unavailable', boundPort: null, pacUrl: null, loopbackIp: '127.0.0.5', proxyActive: false, lastProbeAt: 1, lastError: null,
   });
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
+  // #289: a chia:// nav now routes to a LOCAL node's plaintext /s/ surface when one is reachable.
+  // This test asserts the sandbox dig-viewer path, so pin a dead custom-node override (a non-alias
+  // loopback + dead port wins the §5.3 ladder, then fails to connect) → no local node → sandbox,
+  // deterministically, whether or not a dig-node happens to be running on the test machine.
+  await page.evaluate(() => chrome.storage.local.set({ 'server.host': 'http://127.0.0.5:9' }));
 
   await page.getByTestId('home-openurn-input').fill(`chia://${STORE_ID}`);
   await page.screenshot({ path: 'e2e/__screenshots__/open-by-urn-home-input.png' });

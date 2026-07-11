@@ -16,6 +16,7 @@ import {
   WEB_SEARCH_URL,
   classifyOmnibox,
   omniboxTarget,
+  omniboxSuggestions,
 } from '@/lib/apps';
 
 const STORE = 'a'.repeat(64);
@@ -105,4 +106,34 @@ test('omniboxTarget: bare domain gets https://', () => {
 
 test('omniboxTarget: words go to DuckDuckGo search', () => {
   assert.equal(omniboxTarget('hello world'), WEB_SEARCH_URL + encodeURIComponent('hello world'));
+});
+
+test('omniboxSuggestions: a DIG value → the chia:// target as the default + one suggestion (#291)', () => {
+  const r = omniboxSuggestions('urn:dig:chia:' + STORE);
+  assert.equal(r.suggestions[0].content, 'chia://chia:' + STORE);
+  assert.match(r.defaultSuggestion.description, /DIG Network/);
+});
+
+test('omniboxSuggestions: a URL value → a Go-to suggestion', () => {
+  const r = omniboxSuggestions('example.com');
+  assert.equal(r.suggestions[0].content, 'https://example.com');
+  assert.match(r.defaultSuggestion.description, /Go to/);
+});
+
+test('omniboxSuggestions: plain words → a web-search suggestion', () => {
+  const r = omniboxSuggestions('what is dig');
+  assert.equal(r.suggestions[0].content, WEB_SEARCH_URL + encodeURIComponent('what is dig'));
+  assert.match(r.defaultSuggestion.description, /[Ss]earch/);
+});
+
+test('omniboxSuggestions: empty input → a helpful default, no suggestions', () => {
+  const r = omniboxSuggestions('');
+  assert.equal(r.suggestions.length, 0);
+  assert.ok(r.defaultSuggestion.description.length > 0);
+});
+
+test('omniboxSuggestions: descriptions XML-escape &, <, > (chrome.omnibox contract)', () => {
+  const r = omniboxSuggestions('a & b < c');
+  assert.ok(!/[<>]/.test(r.defaultSuggestion.description.replace(/&(amp|lt|gt);/g, '')));
+  assert.match(r.defaultSuggestion.description, /&amp;/);
 });

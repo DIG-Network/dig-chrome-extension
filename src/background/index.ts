@@ -33,6 +33,14 @@ import initDigClient, {
 // background.js previously inlined a divergent copy; it now imports the one parser.
 import { parseURN } from '@/lib/dig-urn';
 
+// #289 — §5.3 navigation-target decision: with a LOCAL dig-node reachable, navigate the tab DIRECTLY
+// to the node's plaintext serve surface (http://dig.local/s/<store>[:root]/<path>); with no local
+// node, keep the sandbox dig-viewer + rpc.dig.net ciphertext path. Pure, unit-tested (dig-nav.test).
+import { chooseNavTarget } from '@/lib/dig-nav';
+// #291 — the omnibox (`dig` keyword): the shared classify/resolve + live-suggestion helpers, so the
+// address-bar path and the DIG Home NTP behave identically (pure, unit-tested in apps.test).
+import { classifyOmnibox, omniboxTarget, omniboxSuggestions } from '@/lib/apps';
+
 // The TRUSTED-root decision (#226): a rootless ('latest') URN must verify against the store's
 // chain-ANCHORED root, never the literal string 'latest'. These pure helpers own the fail-closed
 // verdict; resolveAnchoredRoot() below fetches the anchored root from the node.
@@ -3082,6 +3090,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  // #292 — the injected page toolbar asks the SW to open a full-page extension surface in a NEW tab
+  // (a content script has no `tabs` permission). Only `app.html` deep-links are honoured (the page
+  // is resolved through chrome.runtime.getURL, so an arbitrary external URL can never be opened).
+  if (message.action === ACTIONS.openExtensionPage) {
+    (async () => {
+      try {
+        const page = String(message.page || 'app.html');
+        if (!page.startsWith('app.html')) throw new Error('unsupported page');
+        await chrome.tabs.create({ url: chrome.runtime.getURL(page) });
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e && e.message ? e.message : String(e) });
+      }
+    })();
+    return true;
+  }
+
   // Popup approves/revokes a per-origin wallet connection request.
   if (message.action === 'walletConsent') {
     (async () => {
@@ -3184,20 +3209,27 @@ async function handleDigUrlNavigation(tabId, digUrl) {
   }
   
   try {
-    // Extract URN from chia:// URL (remove chia:// prefix)
-    const urn = digUrl.replace(/^chia:\/\//, '');
-    
-    // Redirect to dig-viewer.html with URN parameter
-    // The viewer will fetch content via RPC and embed it
-    const viewerUrl = chrome.runtime.getURL(`dig-viewer.html?urn=${encodeURIComponent(urn)}`);
-    
-    console.log('DIG Extension: Redirecting to viewer:', viewerUrl);
-    
-    // Navigate to viewer page
-    await chrome.tabs.update(tabId, {
-      url: viewerUrl
-    });
-    
+    // #289 — §5.3 node-or-sandbox decision. Resolve the LOCAL dig-node (dig.local preferred, then
+    // 127.0.0.1:<port>; an explicitly-configured custom host wins the ladder entirely). A short
+    // probe timeout keeps navigation snappy; any failure ⇒ treat as "no local node".
+    const { 'server.host': host } = await chrome.storage.local.get('server.host');
+    const nodeBase = await resolveDigNode(host, { timeoutMs: 1200 }).catch(() => null);
+    const target = chooseNavTarget({ digUrl, nodeBase });
+
+    if (target.kind === 'node') {
+      // A local node is up: navigate the TAB DIRECTLY to the node's plaintext content-serve surface
+      // (an ordinary website — the trusted, loopback, key-holding node decrypts server-side and sets
+      // the DIG Shields X-Dig-* headers). This REPLACES the sandbox viewer for the local-node case.
+      console.log('DIG Extension: navigating tab to node-served plaintext surface:', target.url);
+      await chrome.tabs.update(tabId, { url: target.url });
+      return;
+    }
+
+    // No local node: keep the sandbox dig-viewer + rpc.dig.net ciphertext + in-browser-decrypt path
+    // (a browser cannot obtain plaintext from the public gateway — privacy preserved).
+    const viewerUrl = chrome.runtime.getURL(`dig-viewer.html?urn=${encodeURIComponent(target.urn)}`);
+    console.log('DIG Extension: no local node — redirecting to sandbox viewer:', viewerUrl);
+    await chrome.tabs.update(tabId, { url: viewerUrl });
     console.log('DIG Extension: Successfully redirected to viewer');
   } catch (error) {
     console.error('DIG Extension: Error in handleDigUrlNavigation:', error);
@@ -3993,128 +4025,64 @@ setInterval(async () => {
   }
 }, 3000); // Low-frequency backstop (was 100ms); the primary path is event-driven.
 
-// Omnibox handler - allows users to type "dig" followed by URN or search query in address bar
+// Omnibox `dig` keyword (#291) — type `dig <chia:// | urn | storeId[:root] | url | words>`. Resolves
+// the typed identifier with the SHARED classifier (parity with the DIG Home NTP), then:
+//   - a DIG address → the §5.3 node-or-sandbox navigation (handleDigUrlNavigation), matching #289;
+//   - a URL         → navigate to it;
+//   - anything else → a web search (the user's custom search engine if configured, else the shared
+//                     DuckDuckGo default from omniboxTarget).
+// `currentTab` reuses the active tab; any other disposition opens a new tab.
 chrome.omnibox.onInputEntered.addListener(
   async (text, disposition) => {
-    console.log('DIG Extension: Omnibox input received:', text);
-    
-    const trimmedText = text.trim();
-    
-    // Check if it's a chia:// URL or URN
-    if (trimmedText.startsWith('chia://') || trimmedText.startsWith('urn:dig:') || /^[a-f0-9]{64}/i.test(trimmedText)) {
-      // Handle as chia:// URL
-      let digUrl = trimmedText;
-      
-      // If it doesn't start with chia://, add it
-      if (!digUrl.startsWith('chia://')) {
-        // If it starts with "urn:dig:", add "chia://" prefix
-        if (digUrl.startsWith('urn:dig:')) {
-          digUrl = 'chia://' + digUrl;
-        } else {
-          // Otherwise, assume it's a URN and add both prefixes
-          digUrl = 'chia://urn:dig:' + digUrl;
-        }
+    const trimmed = (text || '').trim();
+    if (!trimmed) return;
+    console.log('DIG Extension: Omnibox input:', trimmed, '(', disposition, ')');
+
+    const kind = classifyOmnibox(trimmed);
+    const target = omniboxTarget(trimmed); // chia://… for DIG, https://… for URL, DDG for search
+
+    const openInCurrent = disposition === 'currentTab';
+    const activeTab = openInCurrent
+      ? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]
+      : null;
+
+    if (kind === 'dig') {
+      // Route through the same node-or-sandbox path address-bar navigation uses (#289). A new tab
+      // starts blank, then the SAME decision drives it.
+      const tabId = openInCurrent && activeTab?.id != null ? activeTab.id : (await chrome.tabs.create({ url: 'about:blank' })).id;
+      if (tabId != null) await handleDigUrlNavigation(tabId, target);
+      return;
+    }
+
+    // Non-DIG: a URL navigates to `target`; a search prefers the configured custom search engine,
+    // falling back to the shared default (`target`).
+    let dest = target;
+    if (kind === 'search') {
+      const cfg = await chrome.storage.local.get(['search.enabled', 'search.url']);
+      if (cfg['search.enabled'] !== false && cfg['search.url']) {
+        dest = String(cfg['search.url']).replace('%s', encodeURIComponent(trimmed));
       }
-      
-      console.log('DIG Extension: Omnibox converted to:', digUrl);
-      
-      // Get the current tab or create a new one based on disposition
-      if (disposition === 'currentTab') {
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tabs[0]) {
-          await redirectDigUrlToLocalhost(tabs[0].id, digUrl);
-        }
-      } else {
-        // Open in new tab - use RPC to get data URL
-        try {
-          const rpcResult = await fetchContentViaRPC(digUrl);
-          await chrome.tabs.create({ url: rpcResult.dataUrl });
-        } catch (error) {
-          console.error('DIG Extension: RPC failed for new tab:', error);
-          await chrome.tabs.create({ url: digErrorPageUrl(digUrl, error) });
-        }
-      }
+    }
+    if (openInCurrent && activeTab?.id != null) {
+      await chrome.tabs.update(activeTab.id, { url: dest });
     } else {
-      // Handle as search query - use custom search engine if enabled
-      const result = await chrome.storage.local.get(['search.enabled', 'search.url']);
-      const searchEnabled = result['search.enabled'] !== false;
-      
-      if (searchEnabled && result['search.url']) {
-        // Use custom search URL
-        const searchUrl = result['search.url'].replace('%s', encodeURIComponent(trimmedText));
-        console.log('DIG Extension: Omnibox search query:', trimmedText, '->', searchUrl);
-        
-        if (disposition === 'currentTab') {
-          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-          if (tabs[0]) {
-            await chrome.tabs.update(tabs[0].id, { url: searchUrl });
-          }
-        } else {
-          await chrome.tabs.create({ url: searchUrl });
-        }
-      } else {
-        // Fallback: try to use Chrome's search API
-        try {
-          const searchUrl = await getSearchUrl();
-          const finalUrl = searchUrl.replace('%s', encodeURIComponent(trimmedText));
-          
-          if (disposition === 'currentTab') {
-            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (tabs[0]) {
-              await chrome.tabs.update(tabs[0].id, { url: finalUrl });
-            }
-          } else {
-            await chrome.tabs.create({ url: finalUrl });
-          }
-        } catch (error) {
-          console.error('DIG Extension: Failed to handle search query:', error);
-          // Last resort: use Google
-          const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(trimmedText)}`;
-          if (disposition === 'currentTab') {
-            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (tabs[0]) {
-              await chrome.tabs.update(tabs[0].id, { url: googleUrl });
-            }
-          } else {
-            await chrome.tabs.create({ url: googleUrl });
-          }
-        }
-      }
+      await chrome.tabs.create({ url: dest });
     }
   }
 );
 
-// Also provide suggestions as user types
-chrome.omnibox.onInputChanged.addListener(
-  async (text, suggest) => {
-    // Provide helpful suggestions
-    const suggestions = [];
-    
-    if (text.trim().length === 0) {
-      suggestions.push({
-        content: 'chia://urn:dig:chia:17f89f9af15a046431342694fd2c6df41be8736287e97f6af8327945e59054fb/',
-        description: 'Example: chia://urn:dig:chia:.../resource'
-      });
-    } else {
-      // If user is typing a URN, suggest the full chia:// URL
-      let suggestedUrl = text.trim();
-      if (!suggestedUrl.startsWith('chia://')) {
-        if (suggestedUrl.startsWith('urn:dig:')) {
-          suggestedUrl = 'chia://' + suggestedUrl;
-        } else {
-          suggestedUrl = 'chia://urn:dig:' + suggestedUrl;
-        }
-      }
-      
-      suggestions.push({
-        content: suggestedUrl,
-        description: `Open: ${suggestedUrl}`
-      });
-    }
-    
-    suggest(suggestions);
+// Live omnibox suggestions as the user types (#291): a `setDefaultSuggestion` line describing what
+// Enter will do + the single best autocomplete row, from the SHARED classifier. Malformed / empty
+// input yields a helpful default with no rows (never throws). Descriptions are XML-escaped upstream.
+chrome.omnibox.onInputChanged.addListener((text, suggest) => {
+  const { defaultSuggestion, suggestions } = omniboxSuggestions(text);
+  try {
+    chrome.omnibox.setDefaultSuggestion(defaultSuggestion);
+  } catch {
+    /* setDefaultSuggestion is best-effort */
   }
-);
+  suggest(suggestions);
+});
 
 // ============================================================================
 // Search Engine Management

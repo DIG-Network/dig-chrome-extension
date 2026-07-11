@@ -531,6 +531,13 @@ const CONTENT_ENTRIES = [
     out: path.join(DIST_DIR, 'page-script.js'),
     needle: 'DIG Extension: Page script loaded',
   },
+  {
+    // The #292 injected page toolbar (shadow-DOM isolated, toggle-gated); bundles the pure
+    // @/lib/toolbar core inline. A manifest content_scripts entry (top frame, document_idle).
+    src: path.join(SRC_DIR, 'content', 'dig-toolbar.ts'),
+    out: path.join(DIST_DIR, 'dig-toolbar.js'),
+    needle: 'DIG Extension: page toolbar content script loaded',
+  },
 ];
 
 // A surviving ES import/export/require in the bundle means esbuild failed to produce a

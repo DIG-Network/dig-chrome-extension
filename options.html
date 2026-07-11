@@ -48,6 +48,21 @@
       </div>
     </section>
 
+    <!-- Page toolbar (#292) — a shadow-DOM-isolated, chia://-aware toolbar injected atop every
+         page: quick icons to the Wallet / DIG Shields / Control Panel surfaces, plus live
+         "Verified on Chia" / "Loaded from local" badges on node-served DIG content. Off by default
+         (opt-in, since it shows on every page); the choice persists to `toolbar.enabled`. -->
+    <section class="card">
+      <h2>Page toolbar</h2>
+      <p class="desc">Show a slim DIG toolbar at the top of every page — one-click access to your
+        Wallet, DIG Shields, and the Control Panel, plus "Verified on Chia" / "Loaded from local"
+        badges when you are viewing DIG Network content. Off by default.</p>
+      <div class="row">
+        <label class="lbl" for="toolbarToggle" style="flex:1">Show the DIG toolbar on every page</label>
+        <input type="checkbox" id="toolbarToggle" data-testid="toolbar-toggle" autocomplete="off">
+      </div>
+    </section>
+
     <!-- dig-node -->
     <section class="card">
       <h2>dig-node (local resolver)</h2>
