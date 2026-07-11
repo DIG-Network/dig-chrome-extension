@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.84.0] - 2026-07-11
+
+### Features
+- **nav:** Node-served plaintext navigation, dig omnibox, injected toolbar (#289 #291 #292) (#115)
+
 ## [1.83.0] - 2026-07-11
 
 ### Bug Fixes
