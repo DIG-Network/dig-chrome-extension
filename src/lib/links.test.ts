@@ -121,7 +121,7 @@ test('Get-XCH URL points at chia.net/buy-xch', () => {
 
 // Canonical org Discord (matches SYSTEM.md + dig.net + docs.dig.net + hub).
 test('Discord URL is the canonical org invite', () => {
-  assert.equal(DISCORD_URL, 'https://discord.gg/dignetwork');
+  assert.equal(DISCORD_URL, 'https://discord.gg/v78aygUZt');
 });
 
 test('Full DIG Browser URL points at the releases page', () => {

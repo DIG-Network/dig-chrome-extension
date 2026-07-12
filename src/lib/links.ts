@@ -62,7 +62,7 @@ export const GET_DIG_SOURCES = [
 export const GET_XCH_URL = 'https://www.chia.net/buy-xch/';
 
 /** The DIG Network community Discord — the canonical org invite (matches dig.net + docs + hub). */
-export const DISCORD_URL = 'https://discord.gg/dignetwork';
+export const DISCORD_URL = 'https://discord.gg/v78aygUZt';
 
 /** Full DIG Browser releases — the native client we soft-upsell over the extension. */
 export const DIG_BROWSER_URL = 'https://github.com/DIG-Network/DIG_Browser/releases';
