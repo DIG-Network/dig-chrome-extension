@@ -14,6 +14,15 @@
   --grad:linear-gradient(135deg,#9d6bff 0%,#ff4de0 100%);
   color-scheme:dark;
 }
+/* TangGangOnChia (#495) — the settings page honours the same `data-dig-theme` pick as the shell,
+   repainting its own vars to the citrus-orange-on-near-black palette with the sprout-green accent
+   so the settings surface matches the wallet in the third theme too (orange→green gradient). */
+:root[data-dig-theme='tanggang']{
+  --bg:#0e0a05; --surface:#1a1109; --ink:#fdf3e7; --muted:#d3bda0; --faint:#a98d6b;
+  --border:#3a2611; --purple:#ff9000; --magenta:#57c528; --green:#57c528; --red:#ff6b6b;
+  --grad:linear-gradient(135deg,#ff9000 0%,#57c528 100%);
+  color-scheme:dark;
+}
 *{box-sizing:border-box;margin:0;padding:0}
 /* Body text uses the DIG display family (Space Grotesk) like the popup + full-screen shell, so the
    settings page reads as the same product rather than a system-font outlier (§6.1 "one product"). */

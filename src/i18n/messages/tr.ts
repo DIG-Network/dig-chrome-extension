@@ -16,6 +16,7 @@ export const tr: Record<string, string> = {
   'shell.theme.light': 'Açık',
   'shell.theme.dark': 'Koyu',
   'shell.theme.system': 'Sistem',
+  'shell.theme.tanggang': 'TangGangOnChia',
   'toolbar.theme.toggle': 'Açık veya koyu temayı değiştir',
 
   // ── tabs (mobile-OS bottom nav) ──

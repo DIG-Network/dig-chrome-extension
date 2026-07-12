@@ -93,6 +93,32 @@ test.describe('#111 theme selection', () => {
     await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'light');
   });
 
+  // #495: the third selectable theme — TangGangOnChia — applies its citrus-orange + sprout-green
+  // palette live, from the SAME footer control as light/dark/system.
+  test('#495: selecting TangGangOnChia applies the orange/green palette live to documentElement', async ({ page }) => {
+    await open(page, 'popup.html', '#wallet');
+    await expect(page.getByTestId('custody-wallet')).toBeVisible();
+
+    await expect(page.getByTestId('theme-select')).toContainText('TangGangOnChia');
+    await page.getByTestId('theme-select').selectOption('tanggang');
+    await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'tanggang');
+
+    // The shell repaints from the tanggang `--dig-*` tokens: primary = citrus orange, accent-2 =
+    // sprout green, on-accent = dark ink (so the bright accent keeps AA).
+    const tokens = await page.evaluate(() => {
+      const cs = getComputedStyle(document.documentElement);
+      const norm = (v: string) => v.trim().toLowerCase();
+      return {
+        accent: norm(cs.getPropertyValue('--dig-accent')),
+        accent2: norm(cs.getPropertyValue('--dig-accent-2')),
+        onAccent: norm(cs.getPropertyValue('--dig-on-accent')),
+      };
+    });
+    expect(tokens.accent).toBe('#ff9000');
+    expect(tokens.accent2).toBe('#57c528');
+    expect(tokens.onAccent).toBe('#2b1500');
+  });
+
   test('#211: theme switcher in DIG Settings (options page) — defaults light, switches, persists', async ({ page }) => {
     await open(page, 'options.html', '');
     await expect(page.getByTestId('options-root')).toBeVisible();
@@ -140,6 +166,16 @@ test.describe('#111 theme selection', () => {
       await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'light');
       await page.waitForTimeout(200);
       await page.screenshot({ path: `e2e/__screenshots__/theme-light-default-${label}.png` });
+    });
+
+    // #495: the TangGangOnChia orange theme, captured on both surfaces (§6.5 desktop + mobile).
+    test(`screenshot: TangGangOnChia theme (${label})`, async ({ page }) => {
+      await page.setViewportSize(size);
+      await open(page, file, '#wallet', { 'wallet.settings': { theme: 'tanggang' } });
+      await expect(page.getByTestId('custody-wallet')).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute('data-dig-theme', 'tanggang');
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: `e2e/__screenshots__/theme-tanggang-${label}.png` });
     });
   }
 

@@ -16,6 +16,7 @@ export const ko: Record<string, string> = {
   'shell.theme.light': '라이트',
   'shell.theme.dark': '다크',
   'shell.theme.system': '시스템 설정',
+  'shell.theme.tanggang': 'TangGangOnChia',
   'toolbar.theme.toggle': '밝게/어둡게 테마 전환',
 
   // ── tabs (mobile-OS bottom nav) ──

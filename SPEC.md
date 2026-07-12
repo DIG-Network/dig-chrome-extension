@@ -766,6 +766,24 @@ light mode is a neutral Chrome grey (`#f1f3f4` background, `#dadce0` border), da
 toolbar surface (`#292a2d`) — NEVER the DIG brand gradient, so it reads as browser UI, not a branded
 widget.
 
+**App theme catalog (#111/#495).** The extension shell (popup + fullscreen) paints from ONE set of
+`--dig-*` CSS custom properties (`styles/theme.css`); the active theme is a `data-dig-theme` attribute
+on `documentElement`, set by `useAppliedTheme` from `resolveEffectiveTheme(ui.theme, prefersDark)` and
+persisted to `wallet.settings.theme` via `uiSlice`. The footer theme control (`THEME_MODES`,
+`shell.theme.*` labels) offers `light` (default — the DIG white product theme), `dark`, `system`
+(follows the OS `prefers-color-scheme`), and **`tanggang`** — the **TangGangOnChia** named palette
+(#495): a warm near-black ground with a citrus-orange primary (`--dig-accent: #ff9000`) and a
+sprout-green secondary accent (`--dig-accent-2: #57c528`), derived from tanggangchia.com's
+orange-"TANGGANG" / green-"chia" wordmark; the brand gradient (brand dot, primary button, balance
+hero) runs orange→green. `light`/`dark`/`tanggang` are concrete paints (each a
+`:root[data-dig-theme='…']` block that repaints the whole `--dig-*` set); only `system` consults the OS
+signal. Because `tanggang`'s accent is a bright colour, its `--dig-on-accent` token flips to a dark ink
+(`#2b1500`) so the primary-button label keeps WCAG 2.2 AA contrast — every text/surface pair in the
+palette clears AA (asserted by `styles/tanggang-theme.test.ts`). The DIG-branded loader (`.dig-loader`)
+keeps its own dark brand tokens in every theme (on.dig.net parity). The settings/options page honours
+the same `data-dig-theme` pick via a matching palette block. `tanggang` applies to the app theme set
+ONLY — the URN bar's independent theme (below) stays a neutral browser-chrome light/dark/system.
+
 **The URN bar's theme is INDEPENDENT of the main app theme (#459).** It is NOT derived from `ui.theme`
 (the #111 theme system, persisted `wallet.settings.theme`) — that would couple two conceptually
 separate preferences (the whole extension's product theme vs. this one bar's browser-chrome paint).

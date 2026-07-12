@@ -16,6 +16,7 @@ export const ru: Record<string, string> = {
   'shell.theme.light': 'Светлая',
   'shell.theme.dark': 'Тёмная',
   'shell.theme.system': 'Как в системе',
+  'shell.theme.tanggang': 'TangGangOnChia',
   'toolbar.theme.toggle': 'Переключить светлую или тёмную тему',
 
   // ── tabs (mobile-OS bottom nav) ──

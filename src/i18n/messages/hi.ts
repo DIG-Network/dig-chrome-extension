@@ -16,6 +16,7 @@ export const hi: Record<string, string> = {
   'shell.theme.light': 'हल्की',
   'shell.theme.dark': 'गहरी',
   'shell.theme.system': 'सिस्टम के अनुसार',
+  'shell.theme.tanggang': 'TangGangOnChia',
   'toolbar.theme.toggle': 'हल्की या गहरी थीम टॉगल करें',
 
   // ── tabs (mobile-OS bottom nav) ──
