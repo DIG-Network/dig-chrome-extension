@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.95.1] - 2026-07-12
+
+### Bug Fixes
+- **ext:** Decouple URN-bar theme from the app theme (#459) (#129)
+
 ## [1.95.0] - 2026-07-12
 
 ### Features
