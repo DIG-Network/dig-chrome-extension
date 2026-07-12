@@ -1115,4 +1115,17 @@ export const vi: Record<string, string> = {
   'custody.source.sage.save': 'Lưu nguồn',
   'custody.source.sage.connected': 'Đã kết nối Sage — đang đọc dữ liệu ví từ {endpoint}.',
   'custody.source.sage.unreachable': 'Không thể kết nối đến endpoint của Sage.',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'Gộp các đồng nhỏ',
+  'consolidate.body': 'Ví của bạn có nhiều đồng nhỏ. Gộp {count} đồng trong số đó thành một sẽ giúp thanh toán này hoàn tất. Số dư của bạn giữ nguyên.',
+  'consolidate.fee': 'Phí mạng để gộp: {fee}',
+  'consolidate.combine': 'Gộp đồng',
+  'consolidate.cancel': 'Để sau',
+  'consolidate.progress.consolidating': 'Đang gộp đồng…',
+  'consolidate.progress.confirming': 'Đang chờ xác nhận…',
+  'consolidate.progress.retrying': 'Đang thử lại thanh toán…',
+  'consolidate.progress.note': 'Việc này có thể mất một lát. Hãy giữ cửa sổ này mở.',
+  'send.error.needsConsolidation': 'Thanh toán này cần gộp các đồng nhỏ của bạn trước. Hãy thử lại để gộp chúng.',
+  'send.error.consolidationTimeout': 'Việc gộp chưa được xác nhận kịp thời. Hãy đợi một lát rồi thử lại.',
 };

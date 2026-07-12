@@ -1115,4 +1115,17 @@ export const hi: Record<string, string> = {
   'custody.source.sage.save': 'स्रोत सेव करें',
   'custody.source.sage.connected': 'Sage कनेक्ट हो गया — {endpoint} से वॉलेट डेटा पढ़ा जा रहा है।',
   'custody.source.sage.unreachable': 'Sage एंडपॉइंट तक नहीं पहुंचा जा सका।',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'छोटे सिक्के मिलाएँ',
+  'consolidate.body': 'आपके वॉलेट में कई छोटे सिक्के हैं। उनमें से {count} को एक में मिलाने से यह भुगतान पूरा हो सकता है। आपका बैलेंस वही रहता है।',
+  'consolidate.fee': 'मिलाने का नेटवर्क शुल्क: {fee}',
+  'consolidate.combine': 'सिक्के मिलाएँ',
+  'consolidate.cancel': 'अभी नहीं',
+  'consolidate.progress.consolidating': 'सिक्के मिलाए जा रहे हैं…',
+  'consolidate.progress.confirming': 'पुष्टि की प्रतीक्षा…',
+  'consolidate.progress.retrying': 'आपका भुगतान फिर से किया जा रहा है…',
+  'consolidate.progress.note': 'इसमें थोड़ा समय लग सकता है। इसे खुला रखें।',
+  'send.error.needsConsolidation': 'इस भुगतान के लिए पहले आपके छोटे सिक्कों को मिलाना ज़रूरी है। उन्हें मिलाने के लिए फिर से प्रयास करें।',
+  'send.error.consolidationTimeout': 'मिलाना समय पर पुष्ट नहीं हुआ। थोड़ी देर रुककर फिर से प्रयास करें।',
 };

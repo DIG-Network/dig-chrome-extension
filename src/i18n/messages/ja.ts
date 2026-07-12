@@ -1115,4 +1115,17 @@ export const ja: Record<string, string> = {
   'custody.source.sage.save': 'ソースを保存',
   'custody.source.sage.connected': 'Sageに接続しました — {endpoint} からウォレットデータを読み取っています。',
   'custody.source.sage.unreachable': 'Sageのエンドポイントに到達できません。',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': '小口コインをまとめる',
+  'consolidate.body': 'ウォレットに小口コインが多数あります。そのうち {count} 個を1つにまとめると、この支払いを実行できます。残高は変わりません。',
+  'consolidate.fee': 'まとめる際のネットワーク手数料：{fee}',
+  'consolidate.combine': 'コインをまとめる',
+  'consolidate.cancel': '今はしない',
+  'consolidate.progress.consolidating': 'コインをまとめています…',
+  'consolidate.progress.confirming': '確認を待っています…',
+  'consolidate.progress.retrying': '支払いを再試行しています…',
+  'consolidate.progress.note': '少し時間がかかることがあります。この画面を開いたままにしてください。',
+  'send.error.needsConsolidation': 'この支払いには、まず小口コインをまとめる必要があります。もう一度お試しください。',
+  'send.error.consolidationTimeout': 'まとめる処理が時間内に確認されませんでした。しばらくしてからもう一度お試しください。',
 };

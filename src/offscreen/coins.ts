@@ -15,6 +15,7 @@
 import { buildKeyring, reconstructCats, type SendFlowWasm, type KeyringEntry } from '@/offscreen/sendFlow';
 import type { ChainClient } from '@/offscreen/chain';
 import type { SigCoinSpend, SigSecretKey } from '@/offscreen/signing';
+import { COIN_CAP } from '@/offscreen/coinSelect';
 
 /** CLVM max cost when running a puzzle to read its output conditions. */
 const MAX_COST = 11_000_000_000n;
@@ -324,4 +325,39 @@ export async function prepareCombine(
     inputCoinCount: selected.count,
   });
   return { coinSpends, coinOpSummary, secretKeys: keyring.map((k) => k.sk) };
+}
+
+/**
+ * AUTO-CONSOLIDATE (#417) — the recovery step when a spend can't be funded within the {@link COIN_CAP}
+ * coin limit because the wallet is coin-fragmented (`selectCoins` returned `NEEDS_CONSOLIDATION`).
+ * Merges the SMALLEST up-to-`cap` coins of the target asset into a single self coin, so a subsequent
+ * re-selection reaches the target with fewer, larger coins. Reuses the tested {@link prepareCombine}
+ * self-send driver path (both XCH and CAT) — no hand-rolled spend, self-send invariant enforced —
+ * and returns the same `PreparedCoinOp` shape so the vault holds + broadcasts it via the shared
+ * `confirmSend`. The UI loop re-runs the spend after this confirms, repeating until selectable or the
+ * user cancels. Builds only — does NOT sign or broadcast.
+ */
+export async function prepareConsolidation(
+  chia: CoinsWasm,
+  chain: ChainClient,
+  opts: { seed: Uint8Array; assetId?: string; fee?: bigint; activeIndex?: number; cap?: number },
+): Promise<PreparedCoinOp> {
+  const cap = opts.cap ?? COIN_CAP;
+  const coins = await listCoins(chia, chain, {
+    seed: opts.seed,
+    ...(opts.assetId ? { assetId: opts.assetId } : {}),
+    activeIndex: opts.activeIndex ?? 0,
+  });
+  if (coins.length < 2) throw new Error('NOTHING_TO_CONSOLIDATE: fewer than two coins to combine');
+  // Merge the SMALLEST coins first (that is where fragmentation lives), capped so the combine itself
+  // never exceeds the coin limit. One round reduces the count by (n-1); the loop repeats if needed.
+  const smallestFirst = [...coins].sort((a, b) => (BigInt(a.amount) < BigInt(b.amount) ? -1 : BigInt(a.amount) > BigInt(b.amount) ? 1 : 0));
+  const coinIds = smallestFirst.slice(0, cap).map((c) => c.coinId);
+  return prepareCombine(chia, chain, {
+    seed: opts.seed,
+    ...(opts.assetId ? { assetId: opts.assetId } : {}),
+    coinIds,
+    fee: opts.fee ?? 0n,
+    activeIndex: opts.activeIndex ?? 0,
+  });
 }

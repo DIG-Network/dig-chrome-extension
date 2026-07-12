@@ -1115,4 +1115,17 @@ export const ru: Record<string, string> = {
   'custody.source.sage.save': 'Сохранить источник',
   'custody.source.sage.connected': 'Sage подключён — данные кошелька считываются из {endpoint}.',
   'custody.source.sage.unreachable': 'Конечная точка Sage недоступна.',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'Объединить мелкие монеты',
+  'consolidate.body': 'В вашем кошельке много мелких монет. Объединение {count} из них в одну позволит выполнить этот платёж. Ваш баланс не изменится.',
+  'consolidate.fee': 'Комиссия сети за объединение: {fee}',
+  'consolidate.combine': 'Объединить монеты',
+  'consolidate.cancel': 'Не сейчас',
+  'consolidate.progress.consolidating': 'Объединяем монеты…',
+  'consolidate.progress.confirming': 'Ожидаем подтверждения…',
+  'consolidate.progress.retrying': 'Повторяем ваш платёж…',
+  'consolidate.progress.note': 'Это может занять некоторое время. Не закрывайте это окно.',
+  'send.error.needsConsolidation': 'Для этого платежа сначала нужно объединить мелкие монеты. Повторите попытку, чтобы объединить их.',
+  'send.error.consolidationTimeout': 'Объединение не подтвердилось вовремя. Подождите немного и повторите попытку.',
 };

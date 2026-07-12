@@ -2108,6 +2108,13 @@ async function handleCustodyActionInner(message) {
       const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
       return callVault({ op: 'prepareCombine', assetId: message.assetId, coinIds: message.coinIds, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
     }
+    case ACTIONS.prepareConsolidation: {
+      // #417 — build the auto-consolidation (merge the smallest up-to-cap coins) so a fragmented
+      // wallet can fund a spend the coin-count cap rejected. Vault→coinset like prepareCombine
+      // (the spend path is deliberately independent of the node wallet-source, #399/#407/#217).
+      const coinsetUrl = resolveCoinsetUrl(await readWalletSettings());
+      return callVault({ op: 'prepareConsolidation', assetId: message.assetId, fee: message.fee, activeIndex: await activeDerivationIndex(), coinsetUrl });
+    }
     case ACTIONS.listClawbacks: {
       // Read-only (#152): INCOMING is discovered on chain by hint at the active index; OUTGOING
       // candidates come from this wallet+index's OWN local activity log — the vault has no other way

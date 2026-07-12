@@ -1116,4 +1116,17 @@ export const de: Record<string, string> = {
   'custody.source.sage.save': 'Quelle speichern',
   'custody.source.sage.connected': 'Sage verbunden — Wallet-Daten werden von {endpoint} gelesen.',
   'custody.source.sage.unreachable': 'Sage-Endpunkt nicht erreichbar.',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'Kleine Coins zusammenführen',
+  'consolidate.body': 'Ihre Wallet enthält viele kleine Coins. Wenn Sie {count} davon zu einem zusammenführen, kann diese Zahlung ausgeführt werden. Ihr Guthaben bleibt gleich.',
+  'consolidate.fee': 'Netzwerkgebühr zum Zusammenführen: {fee}',
+  'consolidate.combine': 'Coins zusammenführen',
+  'consolidate.cancel': 'Jetzt nicht',
+  'consolidate.progress.consolidating': 'Coins werden zusammengeführt…',
+  'consolidate.progress.confirming': 'Warten auf Bestätigung…',
+  'consolidate.progress.retrying': 'Zahlung wird erneut versucht…',
+  'consolidate.progress.note': 'Das kann einen Moment dauern. Lassen Sie dies geöffnet.',
+  'send.error.needsConsolidation': 'Für diese Zahlung müssen zuerst Ihre kleinen Coins zusammengeführt werden. Versuchen Sie es erneut, um sie zusammenzuführen.',
+  'send.error.consolidationTimeout': 'Das Zusammenführen wurde nicht rechtzeitig bestätigt. Warten Sie einen Moment und versuchen Sie es erneut.',
 };

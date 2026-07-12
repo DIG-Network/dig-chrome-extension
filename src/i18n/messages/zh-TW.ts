@@ -1115,4 +1115,17 @@ export const zhTW: Record<string, string> = {
   'custody.source.sage.save': '儲存來源',
   'custody.source.sage.connected': '已連接 Sage — 正在從 {endpoint} 讀取錢包資料。',
   'custody.source.sage.unreachable': '無法連線至 Sage 端點。',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': '合併小額幣',
+  'consolidate.body': '您的錢包有許多小額幣。將其中 {count} 個合併為一個即可完成此付款。您的餘額保持不變。',
+  'consolidate.fee': '合併的網路費用：{fee}',
+  'consolidate.combine': '合併幣',
+  'consolidate.cancel': '暫不',
+  'consolidate.progress.consolidating': '正在合併幣…',
+  'consolidate.progress.confirming': '正在等待確認…',
+  'consolidate.progress.retrying': '正在重試您的付款…',
+  'consolidate.progress.note': '這可能需要一點時間。請保持開啟。',
+  'send.error.needsConsolidation': '此付款需要先合併您的小額幣。請再試一次以合併它們。',
+  'send.error.consolidationTimeout': '合併未能及時確認。請稍候再試。',
 };

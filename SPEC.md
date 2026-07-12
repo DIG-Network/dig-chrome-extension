@@ -820,7 +820,7 @@ non-DIG query goes to the chosen fallback, never back through the DIG sentinel.
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `33`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `34`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -957,6 +957,15 @@ default). The SW also registers a `chrome.commands.onCommand` listener that flip
 for the active DIG resource's creator. Execution is delegated to the dig-node tipping subsystem
 (#377), not yet built, so the SW handler is a flagged stub returning `TIP_SUBSYSTEM_UNAVAILABLE`.
 Purely additive — no existing action/shape changed.
+
+`MESSAGE_PROTOCOL_VERSION` `34` (#417 auto-consolidate, §18.15) added `prepareConsolidation` — the
+recovery step when a send/spend cannot be funded within the coin-count cap because the wallet is
+coin-fragmented. It merges the SMALLEST up-to-cap coins of an asset into one self coin (a self-send,
+broadcast via the shared `confirmSend`), so a re-selection reaches the target with fewer, larger
+coins. `prepareSend` now funds from a capped, high-value-first selection (chip35 `selectCoins`) and
+MAY fail with the coded `NEEDS_CONSOLIDATION` (recoverable — the client combines then retries) or
+`INSUFFICIENT_FUNDS` (terminal), surfaced through the standard failure shape — no request-field
+change. Purely additive — no existing action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.

@@ -11,6 +11,8 @@ import { signCoinSpends, type SigningWasm, type SigSecretKey, type SigCoinSpend 
 import type { ChainClient, ChainSpendBundle } from '@/offscreen/chain';
 import { WALLET_PATH_PREFIX, type Scheme } from '@/lib/keystore/derive';
 import { clawbackDestination, type ClawbackInfo, type ClawbackWasm } from '@/offscreen/clawback';
+import { selectSpendCoins, type SelectCoinsFn } from '@/offscreen/coinSelect';
+import type { Coin as Chip35Coin } from '@dignetwork/chip35-dl-coin-wasm';
 
 /** A wasm secret key with the derivation + signing surface the flow needs. */
 interface FullSecretKey extends SigSecretKey {
@@ -89,6 +91,44 @@ function filterSelected<T extends { coin?: { coinId(): Uint8Array }; coinId?(): 
   return kept;
 }
 
+/** Map an on-chain coin (XCH `ChainCoin` or a reconstructed CAT's `.coin`) to a chip35 `Coin`. */
+function toChip35Coin(c: { parentCoinInfo: Uint8Array; puzzleHash: Uint8Array; amount: bigint }): Chip35Coin {
+  return { parentCoinInfo: c.parentCoinInfo, puzzleHash: c.puzzleHash, amount: c.amount };
+}
+
+/**
+ * Resolve the coin ids that fund a spend (#417). A hand-picked coin-control selection (#91,
+ * `selectedCoinIds`) ALWAYS wins — the user's override is never second-guessed. Otherwise, when a
+ * chip35 `select` is injected, pick high-value-first up to the cap via {@link selectSpendCoins} and
+ * return the chosen ids (throwing the typed `NEEDS_CONSOLIDATION` / `INSUFFICIENT_FUNDS` signal the
+ * vault surfaces as a `code`). With neither, returns `undefined` so the driver auto-selects (legacy).
+ */
+function resolveFundingCoinIds<C>(
+  chia: { toHex(b: Uint8Array): string },
+  args: {
+    candidates: C[];
+    selectedCoinIds: string[] | undefined;
+    select: SelectCoinsFn | undefined;
+    target: bigint;
+    asset: Parameters<SelectCoinsFn>[2];
+    coinOf: (c: C) => Chip35Coin;
+    idOf: (c: C) => Uint8Array;
+    cap?: number;
+  },
+): string[] | undefined {
+  if (args.selectedCoinIds && args.selectedCoinIds.length > 0) return args.selectedCoinIds;
+  if (!args.select) return undefined;
+  const chosen = selectSpendCoins({
+    candidates: args.candidates,
+    target: args.target,
+    asset: args.asset,
+    coinOf: args.coinOf,
+    select: args.select,
+    ...(args.cap != null ? { cap: args.cap } : {}),
+  });
+  return chosen.selected.map((c) => strip0x(chia.toHex(args.idOf(c))));
+}
+
 /**
  * Derive the HD keyring for ONE derivation index (§165 — the single active-index model): its
  * standard puzzle hash → synthetic key, for each scheme (both unhardened + hardened by default —
@@ -157,12 +197,26 @@ export async function prepareXchSend(
     selectedCoinIds?: string[];
     clawbackSeconds?: bigint;
     memo?: string;
+    /** #417 — the injected chip35 `selectCoins`; when present (and no #91 override) the send funds
+     * from a capped, high-value-first selection, throwing NEEDS_CONSOLIDATION / INSUFFICIENT_FUNDS. */
+    select?: SelectCoinsFn;
+    cap?: number;
   },
 ): Promise<PreparedSend> {
   const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map<string, KeyPair>(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
   const allCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex));
-  const coins = filterSelected(chia, allCoins, opts.selectedCoinIds, (c) => c.coinId());
+  const fundingIds = resolveFundingCoinIds(chia, {
+    candidates: allCoins,
+    selectedCoinIds: opts.selectedCoinIds,
+    select: opts.select,
+    target: opts.amount + opts.fee, // XCH coins must cover both the amount AND the fee
+    asset: { xch: true },
+    coinOf: (c) => toChip35Coin(c),
+    idOf: (c) => c.coinId(),
+    ...(opts.cap != null ? { cap: opts.cap } : {}),
+  });
+  const coins = filterSelected(chia, allCoins, fundingIds, (c) => c.coinId());
   const receiverPuzzleHash = chia.Address.decode(opts.recipient).puzzleHash;
   const changePuzzleHash = chia.fromHex(keyring[0].puzzleHashHex);
 
@@ -257,13 +311,26 @@ interface CatSpends {
 export async function prepareCatSend(
   chia: SendFlowWasm,
   chain: ChainClient,
-  opts: { seed: Uint8Array; assetId: string; recipient: string; amount: bigint; fee: bigint; activeIndex?: number; selectedCoinIds?: string[]; memo?: string },
+  opts: { seed: Uint8Array; assetId: string; recipient: string; amount: bigint; fee: bigint; activeIndex?: number; selectedCoinIds?: string[]; memo?: string; select?: SelectCoinsFn; cap?: number },
 ): Promise<PreparedSend> {
   const keyring = buildKeyring(chia, opts.seed, { index: opts.activeIndex ?? 0 });
   const keyByPuzzleHash = new Map<string, KeyPair>(keyring.map((k) => [k.puzzleHashHex, { pk: k.pk }]));
-  const allCats = await reconstructCats(chia, chain, keyring, opts.assetId);
+  type CatCandidate = { coin: { coinId(): Uint8Array; parentCoinInfo: Uint8Array; puzzleHash: Uint8Array; amount: bigint } };
+  const allCats = (await reconstructCats(chia, chain, keyring, opts.assetId)) as CatCandidate[];
   if (allCats.length === 0) throw new Error('NO_CAT_COINS: the wallet holds none of this token');
-  const cats = filterSelected(chia, allCats as Array<{ coin: { coinId(): Uint8Array } }>, opts.selectedCoinIds, (c) => c.coin.coinId());
+  // #417 — select the CAT coins high-value-first up to the cap (fee is paid separately in XCH, so the
+  // selection target is the CAT amount only). A #91 hand-picked selection still overrides.
+  const fundingIds = resolveFundingCoinIds(chia, {
+    candidates: allCats,
+    selectedCoinIds: opts.selectedCoinIds,
+    select: opts.select,
+    target: opts.amount,
+    asset: { assetId: chia.fromHex(opts.assetId.replace(/^0x/i, '').toLowerCase()) },
+    coinOf: (c) => toChip35Coin(c.coin),
+    idOf: (c) => c.coin.coinId(),
+    ...(opts.cap != null ? { cap: opts.cap } : {}),
+  });
+  const cats = filterSelected(chia, allCats, fundingIds, (c) => c.coin.coinId());
   const xchCoins = await chain.unspentCoins(keyring.map((k) => k.puzzleHashHex)); // for the fee
   const destPuzzleHash = chia.Address.decode(opts.recipient).puzzleHash;
   const changePuzzleHash = chia.fromHex(keyring[0].puzzleHashHex);

@@ -1116,4 +1116,17 @@ export const fr: Record<string, string> = {
   'custody.source.sage.save': 'Enregistrer la source',
   'custody.source.sage.connected': 'Sage connecté — lecture des données du portefeuille depuis {endpoint}.',
   'custody.source.sage.unreachable': 'Le point de terminaison Sage est injoignable.',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'Regrouper les petites pièces',
+  'consolidate.body': 'Votre portefeuille contient de nombreuses petites pièces. En regrouper {count} en une seule permet d’effectuer ce paiement. Votre solde reste inchangé.',
+  'consolidate.fee': 'Frais de réseau pour le regroupement : {fee}',
+  'consolidate.combine': 'Regrouper les pièces',
+  'consolidate.cancel': 'Pas maintenant',
+  'consolidate.progress.consolidating': 'Regroupement des pièces…',
+  'consolidate.progress.confirming': 'En attente de confirmation…',
+  'consolidate.progress.retrying': 'Nouvelle tentative de paiement…',
+  'consolidate.progress.note': 'Cela peut prendre un instant. Gardez cette fenêtre ouverte.',
+  'send.error.needsConsolidation': 'Ce paiement nécessite d’abord de regrouper vos petites pièces. Réessayez pour les regrouper.',
+  'send.error.consolidationTimeout': 'Le regroupement n’a pas été confirmé à temps. Patientez un instant et réessayez.',
 };

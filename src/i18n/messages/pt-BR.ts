@@ -1116,4 +1116,17 @@ export const ptBR: Record<string, string> = {
   'custody.source.sage.save': 'Salvar origem',
   'custody.source.sage.connected': 'Sage conectado — lendo os dados da carteira de {endpoint}.',
   'custody.source.sage.unreachable': 'Endpoint do Sage inacessível.',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'Combinar moedas pequenas',
+  'consolidate.body': 'Sua carteira tem muitas moedas pequenas. Combinar {count} delas em uma permite concluir este pagamento. Seu saldo permanece o mesmo.',
+  'consolidate.fee': 'Taxa de rede para combinar: {fee}',
+  'consolidate.combine': 'Combinar moedas',
+  'consolidate.cancel': 'Agora não',
+  'consolidate.progress.consolidating': 'Combinando moedas…',
+  'consolidate.progress.confirming': 'Aguardando confirmação…',
+  'consolidate.progress.retrying': 'Tentando seu pagamento novamente…',
+  'consolidate.progress.note': 'Isso pode levar um momento. Mantenha isto aberto.',
+  'send.error.needsConsolidation': 'Este pagamento precisa que suas moedas pequenas sejam combinadas primeiro. Tente novamente para combiná-las.',
+  'send.error.consolidationTimeout': 'A combinação não foi confirmada a tempo. Aguarde um momento e tente novamente.',
 };

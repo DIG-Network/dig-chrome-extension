@@ -429,4 +429,78 @@ describe('SendPanel', () => {
       expect(screen.queryByTestId('review-clawback')).not.toBeInTheDocument();
     });
   });
+
+  // #417 — auto-consolidate: a fragmented wallet transparently combines coins + retries the send.
+  describe('#417 auto-consolidate', () => {
+    const COMBINE = { asset: 'XCH', kind: 'combine', inputCoinCount: 50, outputCoinCount: 1, total: '5000', fee: '0' };
+
+    it('NEEDS_CONSOLIDATION → honest modal → combine → confirm → poll → retry → review', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let sendCalls = 0;
+      mockSw((m) => {
+        if (m.action === 'prepareSend') {
+          sendCalls += 1;
+          // First attempt is too fragmented; after the combine confirms, the retry succeeds.
+          return sendCalls === 1
+            ? { success: false, code: 'NEEDS_CONSOLIDATION', message: 'NEEDS_CONSOLIDATION: too many small coins' }
+            : { pendingId: 'p1', summary: SUMMARY };
+        }
+        if (m.action === 'prepareConsolidation') return { pendingId: 'c1', coinOpSummary: COMBINE };
+        if (m.action === 'confirmSend') return { spentCoinId: 'combineCoin' };
+        if (m.action === 'sendStatus') return { confirmed: true };
+        return { success: true };
+      });
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} pollMs={10} />);
+
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+      fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+      fireEvent.click(screen.getByTestId('send-review'));
+
+      // The honest consent modal appears with the round's coin count.
+      expect(await screen.findByTestId('consolidate-prompt')).toBeInTheDocument();
+      expect(screen.getByText(/50/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('consolidate-confirm'));
+      await vi.advanceTimersByTimeAsync(30); // combine confirms via the poll
+      // The retried send now succeeds → the review panel appears, modal gone.
+      expect(await screen.findByTestId('send-review-panel')).toBeInTheDocument();
+      expect(screen.queryByTestId('consolidate-modal')).not.toBeInTheDocument();
+      expect(sendCalls).toBe(2);
+      vi.useRealTimers();
+    });
+
+    it('cancelling the combine returns to the form with an honest message (no crash)', async () => {
+      mockSw((m) => {
+        if (m.action === 'prepareSend') return { success: false, code: 'NEEDS_CONSOLIDATION', message: 'NEEDS_CONSOLIDATION' };
+        if (m.action === 'prepareConsolidation') return { pendingId: 'c1', coinOpSummary: COMBINE };
+        return { success: true };
+      });
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+      fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+      fireEvent.click(screen.getByTestId('send-review'));
+
+      fireEvent.click(await screen.findByTestId('consolidate-cancel'));
+      // Modal closes; the form's inline message explains combining is needed; still on the form.
+      await waitFor(() => expect(screen.queryByTestId('consolidate-modal')).not.toBeInTheDocument());
+      expect(screen.getByTestId('send-error')).toBeInTheDocument();
+      expect(screen.getByTestId('send-review')).toBeInTheDocument(); // the form's submit button
+    });
+
+    it('INSUFFICIENT_FUNDS surfaces a clear error (never the combine modal)', async () => {
+      mockSw((m) => {
+        if (m.action === 'prepareSend') return { success: false, code: 'INSUFFICIENT_FUNDS', message: 'INSUFFICIENT_FUNDS' };
+        return { success: true };
+      });
+      renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
+
+      fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+      fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+      fireEvent.click(screen.getByTestId('send-review'));
+
+      expect(await screen.findByTestId('send-error')).toBeInTheDocument();
+      expect(screen.queryByTestId('consolidate-modal')).not.toBeInTheDocument();
+    });
+  });
 });

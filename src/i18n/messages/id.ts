@@ -1115,4 +1115,17 @@ export const id: Record<string, string> = {
   'custody.source.sage.save': 'Simpan sumber',
   'custody.source.sage.connected': 'Sage terhubung — membaca data dompet dari {endpoint}.',
   'custody.source.sage.unreachable': 'Endpoint Sage tidak dapat dijangkau.',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'Gabungkan koin kecil',
+  'consolidate.body': 'Dompet Anda memiliki banyak koin kecil. Menggabungkan {count} di antaranya menjadi satu memungkinkan pembayaran ini berjalan. Saldo Anda tetap sama.',
+  'consolidate.fee': 'Biaya jaringan untuk menggabungkan: {fee}',
+  'consolidate.combine': 'Gabungkan koin',
+  'consolidate.cancel': 'Nanti saja',
+  'consolidate.progress.consolidating': 'Menggabungkan koin…',
+  'consolidate.progress.confirming': 'Menunggu konfirmasi…',
+  'consolidate.progress.retrying': 'Mencoba ulang pembayaran…',
+  'consolidate.progress.note': 'Ini mungkin perlu waktu sebentar. Biarkan ini terbuka.',
+  'send.error.needsConsolidation': 'Pembayaran ini perlu menggabungkan koin kecil Anda terlebih dahulu. Coba lagi untuk menggabungkannya.',
+  'send.error.consolidationTimeout': 'Penggabungan tidak dikonfirmasi tepat waktu. Tunggu sebentar dan coba lagi.',
 };

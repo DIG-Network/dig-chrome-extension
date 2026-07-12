@@ -25,6 +25,7 @@ export default defineConfig({
     '**/loader-toolbar-shots.spec.ts',
     '**/did-create-errors.spec.ts',
     '**/send-receive-trio.spec.ts',
+    '**/consolidate-modal-shots.spec.ts',
     '**/qr-scanner-camera.spec.ts',
     '**/settings-prefs.spec.ts',
     '**/accounts-keys.spec.ts',

@@ -1115,4 +1115,17 @@ export const zhCN: Record<string, string> = {
   'custody.source.sage.save': '保存来源',
   'custody.source.sage.connected': '已连接 Sage — 正在从 {endpoint} 读取钱包数据。',
   'custody.source.sage.unreachable': '无法访问 Sage 端点。',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': '合并小额币',
+  'consolidate.body': '您的钱包有许多小额币。将其中 {count} 个合并为一个即可完成此付款。您的余额保持不变。',
+  'consolidate.fee': '合并的网络费用：{fee}',
+  'consolidate.combine': '合并币',
+  'consolidate.cancel': '暂不',
+  'consolidate.progress.consolidating': '正在合并币…',
+  'consolidate.progress.confirming': '正在等待确认…',
+  'consolidate.progress.retrying': '正在重试您的付款…',
+  'consolidate.progress.note': '这可能需要一点时间。请保持打开。',
+  'send.error.needsConsolidation': '此付款需要先合并您的小额币。请再试一次以合并它们。',
+  'send.error.consolidationTimeout': '合并未能及时确认。请稍候再试。',
 };

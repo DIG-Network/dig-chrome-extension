@@ -1116,4 +1116,17 @@ export const tr: Record<string, string> = {
   'custody.source.sage.save': 'Kaynağı kaydet',
   'custody.source.sage.connected': 'Sage bağlandı — {endpoint} adresinden cüzdan verileri okunuyor.',
   'custody.source.sage.unreachable': 'Sage uç noktasına ulaşılamıyor.',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'Küçük coinleri birleştir',
+  'consolidate.body': 'Cüzdanınızda birçok küçük coin var. Bunlardan {count} tanesini tek bir coine birleştirmek bu ödemenin geçmesini sağlar. Bakiyeniz aynı kalır.',
+  'consolidate.fee': 'Birleştirme ağ ücreti: {fee}',
+  'consolidate.combine': 'Coinleri birleştir',
+  'consolidate.cancel': 'Şimdi değil',
+  'consolidate.progress.consolidating': 'Coinler birleştiriliyor…',
+  'consolidate.progress.confirming': 'Onay bekleniyor…',
+  'consolidate.progress.retrying': 'Ödemeniz yeniden deneniyor…',
+  'consolidate.progress.note': 'Bu biraz zaman alabilir. Bunu açık tutun.',
+  'send.error.needsConsolidation': 'Bu ödeme için önce küçük coinlerinizin birleştirilmesi gerekir. Birleştirmek için tekrar deneyin.',
+  'send.error.consolidationTimeout': 'Birleştirme zamanında onaylanmadı. Bir süre bekleyip tekrar deneyin.',
 };

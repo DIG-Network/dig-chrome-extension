@@ -1152,4 +1152,17 @@ export const en: Record<string, string> = {
   'options.error.expires': "Enter a whole number of days greater than zero.",
   'options.error.fee': "Enter a valid, non-negative fee.",
   'trade.mode.options': "Options",
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'Combine small coins',
+  'consolidate.body': 'Your wallet holds many small coins. Combining {count} of them into one lets this payment go through. Your balance stays the same.',
+  'consolidate.fee': 'Network fee to combine: {fee}',
+  'consolidate.combine': 'Combine coins',
+  'consolidate.cancel': 'Not now',
+  'consolidate.progress.consolidating': 'Combining coins…',
+  'consolidate.progress.confirming': 'Waiting for confirmation…',
+  'consolidate.progress.retrying': 'Retrying your payment…',
+  'consolidate.progress.note': 'This can take a moment. Keep this open.',
+  'send.error.needsConsolidation': 'This payment needs your small coins combined first. Try again to combine them.',
+  'send.error.consolidationTimeout': 'The combine didn’t confirm in time. Wait a moment and try again.',
 };

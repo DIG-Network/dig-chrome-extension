@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { toBaseUnits, formatBaseUnits, validateSendForm, shortenAddress, isChiaAddress } from '@/lib/wallet-view';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
-import { usePrepareSendMutation, useConfirmSendMutation, useLazySendStatusQuery, useGetCoinsQuery, type PreparedSend } from '@/features/wallet/custodyApi';
+import { useConfirmSendMutation, useLazySendStatusQuery, useGetCoinsQuery, type PreparedSend } from '@/features/wallet/custodyApi';
+import { useConsolidatingSend } from '@/features/wallet/custody/useConsolidatingSend';
+import { ConsolidateModal } from '@/features/wallet/custody/ConsolidateModal';
 import { ContactPicker } from '@/features/contacts/ContactPicker';
 import { FeeField } from '@/features/wallet/custody/FeeField';
 import { useContacts } from '@/features/contacts/useContacts';
@@ -24,6 +26,13 @@ const CLAWBACK_PRESETS = [
 ] as const;
 
 type Phase = 'form' | 'review' | 'sending' | 'confirmed' | 'failed';
+
+/** Map a consolidating-prepare failure code (#417) to a localized send-form message id. */
+const SEND_ERROR_ID: Record<string, string> = {
+  INSUFFICIENT_FUNDS: 'send.error.insufficient',
+  NEEDS_CONSOLIDATION: 'send.error.needsConsolidation',
+  CONSOLIDATION_TIMEOUT: 'send.error.consolidationTimeout',
+};
 
 /**
  * Self-custody Send (§6) for XCH + CATs. A state machine: form (asset picker + recipient + amount +
@@ -72,7 +81,9 @@ export function SendPanel({
   // compact popup, and the OS permission prompt can steal focus and close a popup).
   const [scanning, setScanning] = useState(false);
 
-  const [prepareSend, prep] = usePrepareSendMutation();
+  // #417 — the consolidating send wrapper: on NEEDS_CONSOLIDATION it combines the wallet's small
+  // coins (honest modal) and retries, so a fragmented wallet can still send. Owns the modal state.
+  const consolidating = useConsolidatingSend({ pollMs });
   const [confirmSend, conf] = useConfirmSendMutation();
   const [pollStatus] = useLazySendStatusQuery();
 
@@ -143,7 +154,9 @@ export function SendPanel({
       isFull && isXch && clawback
         ? String(Math.floor(Date.now() / 1000) + (CLAWBACK_PRESETS.find((p) => p.value === clawbackWindow)?.seconds ?? 86400))
         : undefined;
-    const res = await prepareSend({
+    // The consolidating wrapper transparently combines small coins + retries on NEEDS_CONSOLIDATION
+    // (driving its own modal); it resolves to the prepared send or a stable failure code.
+    const res = await consolidating.prepare({
       recipient,
       amount: String(amountBase),
       fee: String(feeMojos),
@@ -152,11 +165,11 @@ export function SendPanel({
       ...(clawbackSeconds ? { clawbackSeconds } : {}),
       ...(memo.trim() ? { memo: memo.trim() } : {}),
     });
-    if ('data' in res && res.data?.pendingId) {
-      setPrepared(res.data);
+    if (res.ok) {
+      setPrepared(res.prepared);
       setPhase('review');
     } else {
-      setLocalError(intl.formatMessage({ id: 'send.error.build' }));
+      setLocalError(intl.formatMessage({ id: SEND_ERROR_ID[res.code] ?? 'send.error.build' }));
     }
   }
 
@@ -189,7 +202,7 @@ export function SendPanel({
     };
   }, [phase, spentCoinId, pollMs, pollStatus]);
 
-  const busy = prep.isLoading || conf.isLoading;
+  const busy = consolidating.running || conf.isLoading;
 
   // #166 — the header's back action always steps UP one level: mid-review it returns to the form
   // (same as the old `send-back` link); otherwise it closes the whole Send screen. No back is shown
@@ -202,6 +215,12 @@ export function SendPanel({
 
   return (
     <div data-testid="custody-send">
+      {/* #417 — the auto-consolidate modal (honest, dismissible) driven by the consolidating send. */}
+      <ConsolidateModal
+        state={consolidating.modal}
+        onConfirm={() => consolidating.resolvePrompt(true)}
+        onCancel={() => consolidating.resolvePrompt(false)}
+      />
       <ViewHeader
         onBack={headerBack}
         backLabel={headerBackLabel}
