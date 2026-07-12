@@ -108,7 +108,10 @@ export function TradePanel({ assets, onClose, pollMs = 8000, full }: { assets: A
           aria-label={intl.formatMessage({ id: 'trade.title' })}
           style={{ display: 'flex', gap: 8, margin: '4px 0 12px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}
         >
-          <div style={{ display: 'flex', gap: 8 }}>
+          {/* #484 — wrap (never horizontally overflow the page) once fullscreen's 6 tabs (Make/Take/
+              Offers/Issue/Swap/Options) don't fit a narrow viewport; a Swap-panel mobile-width
+              screenshot surfaced this pre-existing gap (the popup's own 3-tab row already fit). */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" role="tab" aria-selected={mode === 'make'} className={`dig-btn ${mode === 'make' ? 'dig-btn--primary' : ''}`} data-testid="trade-mode-make" onClick={() => setMode('make')}>
               <FormattedMessage id="trade.mode.make" />
             </button>

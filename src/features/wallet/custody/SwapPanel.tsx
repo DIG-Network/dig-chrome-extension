@@ -3,7 +3,8 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import { FourState } from '@/components/FourState';
 import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { WireOfferSummary } from '@/offscreen/vault';
-import { bestSwapQuote, dexieCodeOf, type SwapQuote } from '@/lib/swapQuote';
+import { bestSwapQuote, dexieCodeOf, validateSwapAmount, type SwapQuote } from '@/lib/swapQuote';
+import { formatBaseUnits } from '@/lib/wallet-view';
 import { legLabel } from '@/features/wallet/custody/offerLegFormat';
 import {
   useBrowseDexieOffersQuery,
@@ -23,18 +24,25 @@ function toFungibleAsset(a: AssetBalance): { kind: 'xch' } | { kind: 'cat'; asse
 /**
  * Token swap (#103, fullscreen-only advanced op per §6.4 — executing a swap is a real spend). A
  * "swap" here is a market order over dexie's public offer book (#102), NOT an AMM: pick what you're
- * paying + what you want, this panel finds the best currently-open matching offer (`bestSwapQuote`,
- * pure client-side selection over dexie's already-existing search — display units only), then hands
- * the EXACT SAME `offer1…` string to the wallet's own take pipeline the Trade→Take tab already uses.
- * No new wasm/backend surface: `prepareTrade`/`confirmTrade` re-derive the real base-unit amounts
- * from the raw bytes (fail-closed) exactly like a pasted/dropped offer — the dexie-sourced quote is
- * informational only, never trusted for the actual spend. `pollMs` is injectable for tests.
+ * paying + what you want, then TYPE how much of the pay asset you're willing to give up (#484's
+ * amount-to-swap input) — this panel finds the best-rate currently-open offer that FITS that amount
+ * (`bestSwapQuote`, pure client-side selection over dexie's already-existing search — display units
+ * only), then hands the EXACT SAME `offer1…` string to the wallet's own take pipeline the Trade→Take
+ * tab already uses. A dexie offer is all-or-nothing (this wallet's take pipeline can't partial-fill
+ * one), so the entered amount is a CEILING that steers WHICH open offer gets matched — never a
+ * placeholder, and never itself fed into the spend (`prepareTrade`/`confirmTrade` re-derive the real
+ * base-unit amounts from the matched offer's raw bytes, fail-closed, exactly like a pasted/dropped
+ * offer — the dexie-sourced quote numbers are informational only). `pollMs` is injectable for tests.
  */
 export function SwapPanel({ assets, onDone, pollMs = 8000 }: { assets: AssetBalance[]; onDone: () => void; pollMs?: number }) {
   const intl = useIntl();
   const [phase, setPhase] = useState<Phase>('pick');
   const [sellIdx, setSellIdx] = useState(0);
   const [buyIdx, setBuyIdx] = useState(assets.length > 1 ? 1 : 0);
+  // #484 — how much of the sell asset the user wants to swap (a decimal-string input, mirroring
+  // Send/Trade's own amount fields). Reset whenever the sell asset changes: its decimals + balance
+  // differ, so a prior amount could silently mean something else.
+  const [amount, setAmount] = useState('');
   const [summary, setSummary] = useState<WireOfferSummary | null>(null);
   const [quoteUsed, setQuoteUsed] = useState<SwapQuote | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -50,18 +58,41 @@ export function SwapPanel({ assets, onDone, pollMs = 8000 }: { assets: AssetBala
   const sameAsset = sellIdx === buyIdx;
   const sellCode = sellAsset ? dexieCodeOf(toFungibleAsset(sellAsset)) : '';
   const buyCode = buyAsset ? dexieCodeOf(toFungibleAsset(buyAsset)) : '';
+  const sellDecimals = sellAsset?.descriptor.decimals ?? 12;
+  const sellSpendable = sellAsset?.balance ?? null;
+  const sellTicker = sellAsset?.descriptor.ticker ?? '';
+
+  // Full validation (numeric + precision + balance) gates the submit button; a blank field doesn't
+  // show its "enter an amount" error until the user has actually typed something (no scolding before
+  // interaction — mirrors Send's progressive-validation feel).
+  const amountCheck = validateSwapAmount(amount, sellDecimals, sellSpendable);
+  const amountValid = amountCheck.ok;
+  const amountError = amount.trim() !== '' && !amountCheck.ok ? amountCheck.error : null;
+  // A LIVE ceiling for quote selection reacts to every keystroke that parses as a positive number —
+  // independent of the full `amountValid` gate — so the displayed quote updates as the user types,
+  // even before the amount clears the balance/precision checks (submit itself still stays disabled
+  // until `amountValid`, per the acceptance bar).
+  const typedAmount = Number(amount.trim());
+  const desiredSellAmount = amount.trim() !== '' && Number.isFinite(typedAmount) && typedAmount > 0 ? typedAmount : undefined;
 
   const browse = useBrowseDexieOffersQuery(
     { offered: buyCode, requested: sellCode },
     { skip: phase !== 'pick' || !sellCode || !buyCode || sameAsset },
   );
   const quote = useMemo(
-    () => (browse.data ? bestSwapQuote(browse.data.offers, sellCode, buyCode) : null),
-    [browse.data, sellCode, buyCode],
+    () => (browse.data ? bestSwapQuote(browse.data.offers, sellCode, buyCode, desiredSellAmount) : null),
+    [browse.data, sellCode, buyCode, desiredSellAmount],
   );
 
+  function setMaxAmount() {
+    if (!sellAsset) return;
+    setAmount(formatBaseUnits(sellAsset.balance ?? 0, sellDecimals));
+  }
+
   async function doReview() {
-    if (!quote) return;
+    // Defense in depth (mirrors SendPanel's `poisonBlocked` guard): the button is already disabled
+    // while the amount is invalid, but this also protects an Enter-key submit from bypassing it.
+    if (!quote || !amountValid) return;
     setBuildError(null);
     const res = await prepareTrade({ offerStr: quote.offerStr, tradeKind: 'take' });
     if ('data' in res && res.data?.pendingId) {
@@ -141,13 +172,44 @@ export function SwapPanel({ assets, onDone, pollMs = 8000 }: { assets: AssetBala
               className="dig-input"
               data-testid="swap-pay-asset"
               value={sellIdx}
-              onChange={(e) => setSellIdx(Number(e.target.value))}
+              onChange={(e) => {
+                setSellIdx(Number(e.target.value));
+                setAmount(''); // decimals + balance differ per asset — a prior amount could mean something else
+              }}
             >
               {assets.map((a, i) => (
                 <option key={`pay-${a.descriptor.key}${a.descriptor.assetId ?? ''}`} value={i}>{a.descriptor.ticker}</option>
               ))}
             </select>
           </label>
+
+          {/* #484 — the amount-to-swap input: the quantity of the PAY asset the user wants to give
+              up. Drives which open dexie offer gets matched (an offer is all-or-nothing, so this is
+              a ceiling — see `bestSwapQuote`'s module doc) and gates the review/submit button. */}
+          <label className="dig-field">
+            <span><FormattedMessage id="swap.amount" /> ({sellTicker})</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                data-testid="swap-amount"
+                className="dig-input"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                inputMode="decimal"
+                aria-describedby={amountError ? 'swap-amount-error' : 'swap-amount-balance'}
+              />
+              <button type="button" className="dig-btn" data-testid="swap-amount-max" onClick={setMaxAmount}>
+                <FormattedMessage id="swap.amount.max" />
+              </button>
+            </div>
+          </label>
+          <p className="dig-muted" id="swap-amount-balance" data-testid="swap-amount-balance" style={{ margin: '-6px 0 8px', fontSize: '0.85em' }}>
+            <FormattedMessage id="swap.amount.balance" values={{ amount: formatBaseUnits(sellSpendable, sellDecimals), ticker: sellTicker }} />
+          </p>
+          {amountError && (
+            <p className="dig-error-text" role="alert" id="swap-amount-error" data-testid="swap-amount-error">
+              <FormattedMessage id={amountError} />
+            </p>
+          )}
 
           <label className="dig-field">
             <span><FormattedMessage id="swap.receive" /></span>
@@ -188,7 +250,7 @@ export function SwapPanel({ assets, onDone, pollMs = 8000 }: { assets: AssetBala
                     <dd data-testid="swap-quote-rate">{quote.rate} {quote.buyCode}/{quote.sellCode}</dd>
                   </dl>
                   {buildError && <p className="dig-error-text" role="alert" data-testid="swap-build-error">{buildError}</p>}
-                  <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="swap-review" onClick={() => void doReview()} disabled={busy}>
+                  <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="swap-review" onClick={() => void doReview()} disabled={busy || !amountValid}>
                     <FormattedMessage id={busy ? 'custody.working' : 'swap.review'} />
                   </button>
                 </div>

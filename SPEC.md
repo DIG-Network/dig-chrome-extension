@@ -3881,30 +3881,48 @@ signs + broadcasts it, reusing the vault's shared `confirmSend` path exactly lik
   CAT-lineage reconstruction (§18.9's `reconstructCats`) finds the minted coin post-broadcast. Never
   broadcasts to mainnet in CI.
 
-### 18.23 Token swap (#103)
+### 18.23 Token swap (#103, amount-to-swap input #484)
 
 A "swap" is a MARKET ORDER over dexie's public offer book (§18.10's dexie integration, #102) — NOT
 an AMM, and no new wasm/backend surface (per the ticket's own scoping note). Pick what you're
-paying + what you want; `bestSwapQuote` (`lib/swapQuote.ts`) is a PURE, client-side best-rate
-selector over the EXISTING `browseDexieOffers` (§7) search results — display units only,
-informational. Executing hands the matched offer's raw `offer1…` bytes to the wallet's OWN existing
-take pipeline (`prepareTrade`/`confirmTrade`, §18.10) completely unchanged — it re-derives the real
-base-unit amounts from the bytes exactly like a pasted/dropped offer (fail-closed; the dexie display
-numbers are never trusted for the actual spend). No new vault op, no new message action.
+paying + what you want, then TYPE how much of the pay asset you're willing to give up (#484);
+`bestSwapQuote` (`lib/swapQuote.ts`) is a PURE, client-side best-rate selector over the EXISTING
+`browseDexieOffers` (§7) search results — display units only, informational. Executing hands the
+matched offer's raw `offer1…` bytes to the wallet's OWN existing take pipeline (`prepareTrade`/
+`confirmTrade`, §18.10) completely unchanged — it re-derives the real base-unit amounts from the
+bytes exactly like a pasted/dropped offer (fail-closed; the dexie display numbers are never trusted
+for the actual spend). No new vault op, no new message action.
 
 - **UI (fullscreen-only, §6.4).** A `Trade` tab, "Swap" — pick "You pay" / "You receive" from the
-  wallet's own asset list (§18.9) → a quote appears automatically (querying dexie filtered by the
-  chosen pair) → Review decodes the REAL offer via `prepareTrade` → Confirm broadcasts via
-  `confirmTrade` → poll to confirmed/retry (`sendStatus`). The popup omits the tab entirely, same
-  tiering rationale as Issue (§18.22) — swap execution is a real spend.
-- **Best-rate selection.** Among every open (`status:0`) dexie offer matching the chosen pair,
-  `bestSwapQuote` picks the highest `buyAmount/sellAmount` ratio; ties/no-match return `null` (the
-  UI's empty state). Matches by either the dexie-reported ticker `code` OR the raw CAT asset id
-  `id`, so callers can search by whichever they have; the returned quote echoes the matched leg's
-  OWN `code` for display (never the raw id, even when the caller searched by it).
+  wallet's own asset list (§18.9), type an amount to swap (of the pay asset) → a quote appears
+  automatically (querying dexie filtered by the chosen pair, narrowed to offers the amount fits) →
+  Review decodes the REAL offer via `prepareTrade` → Confirm broadcasts via `confirmTrade` → poll to
+  confirmed/retry (`sendStatus`). The popup omits the tab entirely, same tiering rationale as Issue
+  (§18.22) — swap execution is a real spend.
+- **Amount-to-swap input (#484).** `swap-amount` is a decimal-string field (mirrors Send/Trade's own
+  amount fields) for the quantity of the PAY asset the user wants to give up, with a `swap-amount-max`
+  "use all" button and a `swap-amount-balance` hint. `validateSwapAmount` (`lib/swapQuote.ts`) gates
+  the review/submit button: numeric + strictly positive (blank shows no error until the user types),
+  no more fractional digits than the asset's own decimals (rejects rather than silently rounding to a
+  different amount than displayed), and does not exceed the wallet's own spendable balance for that
+  asset (a `null`/unknown balance is treated as insufficient — fail-closed). Changing the pay asset
+  resets the amount (decimals/balance differ per asset).
+- **Best-rate selection, now amount-aware.** A dexie offer is all-or-nothing (this wallet's take
+  pipeline can't partial-fill one), so the entered amount works as a CEILING: among every open
+  (`status:0`) dexie offer matching the chosen pair, `bestSwapQuote` first excludes any offer whose
+  required sell-leg amount exceeds the entered amount, then picks the highest `buyAmount/sellAmount`
+  ratio among what's left; ties/no-match (including "nothing open fits this amount") return `null`
+  (the UI's empty state). Omitting the amount (or `0`/negative) preserves the original unconstrained
+  best-rate pick. Matches by either the dexie-reported ticker `code` OR the raw CAT asset id `id`, so
+  callers can search by whichever they have; the returned quote echoes the matched leg's OWN `code`
+  for display (never the raw id, even when the caller searched by it). The entered amount is NEVER
+  itself fed into `prepareTrade`/`confirmTrade` — it only steers WHICH offer's bytes get taken.
 - **Proven.** `swapQuote.test.ts` unit-tests the selector (best-rate, status filtering, malformed
-  legs, same-asset rejection); `swapPanel.test.tsx` covers the picker → quote → review → confirm →
-  poll flow against a mocked SW.
+  legs, same-asset rejection, the #484 amount ceiling) and `validateSwapAmount` (zero/negative/
+  over-balance/decimal-precision); `swapPanel.test.tsx` covers the picker → amount → quote → review →
+  confirm → poll flow (incl. amount-driven offer selection) against a mocked SW; `swap-amount.spec.ts`
+  (§6.5 Playwright, built ext) drives the amount field against a real unlocked wallet + mocked dexie
+  book, screenshotting desktop + mobile widths.
 
 ### 18.24 Option contracts — mint / list / exercise (#104)
 

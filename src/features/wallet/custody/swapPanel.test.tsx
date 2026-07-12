@@ -7,8 +7,17 @@ import type { AssetBalance } from '@/features/wallet/assetTypes';
 import type { WireOfferSummary } from '@/offscreen/vault';
 import type { DexieOfferSummary } from '@/lib/dexie';
 
-const XCH: AssetBalance = { descriptor: { key: 'xch', ticker: 'XCH', name: 'Chia', decimals: 12, iconUrl: null, assetId: null, type: null }, balance: 5_000_000_000_000, label: '5' };
+// XCH balance covers the largest fixture offer (10 XCH) with headroom, so tests can type a valid,
+// affordable amount and still reach an existing dexie offer (#484 — the amount now GATES which
+// offer is selectable, so the wallet must actually be able to afford whatever offer a test drives
+// through to review/confirm).
+const XCH: AssetBalance = { descriptor: { key: 'xch', ticker: 'XCH', name: 'Chia', decimals: 12, iconUrl: null, assetId: null, type: null }, balance: 20_000_000_000_000, label: '20' };
 const DBX: AssetBalance = { descriptor: { key: 'cat', ticker: 'DBX', name: 'Dexie Bucks', decimals: 3, iconUrl: null, assetId: 'aa'.repeat(32), type: 'cat' }, balance: 100_000, label: '100' };
+
+/** Type a valid amount into the swap amount field (#484) — the default fixture offer needs 10 XCH. */
+function fillAmount(value = '10') {
+  fireEvent.change(screen.getByTestId('swap-amount'), { target: { value } });
+}
 
 // Default wallet UI state is "pay XCH → receive DBX" (sellIdx=0/buyIdx=1), so a matching dexie offer
 // must OFFER DBX and REQUEST XCH (the counterparty gives DBX for XCH).
@@ -81,7 +90,9 @@ describe('SwapPanel', () => {
       return { success: true };
     });
     renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
-    fireEvent.click(await screen.findByTestId('swap-review'));
+    await screen.findByTestId('swap-quote-result');
+    fillAmount();
+    fireEvent.click(screen.getByTestId('swap-review'));
     expect(await screen.findByTestId('swap-review-panel')).toBeInTheDocument();
     expect(screen.getByTestId('swap-review-receive')).toHaveTextContent('XCH');
   });
@@ -96,7 +107,9 @@ describe('SwapPanel', () => {
       return { success: true };
     });
     renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} pollMs={50} />);
-    fireEvent.click(await screen.findByTestId('swap-review'));
+    await screen.findByTestId('swap-quote-result');
+    fillAmount();
+    fireEvent.click(screen.getByTestId('swap-review'));
     fireEvent.click(await screen.findByTestId('swap-confirm'));
 
     expect(await screen.findByTestId('swap-sending')).toBeInTheDocument();
@@ -116,7 +129,9 @@ describe('SwapPanel', () => {
       return { success: true };
     });
     renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
-    fireEvent.click(await screen.findByTestId('swap-review'));
+    await screen.findByTestId('swap-quote-result');
+    fillAmount();
+    fireEvent.click(screen.getByTestId('swap-review'));
     fireEvent.click(await screen.findByTestId('swap-confirm'));
     expect(await screen.findByTestId('swap-failed')).toBeInTheDocument();
   });
@@ -128,7 +143,9 @@ describe('SwapPanel', () => {
       return { success: true };
     });
     renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
-    fireEvent.click(await screen.findByTestId('swap-review'));
+    await screen.findByTestId('swap-quote-result');
+    fillAmount();
+    fireEvent.click(screen.getByTestId('swap-review'));
     await waitFor(() => expect(screen.getByTestId('swap-build-error')).toBeInTheDocument());
   });
 
@@ -136,6 +153,130 @@ describe('SwapPanel', () => {
     mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
     const { container } = renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
     await screen.findByTestId('swap-quote-result');
+    expect((await axe(container, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([]);
+  });
+
+  // ── #484 — amount-to-swap input ──────────────────────────────────────────────────────────────
+
+  it('disables the review/submit button until a valid amount is entered', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    expect(screen.getByTestId('swap-review')).toBeDisabled();
+    fillAmount('10');
+    await waitFor(() => expect(screen.getByTestId('swap-review')).not.toBeDisabled());
+  });
+
+  it('shows an inline error and keeps submit disabled for a zero amount', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    fillAmount('0');
+    expect(await screen.findByTestId('swap-amount-error')).toHaveTextContent(/positive amount/i);
+    expect(screen.getByTestId('swap-review')).toBeDisabled();
+  });
+
+  it('shows an inline error and keeps submit disabled for a negative amount', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    fillAmount('-3');
+    expect(await screen.findByTestId('swap-amount-error')).toHaveTextContent(/positive amount/i);
+    expect(screen.getByTestId('swap-review')).toBeDisabled();
+  });
+
+  it('shows an inline error and keeps submit disabled for an amount over the wallet balance', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    fillAmount('25'); // wallet only holds 20 XCH
+    expect(await screen.findByTestId('swap-amount-error')).toHaveTextContent(/enough/i);
+    expect(screen.getByTestId('swap-review')).toBeDisabled();
+  });
+
+  it('shows an inline error for more decimal places than the asset supports', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    // 13 fractional digits > XCH's 12 decimals; kept >= 10 so the fixture offer still fits the
+    // ceiling (the review button stays rendered — just disabled — so the precision error is
+    // isolated from the "no offer fits this amount" empty-state branch tested separately below).
+    fillAmount('10.1234567890123');
+    expect(await screen.findByTestId('swap-amount-error')).toHaveTextContent(/decimal/i);
+    expect(screen.getByTestId('swap-review')).toBeDisabled();
+  });
+
+  it('the Max button fills the full spendable balance of the pay asset', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    fireEvent.click(screen.getByTestId('swap-amount-max'));
+    expect(screen.getByTestId('swap-amount')).toHaveValue('20');
+  });
+
+  it('resets the amount when the pay asset changes (decimals/balance differ)', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    fillAmount('10');
+    expect(screen.getByTestId('swap-amount')).toHaveValue('10');
+    fireEvent.change(screen.getByTestId('swap-pay-asset'), { target: { value: '1' } });
+    expect(screen.getByTestId('swap-amount')).toHaveValue('');
+  });
+
+  it('shows the balance hint for the currently-selected pay asset', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    expect(screen.getByTestId('swap-amount-balance')).toHaveTextContent('20 XCH');
+  });
+
+  it('the entered amount steers WHICH offer is selected (and taken) — not just the best rate', async () => {
+    // "rich" needs 10 XCH at the best rate (100 DBX/XCH); "affordable" needs only 3 XCH at a worse
+    // rate (50 DBX/XCH). With no amount typed, the unconstrained best-rate pick is "rich". Typing an
+    // amount of 3 must exclude "rich" (too big) and select "affordable" instead — proving the amount
+    // actually drives which offer's bytes reach `prepareTrade`, not a hardcoded/global best pick.
+    const rich = dexieOffer({ id: 'rich', offerStr: 'offer1rich', offered: [{ id: 'aa'.repeat(32), code: 'DBX', amount: 1000 }], requested: [{ id: 'xch', code: 'XCH', amount: 10 }] });
+    const affordable = dexieOffer({ id: 'affordable', offerStr: 'offer1affordable', offered: [{ id: 'aa'.repeat(32), code: 'DBX', amount: 150 }], requested: [{ id: 'xch', code: 'XCH', amount: 3 }] });
+    const sw = mockSw((m) => {
+      if (m.action === 'dexieBrowse') return { offers: [rich, affordable] };
+      if (m.action === 'prepareTrade') return { pendingId: 'p1', offerSummary: offerSummary() };
+      return { success: true };
+    });
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+
+    // Unconstrained default: best rate wins ("rich", 10 XCH / 1000 DBX).
+    await screen.findByTestId('swap-quote-result');
+    expect(screen.getByTestId('swap-quote-pay')).toHaveTextContent('10 XCH');
+
+    // Typing an affordable ceiling re-selects the smaller offer the ceiling actually fits.
+    fillAmount('3');
+    await waitFor(() => expect(screen.getByTestId('swap-quote-pay')).toHaveTextContent('3 XCH'));
+    expect(screen.getByTestId('swap-quote-receive')).toHaveTextContent('150 DBX');
+
+    fireEvent.click(screen.getByTestId('swap-review'));
+    await screen.findByTestId('swap-review-panel');
+    expect(sw).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'prepareTrade', offerStr: 'offer1affordable', tradeKind: 'take' }),
+      expect.any(Function),
+    );
+  });
+
+  it('shows the no-match empty state when no open offer fits the entered amount', async () => {
+    // Only "rich" (10 XCH) is open; typing a 2-XCH ceiling can't fit it — no quote, empty state.
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    fillAmount('2');
+    expect(await screen.findByTestId('swap-quote-empty')).toBeInTheDocument();
+  });
+
+  it('has no WCAG violations with the amount field populated + an inline error shown', async () => {
+    mockSw((m) => (m.action === 'dexieBrowse' ? { offers: [dexieOffer()] } : { success: true }));
+    const { container } = renderWithProviders(<SwapPanel assets={[XCH, DBX]} onDone={() => {}} />);
+    await screen.findByTestId('swap-quote-result');
+    fillAmount('0');
+    await screen.findByTestId('swap-amount-error');
     expect((await axe(container, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([]);
   });
 });
