@@ -16,6 +16,7 @@ export const id: Record<string, string> = {
   'shell.theme.light': 'Terang',
   'shell.theme.dark': 'Gelap',
   'shell.theme.system': 'Ikuti sistem',
+  'toolbar.theme.toggle': 'Alihkan tema terang atau gelap',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Beranda',

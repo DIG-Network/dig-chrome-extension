@@ -1905,3 +1905,14 @@ button.dig-widget:focus-visible {
   width: 100%;
   box-sizing: border-box;
 }
+/* The URN bar's light/dark theme toggle (#429). Its colour is set inline from the shared toolbar
+   palette (so it matches the bar in both light + dark); only the hover fill + focus ring live here,
+   reading the palette values the component passes as `--tb-*` custom properties on the element
+   (inline styles can express neither :hover nor :focus-visible). */
+.dig-builtin-toolbar__theme-btn:hover {
+  background: var(--tb-btn-hover);
+}
+.dig-builtin-toolbar__theme-btn:focus-visible {
+  outline: 2px solid var(--tb-focus);
+  outline-offset: 2px;
+}

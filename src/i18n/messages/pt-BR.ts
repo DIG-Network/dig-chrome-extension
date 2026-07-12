@@ -16,6 +16,7 @@ export const ptBR: Record<string, string> = {
   'shell.theme.light': 'Claro',
   'shell.theme.dark': 'Escuro',
   'shell.theme.system': 'Sistema',
+  'toolbar.theme.toggle': 'Alternar tema claro ou escuro',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Início',

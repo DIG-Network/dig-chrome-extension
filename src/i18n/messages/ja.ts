@@ -16,6 +16,7 @@ export const ja: Record<string, string> = {
   'shell.theme.light': 'ライト',
   'shell.theme.dark': 'ダーク',
   'shell.theme.system': 'システムに合わせる',
+  'toolbar.theme.toggle': 'ライト/ダークテーマを切り替え',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'ホーム',

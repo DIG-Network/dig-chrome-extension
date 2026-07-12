@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useIntl } from 'react-intl';
+import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { setTheme } from '@/features/ui/uiSlice';
+import { updateWalletSettings } from '@/features/wallet/custody/settings';
+import { resolveEffectiveTheme, nextTheme } from '@/lib/theme';
 import { useStorageValue } from '@/lib/useStorageValue';
 import { hasRuntime } from '@/lib/messaging';
 import { ACTIONS } from '@/lib/messages';
@@ -9,7 +14,6 @@ import {
   resolveUrnBarSubmit,
   toolbarLabels,
   toolbarBadges,
-  toolbarTheme,
   toolbarShortcutHint,
   TOOLBAR_PALETTES,
 } from '@/lib/toolbar';
@@ -64,6 +68,24 @@ function send(msg: Record<string, unknown>): void {
   }
 }
 
+/** Monochrome line-icons for the theme toggle (currentColor-tinted so they inherit the palette). The
+ *  icon shows the theme you'd switch TO: a sun while dark (→ light), a moon while light (→ dark). */
+function SunGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </svg>
+  );
+}
+function MoonGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
 /**
  * The BUILT-IN URN toolbar in the fullscreen extension app shell (#306 item 1). The extension cannot
  * inject a content-script toolbar into its OWN pages, so the fullscreen surface carries the SAME URN
@@ -79,7 +101,15 @@ function send(msg: Record<string, unknown>): void {
  */
 export function DigToolbar({ verdict = null }: { verdict?: ServeVerdict | null }) {
   const [enabled] = useStorageValue<boolean>(TOOLBAR_ENABLED_KEY, TOOLBAR_ENABLED_DEFAULT);
+  const intl = useIntl();
+  const dispatch = useAppDispatch();
+  // #429 — the bar paints from the PERSISTED theme pref (#111), resolving `system` against the live
+  // OS signal, so the URN-bar theme toggle repaints it instantly and it agrees with the ext pages
+  // (`useAppliedTheme`/theme.css read the same `ui.theme`). The injected content-script bar has no
+  // store and keeps following `prefers-color-scheme` directly (see dig-toolbar.ts).
+  const themeMode = useAppSelector((s) => s.ui.theme);
   const prefersDark = usePrefersDark();
+  const effective = resolveEffectiveTheme(themeMode, prefersDark);
   const labels = useMemo(
     () => toolbarLabels(typeof navigator !== 'undefined' ? navigator.languages : undefined),
     [],
@@ -90,8 +120,36 @@ export function DigToolbar({ verdict = null }: { verdict?: ServeVerdict | null }
 
   if (!enabled) return null;
 
-  const palette = TOOLBAR_PALETTES[toolbarTheme(prefersDark)];
+  const palette = TOOLBAR_PALETTES[effective];
   const badges = toolbarBadges(verdict);
+  const isDark = effective === 'dark';
+
+  /** One-tap light↔dark: commit the opposite EXPLICIT mode to the store (instant repaint) + persist
+   *  it via the SAME read-modify-write `AppFooter`/locale use, so it survives reload and syncs to
+   *  every open surface through `storageSync`. */
+  const onToggleTheme = () => {
+    const next = nextTheme(effective);
+    dispatch(setTheme(next));
+    void updateWalletSettings({ theme: next });
+  };
+
+  const themeBtnStyle: CSSProperties = {
+    flex: '0 0 auto',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 26,
+    height: 26,
+    padding: 0,
+    border: 0,
+    borderRadius: 6,
+    cursor: 'pointer',
+    background: 'transparent',
+    color: palette.btn,
+    // Consumed by theme.css for the :hover fill + :focus-visible ring (inline styles can't do either).
+    ['--tb-btn-hover' as string]: palette.btnHover,
+    ['--tb-focus' as string]: palette.focus,
+  };
 
   const submit = () => {
     const r = resolveUrnBarSubmit(value);
@@ -134,7 +192,7 @@ export function DigToolbar({ verdict = null }: { verdict?: ServeVerdict | null }
   };
 
   return (
-    <div className="dig-builtin-toolbar" role="toolbar" aria-label={labels.toolbar} data-testid="builtin-dig-toolbar" style={barStyle}>
+    <div className="dig-builtin-toolbar" role="toolbar" aria-label={labels.toolbar} data-testid="builtin-dig-toolbar" data-theme={effective} style={barStyle}>
       <span aria-hidden="true" style={{ color: palette.mark, fontSize: 13 }}>
         ◈
       </span>
@@ -206,6 +264,18 @@ export function DigToolbar({ verdict = null }: { verdict?: ServeVerdict | null }
           </span>
         )}
       </span>
+      <button
+        type="button"
+        className="dig-builtin-toolbar__theme-btn"
+        data-testid="builtin-dig-toolbar-theme-toggle"
+        aria-pressed={isDark}
+        aria-label={intl.formatMessage({ id: 'toolbar.theme.toggle' })}
+        title={intl.formatMessage({ id: 'toolbar.theme.toggle' })}
+        onClick={onToggleTheme}
+        style={themeBtnStyle}
+      >
+        {isDark ? <SunGlyph /> : <MoonGlyph />}
+      </button>
       <span role="alert" data-testid="builtin-dig-toolbar-urn-error" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
         {invalid ? labels.urnInvalid : ''}
       </span>
