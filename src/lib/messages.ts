@@ -390,6 +390,10 @@ export const ACTIONS = Object.freeze({
   // ── DIG Shields (per-resource proof ledger) — mirrors the browser dig://shields #134 ──
   recordLedgerEntry: 'recordLedgerEntry',
   getShieldLedger: 'getShieldLedger',
+  // ── server-side verification ledger (#307): the local dig-node's authoritative per-resource
+  // verdict + Merkle inclusion-proof data for the active page (GET /verify/<storeId>[:<root>]),
+  // consumed by the aggregate "Verified by Chia" badge + the proof-inspection modal ──
+  getVerifyLedger: 'getVerifyLedger',
   // ── creator tips (#379, child of #377): one-tap manual $DIG tip for the active DIG resource's
   // creator. EXECUTION lives in the dig-node tipping subsystem (#377/#369 WS), NOT yet built — the SW
   // handler is a flagged stub until that ships (returns TIP_SUBSYSTEM_UNAVAILABLE). ──
@@ -934,6 +938,13 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: "DIG Shields: the active tab's capsule + grouped per-resource proof ledger (verified/failed) + aggregate verdict.",
     request: '{ action }',
     response: "{ capsule:{storeId,rootHash}|null, verification:{state}|null, group:{passed,failed,passedCount,failedCount,total,allPassed,empty}, entries:object[] }",
+  },
+  [ACTIONS.getVerifyLedger]: {
+    summary:
+      "Server-side verification ledger (#307): fetches the local dig-node's GET /verify/<storeId>[:<root>] for the active tab's capsule — the authoritative per-resource verdict (source local|peer|rpc, verified/failReason) + Merkle inclusion-proof data (leafHash, ordered siblings+directions, leafIndex, proofRoot) + the page aggregate. Backs the \"Verified by Chia\" badge + proof-inspection modal. Fails when no local dig-node is reachable (reads still work; verification inspection needs the node).",
+    request: '{ action }',
+    response:
+      "{ storeId, root, aggregate:{verified,anyRpcFailed,counts:{total,verified,failed,bySource:{local,peer,rpc}}}, resources:[{resourceKey,source,verified,root,proof:{leafHash,siblings:[{hash,dir}],leafIndex,proofRoot},failReason?}] } | { success:false, code, message }",
   },
   [ACTIONS.tipCreator]: {
     summary:

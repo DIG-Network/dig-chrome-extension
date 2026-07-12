@@ -1,13 +1,21 @@
+import { useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import { inclusionProofDisplay } from '@/lib/dig-ledger';
 import { FourState } from '@/components/FourState';
 import { StatusPill } from '@/components/StatusPill';
-import { useGetShieldLedgerQuery } from '@/features/shield/shieldApi';
+import { useGetShieldLedgerQuery, useGetVerifyLedgerQuery } from '@/features/shield/shieldApi';
+import { VerifyModal } from '@/features/shield/VerifyModal';
 
 /**
  * The Shield tab (DIG Shields #134) — the active tab's capsule + per-resource inclusion-proof
  * verdicts, grouped verified/failed with an aggregate. Reuses the pure `dig-ledger` model + the
  * background `getShieldLedger` query; never re-verifies (fail-closed by construction). Four states.
+ *
+ * #307: headlines the panel with the AUTHORITATIVE server-side "Verified by Chia" badge from the
+ * local dig-node's `/verify` ledger — green only when every resource verified; "Unverified" when
+ * any RPC-loaded resource failed. Clicking the badge opens the proof-inspection modal (per-resource
+ * verdicts + Merkle proof data + client re-verification). Below it, the loader's own per-resource
+ * ledger stays as the quick verified/failed list.
  */
 export function ShieldTab() {
   // The per-tab ledger accrues entries as resources load, and OTHER surfaces (the Home creator-tip
@@ -18,11 +26,53 @@ export function ShieldTab() {
   const group = data?.group;
   const empty = !ledger.isLoading && !ledger.isError && (!group || group.empty);
 
+  // The server-side verification ledger (node `/verify`). Refetch on mount for the same freshness
+  // reason. When no local node is reachable this errors — the badge then reads "Verification
+  // details" and the modal explains the requirement honestly (reads still work; inspection needs
+  // the node).
+  const verify = useGetVerifyLedgerQuery(undefined, { refetchOnMountOrArgChange: true });
+  const [modalOpen, setModalOpen] = useState(false);
+  const verifyReady = !verify.isLoading;
+  const verified = verify.data?.aggregate.verified === true;
+  const badgeTone = verify.isError ? 'neutral' : verified ? 'good' : 'bad';
+  const badgeId = verify.isError
+    ? 'verify.badge.details'
+    : verified
+      ? 'verify.badge.verified'
+      : 'verify.badge.unverified';
+
   return (
     <section className="dig-card" data-testid="shield-panel" aria-labelledby="shield-title">
       <h2 className="dig-heading" id="shield-title">
         <FormattedMessage id="shield.title" />
       </h2>
+
+      {/* Authoritative chain-verification badge → opens the proof-inspection modal (#307). */}
+      {verifyReady && (
+        <div style={{ margin: '4px 0 12px' }}>
+          <button
+            type="button"
+            data-testid="verify-badge"
+            aria-haspopup="dialog"
+            onClick={() => setModalOpen(true)}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+          >
+            <StatusPill tone={badgeTone}>
+              <FormattedMessage id={badgeId} />
+            </StatusPill>
+          </button>
+        </div>
+      )}
+      {modalOpen && (
+        <VerifyModal
+          ledger={verify.data}
+          isLoading={verify.isLoading}
+          isError={verify.isError}
+          onRetry={() => void verify.refetch()}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+
       <FourState
         isLoading={ledger.isLoading}
         isError={ledger.isError}

@@ -1012,6 +1012,7 @@ fix is entirely extension-side — on.dig.net's headers are not modified.
 | `getChainSourceStatus` | Wallet-data source auto-detect (#222, §18.6c): resolve the §5.3 ladder for the WALLET read path; report the selected mode + the resolved source. |
 | `getDigDnsStatus` | The shared dig-dns Path-B availability signal (§8.5) — phase, bound port, PAC URL, whether the proxy is engaged. |
 | `recordLedgerEntry` / `getShieldLedger` | DIG Shields per-resource proof ledger (§10). |
+| `getVerifyLedger` | Server-side verification ledger from the local node's `GET /verify` — aggregate verdict + per-resource Merkle proof data (§10.1, #307). |
 | `getControlStatus` | DIG Control Panel status (manage vs install) (§11). |
 | `reportError` / `reportSuccess` | Rolling resolution-strategy diagnostics buffer. |
 | `addSearchEngine` / `getDefaultSearchEngine` / `isDigSearchDefault` / `updateSearchConfig` | Omnibox/search-engine config. |
@@ -1282,6 +1283,34 @@ byte-mirror of the native browser's shields ledger.
 - An entry carries `{ storeId, rootHash, resourcePath, inclusionProofPassed, errorCode?, executionProofStatus? }`.
 - `groupLedger` groups entries into passed/failed with counts and an `allPassed` aggregate.
 - Execution proofs MUST be reported honestly: never green-checked when mock or absent.
+
+### 10.1. Server-side verification ledger consumer (`verify-ledger.ts`, #307)
+
+The Shield panel additionally headlines an AUTHORITATIVE, page-level verdict sourced from the local
+dig-node's server-side verification ledger (`GET /verify/<storeId>[:<root>]`, dig-node SPEC §4.7 /
+superproject `SYSTEM.md`). The extension does NOT re-derive this — the node verified every
+`/s/`-served resource against the chain-anchored root and returns the retained verdicts + proof data.
+
+- `getVerifyLedger` (background) resolves the active tab's capsule (same derivation as
+  `getShieldLedger`), resolves the local node via the §5.3 ladder, and fetches
+  `GET <base>/verify/<storeId>[:<root>]` (root included only when a 64-hex root is known; else the
+  node returns the store's most-recently-updated session). No local node reachable → a
+  `{ success:false, code:'NO_LOCAL_NODE' }` the UI renders honestly (reads still work; inspection is
+  a node-only surface).
+- `normalizeVerifyLedger` narrows the wire response (lowercases hex, coerces arrays, defaults an
+  unknown `source` to `rpc`) and ALWAYS recomputes the aggregate via `deriveAggregate` so the badge
+  can never trust a malformed node aggregate.
+- **Aggregate rule (byte-consistent with dig-node §4.7):** `verified` = non-empty AND every entry
+  verified; `anyRpcFailed` = any `source == "rpc" && !verified`. The badge is green "Verified by
+  Chia" only when `aggregate.verified`, else "Unverified".
+- The proof-inspection modal lists each resource (`source` local|peer|rpc, verified/failed +
+  `failReason`) and, per resource, its Merkle inclusion proof (`leafHash`, ordered `siblings`+`dir`,
+  `leafIndex`, `proofRoot`, the anchored `root`). `reverifyProof` re-verifies CLIENT-side by folding
+  `leafHash` up through the siblings with the domain-separated node hash
+  `SHA-256("digstore:node:v1" || left || right)` (byte-identical to digstore-core `merkle.rs`
+  `NODE_TAG`) and checking the fold equals `proofRoot` AND `proofRoot == root`. A change to the
+  `/verify` JSON shape, aggregate rule, or proof-data shape is a coordinated change to dig-node +
+  `SYSTEM.md` + this consumer + docs.dig.net.
 
 ---
 

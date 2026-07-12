@@ -3001,6 +3001,92 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Server-side verification ledger (#307): fetch the local dig-node's AUTHORITATIVE
+  // GET /verify/<storeId>[:<root>] for the active tab's capsule. The node retains each
+  // /s/-served resource's verify verdict + Merkle inclusion-proof data (leaf/siblings/index/root)
+  // in a bounded short-TTL ledger keyed by storeId:root; the popup renders the aggregate
+  // "Verified by Chia" badge + the proof-inspection modal from it. Loopback-only + CORS'd for the
+  // extension. Reads keep working over hosted RPC without a node, but the verification LEDGER is a
+  // local-node-only surface — a missing node is reported honestly (the modal explains it).
+  if (message.action === ACTIONS.getVerifyLedger) {
+    (async () => {
+      try {
+        const base = await resolveLocalDigNode();
+        if (!base) {
+          sendResponse({
+            success: false,
+            code: 'NO_LOCAL_NODE',
+            message: 'No local dig-node is reachable; verification inspection requires a running node.',
+          });
+          return;
+        }
+        // Derive the active tab's capsule (storeId + optional 64-hex root) exactly as the Shield
+        // ledger does: prefer the recorded ledger entries, fall back to the verified URN.
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabId = tabs[0] && tabs[0].id;
+        const verification = (typeof tabId === 'number' && tabVerification.get(tabId)) || null;
+        const ledger = (typeof tabId === 'number' && tabLedger.get(tabId)) || null;
+        let storeId = null;
+        let root = null;
+        if (ledger) {
+          for (const [, perResource] of ledger._byCapsule) {
+            for (const e of perResource.values()) {
+              if (e.storeId) {
+                storeId = e.storeId;
+                root = e.rootHash || null;
+              }
+            }
+          }
+        }
+        if (!storeId && verification && verification.urn) {
+          const p = parseURN(String(verification.urn).replace(/^chia:\/\//, ''));
+          if (p) {
+            storeId = p.storeId;
+            root = p.roothash || null;
+          }
+        }
+        if (!storeId) {
+          sendResponse({
+            success: false,
+            code: 'NO_ACTIVE_CAPSULE',
+            message: 'No DIG capsule is active on this tab.',
+          });
+          return;
+        }
+        // With a resolved 64-hex root, request the exact session; otherwise omit it (the node returns
+        // the store's most-recently-updated session — a page has one active root).
+        const b = base.endsWith('/') ? base.slice(0, -1) : base;
+        const hasRoot = typeof root === 'string' && /^[0-9a-f]{64}$/i.test(root);
+        const path = '/verify/' + storeId + (hasRoot ? ':' + root.toLowerCase() : '');
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 4000);
+        let resp;
+        try {
+          resp = await fetch(b + path, { method: 'GET', signal: ac.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+        if (!resp.ok) {
+          sendResponse({
+            success: false,
+            code: 'VERIFY_HTTP_' + resp.status,
+            message: 'The dig-node returned HTTP ' + resp.status + ' for the verification ledger.',
+          });
+          return;
+        }
+        const data = await resp.json();
+        sendResponse(data);
+      } catch (e) {
+        sendResponse({
+          success: false,
+          code: 'VERIFY_FETCH_FAILED',
+          message: (e && e.message) || 'Failed to read the verification ledger.',
+        });
+      }
+    })();
+    return true;
+  }
+
   // Creator tips (#379, child of #377): one-tap manual $DIG tip for the active DIG resource's
   // creator. EXECUTION is the dig-node tipping subsystem's job (#377/#369 WS): the node resolves the
   // store's creator, builds + broadcasts the $DIG spend, and (with auto-tip) runs it unattended under

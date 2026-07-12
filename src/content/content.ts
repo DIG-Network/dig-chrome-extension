@@ -1731,8 +1731,8 @@ function injectPageScript() {
 // Inject the CHIP-0002 `window.chia` provider (dig-provider.js) into the page's MAIN
 // world. Ported from the native DIG Browser; the provider relays each wallet RPC over
 // window.postMessage to wireWalletBridge() below, which forwards to the background SW
-// (→ WalletConnect → Sage). This gives any dapp the same `window.chia` the native
-// browser injects, on Chrome/Edge/Brave/Firefox.
+// (→ the self-custody offscreen vault / approval window). This gives any dapp the same
+// `window.chia` the native browser injects, on Chrome/Edge/Brave/Firefox.
 function injectWalletProvider() {
   try {
     const script = document.createElement('script');
