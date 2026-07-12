@@ -1,9 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useIntl } from 'react-intl';
-import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { setTheme } from '@/features/ui/uiSlice';
-import { updateWalletSettings } from '@/features/wallet/custody/settings';
-import { resolveEffectiveTheme, nextTheme } from '@/lib/theme';
 import { useStorageValue } from '@/lib/useStorageValue';
 import { hasRuntime } from '@/lib/messaging';
 import { ACTIONS } from '@/lib/messages';
@@ -11,11 +7,16 @@ import {
   TOOLBAR_ENABLED_KEY,
   TOOLBAR_ENABLED_DEFAULT,
   TOOLBAR_TOGGLE_COMMAND,
+  TOOLBAR_THEME_KEY,
+  TOOLBAR_THEME_DEFAULT,
   resolveUrnBarSubmit,
   toolbarLabels,
   toolbarBadges,
   toolbarShortcutHint,
+  resolveToolbarTheme,
+  nextToolbarTheme,
   TOOLBAR_PALETTES,
+  type ToolbarThemeMode,
 } from '@/lib/toolbar';
 import type { ServeVerdict } from '@/lib/dig-serve-headers';
 
@@ -102,14 +103,15 @@ function MoonGlyph() {
 export function DigToolbar({ verdict = null }: { verdict?: ServeVerdict | null }) {
   const [enabled] = useStorageValue<boolean>(TOOLBAR_ENABLED_KEY, TOOLBAR_ENABLED_DEFAULT);
   const intl = useIntl();
-  const dispatch = useAppDispatch();
-  // #429 — the bar paints from the PERSISTED theme pref (#111), resolving `system` against the live
-  // OS signal, so the URN-bar theme toggle repaints it instantly and it agrees with the ext pages
-  // (`useAppliedTheme`/theme.css read the same `ui.theme`). The injected content-script bar has no
-  // store and keeps following `prefers-color-scheme` directly (see dig-toolbar.ts).
-  const themeMode = useAppSelector((s) => s.ui.theme);
+  // #459 — the bar paints from its OWN independent, persisted theme pref (`toolbar.theme`), fully
+  // decoupled from the main app theme (`uiSlice.theme` / `wallet.settings.theme`, #111). `system`
+  // resolves against the live OS signal — the toolbar's pre-#459 default look — so a fresh install
+  // is unchanged; the #429 switcher locks in an explicit light/dark that overrides it. The SAME key
+  // is read by the injected content-script bar (`dig-toolbar.ts`) via `chrome.storage`, so the two
+  // mounts never diverge, and NEITHER ever touches the app-theme store/settings blob.
+  const [themeMode, setThemeMode] = useStorageValue<ToolbarThemeMode>(TOOLBAR_THEME_KEY, TOOLBAR_THEME_DEFAULT);
   const prefersDark = usePrefersDark();
-  const effective = resolveEffectiveTheme(themeMode, prefersDark);
+  const effective = resolveToolbarTheme(themeMode, prefersDark);
   const labels = useMemo(
     () => toolbarLabels(typeof navigator !== 'undefined' ? navigator.languages : undefined),
     [],
@@ -124,13 +126,12 @@ export function DigToolbar({ verdict = null }: { verdict?: ServeVerdict | null }
   const badges = toolbarBadges(verdict);
   const isDark = effective === 'dark';
 
-  /** One-tap light↔dark: commit the opposite EXPLICIT mode to the store (instant repaint) + persist
-   *  it via the SAME read-modify-write `AppFooter`/locale use, so it survives reload and syncs to
-   *  every open surface through `storageSync`. */
+  /** One-tap light↔dark: commit the opposite EXPLICIT mode to the toolbar's OWN persisted key
+   *  (instant repaint via `useStorageValue`'s local state + live-synced to every open surface,
+   *  including the injected content-script bar, via `chrome.storage.onChanged`). Never touches the
+   *  app theme (#459) — that stays whatever `AppFooter`'s theme-select last set. */
   const onToggleTheme = () => {
-    const next = nextTheme(effective);
-    dispatch(setTheme(next));
-    void updateWalletSettings({ theme: next });
+    setThemeMode(nextToolbarTheme(effective));
   };
 
   const themeBtnStyle: CSSProperties = {

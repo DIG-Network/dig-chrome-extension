@@ -6,7 +6,7 @@ import { createStore } from '@/app/store';
 import { setTheme } from '@/features/ui/uiSlice';
 import { readWalletSettings } from '@/features/wallet/custody/settings';
 import { DigToolbar } from '@/features/toolbar/DigToolbar';
-import { TOOLBAR_ENABLED_KEY } from '@/lib/toolbar';
+import { TOOLBAR_ENABLED_KEY, TOOLBAR_THEME_KEY } from '@/lib/toolbar';
 
 const STORE = 'a'.repeat(64);
 const sendMessage = () => chrome.runtime.sendMessage as unknown as ReturnType<typeof vi.fn>;
@@ -16,11 +16,18 @@ async function enable(on: boolean) {
   else await chrome.storage.local.remove(TOOLBAR_ENABLED_KEY);
 }
 
+/** Read the toolbar's OWN independent persisted theme key (never `wallet.settings.theme`). */
+async function readToolbarTheme(): Promise<string | undefined> {
+  const out = await chrome.storage.local.get(TOOLBAR_THEME_KEY);
+  return out[TOOLBAR_THEME_KEY] as string | undefined;
+}
+
 describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
   beforeEach(async () => {
     sendMessage().mockClear();
     await enable(false);
     await chrome.storage.local.remove('wallet.settings');
+    await chrome.storage.local.remove(TOOLBAR_THEME_KEY);
   });
 
   it('renders nothing while the toolbar toggle is OFF', async () => {
@@ -105,7 +112,7 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
     expect(hint).toHaveTextContent(/show\/hide/i);
   });
 
-  // ── #429 — the light/dark theme switcher button in the URN bar ────────────────────────────────
+  // ── #429/#459 — the light/dark theme switcher button in the URN bar, INDEPENDENT of the app theme
   describe('#429 — light/dark theme toggle', () => {
     it('renders a labelled toggle button; the default (light) is not pressed', async () => {
       await enable(true);
@@ -113,44 +120,74 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
       const btn = await screen.findByTestId('builtin-dig-toolbar-theme-toggle');
       // Accessible: a real toggle button with a stable name + pressed state (WAI-ARIA APG).
       expect(btn.tagName).toBe('BUTTON');
-      expect(btn).toHaveAttribute('aria-pressed', 'false'); // #211 default is explicit light
+      expect(btn).toHaveAttribute('aria-pressed', 'false'); // system → light in the jsdom test env
       expect(btn).toHaveAccessibleName(/theme/i);
       // The bar paints light by default (matches the ext-page white product theme).
       expect(screen.getByTestId('builtin-dig-toolbar')).toHaveAttribute('data-theme', 'light');
     });
 
-    it('clicking flips the pref to dark, repaints the bar, and persists to wallet.settings.theme', async () => {
+    it('is keyboard-operable: focusing + pressing Enter flips the theme (§6.6)', async () => {
+      await enable(true);
+      renderWithProviders(<DigToolbar />);
+      const btn = await screen.findByTestId('builtin-dig-toolbar-theme-toggle');
+      btn.focus();
+      expect(btn).toHaveFocus();
+      await userEvent.keyboard('{Enter}');
+      expect(btn).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('builtin-dig-toolbar')).toHaveAttribute('data-theme', 'dark');
+    });
+
+    it('clicking flips the bar to dark and persists under the toolbar\'s OWN key — NOT wallet.settings.theme (#459)', async () => {
       await enable(true);
       const { store } = renderWithProviders(<DigToolbar />);
       const btn = await screen.findByTestId('builtin-dig-toolbar-theme-toggle');
+      const appThemeBefore = store.getState().ui.theme;
 
       await userEvent.click(btn);
 
-      // Store flips immediately → the bar repaints dark + the toggle reflects the pressed state.
-      expect(store.getState().ui.theme).toBe('dark');
+      // Bar repaints dark + the toggle reflects the pressed state.
       expect(screen.getByTestId('builtin-dig-toolbar')).toHaveAttribute('data-theme', 'dark');
       expect(btn).toHaveAttribute('aria-pressed', 'true');
-      // Persisted (read-modify-write) so it survives reload + syncs to every open surface.
-      await waitFor(async () => expect((await readWalletSettings()).theme).toBe('dark'));
+      // Persisted under toolbar.theme (read-modify-write via useStorageValue) — never wallet.settings.
+      await waitFor(async () => expect(await readToolbarTheme()).toBe('dark'));
+      expect((await readWalletSettings()).theme).toBeUndefined();
+      // The main app theme is UNTOUCHED by the URN-bar toggle (the decoupling this ticket fixes).
+      expect(store.getState().ui.theme).toBe(appThemeBefore);
     });
 
-    it('when the stored pref is dark the bar paints dark; toggling returns to an explicit light + persists', async () => {
+    it('when the stored toolbar pref is dark the bar paints dark; toggling returns to explicit light + persists (own key)', async () => {
       await enable(true);
-      const store = createStore();
-      store.dispatch(setTheme('dark'));
-      renderWithProviders(<DigToolbar />, { store });
+      await chrome.storage.local.set({ [TOOLBAR_THEME_KEY]: 'dark' });
+      renderWithProviders(<DigToolbar />);
 
       const bar = await screen.findByTestId('builtin-dig-toolbar');
-      expect(bar).toHaveAttribute('data-theme', 'dark');
+      await waitFor(() => expect(bar).toHaveAttribute('data-theme', 'dark'));
       const btn = screen.getByTestId('builtin-dig-toolbar-theme-toggle');
       expect(btn).toHaveAttribute('aria-pressed', 'true');
 
       await userEvent.click(btn);
 
-      expect(store.getState().ui.theme).toBe('light');
       expect(bar).toHaveAttribute('data-theme', 'light');
       expect(btn).toHaveAttribute('aria-pressed', 'false');
-      await waitFor(async () => expect((await readWalletSettings()).theme).toBe('light'));
+      await waitFor(async () => expect(await readToolbarTheme()).toBe('light'));
+    });
+
+    it('#459 — toggling the MAIN app theme (uiSlice.theme) does NOT move the URN-bar theme (reverse-direction proof)', async () => {
+      await enable(true);
+      const store = createStore();
+      renderWithProviders(<DigToolbar />, { store });
+
+      const bar = await screen.findByTestId('builtin-dig-toolbar');
+      const btn = await screen.findByTestId('builtin-dig-toolbar-theme-toggle');
+      await waitFor(() => expect(bar).toHaveAttribute('data-theme', 'light'));
+      expect(btn).toHaveAttribute('aria-pressed', 'false');
+
+      // Flip the APP theme the way AppFooter's theme-select does — the URN bar must not react.
+      store.dispatch(setTheme('dark'));
+
+      expect(bar).toHaveAttribute('data-theme', 'light');
+      expect(btn).toHaveAttribute('aria-pressed', 'false');
+      expect(await readToolbarTheme()).toBeUndefined(); // never written by the app-theme change
     });
   });
 });

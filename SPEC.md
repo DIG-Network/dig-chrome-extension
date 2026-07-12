@@ -695,8 +695,8 @@ helpers live in `src/lib/dig-loader.ts`; `src/entries/dig-loader.ts` is the DOM 
 `DigToolbar.tsx` built-in; #292/#293/#306)
 
 The DIG URN toolbar exists as TWO mounts of ONE shared pure core (`@/lib/toolbar`:
-`resolveUrnBarSubmit`, `toolbarLabels`, `toolbarBadges`, `toolbarTheme`, `TOOLBAR_PALETTES`) so the two
-never diverge:
+`resolveUrnBarSubmit`, `toolbarLabels`, `toolbarBadges`, `resolveToolbarTheme`, `TOOLBAR_PALETTES`) so
+the two never diverge:
 
 1. **Injected** (`dig-toolbar.js`, a `<all_urls>` content script) — atop EVERY ordinary top-frame web
    page (`http`/`https`; never `chrome://`/`chrome-extension://`/`about:` or sub-frames —
@@ -718,15 +718,28 @@ built-in via the store-bridged key).
 The bar is styled as **native browser chrome** from the ONE shared `TOOLBAR_PALETTES` (both mounts):
 light mode is a neutral Chrome grey (`#f1f3f4` background, `#dadce0` border), dark mode a dark Chrome
 toolbar surface (`#292a2d`) — NEVER the DIG brand gradient, so it reads as browser UI, not a branded
-widget. The two mounts choose WHICH palette differently, by design:
+widget.
 
-- The **built-in** bar (on `chrome-extension://` pages) resolves its paint from the PERSISTED theme
-  preference (`ui.theme`, the #111 theme system): `resolveEffectiveTheme(ui.theme, prefersDark)`
-  — an explicit `light`/`dark` pass through, `system` follows the OS. It therefore agrees with the ext
-  pages (which read the same `ui.theme` via `useAppliedTheme`/`theme.css`) and repaints instantly when
-  the theme toggle below flips the pref. Its root carries `data-theme` = the resolved paint.
-- The **injected** bar (on ordinary web pages, no Redux store) follows the OS `prefers-color-scheme`
-  directly (`toolbarTheme`) and re-mounts on a live change — genuine browser chrome on a third-party page.
+**The URN bar's theme is INDEPENDENT of the main app theme (#459).** It is NOT derived from `ui.theme`
+(the #111 theme system, persisted `wallet.settings.theme`) — that would couple two conceptually
+separate preferences (the whole extension's product theme vs. this one bar's browser-chrome paint).
+Instead both mounts resolve a SEPARATE, independently-persisted preference:
+
+- **`TOOLBAR_THEME_KEY`** (`'toolbar.theme'`) — a FLAT `chrome.storage.local` key, the same idiom as
+  `TOOLBAR_ENABLED_KEY` (`'toolbar.enabled'`), never a field inside the `wallet.settings` blob the app
+  theme lives in. Modes: `light` / `dark` / `system` (`TOOLBAR_THEME_MODES`); default `system`
+  (`TOOLBAR_THEME_DEFAULT`) — before #459 the toolbar always followed `prefers-color-scheme` with no
+  persisted pref at all, so defaulting to `system` reproduces that exact first-run look.
+- **Both mounts resolve it identically** via `resolveToolbarTheme(mode, prefersDark)`: `system` follows
+  the live OS `prefers-color-scheme` signal (`prefersDark`); `light`/`dark` are explicit, user-locked
+  choices that pass through unchanged. The built-in bar reads the key via `useStorageValue` (React
+  state, live-synced across surfaces); the injected content-script bar reads it via
+  `chrome.storage.local.get` + a `chrome.storage.onChanged` listener (no Redux store — it re-mounts on
+  a change, same as it already does for the toggle + the OS signal). Both mounts' root element carries
+  `data-theme` = the resolved paint, so the two are provably in lockstep.
+- **Neither the URN-bar toggle nor the app-theme control ever cross-writes the other's key.** Toggling
+  the URN bar's switcher (below) writes ONLY `toolbar.theme`; the footer theme selector (§ the #111
+  system) writes ONLY `wallet.settings.theme` via `uiSlice`. Changing one never moves the other.
 
 It carries:
 
@@ -767,14 +780,16 @@ It carries:
   §7), the built-in bar calls `chrome.commands.getAll()` directly — falling back to the manifest
   default (`Alt+Shift+D`) via `toolbarShortcutHint` until resolved / when the binding is cleared.
 - **A light/dark theme toggle** (`data-testid="builtin-dig-toolbar-theme-toggle"`, BUILT-IN bar only
-  — #429): a small unobtrusive icon button (a sun while dark, a moon while light) at the trailing end
-  of the bar. One tap commits the OPPOSITE explicit mode (`nextTheme`) to `ui.theme` and persists it
-  via the shared `wallet.settings.theme` read-modify-write (the SAME path the footer theme selector +
-  locale use), so it survives reload and syncs to every open surface through `storageSync`; the bar +
-  ext pages repaint immediately. It is a real toggle button — a stable, localized accessible name
-  (`toolbar.theme.toggle`, react-intl, all 14 locales), `aria-pressed` = dark-active, full keyboard
-  operability + a visible focus ring. It is a QUICK toggle only; the tri-state `light`/`dark`/`system`
-  control remains the footer theme selector.
+  — #429/#459): a small unobtrusive icon button (a sun while dark, a moon while light) at the trailing
+  end of the bar. One tap commits the OPPOSITE explicit mode (`nextToolbarTheme`) to the URN bar's OWN
+  independent `toolbar.theme` key (via `useStorageValue`, live-synced to every open surface — INCLUDING
+  the injected content-script bar on ordinary web pages — through `chrome.storage.onChanged`); the bar
+  repaints immediately. **It never touches `ui.theme` / `wallet.settings.theme`** (#459 — the main app
+  theme stays exactly what the footer theme selector last set). It is a real toggle button — a stable,
+  localized accessible name (`toolbar.theme.toggle`, react-intl, all 14 locales), `aria-pressed` =
+  dark-active, full keyboard operability (Enter/Space) + a visible focus ring. It is a QUICK toggle
+  only; there is no fuller `light`/`dark`/`system` control for the URN bar (the app's own tri-state
+  control remains the footer theme selector, which is a fully separate preference).
 
 Labels are localized from a compact self-contained table (`toolbarLabels`) rather than the full shell
 catalog (the content script runs on every page and must stay lean); the brand phrase "Verified on
