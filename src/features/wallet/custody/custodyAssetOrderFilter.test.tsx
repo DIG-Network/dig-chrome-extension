@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/harness';
 import { CustodyWallet } from '@/features/wallet/custody/CustodyWallet';
@@ -95,7 +95,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('CustodyWallet — value-ordered + filterable Assets list (#167, pin order per #202)', () => {
   it('keeps XCH first, $DIG pinned second, then sorts the rest by descending USD value (AAA $50 > BBB $2 > unpriced CAT last)', async () => {
     renderWithProviders(<CustodyWallet />);
-    await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
+    expect(await screen.findByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument();
 
     const rows = screen.getByTestId('custody-assets').querySelectorAll('.dig-asset');
     const testids = [...rows].map((r) => r.getAttribute('data-testid'));
@@ -107,7 +107,7 @@ describe('CustodyWallet — value-ordered + filterable Assets list (#167, pin or
   it('narrows the list live as the user types (ticker or name), leaving XCH AND $DIG visible (#204)', async () => {
     const user = userEvent.setup();
     renderWithProviders(<CustodyWallet />);
-    await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
+    expect(await screen.findByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument();
 
     await user.type(screen.getByTestId('asset-filter-input'), 'alpha');
 
@@ -119,7 +119,7 @@ describe('CustodyWallet — value-ordered + filterable Assets list (#167, pin or
 
   it('#204 renders XCH then $DIG ABOVE the filter input, with the filterable CATs below it', async () => {
     renderWithProviders(<CustodyWallet />);
-    await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
+    expect(await screen.findByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument();
 
     const children = [...screen.getByTestId('custody-assets').children];
     const testids = children.map((el) => el.getAttribute('data-testid'));
@@ -130,7 +130,7 @@ describe('CustodyWallet — value-ordered + filterable Assets list (#167, pin or
   it('#204 a filter query matching nothing still leaves XCH + $DIG visible (only the CAT list empties)', async () => {
     const user = userEvent.setup();
     renderWithProviders(<CustodyWallet />);
-    await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
+    expect(await screen.findByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument();
 
     await user.type(screen.getByTestId('asset-filter-input'), 'nonexistent-token-zzz');
 
@@ -142,7 +142,7 @@ describe('CustodyWallet — value-ordered + filterable Assets list (#167, pin or
   it('shows a clear empty state when nothing matches, and restores the list on Clear', async () => {
     const user = userEvent.setup();
     renderWithProviders(<CustodyWallet />);
-    await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
+    expect(await screen.findByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument();
 
     await user.type(screen.getByTestId('asset-filter-input'), 'nonexistent-token-zzz');
     expect(await screen.findByTestId('custody-assets-filter-empty')).toBeInTheDocument();
@@ -150,14 +150,14 @@ describe('CustodyWallet — value-ordered + filterable Assets list (#167, pin or
 
     await user.click(screen.getByTestId('asset-filter-clear'));
     expect(screen.queryByTestId('custody-assets-filter-empty')).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument());
+    expect(await screen.findByTestId(`asset-cat-${CAT_A}`)).toBeInTheDocument();
     expect(screen.getByTestId(`asset-cat-${CAT_B}`)).toBeInTheDocument();
   });
 
   it('offers an autocomplete suggestion for a held CAT by its registry name', async () => {
     const user = userEvent.setup();
     renderWithProviders(<CustodyWallet />);
-    await waitFor(() => expect(screen.getByTestId(`asset-cat-${CAT_B}`)).toBeInTheDocument());
+    expect(await screen.findByTestId(`asset-cat-${CAT_B}`)).toBeInTheDocument();
 
     await user.type(screen.getByTestId('asset-filter-input'), 'bet');
     const input = screen.getByTestId('asset-filter-input') as HTMLInputElement;

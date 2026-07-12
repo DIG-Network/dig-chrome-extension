@@ -7,6 +7,7 @@ import { NetworkScreen } from '@/features/network/NetworkScreen';
 import { PeersTab } from '@/features/peers/PeersTab';
 import { AdvertiseTab } from '@/features/advertise/AdvertiseTab';
 import { TippingTab } from '@/features/tipping/TippingTab';
+import { SecurityTab } from '@/features/security/SecurityTab';
 
 /**
  * Render the active mobile-OS screen in an ARIA tabpanel. The `key={tab}` remounts on switch so the
@@ -32,6 +33,7 @@ export function ActiveTabPanel() {
       {tab === 'peers' && <PeersTab />}
       {tab === 'advertise' && <AdvertiseTab />}
       {tab === 'tipping' && <TippingTab />}
+      {tab === 'security' && <SecurityTab />}
     </div>
   );
 }

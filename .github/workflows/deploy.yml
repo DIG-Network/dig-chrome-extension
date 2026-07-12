@@ -24,11 +24,12 @@ jobs:
           node-version: 20
       - run: npm ci || npm install
       # .npmrc sets ignore-scripts=true (supply-chain lockdown, #67 P0-1a); re-run only the reviewed
-      # allowlist (esbuild/@swc) before any build/test that relies on it.
+      # allowlist (esbuild/@swc) before the build that relies on it.
       - run: npm run allow-scripts
-      # Unit tests for the shared modules, gated at >=80% coverage (c8 / .c8rc.json):
-      # a run below the floor FAILS the build.
-      - run: npm run test:coverage # c8 node --test tests/ — tests + >=80% coverage gate
+      # NOTE (#489): the deploy path does NOT re-run the test suite. The PR release gates (ci.yml —
+      # fmt/lint/typecheck/tests/coverage/build, §2.4a) already ran on the exact merged tree; a
+      # redundant re-run here only re-exposes a green-tested release to flake (it once blocked
+      # v1.96.0 — #488). Deploy = build + package + publish only.
       # Package dist/ + the release zip. The extension is a self-custody wallet — no WalletConnect
       # vendoring or project id (the injected window.chia provider is served directly).
       - run: npm run build:zip # node build.js --zip -> ./dist + dist/*.zip

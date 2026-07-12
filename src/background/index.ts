@@ -187,6 +187,10 @@ import {
   WALLET_WS_ERR,
 } from '@/lib/dig-node-wallet-ws';
 
+// #374 thin-client cutover flag — whether the dig-node is the signing AUTHORITY (node custody +
+// node signing). OFF by default: local-vault custody, so the node auth gate (#431/#433) is inert.
+import { isThinClientCutoverEnabled, THIN_CLIENT_FLAG_KEY } from '@/lib/thin-client-flags';
+
 // DIG Shields per-resource proof LEDGER (#134, mirrored from the browser): the per-tab/
 // per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
 import { LedgerStore, groupLedger } from '@/lib/dig-ledger';
@@ -566,6 +570,51 @@ async function controlViaWsOrHttp(endpoint, method, params, token) {
 
 /** The tip.* methods the {@link ACTIONS.tipRpc} dispatcher allows over the /ws transport (SPEC §18.23). */
 const TIP_RPC_METHODS = ['tip.get_config', 'tip.set_config', 'tip.get_ledger', 'tip.manual'];
+
+/** The auth.* methods the {@link ACTIONS.authRpc} dispatcher allows over the /ws transport (SPEC §18.24). */
+const AUTH_RPC_METHODS = [
+  'auth.status',
+  'auth.get_method',
+  'auth.set_mode',
+  'auth.set_method',
+  'auth.enroll_totp',
+  'auth.enroll_passkey_begin',
+  'auth.enroll_passkey_finish',
+  'auth.unlock',
+  'auth.sign_unlock',
+  'auth.lock',
+];
+
+/**
+ * Drive one auth.* method (node-managed unlock auth, SPEC §18.24) over the /ws wallet+control transport
+ * (WS-first, HTTP fallback), returning the uniform `{ result } | { error:{code,message} }` shape. Every
+ * auth.* method is paired-token gated (§7.12) — the socket attaches the paired token. When NO node is
+ * reachable, returns an honest `NODE_UNAVAILABLE` error so the Security tab renders a "node offline"
+ * state.
+ *
+ * CRITICAL (#433, distinct from {@link tipRpc}/controlAuthed): a WRONG WALLET PASSWORD or TOTP code is a
+ * node 401, which maps to the SAME wire code (-32030) as a revoked/absent paired token
+ * (`wallet_result_to_jsonrpc`, dig-node server.rs). So this dispatcher MUST NOT auto-unpair on -32030
+ * when the caller PRESENTED a credential (a password/code) — else a mere typo would clobber the user's
+ * pairing. The token-authorization -32030 only arises on the credential-less reads (auth.status /
+ * auth.get_method), where auto-unpair is safe + correct (mirrors controlAuthed).
+ */
+async function authRpc(method, params) {
+  const ep = await controlEndpointOrNull();
+  if (!walletControlWs.isConnected() && !ep) {
+    return { error: { code: 'NODE_UNAVAILABLE', message: 'The DIG node is not reachable.' } };
+  }
+  const token = pairingController.getToken();
+  const resp = await controlViaWsOrHttp(ep, method, params || {}, token);
+  // A credential-less read that is unauthorized ⇒ the paired token is stale/absent: forget it so the
+  // UI re-pairs (mirrors controlAuthed). A credential-BEARING call must NOT unpair on -32030 (that is
+  // an ambiguous wrong-password/expired-token — treat as a recoverable credential error, keep pairing).
+  const presentedCredential = !!(params && typeof params.password === 'string' && params.password.length > 0);
+  if (isUnauthorizedControlResult(resp) && !presentedCredential) {
+    await pairingController.unpair().catch(() => {});
+  }
+  return resp;
+}
 
 /**
  * Drive one tip.* method over the /ws wallet+control transport (WS-first, HTTP fallback), returning the
@@ -3277,6 +3326,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         error: (resp && resp.error && resp.error.message) || 'tip RPC failed',
         message: (resp && resp.error && resp.error.message) || 'tip RPC failed',
       });
+    })();
+    return true;
+  }
+
+  // Node-managed unlock auth (#431/#432/#433, SPEC §18.24): the Security tab + per-transaction
+  // sign-unlock prompt dispatch an allowlisted auth.* method over the /ws wallet+control transport
+  // (token-gated). A read/mutation returns the node result as-is; a wrong credential (node 401 ⇒
+  // -32030) surfaces as an error WITHOUT clearing the pairing token (a typo must not unpair — see
+  // `authRpc`). A credential-less read that is truly unauthorized re-drops to "pair to manage".
+  if (message.action === ACTIONS.authRpc) {
+    (async () => {
+      const method = String(message.method || '');
+      if (!AUTH_RPC_METHODS.includes(method)) {
+        sendResponse({ success: false, code: 'AUTH_BAD_METHOD', message: `unknown auth method: ${method}` });
+        return;
+      }
+      const resp = await authRpc(method, message.params || {});
+      if (resp && resp.result !== undefined) { sendResponse(resp.result); return; }
+      const code = resp && resp.error && resp.error.code;
+      sendResponse({
+        success: false,
+        code: code ?? 'AUTH_RPC_FAILED',
+        error: (resp && resp.error && resp.error.message) || 'auth RPC failed',
+        message: (resp && resp.error && resp.error.message) || 'auth RPC failed',
+      });
+    })();
+    return true;
+  }
+
+  // Whether the dig-node is the SIGNING AUTHORITY on this caller (#374 thin-client cutover flag). The
+  // per-transaction unlock gate reads this: true ⇒ node custody + node signing ⇒ a spend first arms
+  // the node auth (auth.sign_unlock); false (default) ⇒ local-vault custody, no node auth gate.
+  if (message.action === ACTIONS.getSignAuthority) {
+    (async () => {
+      const blob = await chrome.storage.local.get(THIN_CLIENT_FLAG_KEY);
+      sendResponse({ nodeIsSigner: isThinClientCutoverEnabled(blob) });
     })();
     return true;
   }

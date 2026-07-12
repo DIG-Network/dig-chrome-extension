@@ -322,7 +322,7 @@ describe('SendPanel', () => {
       mockSw(() => ({ success: true }));
       renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} />);
       fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: KNOWN } });
-      await waitFor(() => expect(screen.getByTestId('send-recipient-contact')).toBeInTheDocument());
+      expect(await screen.findByTestId('send-recipient-contact')).toBeInTheDocument();
       expect(screen.queryByTestId('send-poison-warning')).not.toBeInTheDocument();
       expect(screen.queryByTestId('send-firsttime')).not.toBeInTheDocument();
     });
@@ -502,5 +502,41 @@ describe('SendPanel', () => {
       expect(await screen.findByTestId('send-error')).toBeInTheDocument();
       expect(screen.queryByTestId('consolidate-modal')).not.toBeInTheDocument();
     });
+  });
+
+  // Per-transaction sign gate wiring (#433, SPEC §18.24): when the dig-node is the signer (#374) in
+  // per_transaction mode, the review's Confirm must prompt for a fresh unlock and NOT broadcast until
+  // it succeeds. (Inert in the local-vault default — covered by every other test above, which never
+  // sees the prompt because getSignAuthority is unmocked ⇒ nodeIsSigner false.)
+  it('gates Confirm behind a per-transaction unlock prompt when the node is the signer', async () => {
+    let confirmed = false;
+    mockSw((m) => {
+      if (m.action === 'getSignAuthority') return { nodeIsSigner: true };
+      if (m.action === 'authRpc' && m.method === 'auth.status') return { mode: 'per_transaction', method: 'password', state: 'read_only', sign_armed: false, has_wallet: true };
+      if (m.action === 'authRpc' && m.method === 'auth.sign_unlock') return { mode: 'per_transaction', method: 'password', state: 'read_only', sign_armed: true, has_wallet: true };
+      if (m.action === 'prepareSend') return { pendingId: 'p1', summary: SUMMARY };
+      if (m.action === 'confirmSend') { confirmed = true; return { spentCoinId: 'coin1' }; }
+      if (m.action === 'sendStatus') return { confirmed: true };
+      return { success: true };
+    });
+    renderWithProviders(<SendPanel assets={xchAssets(1_000_000_000_000)} pollMs={50} />);
+    // Let the gate learn it must prompt (getSignAuthority + auth.status resolve).
+    await waitFor(() => expect((chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mock.calls.some(([c]) => (c as { method?: string })?.method === 'auth.status')).toBe(true));
+
+    fireEvent.change(screen.getByTestId('send-recipient'), { target: { value: RECIPIENT } });
+    fireEvent.change(screen.getByTestId('send-amount'), { target: { value: '0.25' } });
+    fireEvent.click(screen.getByTestId('send-review'));
+    await screen.findByTestId('send-review-panel');
+
+    fireEvent.click(screen.getByTestId('send-confirm'));
+    // The unlock prompt gates the spend — nothing broadcast yet.
+    expect(await screen.findByTestId('sign-unlock-modal')).toBeInTheDocument();
+    expect(confirmed).toBe(false);
+    expect(screen.queryByTestId('send-sending')).not.toBeInTheDocument();
+
+    // Authorize → sign_unlock arms one signature → the spend broadcasts.
+    fireEvent.change(screen.getByTestId('sign-unlock-password'), { target: { value: 'pw' } });
+    fireEvent.click(screen.getByTestId('sign-unlock-submit'));
+    await waitFor(() => expect(confirmed).toBe(true));
   });
 });

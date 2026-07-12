@@ -180,7 +180,7 @@ describe('HomeScreen balance-unit swap (#156)', () => {
   it('clicking swap does not also navigate to the Wallet tab (it is a sibling control, not nested)', async () => {
     const store = createStore();
     renderWithProviders(<HomeScreen />, { store });
-    await waitFor(() => expect(screen.getByTestId('home-balance-swap')).toBeInTheDocument());
+    expect(await screen.findByTestId('home-balance-swap')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('home-balance-swap'));
     expect(store.getState().ui.tab).not.toBe('wallet');
   });
@@ -188,7 +188,7 @@ describe('HomeScreen balance-unit swap (#156)', () => {
   it('tapping the balance value (not the swap button) still opens the Wallet tab', async () => {
     const store = createStore();
     renderWithProviders(<HomeScreen />, { store });
-    await waitFor(() => expect(screen.getByTestId('home-balance')).toBeInTheDocument());
+    expect(await screen.findByTestId('home-balance')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('home-balance'));
     expect(store.getState().ui.tab).toBe('wallet');
   });
@@ -234,7 +234,7 @@ describe('HomeScreen balance-unit swap (#156)', () => {
 
     // The coingecko fetch is deliberately held open: the $ (prominent) slot must show a skeleton,
     // not the "unavailable" text, and the always-known native amount still shows as secondary.
-    await waitFor(() => expect(screen.getByTestId('home-balance-value-loading')).toBeInTheDocument());
+    expect(await screen.findByTestId('home-balance-value-loading')).toBeInTheDocument();
     expect(screen.getByTestId('home-balance-secondary')).toHaveTextContent('2.51 XCH');
     expect(screen.getByTestId('home-balance-secondary')).not.toHaveTextContent(/unavailable/i);
 

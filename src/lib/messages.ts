@@ -256,8 +256,15 @@ import { DIG_ERR } from './error-codes';
  * existing HTTP POST path when it is not — purely additive, no action name/shape change. The
  * `chia://` resolver transport is UNCHANGED. Broadcast-only `walletSyncStatusChanged` /
  * `nodeWalletDataChanged` are SW→popup pushes (not ACTIONS, like `nodeLiveStatusChanged`).
+ *
+ * v36 (#431/#432/#433 node-managed unlock auth + Security tab): added `authRpc` — dispatch an
+ * allowlisted `auth.*` method (SPEC §18.24) over the `/ws` transport, backing the fullscreen Security
+ * tab (method enroll password/TOTP/passkey, per-transaction vs session-unlock-all mode toggle,
+ * session/lock state) + the per-transaction sign-unlock prompt — and `getSignAuthority` — whether the
+ * node is the signing authority (the thin-client cutover flag #374) so the sign gate knows to arm the
+ * node auth before a spend. Both purely additive.
  */
-export const MESSAGE_PROTOCOL_VERSION = 35;
+export const MESSAGE_PROTOCOL_VERSION = 36;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -411,6 +418,15 @@ export const ACTIONS = Object.freeze({
   // Method-allowlisted dispatcher: open reads (get_config/get_ledger) + token-gated mutations
   // (set_config/manual). Backs the fullscreen Tip tab (history, auto-tip management, one-tap tip). ──
   tipRpc: 'tipRpc',
+  // ── Node-managed unlock auth (#431/#432/#433, SPEC §18.24): dispatch an `auth.*` method (status,
+  // mode/method policy, TOTP/passkey enroll, unlock/sign_unlock/lock) over the /ws transport. Backs
+  // the fullscreen Security tab + the per-transaction sign-unlock prompt. Every method is paired-token
+  // gated (§7.12); the socket attaches the paired token. ──
+  authRpc: 'authRpc',
+  // ── Whether the dig-node is the signing AUTHORITY on this caller (thin-client cutover flag, #374):
+  // true ⇒ node custody + node signing ⇒ a spend must first arm the node auth gate (auth.sign_unlock).
+  // OFF by default ⇒ local-vault custody, no node auth gate. Read by the per-transaction unlock gate. ──
+  getSignAuthority: 'getSignAuthority',
   // ── DIG Control Panel (node management) — mirrors the browser dig://control ──
   getControlStatus: 'getControlStatus',
   // ── dig-node control panel (#278/#281): live WS status, OPEN cache/LRU, pairing, authed control ──
@@ -972,6 +988,19 @@ export const MESSAGE_CATALOGUE = Object.freeze({
       'Tip tab (#380): dispatch a tip.* method (SPEC §18.23) over the /ws wallet+control transport. Allowlisted: tip.get_config + tip.get_ledger (OPEN reads) and tip.set_config + tip.manual (token-gated mutations — the socket attaches the paired control token; an unpaired/stale token surfaces -32030 so the UI shows a "pair to manage" gate). No node reachable → NODE_UNAVAILABLE.',
     request: "{ action, method:'tip.get_config'|'tip.get_ledger'|'tip.set_config'|'tip.manual', params?:object }",
     response: '<the node tip result> | { success:false, code, error, message }',
+  },
+  [ACTIONS.authRpc]: {
+    summary:
+      'Security tab + per-transaction sign-unlock (#431/#432/#433, SPEC §18.24): dispatch an allowlisted auth.* method over the /ws wallet+control transport. Methods: auth.status / auth.get_method (paired reads) · auth.set_mode / auth.set_method / auth.enroll_totp / auth.enroll_passkey_begin / auth.enroll_passkey_finish / auth.unlock / auth.sign_unlock / auth.lock. The socket attaches the paired control token; every method is paired-token gated (§7.12). A wrong wallet password/TOTP is a node 401 (code -32030) — surfaced to the UI as a recoverable credential error, and (unlike controlAuthed) it does NOT clear the pairing token. No node reachable → NODE_UNAVAILABLE.',
+    request:
+      "{ action, method:'auth.status'|'auth.get_method'|'auth.set_mode'|'auth.set_method'|'auth.enroll_totp'|'auth.enroll_passkey_begin'|'auth.enroll_passkey_finish'|'auth.unlock'|'auth.sign_unlock'|'auth.lock', params?:{ id?:string, password?:string, totp_code?:string, mode?:string, method?:string, response?:object } }",
+    response: '<the node auth result (AuthStatus | TotpEnrollment)> | { success:false, code, error, message }',
+  },
+  [ACTIONS.getSignAuthority]: {
+    summary:
+      'Whether the dig-node is the signing authority on this caller (thin-client cutover flag #374, feature.thinClientCutover). true ⇒ node custody + node signing ⇒ the per-transaction unlock gate arms the node auth (auth.sign_unlock) before a spend. false (default) ⇒ local-vault custody, no node auth gate.',
+    request: '{ action }',
+    response: '{ nodeIsSigner:boolean }',
   },
   [ACTIONS.getControlStatus]: {
     summary: 'DIG Control Panel: detect a local dig-node (manage vs install) + best-effort control.status; honest hosted-RPC fallback. Mirrors dig://control.',

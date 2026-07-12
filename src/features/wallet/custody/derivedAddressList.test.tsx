@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/harness';
 import { DerivedAddressList } from '@/features/wallet/custody/DerivedAddressList';
@@ -48,7 +48,7 @@ describe('DerivedAddressList (#106)', () => {
     expect(await screen.findByTestId('derived-addresses-error')).toBeInTheDocument();
     fail = false;
     fireEvent.click(screen.getByTestId('derived-addresses-retry'));
-    await waitFor(() => expect(screen.getByTestId('derived-address-unhardened-0')).toBeInTheDocument());
+    expect(await screen.findByTestId('derived-address-unhardened-0')).toBeInTheDocument();
     expect(sw).toHaveBeenCalled();
   });
 
@@ -72,7 +72,7 @@ describe('DerivedAddressList (#106)', () => {
 
     fireEvent.click(screen.getByTestId('derived-addresses-more'));
 
-    await waitFor(() => expect(screen.getByTestId('derived-address-unhardened-9')).toBeInTheDocument());
+    expect(await screen.findByTestId('derived-address-unhardened-9')).toBeInTheDocument();
     // Earlier indexes are still shown — "generate fresh" extends the page, it doesn't replace it.
     expect(screen.getByTestId('derived-address-unhardened-0')).toBeInTheDocument();
     expect(sw).toHaveBeenCalledWith(expect.objectContaining({ action: 'listDerivedAddresses', count: 10 }), expect.any(Function));

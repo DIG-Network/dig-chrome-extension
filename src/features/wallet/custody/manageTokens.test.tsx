@@ -33,14 +33,14 @@ describe('ManageTokens', () => {
   it('hides a token → it moves to the Hidden section with a Show control', async () => {
     renderWithProviders(<ManageTokens assets={heldAssets()} />);
     fireEvent.click(screen.getByTestId(`manage-hide-${CAT}`));
-    await waitFor(() => expect(screen.getByTestId(`manage-show-${CAT}`)).toBeInTheDocument());
+    expect(await screen.findByTestId(`manage-show-${CAT}`)).toBeInTheDocument();
   });
 
   it('rejects an invalid manual add with a localized error', async () => {
     renderWithProviders(<ManageTokens assets={heldAssets()} />);
     await userEvent.type(screen.getByTestId('manage-add-id'), 'not-a-tail');
     fireEvent.submit(screen.getByTestId('manage-add-form'));
-    await waitFor(() => expect(screen.getByTestId('manage-add-error')).toBeInTheDocument());
+    expect(await screen.findByTestId('manage-add-error')).toBeInTheDocument();
   });
 
   it('adds a valid token by asset id (clears the form)', async () => {

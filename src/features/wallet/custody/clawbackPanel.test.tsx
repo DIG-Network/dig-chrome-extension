@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { ClawbackPanel } from '@/features/wallet/custody/ClawbackPanel';
 
@@ -55,13 +55,13 @@ describe('ClawbackPanel', () => {
   it('renders loading / error / empty / success states', async () => {
     mockSw(() => ({ success: false, code: 'CHAIN_UNAVAILABLE', message: 'down' }));
     renderWithProviders(<ClawbackPanel nowMs={NOW_MS} />);
-    await waitFor(() => expect(screen.getByTestId('clawback-list-error')).toBeInTheDocument());
+    expect(await screen.findByTestId('clawback-list-error')).toBeInTheDocument();
   });
 
   it('shows an empty state when nothing is pending', async () => {
     mockSw((m) => (m.action === 'listClawbacks' ? { clawbacks: [] } : { success: true }));
     renderWithProviders(<ClawbackPanel nowMs={NOW_MS} />);
-    await waitFor(() => expect(screen.getByTestId('clawback-list-empty')).toBeInTheDocument());
+    expect(await screen.findByTestId('clawback-list-empty')).toBeInTheDocument();
   });
 
   it('lists incoming + outgoing entries with the correct claimable/reclaimable status', async () => {
@@ -105,7 +105,7 @@ describe('ClawbackPanel', () => {
 
     fireEvent.click(screen.getByTestId('clawback-confirm'));
     expect(await screen.findByTestId('clawback-sending')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId('clawback-confirmed')).toBeInTheDocument(), { timeout: 3000 });
+    expect(await screen.findByTestId('clawback-confirmed', undefined, { timeout: 3000 })).toBeInTheDocument();
     vi.useRealTimers();
   });
 

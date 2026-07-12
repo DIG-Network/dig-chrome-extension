@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { CustodyWallet } from '@/features/wallet/custody/CustodyWallet';
 import { DIG_ASSET_ID, GET_XCH_URL } from '@/lib/links';
@@ -34,7 +34,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('CustodyWallet — "Get more XCH" link (#210)', () => {
   it('renders the Get-more link on the XCH row only, pointing at chia.net/buy-xch', async () => {
     renderWithProviders(<CustodyWallet />);
-    await waitFor(() => expect(screen.getByTestId('asset-xch')).toBeInTheDocument());
+    expect(await screen.findByTestId('asset-xch')).toBeInTheDocument();
 
     // The XCH row carries the link; the $DIG row does not.
     const xchRow = screen.getByTestId('asset-xch');
@@ -43,7 +43,7 @@ describe('CustodyWallet — "Get more XCH" link (#210)', () => {
     expect(link).toHaveAttribute('href', GET_XCH_URL);
     expect(link).toHaveAttribute('target', '_blank');
 
-    await waitFor(() => expect(screen.getByTestId('asset-dig')).toBeInTheDocument());
+    expect(await screen.findByTestId('asset-dig')).toBeInTheDocument();
     const digRow = screen.getByTestId('asset-dig');
     expect(digRow.querySelector('[data-testid="getxch-link"]')).toBeNull();
   });

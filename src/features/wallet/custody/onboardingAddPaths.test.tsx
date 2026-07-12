@@ -50,7 +50,7 @@ describe('Onboarding — watch-only add path (#96)', () => {
     fireEvent.click(screen.getByTestId('onboarding-watch'));
     fireEvent.change(screen.getByTestId('watch-public-key'), { target: { value: 'not-a-key' } });
     fireEvent.click(screen.getByTestId('watch-submit'));
-    await waitFor(() => screen.getByTestId('watch-error'));
+    await screen.findByTestId('watch-error');
   });
 });
 
@@ -86,6 +86,6 @@ describe('Onboarding — restore-from-backup add path (#115)', () => {
     renderWithProviders(<Onboarding onDone={() => {}} />);
     fireEvent.click(screen.getByTestId('onboarding-restore'));
     fireEvent.change(screen.getByTestId('restore-file'), { target: { files: [jsonFile('{"magic":"DIGWBK1","version":1}')] } });
-    await waitFor(() => screen.getByTestId('restore-error'));
+    await screen.findByTestId('restore-error');
   });
 });

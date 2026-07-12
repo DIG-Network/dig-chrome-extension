@@ -31,8 +31,12 @@ export default defineConfig({
     '**/accounts-keys.spec.ts',
     '**/wallet-sync-status.spec.ts',
     '**/tipping-tab.spec.ts',
+    '**/security-tab.spec.ts',
   ],
   fullyParallel: true,
+  // Flaky-test containment (#489): retry a failing spec up to twice in CI (Playwright marks it
+  // "flaky" in the report rather than hiding it); locally `0` keeps failures loud + fast.
+  retries: process.env.CI ? 2 : 0,
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',

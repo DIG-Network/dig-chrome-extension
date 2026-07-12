@@ -40,7 +40,7 @@ describe('ManageAutoTipSection', () => {
   it('renders the editable form (both policies) when paired + config loaded', async () => {
     mockSw({ phase: 'paired' });
     renderWithProviders(<ManageAutoTipSection nodeOnline />);
-    await waitFor(() => expect(screen.getByTestId('tip-manage-form')).toBeTruthy());
+    expect(await screen.findByTestId('tip-manage-form')).toBeTruthy();
     expect(screen.getByTestId('tip-policy-creator')).toBeTruthy();
     expect(screen.getByTestId('tip-policy-dev')).toBeTruthy();
     // Creator amount seeded from 1000 base units → "1" $DIG.
@@ -54,7 +54,7 @@ describe('ManageAutoTipSection', () => {
     mockSw({ phase: 'unpaired' });
     renderWithProviders(<ManageAutoTipSection nodeOnline />);
     // The pairing gate renders (control-pairing) and the editable form does NOT.
-    await waitFor(() => expect(screen.getByTestId('control-pairing')).toBeTruthy());
+    expect(await screen.findByTestId('control-pairing')).toBeTruthy();
     expect(screen.queryByTestId('tip-manage-form')).toBeNull();
   });
 
@@ -62,7 +62,7 @@ describe('ManageAutoTipSection', () => {
     const setSpy = vi.fn();
     mockSw({ phase: 'paired', setSpy });
     renderWithProviders(<ManageAutoTipSection nodeOnline />);
-    await waitFor(() => expect(screen.getByTestId('tip-manage-form')).toBeTruthy());
+    expect(await screen.findByTestId('tip-manage-form')).toBeTruthy();
     fireEvent.change(screen.getByTestId('tip-creator-amount'), { target: { value: '2.5' } });
     fireEvent.click(screen.getByTestId('tip-manage-save'));
     await waitFor(() => expect(setSpy).toHaveBeenCalled());
@@ -74,30 +74,43 @@ describe('ManageAutoTipSection', () => {
     const setSpy = vi.fn();
     mockSw({ phase: 'paired', setSpy });
     renderWithProviders(<ManageAutoTipSection nodeOnline />);
-    await waitFor(() => expect(screen.getByTestId('tip-manage-form')).toBeTruthy());
+    await screen.findByTestId('tip-manage-form');
+
+    // #488 de-flake: do the ADD → assert → REMOVE → assert entirely BEFORE the save. A successful
+    // save invalidates `TipConfig`, and the follow-up `tip.get_config` refetch re-seeds the form
+    // (AutoTipForm's `useEffect(setForm, [initial])`), asynchronously WIPING a just-added override —
+    // so any assertion on override entries AFTER a save is inherently racy. Sequencing the mutations
+    // before the (state-resetting) save makes it deterministic. Also uses async `findAllBy*` queries
+    // instead of a sync `getAllBy*`-after-async, the exact #488 pattern.
 
     // Add an override: store id + 3 $DIG → 3000 base units.
     fireEvent.change(screen.getByTestId('tip-override-store'), { target: { value: 'store-xyz' } });
     fireEvent.change(screen.getByTestId('tip-override-amount'), { target: { value: '3' } });
     fireEvent.click(screen.getByTestId('tip-override-add'));
-    await waitFor(() => expect(screen.getAllByTestId('tip-override-entry').length).toBeGreaterThan(0));
+    const added = await screen.findAllByTestId('tip-override-entry');
+    const before = added.length;
+    expect(before).toBeGreaterThan(0);
 
+    // Remove it — asserted deterministically before any save reseeds the form.
+    fireEvent.click(screen.getAllByTestId('tip-override-remove')[0]);
+    await waitFor(() => expect(screen.queryAllByTestId('tip-override-entry').length).toBe(before - 1));
+
+    // Re-add, then save LAST — assert the override is serialized to base units on the wire.
+    fireEvent.change(screen.getByTestId('tip-override-store'), { target: { value: 'store-xyz' } });
+    fireEvent.change(screen.getByTestId('tip-override-amount'), { target: { value: '3' } });
+    fireEvent.click(screen.getByTestId('tip-override-add'));
+    await screen.findAllByTestId('tip-override-entry');
     fireEvent.click(screen.getByTestId('tip-manage-save'));
     await waitFor(() => expect(setSpy).toHaveBeenCalled());
     const sent = setSpy.mock.calls[0][0] as { creator: { per_site_overrides: Record<string, number> } };
     expect(sent.creator.per_site_overrides['store-xyz']).toBe(3000);
-
-    // Remove the first override.
-    const before = screen.getAllByTestId('tip-override-entry').length;
-    fireEvent.click(screen.getAllByTestId('tip-override-remove')[0]);
-    await waitFor(() => expect(screen.queryAllByTestId('tip-override-entry').length).toBe(before - 1));
   });
 
   it('toggles the dev policy and switches the creator mode to the daily budget', async () => {
     const setSpy = vi.fn();
     mockSw({ phase: 'paired', setSpy });
     renderWithProviders(<ManageAutoTipSection nodeOnline />);
-    await waitFor(() => expect(screen.getByTestId('tip-manage-form')).toBeTruthy());
+    expect(await screen.findByTestId('tip-manage-form')).toBeTruthy();
     // The dev policy starts disabled (fixture) — flip it ON, and pick daily-budget mode for the creator.
     fireEvent.click(screen.getByTestId('tip-dev-enable'));
     fireEvent.click(within(screen.getByTestId('tip-policy-creator')).getByTestId('seg-daily-budget'));
@@ -111,9 +124,9 @@ describe('ManageAutoTipSection', () => {
   it('blocks save + shows an error when an amount is malformed', async () => {
     mockSw({ phase: 'paired' });
     renderWithProviders(<ManageAutoTipSection nodeOnline />);
-    await waitFor(() => expect(screen.getByTestId('tip-manage-form')).toBeTruthy());
+    expect(await screen.findByTestId('tip-manage-form')).toBeTruthy();
     fireEvent.change(screen.getByTestId('tip-creator-amount'), { target: { value: '1.2.3' } });
-    await waitFor(() => expect(screen.getByTestId('tip-manage-invalid')).toBeTruthy());
+    expect(await screen.findByTestId('tip-manage-invalid')).toBeTruthy();
     expect((screen.getByTestId('tip-manage-save') as HTMLButtonElement).disabled).toBe(true);
   });
 });

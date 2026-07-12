@@ -69,9 +69,9 @@ describe('AccountSwitcher (#95)', () => {
   it('opens the manager sheet and lists every account with its index', async () => {
     mockRegistry({ accounts: TWO_ACCOUNTS, activeIndex: 0 });
     renderWithProviders(<AccountSwitcher />);
-    await waitFor(() => screen.getByTestId('account-switcher-toggle'));
+    await screen.findByTestId('account-switcher-toggle');
     fireEvent.click(screen.getByTestId('account-switcher-toggle'));
-    await waitFor(() => screen.getByTestId('account-list'));
+    await screen.findByTestId('account-list');
     expect(screen.getByTestId('account-row-a0')).toBeInTheDocument();
     expect(screen.getByTestId('account-row-a1')).toBeInTheDocument();
     expect(screen.getByTestId('account-index-a1')).toHaveTextContent('5');
@@ -82,9 +82,9 @@ describe('AccountSwitcher (#95)', () => {
   it('switching an account calls setActiveIndex with THAT account\'s index (#165, not a new scan)', async () => {
     const send = mockRegistry({ accounts: TWO_ACCOUNTS, activeIndex: 0 });
     renderWithProviders(<AccountSwitcher />);
-    await waitFor(() => screen.getByTestId('account-switcher-toggle'));
+    await screen.findByTestId('account-switcher-toggle');
     fireEvent.click(screen.getByTestId('account-switcher-toggle'));
-    await waitFor(() => screen.getByTestId('account-switch-a1'));
+    await screen.findByTestId('account-switch-a1');
     fireEvent.click(screen.getByTestId('account-switch-a1'));
     await waitFor(() => {
       const call = send.mock.calls.find((c) => (c[0] as { action?: string }).action === 'setActiveIndex');
@@ -96,9 +96,9 @@ describe('AccountSwitcher (#95)', () => {
   it('adds a new account via the add form', async () => {
     const send = mockRegistry({ accounts: [{ id: 'a0', label: 'Main', index: 0 }], activeIndex: 0 });
     renderWithProviders(<AccountSwitcher />);
-    await waitFor(() => screen.getByTestId('account-switcher-toggle'));
+    await screen.findByTestId('account-switcher-toggle');
     fireEvent.click(screen.getByTestId('account-switcher-toggle'));
-    await waitFor(() => screen.getByTestId('account-add-input'));
+    await screen.findByTestId('account-add-input');
     fireEvent.change(screen.getByTestId('account-add-input'), { target: { value: 'Trading' } });
     fireEvent.click(screen.getByTestId('account-add-submit'));
     await waitFor(() => {
@@ -111,9 +111,9 @@ describe('AccountSwitcher (#95)', () => {
   it('renames an account inline', async () => {
     const send = mockRegistry({ accounts: TWO_ACCOUNTS, activeIndex: 0 });
     renderWithProviders(<AccountSwitcher />);
-    await waitFor(() => screen.getByTestId('account-switcher-toggle'));
+    await screen.findByTestId('account-switcher-toggle');
     fireEvent.click(screen.getByTestId('account-switcher-toggle'));
-    await waitFor(() => screen.getByTestId('account-rename-a1'));
+    await screen.findByTestId('account-rename-a1');
     fireEvent.click(screen.getByTestId('account-rename-a1'));
     fireEvent.change(screen.getByTestId('account-rename-input-a1'), { target: { value: 'Vault' } });
     fireEvent.click(screen.getByTestId('account-rename-save-a1'));
@@ -126,11 +126,11 @@ describe('AccountSwitcher (#95)', () => {
   it('removes a non-last account after the two-step confirm', async () => {
     const send = mockRegistry({ accounts: TWO_ACCOUNTS, activeIndex: 0 });
     renderWithProviders(<AccountSwitcher />);
-    await waitFor(() => screen.getByTestId('account-switcher-toggle'));
+    await screen.findByTestId('account-switcher-toggle');
     fireEvent.click(screen.getByTestId('account-switcher-toggle'));
-    await waitFor(() => screen.getByTestId('account-remove-a1'));
+    await screen.findByTestId('account-remove-a1');
     fireEvent.click(screen.getByTestId('account-remove-a1'));
-    await waitFor(() => screen.getByTestId('account-remove-yes-a1'));
+    await screen.findByTestId('account-remove-yes-a1');
     fireEvent.click(screen.getByTestId('account-remove-yes-a1'));
     await waitFor(() => {
       const call = send.mock.calls.find((c) => (c[0] as { action?: string }).action === 'removeAccount');

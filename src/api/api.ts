@@ -48,6 +48,10 @@ export const TAGS = [
   // the /ws transport and live-patched by the pushed `{type:"tip"}` frame.
   'TipConfig',
   'TipLedger',
+  // Node-managed unlock auth (#431/#432/#433, SPEC §18.24): the node `auth.status` (mode/method/
+  // session-state) read over the /ws transport; every auth mutation (set_mode/set_method/enroll/
+  // unlock/sign_unlock/lock) invalidates it so the Security tab + sign gate re-read the live posture.
+  'Auth',
 ] as const;
 
 /**

@@ -12,6 +12,8 @@ import { assessRecipient } from '@/features/contacts/address-poisoning';
 import { ViewHeader } from '@/components/ViewHeader';
 import { isFullpageSurface } from '@/features/collectibles/surface';
 import { QrScanner } from '@/features/wallet/custody/QrScanner';
+import { useSignGate } from '@/features/security/useSignGate';
+import { SignUnlockModal } from '@/features/security/SignUnlockModal';
 
 const XCH_DECIMALS = 12;
 
@@ -86,6 +88,9 @@ export function SendPanel({
   const consolidating = useConsolidatingSend({ pollMs });
   const [confirmSend, conf] = useConfirmSendMutation();
   const [pollStatus] = useLazySendStatusQuery();
+  // Per-transaction sign gate (SPEC §18.24, #433): when the dig-node is the signer (#374), a fresh
+  // unlock is required before this signature. Inert (pure passthrough) in the local-vault default.
+  const signGate = useSignGate();
 
   const { contacts, recents, labelForAddress, recordRecent, add: addContact } = useContacts();
   const recipientLabel = labelForAddress(recipient);
@@ -221,6 +226,8 @@ export function SendPanel({
         onConfirm={() => consolidating.resolvePrompt(true)}
         onCancel={() => consolidating.resolvePrompt(false)}
       />
+      {/* Per-transaction unlock prompt (#433): shown before the spend signs when the node is the signer. */}
+      <SignUnlockModal {...signGate.modal} />
       <ViewHeader
         onBack={headerBack}
         backLabel={headerBackLabel}
@@ -468,7 +475,7 @@ export function SendPanel({
           {isChiaAddress(recipient) && (
             <SaveRecipientInline alreadySaved={!!recipientLabel} onSave={(label) => addContact({ label, address: recipient })} />
           )}
-          <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-confirm" onClick={() => void doConfirm()} disabled={busy}>
+          <button type="button" className="dig-btn dig-btn--primary dig-btn--block" data-testid="send-confirm" onClick={() => signGate.guard(() => void doConfirm())} disabled={busy}>
             <FormattedMessage id="send.confirm" />
           </button>
         </div>
