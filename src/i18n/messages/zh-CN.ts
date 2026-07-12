@@ -1155,4 +1155,13 @@ export const zhCN: Record<string, string> = {
   'consolidate.progress.note': '这可能需要一点时间。请保持打开。',
   'send.error.needsConsolidation': '此付款需要先合并您的小额币。请再试一次以合并它们。',
   'send.error.consolidationTimeout': '合并未能及时确认。请稍候再试。',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': '已同步',
+  'wallet.sync.syncing': '同步中',
+  'wallet.sync.disconnected': '已断开',
+  'wallet.sync.syncing.title': '钱包同步中',
+  'wallet.sync.syncing.detail': '正在追赶链数据（区块 {peak} / {target}）。余额和交易尚未最终确定。',
+  'wallet.sync.syncing.detail.indeterminate': '正在追赶链数据（区块 {peak}）。余额和交易尚未最终确定。',
+  'wallet.sync.disconnected.title': '钱包已断开',
+  'wallet.sync.disconnected.detail': '无法连接本地 dig-node。实时余额和发送功能不可用；显示的内容可能是缓存的且已过期。',
 };

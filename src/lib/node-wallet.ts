@@ -126,19 +126,35 @@ export interface NodeWalletClient {
 const LIST_LIMIT = 1000;
 
 /**
- * Build a {@link NodeWalletClient} that POSTs Sage-parity methods to `base` (e.g.
- * `http://localhost:9778`). `fetch` + `timeoutMs` are injected; a non-2xx response or a transport
- * error throws (the SW then falls back to coinset in `auto` mode, or surfaces an error in a strict
- * node/custom mode — `wallet-source.ts`).
+ * Transport for one Sage-parity method call — the seam that lets the SAME response mappers below
+ * serve BOTH the legacy HTTP POST path AND the #372 `/ws` wallet+control socket. Given a method +
+ * params, resolve the raw Sage JSON result (or throw on failure). The socket implementation is the
+ * WS controller's `request()` (dig-node SPEC §4.8); the default is the plain `POST {base}/{method}`.
+ */
+export type NodeWalletTransport = (method: string, params: Record<string, unknown>) => Promise<unknown>;
+
+/**
+ * Build a {@link NodeWalletClient} for the dig-node at `base` (e.g. `http://localhost:9778`).
+ *
+ * By default it POSTs Sage-parity methods over HTTP (`POST {base}/{method}`). Pass `sendRequest` to
+ * carry the SAME reads over the #372 `/ws` socket instead (correlated request/response) — the
+ * response mappers are transport-agnostic, so the socket and HTTP paths return byte-identical
+ * shapes. `fetch` + `timeoutMs` are injected for the HTTP path; a non-2xx response, a transport
+ * error, or a rejected socket request throws (the SW then falls back — to HTTP when the socket is
+ * down, to coinset in `auto` mode, or surfaces the error in a strict node/custom mode).
  */
 export function makeNodeWalletClient(
   base: string,
-  { fetch: fetchImpl = fetch, timeoutMs = 12_000 }: { fetch?: typeof fetch; timeoutMs?: number } = {},
+  {
+    fetch: fetchImpl = fetch,
+    timeoutMs = 12_000,
+    sendRequest,
+  }: { fetch?: typeof fetch; timeoutMs?: number; sendRequest?: NodeWalletTransport } = {},
 ): NodeWalletClient {
   const root = base.replace(/\/+$/, '');
 
   /** POST one Sage method (`POST {base}/{method}`); parse JSON on 2xx, throw the text body otherwise. */
-  async function call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  async function httpCall<T>(method: string, params: Record<string, unknown>): Promise<T> {
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
     try {
@@ -156,6 +172,12 @@ export function makeNodeWalletClient(
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+
+  /** Route one method over the injected socket transport when present, else the HTTP POST path. */
+  async function call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    if (sendRequest) return (await sendRequest(method, params)) as T;
+    return httpCall<T>(method, params);
   }
 
   return {

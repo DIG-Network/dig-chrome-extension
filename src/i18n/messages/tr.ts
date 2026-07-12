@@ -1156,4 +1156,13 @@ export const tr: Record<string, string> = {
   'consolidate.progress.note': 'Bu biraz zaman alabilir. Bunu açık tutun.',
   'send.error.needsConsolidation': 'Bu ödeme için önce küçük coinlerinizin birleştirilmesi gerekir. Birleştirmek için tekrar deneyin.',
   'send.error.consolidationTimeout': 'Birleştirme zamanında onaylanmadı. Bir süre bekleyip tekrar deneyin.',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': 'Eşitlendi',
+  'wallet.sync.syncing': 'Eşitleniyor',
+  'wallet.sync.disconnected': 'Bağlantı kesildi',
+  'wallet.sync.syncing.title': 'Cüzdan eşitleniyor',
+  'wallet.sync.syncing.detail': 'Zincire yetişiliyor (blok {peak}/{target}). Bakiyeler ve işlemler henüz kesinleşmedi.',
+  'wallet.sync.syncing.detail.indeterminate': 'Zincire yetişiliyor (blok {peak}). Bakiyeler ve işlemler henüz kesinleşmedi.',
+  'wallet.sync.disconnected.title': 'Cüzdan bağlantısı kesildi',
+  'wallet.sync.disconnected.detail': 'Yerel dig-node erişilebilir değil. Canlı bakiyeler ve gönderme kullanılamıyor; gösterilen içerik önbelleğe alınmış ve güncel olmayabilir.',
 };

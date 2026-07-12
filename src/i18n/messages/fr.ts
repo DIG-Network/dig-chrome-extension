@@ -1156,4 +1156,13 @@ export const fr: Record<string, string> = {
   'consolidate.progress.note': 'Cela peut prendre un instant. Gardez cette fenêtre ouverte.',
   'send.error.needsConsolidation': 'Ce paiement nécessite d’abord de regrouper vos petites pièces. Réessayez pour les regrouper.',
   'send.error.consolidationTimeout': 'Le regroupement n’a pas été confirmé à temps. Patientez un instant et réessayez.',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': 'Synchronisé',
+  'wallet.sync.syncing': 'Synchronisation',
+  'wallet.sync.disconnected': 'Déconnecté',
+  'wallet.sync.syncing.title': 'Synchronisation du portefeuille',
+  'wallet.sync.syncing.detail': 'Rattrapage de la chaîne (bloc {peak} sur {target}). Les soldes et les transactions ne sont pas encore définitifs.',
+  'wallet.sync.syncing.detail.indeterminate': 'Rattrapage de la chaîne (bloc {peak}). Les soldes et les transactions ne sont pas encore définitifs.',
+  'wallet.sync.disconnected.title': 'Portefeuille déconnecté',
+  'wallet.sync.disconnected.detail': 'Le dig-node local est injoignable. Les soldes en direct et l’envoi sont indisponibles ; le contenu affiché peut être en cache et obsolète.',
 };

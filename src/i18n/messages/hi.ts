@@ -1155,4 +1155,13 @@ export const hi: Record<string, string> = {
   'consolidate.progress.note': 'इसमें थोड़ा समय लग सकता है। इसे खुला रखें।',
   'send.error.needsConsolidation': 'इस भुगतान के लिए पहले आपके छोटे सिक्कों को मिलाना ज़रूरी है। उन्हें मिलाने के लिए फिर से प्रयास करें।',
   'send.error.consolidationTimeout': 'मिलाना समय पर पुष्ट नहीं हुआ। थोड़ी देर रुककर फिर से प्रयास करें।',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': 'सिंक हो गया',
+  'wallet.sync.syncing': 'सिंक हो रहा है',
+  'wallet.sync.disconnected': 'डिस्कनेक्ट',
+  'wallet.sync.syncing.title': 'वॉलेट सिंक हो रहा है',
+  'wallet.sync.syncing.detail': 'चेन के साथ तालमेल किया जा रहा है (ब्लॉक {peak}/{target})। शेष राशि और लेनदेन अभी अंतिम नहीं हैं।',
+  'wallet.sync.syncing.detail.indeterminate': 'चेन के साथ तालमेल किया जा रहा है (ब्लॉक {peak})। शेष राशि और लेनदेन अभी अंतिम नहीं हैं।',
+  'wallet.sync.disconnected.title': 'वॉलेट डिस्कनेक्ट हो गया',
+  'wallet.sync.disconnected.detail': 'स्थानीय dig-node तक नहीं पहुँचा जा सका। लाइव शेष राशि और भेजना उपलब्ध नहीं है; दिखाई गई सामग्री कैश की गई और पुरानी हो सकती है।',
 };

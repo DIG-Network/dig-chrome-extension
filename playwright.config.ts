@@ -29,6 +29,7 @@ export default defineConfig({
     '**/qr-scanner-camera.spec.ts',
     '**/settings-prefs.spec.ts',
     '**/accounts-keys.spec.ts',
+    '**/wallet-sync-status.spec.ts',
   ],
   fullyParallel: true,
   reporter: 'list',

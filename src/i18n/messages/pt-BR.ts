@@ -1156,4 +1156,13 @@ export const ptBR: Record<string, string> = {
   'consolidate.progress.note': 'Isso pode levar um momento. Mantenha isto aberto.',
   'send.error.needsConsolidation': 'Este pagamento precisa que suas moedas pequenas sejam combinadas primeiro. Tente novamente para combiná-las.',
   'send.error.consolidationTimeout': 'A combinação não foi confirmada a tempo. Aguarde um momento e tente novamente.',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': 'Sincronizado',
+  'wallet.sync.syncing': 'Sincronizando',
+  'wallet.sync.disconnected': 'Desconectado',
+  'wallet.sync.syncing.title': 'Sincronizando a carteira',
+  'wallet.sync.syncing.detail': 'Acompanhando a cadeia (bloco {peak} de {target}). Os saldos e as transações ainda não são definitivos.',
+  'wallet.sync.syncing.detail.indeterminate': 'Acompanhando a cadeia (bloco {peak}). Os saldos e as transações ainda não são definitivos.',
+  'wallet.sync.disconnected.title': 'Carteira desconectada',
+  'wallet.sync.disconnected.detail': 'O dig-node local não está acessível. Saldos ao vivo e envio estão indisponíveis; o conteúdo exibido pode estar em cache e desatualizado.',
 };

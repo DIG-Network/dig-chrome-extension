@@ -1155,4 +1155,13 @@ export const ru: Record<string, string> = {
   'consolidate.progress.note': 'Это может занять некоторое время. Не закрывайте это окно.',
   'send.error.needsConsolidation': 'Для этого платежа сначала нужно объединить мелкие монеты. Повторите попытку, чтобы объединить их.',
   'send.error.consolidationTimeout': 'Объединение не подтвердилось вовремя. Подождите немного и повторите попытку.',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': 'Синхронизировано',
+  'wallet.sync.syncing': 'Синхронизация',
+  'wallet.sync.disconnected': 'Отключено',
+  'wallet.sync.syncing.title': 'Кошелёк синхронизируется',
+  'wallet.sync.syncing.detail': 'Догоняем цепочку (блок {peak} из {target}). Балансы и транзакции ещё не окончательны.',
+  'wallet.sync.syncing.detail.indeterminate': 'Догоняем цепочку (блок {peak}). Балансы и транзакции ещё не окончательны.',
+  'wallet.sync.disconnected.title': 'Кошелёк отключён',
+  'wallet.sync.disconnected.detail': 'Локальный dig-node недоступен. Актуальные балансы и отправка недоступны; показанное содержимое может быть кэшированным и устаревшим.',
 };

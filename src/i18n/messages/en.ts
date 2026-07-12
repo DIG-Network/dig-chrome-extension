@@ -1192,4 +1192,13 @@ export const en: Record<string, string> = {
   'consolidate.progress.note': 'This can take a moment. Keep this open.',
   'send.error.needsConsolidation': 'This payment needs your small coins combined first. Try again to combine them.',
   'send.error.consolidationTimeout': 'The combine didn’t confirm in time. Wait a moment and try again.',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': 'Synced',
+  'wallet.sync.syncing': 'Syncing',
+  'wallet.sync.disconnected': 'Disconnected',
+  'wallet.sync.syncing.title': 'Wallet syncing',
+  'wallet.sync.syncing.detail': 'Catching up to the chain (block {peak} of {target}). Balances and transactions aren’t final yet.',
+  'wallet.sync.syncing.detail.indeterminate': 'Catching up to the chain (block {peak}). Balances and transactions aren’t final yet.',
+  'wallet.sync.disconnected.title': 'Wallet disconnected',
+  'wallet.sync.disconnected.detail': 'The local dig-node isn’t reachable. Live balances and sending are unavailable; any content shown may be cached and out of date.',
 };

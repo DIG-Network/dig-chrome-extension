@@ -820,7 +820,7 @@ non-DIG query goes to the chosen fallback, never back through the DIG sentinel.
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `34`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `35`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -967,8 +967,44 @@ MAY fail with the coded `NEEDS_CONSOLIDATION` (recoverable — the client combin
 `INSUFFICIENT_FUNDS` (terminal), surfaced through the standard failure shape — no request-field
 change. Purely additive — no existing action/shape changed.
 
+`MESSAGE_PROTOCOL_VERSION` `35` (#372/#373 thin-client transport + syncing UI, §11.1) added
+`getWalletSyncStatus` — the SW-cached wallet SYNC tri-state (`syncing`|`synced`|`disconnected` +
+`peakHeight`/`targetHeight`) the dig-node PUSHES over the `/ws` wallet+control transport. Wallet
+READS and `control.*` ops now ride that same socket when it is up (correlated request/response),
+transparently falling back to the existing HTTP POST path when it is not. The popup hydrates from
+`getWalletSyncStatus` and live-patches it from the SW's `walletSyncStatusChanged` broadcast (no
+polling), driving the first-class syncing/disconnected UI. Purely additive — no existing
+action/shape changed; the `chia://` resolver transport is UNCHANGED.
+
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
+
+### 11.1 Wallet+control WebSocket transport + first-class sync status (#372/#373)
+
+The extension carries ALL wallet READS and every `control.*`/`pairing.*` op to the local dig-node
+over ONE bidirectional WebSocket to `<base>/ws` (dig-node SPEC §4.8), and consumes the node's
+proactive sync-status + coin-state pushes on the same socket. Only the WALLET + CONTROL planes move
+to the socket; the `chia://` RESOLVER transport (§8, the `/s/` serve + §5.3 ladder content path) is
+UNCHANGED.
+
+- **Client→node frames.** A request is `{ type:"request", id, method, params, token? }`, where `id`
+  correlates the reply, `method` is any served Sage wallet method or a `control.*`/`pairing.*`
+  method, and `token` is the paired control token (#280) — attached to gated ops (wallet mutations +
+  `control.*`), omitted for open reads and the pairing bootstrap.
+- **Node→client frames.** `{ type:"response", id, ok, result?, error? }` correlates by `id`;
+  `{ type:"sync_status", state, peak_height?, target_height? }` is pushed once on connect and on
+  every transition; `{ type:"event", event }` forwards each sync `SyncEvent` (e.g. `coin_state`).
+- **Transport controller.** `createWalletControlWsController` (`src/lib/dig-node-wallet-ws.ts`) holds
+  the single socket in the SW: connect/reconnect with exponential backoff + a staleness watchdog
+  (as the `/ws/status` liveness controller), a monotonic request-id → promise map, per-request
+  timeout, and rejection of all in-flight requests on socket close. A `request()` while the socket
+  is down rejects with `NOT_CONNECTED` so callers fall back to HTTP. The response mappers in
+  `makeNodeWalletClient` are transport-agnostic, so the socket and HTTP paths return identical shapes.
+- **First-class sync state.** The pushed `sync_status` drives the wallet UI: `syncing` shows a
+  prominent "Syncing (peak/target)" banner + header pill and gates trust in balances/spends;
+  `synced` is the normal wallet; `disconnected` (socket down) shows a clear non-functional
+  DISCONNECTED alert and labels any still-visible content as cached/out-of-date. There is no silent
+  degraded mode and no coinset fallback for wallet DATA when the wallet source is the node.
 
 ### 9.1 In-window app-view framing bypass (`*.on.dig.net`)
 

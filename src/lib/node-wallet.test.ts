@@ -34,6 +34,34 @@ describe('makeNodeWalletClient — request wiring', () => {
   });
 });
 
+describe('makeNodeWalletClient — injected socket transport (#372)', () => {
+  it('routes reads over sendRequest (the /ws socket) instead of HTTP, sharing the mappers', async () => {
+    const { fetchImpl, calls } = fakeFetch({});
+    const sent: { method: string; params: Record<string, unknown> }[] = [];
+    const sendRequest = async (method: string, params: Record<string, unknown>) => {
+      sent.push({ method, params });
+      if (method === 'get_sync_status') return { synced_coins: 3, total_coins: 3, selectable_balance: 99 };
+      if (method === 'get_cats') return { cats: [{ asset_id: '0xAA', balance: 7 }] };
+      return {};
+    };
+    const client = makeNodeWalletClient('http://localhost:9778', { fetch: fetchImpl, sendRequest });
+
+    // Same mapper output as the HTTP path — but no fetch happened.
+    expect(await client.getBalances()).toEqual({ xch: 99, cats: { aa: 7 } });
+    expect(calls).toHaveLength(0);
+    expect(sent.map((s) => s.method).sort()).toEqual(['get_cats', 'get_sync_status']);
+  });
+
+  it('propagates a rejected socket request so the SW can fall back to HTTP', async () => {
+    const { fetchImpl } = fakeFetch({});
+    const sendRequest = async () => {
+      throw new Error('wallet ws not connected');
+    };
+    const client = makeNodeWalletClient('http://n', { fetch: fetchImpl, sendRequest });
+    await expect(client.getSyncStatus()).rejects.toThrow(/not connected/);
+  });
+});
+
 describe('defensive parsing (missing / non-finite / empty)', () => {
   it('defaults missing sync-status fields to 0 / synced', async () => {
     const { fetchImpl } = fakeFetch({ get_sync_status: {} });

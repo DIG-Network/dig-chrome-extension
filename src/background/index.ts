@@ -177,6 +177,15 @@ import { createPairingController } from '@/lib/dig-pairing';
 // #239 live node-status controller: the SW holds a WebSocket to the local node's `/ws/status`,
 // re-connecting with backoff, and broadcasts every transition so the popup shows live liveness.
 import { createNodeWsController, initialNodeLiveStatus } from '@/lib/dig-node-ws';
+// #372 wallet+control WS transport: ONE bidirectional socket to the node's `/ws` (SPEC §4.8) that
+// carries wallet reads + control.* (correlated request/response) and receives sync_status/event
+// pushes. Additive — a rejected request falls back to the existing HTTP path.
+import {
+  createWalletControlWsController,
+  initialWalletSyncStatus,
+  WalletWsRequestError,
+  WALLET_WS_ERR,
+} from '@/lib/dig-node-wallet-ws';
 
 // DIG Shields per-resource proof LEDGER (#134, mirrored from the browser): the per-tab/
 // per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
@@ -341,6 +350,20 @@ async function readFromNodeSource(nodeFn) {
     };
   }
   try {
+    // #372 socket-first: when the /ws transport is up AND this is the §5.3 ladder node (not a
+    // custom URL that may differ from the socket's node), carry the read over the socket; a
+    // transport-level socket failure falls back to the HTTP client for the SAME read. The response
+    // mappers are transport-agnostic (node-wallet.ts), so both paths return identical shapes.
+    if (source.kind === 'node' && walletControlWs.isConnected()) {
+      const wsClient = makeNodeWalletClient(source.base, {
+        sendRequest: (method, params) => walletControlWs.request(method, params),
+      });
+      try {
+        return { handled: true, result: await nodeFn(wsClient) };
+      } catch (e) {
+        if (!isWalletWsTransportError(e)) throw e; // a real node/read error → surface per strict below
+      }
+    }
     return { handled: true, result: await nodeFn(makeNodeWalletClient(source.base)) };
   } catch (e) {
     // A forced (node/custom) source surfaces the error; auto falls through to coinset.
@@ -455,13 +478,14 @@ const pairingController = createPairingController({
   requestPairing: async (clientName) => {
     const ep = await controlEndpointOrNull();
     if (!ep) return null;
-    const r = await controlRpc(ep, 'pairing.request', { client_name: clientName });
+    // #372: OPEN pairing bootstrap over /ws when connected (SPEC §7.11), else HTTP.
+    const r = await controlViaWsOrHttp(ep, 'pairing.request', { client_name: clientName });
     return r && r.result ? r.result : null;
   },
   pollPairing: async (pairingId) => {
     const ep = await controlEndpointOrNull();
     if (!ep) return null;
-    const r = await controlRpc(ep, 'pairing.poll', { pairing_id: pairingId });
+    const r = await controlViaWsOrHttp(ep, 'pairing.poll', { pairing_id: pairingId });
     return r && r.result ? r.result : null;
   },
   loadToken: loadPairedToken,
@@ -470,6 +494,70 @@ const pairingController = createPairingController({
 });
 // Hydrate any previously-stored token → paired, so a returning user is already paired.
 void pairingController.hydrate();
+
+// ─── #372/#373 wallet+control WS transport + first-class sync-status ───────────────────────────
+//
+// ONE bidirectional socket to the node's `/ws` (SPEC §4.8): wallet reads + control.* ops ride it
+// with correlated request/response, and the node PUSHES sync_status + coin_state events. Additive:
+// when the socket is down, `walletControlWs.request()` rejects with a transport code and the callers
+// below fall back to the existing HTTP path (nothing breaks on an older node or a momentary drop).
+
+/** The last wallet sync status pushed over `/ws`, so a fresh popup hydrates without waiting. */
+let _walletSyncStatus = initialWalletSyncStatus();
+
+const walletControlWs = createWalletControlWsController({
+  resolveBase: resolveLocalDigNode,
+  // Attach the paired control token to gated ops (mutations + control.*); reads are open (SPEC §7.12).
+  getToken: () => pairingController.getToken(),
+  onSyncStatus: (walletSync) => {
+    _walletSyncStatus = walletSync;
+    broadcastRuntime({ action: 'walletSyncStatusChanged', walletSync });
+  },
+  // A pushed coin_state/tx event means wallet data changed — tell the popup to refetch (no polling).
+  onEvent: (event) => {
+    const kind = event && typeof event === 'object' ? (event as { type?: string }).type : undefined;
+    if (kind === 'coin_state' || kind === 'transaction' || kind === 'balance') {
+      broadcastRuntime({ action: 'nodeWalletDataChanged' });
+    }
+  },
+});
+try {
+  walletControlWs.start();
+} catch { /* no WebSocket in some test contexts */ }
+
+/** True when a WS request errored purely at the transport layer (→ fall back to HTTP). */
+function isWalletWsTransportError(e) {
+  return (
+    e instanceof WalletWsRequestError &&
+    (e.code === WALLET_WS_ERR.NOT_CONNECTED ||
+      e.code === WALLET_WS_ERR.SOCKET_CLOSED ||
+      e.code === WALLET_WS_ERR.TIMEOUT)
+  );
+}
+
+/**
+ * Drive a control.* / cache / pairing method over the `/ws` socket when it is connected, else the HTTP
+ * `controlRpc`. Returns the SAME `{ result }` | `{ error:{code,message} }` shape as `controlRpc` so
+ * every existing caller (controlAuthed, cache.*, pairing) is unchanged. A transport-level socket
+ * failure transparently falls back to HTTP.
+ */
+async function controlViaWsOrHttp(endpoint, method, params, token) {
+  if (walletControlWs.isConnected()) {
+    try {
+      const result = await walletControlWs.request(method, params || {});
+      return { result };
+    } catch (e) {
+      if (isWalletWsTransportError(e)) {
+        // socket dropped mid-call → HTTP fallback below
+      } else if (e instanceof WalletWsRequestError) {
+        return { error: { code: e.code, message: e.message } };
+      } else {
+        return { error: { code: -32603, message: e instanceof Error ? e.message : String(e) } };
+      }
+    }
+  }
+  return controlRpc(endpoint, method, params, token);
+}
 
 // Build a data: URL for the branded, white-theme chia:// error page. Uses the shared
 // error-page builder so the message is mapped to a friendly, non-leaking cause (internal
@@ -3159,6 +3247,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  // #372/#373: the SW-cached wallet SYNC status (pushed by the node over /ws). The popup hydrates
+  // from this and live-patches from the `walletSyncStatusChanged` broadcast — no polling.
+  if (message.action === ACTIONS.getWalletSyncStatus) {
+    sendResponse(_walletSyncStatus);
+    return false;
+  }
+
   // OPEN cache.* (#279 — no control token): drive the reserved-cap / LRU management surface.
   if (
     message.action === ACTIONS.cacheGetConfig ||
@@ -3180,7 +3275,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         [ACTIONS.cacheStats]: ['cache.stats', {}],
       };
       const [method, params] = map[message.action];
-      const resp = await controlRpc(ep, method, params); // OPEN — no token
+      const resp = await controlViaWsOrHttp(ep, method, params); // OPEN — no token; /ws when up, else HTTP
       if (resp && resp.result !== undefined) sendResponse(resp.result);
       else sendResponse({ success: false, error: (resp && resp.error && resp.error.message) || 'cache RPC failed' });
     })();
@@ -3215,7 +3310,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!ep) { sendResponse({ success: false, error: 'no local dig-node' }); return; }
       const token = pairingController.getToken();
       if (!token) { sendResponse({ success: false, error: 'not paired', code: -32030 }); return; }
-      const resp = await controlRpc(ep, message.method, message.params || {}, token);
+      // #372: token-gated control.* over /ws when connected (the socket attaches the token), else HTTP.
+      const resp = await controlViaWsOrHttp(ep, message.method, message.params || {}, token);
       if (isUnauthorizedControlResult(resp)) {
         // The stored token no longer authorizes (revoked): forget it so the UI re-pairs.
         await pairingController.unpair();

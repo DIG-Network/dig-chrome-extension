@@ -15,6 +15,8 @@ export const TAGS = [
   // dig-node control panel (#278/#281): the live node status, the OPEN cache/LRU surface, the
   // control-token pairing state, and the token-gated management surfaces.
   'NodeLiveStatus',
+  // Thin-client wallet sync status (#372/#373): the /ws-pushed syncing|synced|disconnected state.
+  'WalletSyncStatus',
   'Cache',
   'Pairing',
   'Upstream',
