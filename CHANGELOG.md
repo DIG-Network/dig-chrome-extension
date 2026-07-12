@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.91.0] - 2026-07-12
+
+### Features
+- **ext:** Verification-ledger consumer (proof modal + Verified-by-Chia badge) + legacy cleanup (#124)
+
 ## [1.90.0] - 2026-07-12
 
 ### Features
