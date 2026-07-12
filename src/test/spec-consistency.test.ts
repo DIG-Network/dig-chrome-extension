@@ -48,7 +48,7 @@ test('node-resolution ladder tries dig.local before the explicit IPv4 127.0.0.1:
 });
 
 test('SPEC documents the current message-protocol version', () => {
-  assert.equal(MESSAGE_PROTOCOL_VERSION, 34);
+  assert.equal(MESSAGE_PROTOCOL_VERSION, 35);
   assert.match(SPEC, new RegExp(`MESSAGE_PROTOCOL_VERSION[^\\n]*\\b${MESSAGE_PROTOCOL_VERSION}\\b`));
 });
 

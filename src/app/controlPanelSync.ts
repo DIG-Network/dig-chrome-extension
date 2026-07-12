@@ -1,6 +1,10 @@
 import { api } from '@/api/api';
 import type { AppStore } from '@/app/store';
 import type { NodeLiveStatus } from '@/lib/dig-node-ws';
+import type { WalletSyncStatus } from '@/lib/dig-node-wallet-ws';
+
+/** Wallet-data cache tags a pushed node event invalidates so live coin-state changes refresh views. */
+const WALLET_DATA_TAGS = ['Balances', 'Activity', 'Coins', 'Collectibles', 'Identity'] as const;
 
 /**
  * Bridge the SW's control-panel broadcasts into the RTK Query cache (#278/#281), so an open popup
@@ -17,13 +21,26 @@ export function installControlPanelSync(store: AppStore): () => void {
   if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) {
     return () => {};
   }
-  const listener = (message: { action?: string; status?: NodeLiveStatus } | undefined) => {
+  const listener = (
+    message: { action?: string; status?: NodeLiveStatus; walletSync?: WalletSyncStatus } | undefined,
+  ) => {
     if (!message || typeof message.action !== 'string') return;
     if (message.action === 'nodeLiveStatusChanged' && message.status) {
       const status = message.status;
       store.dispatch(
         api.util.updateQueryData('getNodeLiveStatus' as never, undefined as never, () => status as never),
       );
+    } else if (message.action === 'walletSyncStatusChanged' && message.walletSync) {
+      // #372/#373: the node pushed a sync_status transition over /ws — patch the cache directly so
+      // the "Syncing (peak/target)" / disconnected banner flips with no refetch round-trip.
+      const walletSync = message.walletSync;
+      store.dispatch(
+        api.util.updateQueryData('getWalletSyncStatus' as never, undefined as never, () => walletSync as never),
+      );
+    } else if (message.action === 'nodeWalletDataChanged') {
+      // #372: a pushed coin_state/tx event means the wallet's balances/coins/activity changed —
+      // invalidate so an open view refetches over the socket with no manual refresh.
+      store.dispatch(api.util.invalidateTags([...WALLET_DATA_TAGS] as never));
     } else if (message.action === 'pairingStateChanged') {
       store.dispatch(api.util.invalidateTags(['Pairing' as never]));
     }

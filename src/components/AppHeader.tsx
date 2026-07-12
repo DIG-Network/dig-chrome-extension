@@ -5,6 +5,7 @@ import { popOutToFullpage } from '@/lib/popout';
 import { hasRuntime } from '@/lib/messaging';
 import { StatusPill } from '@/components/StatusPill';
 import { LiveStatusPill } from '@/features/control/LiveStatusSection';
+import { WalletSyncPill } from '@/features/wallet/WalletSyncStatusBanner';
 import { HeaderToolbarToggle } from '@/features/toolbar/HeaderToolbarToggle';
 import type { Surface } from '@/app/layout';
 
@@ -39,6 +40,10 @@ export function AppHeader({ surface }: { surface: Surface }) {
       )}
       {/* #239: live dig-node connection indicator — flips online/offline with no user action. */}
       <LiveStatusPill />
+      {/* #373: first-class wallet SYNC indicator — syncing (catching up) / synced / disconnected,
+          pushed live over the /ws transport (#372). Shows only on the wallet tab to keep the
+          header uncluttered on the resolver/network surfaces. */}
+      {tab === 'wallet' && <WalletSyncPill />}
       <span className="dig-spacer" />
       {/* #306 item 4 — the DIG toolbar switch, inline in the header (moved from the Home tab). */}
       <HeaderToolbarToggle />

@@ -1156,4 +1156,13 @@ export const de: Record<string, string> = {
   'consolidate.progress.note': 'Das kann einen Moment dauern. Lassen Sie dies geöffnet.',
   'send.error.needsConsolidation': 'Für diese Zahlung müssen zuerst Ihre kleinen Coins zusammengeführt werden. Versuchen Sie es erneut, um sie zusammenzuführen.',
   'send.error.consolidationTimeout': 'Das Zusammenführen wurde nicht rechtzeitig bestätigt. Warten Sie einen Moment und versuchen Sie es erneut.',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': 'Synchronisiert',
+  'wallet.sync.syncing': 'Synchronisierung',
+  'wallet.sync.disconnected': 'Getrennt',
+  'wallet.sync.syncing.title': 'Wallet wird synchronisiert',
+  'wallet.sync.syncing.detail': 'Aufholen zur Blockchain (Block {peak} von {target}). Guthaben und Transaktionen sind noch nicht endgültig.',
+  'wallet.sync.syncing.detail.indeterminate': 'Aufholen zur Blockchain (Block {peak}). Guthaben und Transaktionen sind noch nicht endgültig.',
+  'wallet.sync.disconnected.title': 'Wallet getrennt',
+  'wallet.sync.disconnected.detail': 'Der lokale dig-node ist nicht erreichbar. Live-Guthaben und Senden sind nicht verfügbar; angezeigte Inhalte können zwischengespeichert und veraltet sein.',
 };

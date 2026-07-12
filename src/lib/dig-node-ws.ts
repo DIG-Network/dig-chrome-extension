@@ -57,9 +57,18 @@ export function initialNodeLiveStatus(now: number = Date.now()): NodeLiveStatus 
  * input is tolerated.
  */
 export function wsUrlFor(base: string): string {
+  return `${wsBaseFor(base)}/ws/status`;
+}
+
+/**
+ * Convert a resolved dig-node base URL into its scheme-mapped WebSocket origin WITHOUT a path
+ * (`http://dig.local/` → `ws://dig.local`, `https://x:9000` → `wss://x:9000`). Shared by both the
+ * `/ws/status` liveness channel ({@link wsUrlFor}) and the `/ws` wallet+control transport
+ * (`dig-node-wallet-ws.ts`), so the scheme/trailing-slash handling lives in exactly one place.
+ */
+export function wsBaseFor(base: string): string {
   const trimmed = base.replace(/\/+$/, '');
-  const wsBase = trimmed.replace(/^https:\/\//i, 'wss://').replace(/^http:\/\//i, 'ws://');
-  return `${wsBase}/ws/status`;
+  return trimmed.replace(/^https:\/\//i, 'wss://').replace(/^http:\/\//i, 'ws://');
 }
 
 /** Default exponential-backoff bounds (ms) — see {@link nextReconnectDelayMs}. */

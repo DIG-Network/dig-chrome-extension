@@ -1155,4 +1155,13 @@ export const zhTW: Record<string, string> = {
   'consolidate.progress.note': '這可能需要一點時間。請保持開啟。',
   'send.error.needsConsolidation': '此付款需要先合併您的小額幣。請再試一次以合併它們。',
   'send.error.consolidationTimeout': '合併未能及時確認。請稍候再試。',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': '已同步',
+  'wallet.sync.syncing': '同步中',
+  'wallet.sync.disconnected': '已中斷連線',
+  'wallet.sync.syncing.title': '錢包同步中',
+  'wallet.sync.syncing.detail': '正在追趕鏈資料（區塊 {peak} / {target}）。餘額與交易尚未最終確定。',
+  'wallet.sync.syncing.detail.indeterminate': '正在追趕鏈資料（區塊 {peak}）。餘額與交易尚未最終確定。',
+  'wallet.sync.disconnected.title': '錢包已中斷連線',
+  'wallet.sync.disconnected.detail': '無法連線至本機 dig-node。即時餘額與發送功能無法使用；顯示的內容可能是快取且已過期。',
 };

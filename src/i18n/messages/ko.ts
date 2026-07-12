@@ -1155,4 +1155,13 @@ export const ko: Record<string, string> = {
   'consolidate.progress.note': '잠시 걸릴 수 있습니다. 이 창을 열어 두세요.',
   'send.error.needsConsolidation': '이 결제를 위해 먼저 소액 코인을 합쳐야 합니다. 다시 시도하여 합치세요.',
   'send.error.consolidationTimeout': '합치기가 제때 확인되지 않았습니다. 잠시 후 다시 시도하세요.',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': '동기화됨',
+  'wallet.sync.syncing': '동기화 중',
+  'wallet.sync.disconnected': '연결 끊김',
+  'wallet.sync.syncing.title': '지갑 동기화 중',
+  'wallet.sync.syncing.detail': '체인을 따라잡는 중입니다(블록 {peak}/{target}). 잔액과 거래는 아직 확정되지 않았습니다.',
+  'wallet.sync.syncing.detail.indeterminate': '체인을 따라잡는 중입니다(블록 {peak}). 잔액과 거래는 아직 확정되지 않았습니다.',
+  'wallet.sync.disconnected.title': '지갑 연결 끊김',
+  'wallet.sync.disconnected.detail': '로컬 dig-node에 연결할 수 없습니다. 실시간 잔액과 전송을 사용할 수 없으며, 표시된 콘텐츠는 캐시되어 오래된 것일 수 있습니다.',
 };

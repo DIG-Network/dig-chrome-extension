@@ -1155,4 +1155,13 @@ export const id: Record<string, string> = {
   'consolidate.progress.note': 'Ini mungkin perlu waktu sebentar. Biarkan ini terbuka.',
   'send.error.needsConsolidation': 'Pembayaran ini perlu menggabungkan koin kecil Anda terlebih dahulu. Coba lagi untuk menggabungkannya.',
   'send.error.consolidationTimeout': 'Penggabungan tidak dikonfirmasi tepat waktu. Tunggu sebentar dan coba lagi.',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': 'Tersinkron',
+  'wallet.sync.syncing': 'Menyinkronkan',
+  'wallet.sync.disconnected': 'Terputus',
+  'wallet.sync.syncing.title': 'Menyinkronkan dompet',
+  'wallet.sync.syncing.detail': 'Mengejar rantai (blok {peak} dari {target}). Saldo dan transaksi belum final.',
+  'wallet.sync.syncing.detail.indeterminate': 'Mengejar rantai (blok {peak}). Saldo dan transaksi belum final.',
+  'wallet.sync.disconnected.title': 'Dompet terputus',
+  'wallet.sync.disconnected.detail': 'dig-node lokal tidak dapat dijangkau. Saldo langsung dan pengiriman tidak tersedia; konten yang ditampilkan mungkin berupa cache dan sudah usang.',
 };

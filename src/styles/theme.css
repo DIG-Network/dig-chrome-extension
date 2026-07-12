@@ -305,6 +305,56 @@ h2.dig-heading {
   border-color: color-mix(in srgb, var(--dig-bad) 35%, transparent);
   background: color-mix(in srgb, var(--dig-bad) 10%, transparent);
 }
+/* ── first-class wallet syncing / disconnected banner (#373) ── */
+.dig-sync-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.dig-sync-banner__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dig-sync-banner__title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.dig-sync-banner__detail {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.9;
+  line-height: 1.45;
+}
+.dig-sync-progress {
+  height: 6px;
+  width: 100%;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  overflow: hidden;
+}
+.dig-sync-progress__bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--dig-warn, currentColor);
+  transition: width 0.4s ease;
+}
+.dig-sync-progress__bar--indeterminate {
+  width: 40%;
+  animation: dig-sync-indeterminate 1.2s ease-in-out infinite;
+}
+@keyframes dig-sync-indeterminate {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dig-sync-progress__bar { transition: none; }
+  .dig-sync-progress__bar--indeterminate { animation: none; width: 100%; }
+}
 .dig-check {
   font-size: 13px;
   cursor: pointer;

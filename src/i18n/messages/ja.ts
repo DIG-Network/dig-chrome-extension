@@ -1155,4 +1155,13 @@ export const ja: Record<string, string> = {
   'consolidate.progress.note': '少し時間がかかることがあります。この画面を開いたままにしてください。',
   'send.error.needsConsolidation': 'この支払いには、まず小口コインをまとめる必要があります。もう一度お試しください。',
   'send.error.consolidationTimeout': 'まとめる処理が時間内に確認されませんでした。しばらくしてからもう一度お試しください。',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': '同期済み',
+  'wallet.sync.syncing': '同期中',
+  'wallet.sync.disconnected': '切断',
+  'wallet.sync.syncing.title': 'ウォレットを同期中',
+  'wallet.sync.syncing.detail': 'チェーンに追随しています（ブロック {peak}/{target}）。残高と取引はまだ確定していません。',
+  'wallet.sync.syncing.detail.indeterminate': 'チェーンに追随しています（ブロック {peak}）。残高と取引はまだ確定していません。',
+  'wallet.sync.disconnected.title': 'ウォレットが切断されました',
+  'wallet.sync.disconnected.detail': 'ローカルの dig-node に接続できません。リアルタイムの残高と送金は利用できません。表示されている内容はキャッシュされた古いものである可能性があります。',
 };

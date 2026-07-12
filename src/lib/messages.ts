@@ -246,8 +246,18 @@ import { DIG_ERR } from './error-codes';
  * `prepareSend` now funds from a capped, high-value-first selection and may fail with the coded
  * `NEEDS_CONSOLIDATION` / `INSUFFICIENT_FUNDS` (surfaced through the standard failure shape) — no
  * request-field change. Purely additive.
+ *
+ * v35 (#372/#373 thin-client transport + syncing UI): added `getWalletSyncStatus` — the SW-cached
+ * wallet SYNC status pushed by the dig-node over the `/ws` wallet+control transport (SPEC §4.8):
+ * `{ state:'syncing'|'synced'|'disconnected', peakHeight, targetHeight }`. The popup hydrates from
+ * this on mount and live-patches it from the SW's `walletSyncStatusChanged` broadcast (no polling),
+ * driving the first-class syncing / disconnected UI. The wallet READS + `control.*` ops now ride
+ * that same socket when it is up (correlated request/response), transparently falling back to the
+ * existing HTTP POST path when it is not — purely additive, no action name/shape change. The
+ * `chia://` resolver transport is UNCHANGED. Broadcast-only `walletSyncStatusChanged` /
+ * `nodeWalletDataChanged` are SW→popup pushes (not ACTIONS, like `nodeLiveStatusChanged`).
  */
-export const MESSAGE_PROTOCOL_VERSION = 34;
+export const MESSAGE_PROTOCOL_VERSION = 35;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -402,6 +412,8 @@ export const ACTIONS = Object.freeze({
   getControlStatus: 'getControlStatus',
   // ── dig-node control panel (#278/#281): live WS status, OPEN cache/LRU, pairing, authed control ──
   getNodeLiveStatus: 'getNodeLiveStatus',
+  // ── thin-client wallet sync status (#372/#373): the /ws-pushed syncing|synced|disconnected state ──
+  getWalletSyncStatus: 'getWalletSyncStatus',
   cacheGetConfig: 'cacheGetConfig',
   cacheSetCap: 'cacheSetCap',
   cacheList: 'cacheList',
@@ -961,6 +973,11 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'DIG control panel (#239): the SW-cached live node status from the WS `/ws/status` channel (Connected/Connecting/Disconnected + addr/version). Popup hydrates from this and live-patches from the `nodeLiveStatusChanged` broadcast.',
     request: '{ action }',
     response: "{ state:'connecting'|'connected'|'disconnected', base:string|null, addr:string|null, version:string|null, commit:string|null, updatedAt:number }",
+  },
+  [ACTIONS.getWalletSyncStatus]: {
+    summary: "Thin-client wallet sync status (#372/#373): the SW-cached tri-state the dig-node PUSHES over the `/ws` wallet+control transport (SPEC §4.8). syncing = the node's wallet is catching up (balances/spends not final); synced = normal; disconnected = the socket is down (wallet non-functional for live ops, cached content labeled offline). The popup hydrates from this + live-patches from the `walletSyncStatusChanged` broadcast (no polling).",
+    request: '{ action }',
+    response: "{ state:'syncing'|'synced'|'disconnected', peakHeight:number|null, targetHeight:number|null, updatedAt:number }",
   },
   [ACTIONS.cacheGetConfig]: {
     summary: 'OPEN cache.getConfig on the local node (no token): reserved cap + live usage.',

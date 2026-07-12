@@ -1155,4 +1155,13 @@ export const vi: Record<string, string> = {
   'consolidate.progress.note': 'Việc này có thể mất một lát. Hãy giữ cửa sổ này mở.',
   'send.error.needsConsolidation': 'Thanh toán này cần gộp các đồng nhỏ của bạn trước. Hãy thử lại để gộp chúng.',
   'send.error.consolidationTimeout': 'Việc gộp chưa được xác nhận kịp thời. Hãy đợi một lát rồi thử lại.',
+  // ── wallet syncing / disconnected status (#373) ──
+  'wallet.sync.synced': 'Đã đồng bộ',
+  'wallet.sync.syncing': 'Đang đồng bộ',
+  'wallet.sync.disconnected': 'Đã ngắt kết nối',
+  'wallet.sync.syncing.title': 'Đang đồng bộ ví',
+  'wallet.sync.syncing.detail': 'Đang bắt kịp chuỗi (khối {peak}/{target}). Số dư và giao dịch chưa phải là cuối cùng.',
+  'wallet.sync.syncing.detail.indeterminate': 'Đang bắt kịp chuỗi (khối {peak}). Số dư và giao dịch chưa phải là cuối cùng.',
+  'wallet.sync.disconnected.title': 'Ví đã ngắt kết nối',
+  'wallet.sync.disconnected.detail': 'Không thể kết nối dig-node cục bộ. Số dư trực tiếp và gửi không khả dụng; nội dung hiển thị có thể đã lưu trong bộ nhớ đệm và lỗi thời.',
 };
