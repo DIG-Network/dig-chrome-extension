@@ -46,15 +46,26 @@ function assetMatches(asset: DexieAsset, code: string): boolean {
  * sellCode`; this re-checks defensively so a stale/mismatched candidate list can't slip through).
  * "Best" = the highest `buyAmount / sellAmount` ratio — the most `buyCode` per unit of `sellCode`
  * given up. Returns `null` when no candidate matches (an empty book, or `sellCode === buyCode`).
+ *
+ * `desiredSellAmount` (#484 — the swap container's amount-to-swap input) is an OPTIONAL ceiling on
+ * how much of `sellCode` the caller is willing to give up, in the SAME human-decimal units dexie
+ * itself reports (matches `sellLeg.amount`'s convention — no base-unit conversion needed here). A
+ * dexie offer is all-or-nothing (this wallet's take pipeline can't partial-fill one), so sizing
+ * works by FILTERING candidates to ones that fit the ceiling (`sellLeg.amount <= desiredSellAmount`)
+ * and picking the best rate among THOSE — never a global best-rate offer the caller can't/won't
+ * afford. Omitted, `0`, or negative means "no ceiling" (the original unconstrained best-rate pick,
+ * preserved for back-compat with every existing 3-arg call site).
  */
-export function bestSwapQuote(offers: DexieOfferSummary[], sellCode: string, buyCode: string): SwapQuote | null {
+export function bestSwapQuote(offers: DexieOfferSummary[], sellCode: string, buyCode: string, desiredSellAmount?: number): SwapQuote | null {
   if (sellCode.trim().toLowerCase() === buyCode.trim().toLowerCase()) return null;
+  const ceiling = desiredSellAmount != null && desiredSellAmount > 0 ? desiredSellAmount : null;
   let best: SwapQuote | null = null;
   for (const offer of offers) {
     if (offer.status !== DEXIE_STATUS_OPEN) continue;
     const sellLeg = offer.requested.find((a) => assetMatches(a, sellCode));
     const buyLeg = offer.offered.find((a) => assetMatches(a, buyCode));
     if (!sellLeg || !buyLeg || sellLeg.amount <= 0 || buyLeg.amount <= 0) continue;
+    if (ceiling != null && sellLeg.amount > ceiling) continue; // doesn't fit the entered amount
     const rate = buyLeg.amount / sellLeg.amount;
     if (!best || rate > best.rate) {
       // Display the matched leg's OWN dexie-reported ticker (`sellLeg.code`/`buyLeg.code`), not the
@@ -63,6 +74,40 @@ export function bestSwapQuote(offers: DexieOfferSummary[], sellCode: string, buy
     }
   }
   return best;
+}
+
+/** Result of {@link validateSwapAmount}: `ok` + (on failure) an i18n message id for the inline error. */
+export interface SwapAmountValidation {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Validate the swap container's "amount to swap" input (#484) — the quantity of the SOURCE
+ * (sell) asset the user wants to give up. Three checks, in order:
+ *   1. numeric + strictly positive (blank gets its own message so the field doesn't open on an
+ *      "invalid" error before the user has typed anything);
+ *   2. no more fractional digits than `decimals` supports — a CAT/XCH base-unit amount can't
+ *      represent extra precision, so this REJECTS rather than silently rounding to a different
+ *      amount than what's displayed;
+ *   3. does not exceed `spendable` (the wallet's own balance for that asset, in base units) — a
+ *      `null`/unknown balance is treated as insufficient (fail-closed), never a false pass.
+ * Pure (no DOM/chrome.*), so every branch is unit-tested independent of the panel.
+ */
+export function validateSwapAmount(amount: string, decimals: number, spendable: number | null): SwapAmountValidation {
+  const trimmed = amount.trim();
+  if (trimmed === '') return { ok: false, error: 'swap.amount.error.required' };
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n <= 0) return { ok: false, error: 'swap.amount.error.invalid' };
+  const dot = trimmed.indexOf('.');
+  if (dot !== -1 && trimmed.length - dot - 1 > decimals) {
+    return { ok: false, error: 'swap.amount.error.precision' };
+  }
+  const base = Math.round(n * 10 ** decimals);
+  if (spendable == null || base > spendable) {
+    return { ok: false, error: 'swap.amount.error.insufficientBalance' };
+  }
+  return { ok: true };
 }
 
 /** The dexie search "code" for a wallet asset: `'XCH'` for native XCH, else the CAT asset id (hex). */
