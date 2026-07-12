@@ -270,11 +270,59 @@ creator of the DIG resource on the active tab some $DIG. It NEVER gates or slows
   (the `useStorageValue` idiom): `{ enabled, amountDig, mode: 'per-site-per-day'|'per-day-period',
   perSiteOverrides }`. Default OFF; one-click-off; an honest disclosure states it is a recurring real
   mainnet $DIG spend within the caps. When enabled, the home prompt hides (`isAutoTipConfigured`).
-- **Execution is the dig-node tipping subsystem (#377/#369 WS), NOT the extension.** The extension
-  only persists the policy + fires the one-tap manual tip via the SW `tipCreator` action, which
-  delegates to the node. That subsystem is not built yet, so `tipCreator` is a FLAGGED STUB returning
-  the code `TIP_SUBSYSTEM_UNAVAILABLE`; the widget renders that as an honest "coming soon" message.
-  When the node subsystem ships, the stub is replaced with the node tip RPC/WS call — no UI change.
+- **Execution is the dig-node tipping subsystem (#377, SPEC §18.23), NOT the extension.** The extension
+  persists the local preference + fires the one-tap manual tip via the SW `tipCreator` action, which
+  now routes to the node's `tip.manual` over the `/ws` transport (§2.1d). A real broadcast → success +
+  txId; a `skipped` outcome (incl. the #428 pre-broadcaster `wallet-unavailable` reason) → an honest
+  non-success the widget renders. The richer management surface is the fullscreen Tip tab (§2.1d).
+
+### 2.1d Fullscreen Tip tab (#380, child of #377)
+
+A fullscreen-only top-level tab (`tipping`, in `FULLSCREEN_ONLY_TABS`; deep-link `#tipping`; desktop
+sidebar entry; NOT in the compact bottom nav — §145 tiering) that manages the dig-node tipping
+subsystem (dig-node SPEC §18.23). The node OWNS tipping (holds keys; builds/signs/broadcasts the $DIG
+spend); this tab is the FRONTEND that reads + configures + displays it over the SW-held `/ws`
+wallet+control socket (#372) — it NEVER hand-rolls a tip spend. Component tree in
+`src/features/tipping/`: `TippingTab` (container) → `TipHistorySection` · `ManageAutoTipSection` ·
+`XchtipButtonSection`. All copy is react-intl (`tip.tab.*` ids, 14 locales); every async surface renders
+loading/error/empty/success via `FourState`.
+
+- **WS transport (`tippingApi.ts`, SW `tipRpc` action).** A single method-allowlisted SW dispatcher
+  (`ACTIONS.tipRpc`) drives the `tip.*` methods over `/ws` (WS-first via `controlViaWsOrHttp`, HTTP
+  fallback): OPEN reads `tip.get_config` + `tip.get_ledger`, and token-GATED mutations `tip.set_config`
+  + `tip.manual` (the socket attaches the paired control token, §11.5; an unpaired/stale token →
+  `-32030` so the UI shows the pairing gate). No node reachable → `NODE_UNAVAILABLE`. RTK Query tags
+  `TipConfig` + `TipLedger`.
+- **Live ledger push.** The node forwards a `{ "type":"tip", "tip":<ledger-entry> }` frame on the `/ws`
+  socket (a DEDICATED bus, not the Sage `SyncEvent` union). The wallet WS controller
+  (`dig-node-wallet-ws.ts`) routes it to an injected `onTip`; `background/index.ts` broadcasts
+  `tipRecorded`; `controlPanelSync` invalidates `TipLedger` + `Balances` + `Activity` — the history +
+  balances refresh live with no polling.
+- **Pure model (`src/lib/tipping.ts`).** DOM-free shapes mirroring §18.23 (`TippingConfig`,
+  `AutoTipPolicy` with `mode ∈ {per-site-per-day, daily-budget}`, `TipLedgerEntry`, `TipOutcome`),
+  $DIG base-unit conversions (1 $DIG = 1000 base units, `DIG_DECIMALS = 3`), timeframe filtering
+  (`today`/`7d`/`30d`/`all`), summary aggregation, defensive normalizers, and the editable-form ⇄ config
+  converters. Amounts are integer base units on the wire; the UI converts via `baseUnitsToDigString`/
+  `digStringToBaseUnits` (integer math only).
+- **1. Tip history.** The ledger from `tip.get_ledger`, filtered by timeframe: recipient (store/owner,
+  creator|dev), $DIG amount, when, status pill, and a SpaceScan tx link (`spaceScanCoinUrl`). Empty
+  state is INFORMATIVE (the ledger stays empty until the node's wallet can send tips — see #428 below),
+  never a broken view.
+- **2. Manage auto-tips.** Reads the config (open) + writes it via `tip.set_config` behind the pairing
+  gate (`PairingSection`). Editable enable/amount/mode/per-site-cap for BOTH the content creator and the
+  DIG dev-account (treasury), the per-store overrides editor (creator), and the daily total cap. Carries
+  the honest disclosure — unattended real-mainnet $DIG within the caps, one-click-off ($DIG North Star
+  §6.0, #207). Both creator + dev are surfaced with their caps.
+- **3. Your tip button (`XchtipButtonSection`, `src/lib/xchtip.ts`).** Generates an xchtip.app tip
+  button for the user's OWN XCH receive address (`getReceiveAddress`) so OTHERS can tip THEM: a
+  ready-to-share hosted tip page (`https://xchtip.app/jar/<address>`), a copyable `<script>` embed
+  snippet, and a builder deep-link (`?recipient=…&asset=xch`). Node-independent; requires an unlocked
+  wallet. Reuses the xchtip.app embeddable widget (#142/#185-188).
+- **#428 spend caveat.** Actual tip SPEND no-ops on the shipped node until the node-wallet live
+  broadcaster lands (#428): the ledger stays empty and a `tip.manual` returns `{result:"skipped"}`. The
+  tab handles this gracefully — an informative empty history + a standing activation note ("tipping
+  activates once your DIG node's wallet is ready to send"); config/management + xchtip generation are
+  fully functional now. The home-tab one-tap `tipCreator` (§2.1c) now routes to the same `tip.manual`.
 
 ### 2.2 State & data architecture
 

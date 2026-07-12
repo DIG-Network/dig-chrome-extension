@@ -217,6 +217,28 @@ describe('sync_status + event pushes (#373)', () => {
     expect(events).toEqual([{ type: 'coin_state' }]);
   });
 
+  it('forwards each pushed tip entry to onTip (dedicated tip bus, #380/§18.23)', async () => {
+    const tips: unknown[] = [];
+    const events: unknown[] = [];
+    const sockets: FakeSocket[] = [];
+    const scheduler = fakeScheduler();
+    const controller = createWalletControlWsController({
+      resolveBase: async () => 'http://dig.local',
+      createSocket: (url) => { const s = new FakeSocket(url); sockets.push(s); return s; },
+      onEvent: (e) => events.push(e),
+      onTip: (t) => tips.push(t),
+      ...scheduler,
+    });
+    controller.start();
+    await Promise.resolve();
+    await Promise.resolve();
+    const entry = { id: 't1', recipient_ph: 'ph', dig_amount: 1000, ts: 1, trigger: 'auto', kind: 'creator', status: 'pending' };
+    sockets[0].emit({ type: 'tip', tip: entry });
+    // The tip rides its OWN bus — it is delivered to onTip, never leaked into the wallet-data onEvent path.
+    expect(tips).toEqual([entry]);
+    expect(events).toEqual([]);
+  });
+
   it('forces sync status to disconnected the moment the socket drops (never a stale synced)', async () => {
     const { controller, sockets } = await connectedController();
     expect(controller.getSyncStatus().state).toBe('synced');

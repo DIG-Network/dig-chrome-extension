@@ -405,9 +405,12 @@ export const ACTIONS = Object.freeze({
   // consumed by the aggregate "Verified by Chia" badge + the proof-inspection modal ──
   getVerifyLedger: 'getVerifyLedger',
   // ── creator tips (#379, child of #377): one-tap manual $DIG tip for the active DIG resource's
-  // creator. EXECUTION lives in the dig-node tipping subsystem (#377/#369 WS), NOT yet built — the SW
-  // handler is a flagged stub until that ships (returns TIP_SUBSYSTEM_UNAVAILABLE). ──
+  // creator, routed to the node tipping subsystem's `tip.manual` (SPEC §18.23) over the /ws transport. ──
   tipCreator: 'tipCreator',
+  // ── Tip tab (#380): the node tipping config/ledger/manual surface (`tip.*`, SPEC §18.23) over /ws.
+  // Method-allowlisted dispatcher: open reads (get_config/get_ledger) + token-gated mutations
+  // (set_config/manual). Backs the fullscreen Tip tab (history, auto-tip management, one-tap tip). ──
+  tipRpc: 'tipRpc',
   // ── DIG Control Panel (node management) — mirrors the browser dig://control ──
   getControlStatus: 'getControlStatus',
   // ── dig-node control panel (#278/#281): live WS status, OPEN cache/LRU, pairing, authed control ──
@@ -960,9 +963,15 @@ export const MESSAGE_CATALOGUE = Object.freeze({
   },
   [ACTIONS.tipCreator]: {
     summary:
-      "Creator tips (#379, child of #377): one-tap manual $DIG tip for the active DIG resource's creator. Execution is the dig-node tipping subsystem's job (#377/#369 WS) — NOT yet built, so the SW handler is a flagged stub returning code TIP_SUBSYSTEM_UNAVAILABLE until it ships.",
+      "Creator tips (#379/#380, child of #377): one-tap manual $DIG tip for the active DIG resource's creator, routed to the dig-node tipping subsystem's `tip.manual` (SPEC §18.23) over the /ws transport. A real broadcast → success + txId; a `skipped` outcome (incl. the #428 pre-broadcaster wallet-unavailable reason) → success:false + code TIP_SKIPPED and the reason.",
     request: '{ action, storeId:string, amountDig:string }',
     response: "{ success:boolean, txId?:string, code?:string, message?:string }",
+  },
+  [ACTIONS.tipRpc]: {
+    summary:
+      'Tip tab (#380): dispatch a tip.* method (SPEC §18.23) over the /ws wallet+control transport. Allowlisted: tip.get_config + tip.get_ledger (OPEN reads) and tip.set_config + tip.manual (token-gated mutations — the socket attaches the paired control token; an unpaired/stale token surfaces -32030 so the UI shows a "pair to manage" gate). No node reachable → NODE_UNAVAILABLE.',
+    request: "{ action, method:'tip.get_config'|'tip.get_ledger'|'tip.set_config'|'tip.manual', params?:object }",
+    response: '<the node tip result> | { success:false, code, error, message }',
   },
   [ACTIONS.getControlStatus]: {
     summary: 'DIG Control Panel: detect a local dig-node (manage vs install) + best-effort control.status; honest hosted-RPC fallback. Mirrors dig://control.',

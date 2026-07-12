@@ -44,6 +44,10 @@ export const TAGS = [
   'Offers',
   // Option contracts (#104): the local minted-option registry (mint + derived status).
   'Options',
+  // Tipping subsystem (#380/#377): the node tip config (auto-tip policy) + the tip ledger, read over
+  // the /ws transport and live-patched by the pushed `{type:"tip"}` frame.
+  'TipConfig',
+  'TipLedger',
 ] as const;
 
 /**

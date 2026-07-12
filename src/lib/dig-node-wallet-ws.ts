@@ -68,7 +68,7 @@ export function walletWsUrlFor(base: string): string {
   return `${wsBaseFor(base)}/ws`;
 }
 
-/** A node→client frame (`response` | `sync_status` | `event`); any other `type` is ignored. */
+/** A node→client frame (`response` | `sync_status` | `event` | `tip`); any other `type` is ignored. */
 interface WalletWsFrame {
   type?: string;
   id?: string | number;
@@ -79,6 +79,8 @@ interface WalletWsFrame {
   peak_height?: number | null;
   target_height?: number | null;
   event?: unknown;
+  /** The recorded tip-ledger entry carried by a `{type:"tip"}` push frame (#380/§18.23). */
+  tip?: unknown;
   [key: string]: unknown;
 }
 
@@ -118,6 +120,12 @@ export interface WalletWsControllerDeps {
   onSyncStatus?: (status: WalletSyncStatus) => void;
   /** Called with each pushed SyncEvent (`{ type:"coin_state" }`, …) so the SW can invalidate cache. */
   onEvent?: (event: unknown) => void;
+  /**
+   * Called with each pushed tip-ledger entry from a `{type:"tip"}` frame (#380, dig-node SPEC §18.23).
+   * Carried on a DEDICATED bus (not the Sage `SyncEvent` union), so the SW broadcasts it separately to
+   * live-refresh the Tip tab's ledger without touching the wallet-data event path.
+   */
+  onTip?: (tip: unknown) => void;
   /** Called with the transport connection-state on every change. */
   onConnStateChange?: (state: WalletWsConnState) => void;
   now?: () => number;
@@ -171,6 +179,7 @@ export function createWalletControlWsController({
   createSocket = (url: string) => new WebSocket(url) as unknown as WebSocketLike,
   onSyncStatus,
   onEvent,
+  onTip,
   onConnStateChange,
   now = () => Date.now(),
   random = Math.random,
@@ -280,6 +289,11 @@ export function createWalletControlWsController({
 
     if (frame.type === 'event') {
       onEvent?.(frame.event);
+      return;
+    }
+
+    if (frame.type === 'tip') {
+      onTip?.(frame.tip);
     }
   }
 

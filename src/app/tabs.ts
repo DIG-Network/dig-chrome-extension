@@ -14,12 +14,13 @@
 export const TABS = ['home', 'wallet', 'apps', 'network'] as const;
 
 /**
- * Fullscreen-only top-level tabs (#393 Peers, #411 Advertise). They are reachable from the desktop
- * (fullscreen) sidebar {@link DESKTOP_NAV} and via deep-links (`#peers`/`#advertise`), but are NOT
- * rendered in the compact phone bottom nav — which stays a clean 4-item bar. This mirrors the
- * advanced-surface tiering the wallet views use (§145): advanced surfaces live fullscreen-only.
+ * Fullscreen-only top-level tabs (#393 Peers, #411 Advertise, #380 Tipping). They are reachable from
+ * the desktop (fullscreen) sidebar {@link DESKTOP_NAV} and via deep-links (`#peers`/`#advertise`/
+ * `#tipping`), but are NOT rendered in the compact phone bottom nav — which stays a clean 4-item bar.
+ * This mirrors the advanced-surface tiering the wallet views use (§145): advanced surfaces live
+ * fullscreen-only.
  */
-export const FULLSCREEN_ONLY_TABS = ['peers', 'advertise'] as const;
+export const FULLSCREEN_ONLY_TABS = ['peers', 'advertise', 'tipping'] as const;
 
 /** Every routable top-level tab: the compact bottom-nav set plus the fullscreen-only tabs. */
 export const ALL_TABS = [...TABS, ...FULLSCREEN_ONLY_TABS] as const;
