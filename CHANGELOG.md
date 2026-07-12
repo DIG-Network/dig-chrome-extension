@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.96.0] - 2026-07-12
+
+### Features
+- **ext:** Add amount-to-swap input to the swap container (#484) (#130)
+
 ## [1.95.1] - 2026-07-12
 
 ### Bug Fixes
