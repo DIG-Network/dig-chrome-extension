@@ -43,6 +43,11 @@ export function installControlPanelSync(store: AppStore): () => void {
       store.dispatch(api.util.invalidateTags([...WALLET_DATA_TAGS] as never));
     } else if (message.action === 'pairingStateChanged') {
       store.dispatch(api.util.invalidateTags(['Pairing' as never]));
+    } else if (message.action === 'tipRecorded') {
+      // #380/§18.23: the node pushed a `{type:"tip"}` frame — a tip was recorded, so the ledger
+      // changed and $DIG moved. Invalidate the Tip tab's ledger + the wallet balances/activity so
+      // the history + balances refresh live with no polling.
+      store.dispatch(api.util.invalidateTags(['TipLedger', 'Balances', 'Activity'] as never));
     }
   };
   chrome.runtime.onMessage.addListener(listener);

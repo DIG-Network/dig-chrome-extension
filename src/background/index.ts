@@ -520,6 +520,11 @@ const walletControlWs = createWalletControlWsController({
       broadcastRuntime({ action: 'nodeWalletDataChanged' });
     }
   },
+  // A pushed tip (#380/§18.23, dedicated bus) means the tip ledger changed — tell the Tip tab to
+  // refetch the ledger (+ balances/activity, since a tip spent $DIG). No polling.
+  onTip: (tip) => {
+    broadcastRuntime({ action: 'tipRecorded', tip });
+  },
 });
 try {
   walletControlWs.start();
@@ -557,6 +562,66 @@ async function controlViaWsOrHttp(endpoint, method, params, token) {
     }
   }
   return controlRpc(endpoint, method, params, token);
+}
+
+/** The tip.* methods the {@link ACTIONS.tipRpc} dispatcher allows over the /ws transport (SPEC §18.23). */
+const TIP_RPC_METHODS = ['tip.get_config', 'tip.set_config', 'tip.get_ledger', 'tip.manual'];
+
+/**
+ * Drive one tip.* method over the /ws wallet+control transport (WS-first, HTTP fallback), returning the
+ * uniform `{ result } | { error:{code,message} }` shape. Open reads (`tip.get_config`/`tip.get_ledger`)
+ * carry no token requirement; the WS controller attaches the paired token to the gated mutations
+ * (`tip.set_config`/`tip.manual`). When NO node is reachable, returns an honest `NODE_UNAVAILABLE` error
+ * so the Tip tab renders a "node offline" state, never a broken view.
+ */
+async function tipRpc(method, params) {
+  const ep = await controlEndpointOrNull();
+  if (!walletControlWs.isConnected() && !ep) {
+    return { error: { code: 'NODE_UNAVAILABLE', message: 'The DIG node is not reachable.' } };
+  }
+  const token = pairingController.getToken();
+  const resp = await controlViaWsOrHttp(ep, method, params || {}, token);
+  // A gated tip op with a stale/absent token → the node answers UNAUTHORIZED (-32030). Forget any stored
+  // token so the UI re-pairs (mirrors controlAuthed); harmless when there was none.
+  if (isUnauthorizedControlResult(resp)) {
+    await pairingController.unpair().catch(() => {});
+    return { error: { code: -32030, message: 'unauthorized' } };
+  }
+  return resp;
+}
+
+/**
+ * Run a tip op and reduce it to the node's `TipOutcome` object (`{result:'tipped'|'skipped', …}`), or a
+ * local `{result:'error', reason, code}` when the RPC itself failed / the node was unreachable.
+ */
+async function runTipRpc(method, params) {
+  const resp = await tipRpc(method, params);
+  if (resp && resp.result !== undefined) return resp.result;
+  return {
+    result: 'error',
+    reason: (resp && resp.error && resp.error.message) || 'tip failed',
+    code: resp && resp.error && resp.error.code,
+  };
+}
+
+/**
+ * Map a node `TipOutcome` (or the local error shape) to the `{ success, txId?, code?, message? }` the
+ * home-tab tip widget (#379) renders. A real broadcast → success + txId; a `skipped` outcome (incl. the
+ * #428 pre-broadcaster "wallet-unavailable" reason) → an honest non-success with the reason.
+ */
+function tipOutcomeToTipResult(outcome) {
+  if (outcome && outcome.result === 'tipped') {
+    return { success: true, txId: outcome.txid || outcome.txId };
+  }
+  if (outcome && outcome.result === 'skipped') {
+    return { success: false, code: 'TIP_SKIPPED', message: `Tip not sent (${outcome.reason || 'skipped'}).` };
+  }
+  const code = outcome && outcome.code;
+  return {
+    success: false,
+    code: code === -32030 ? -32030 : code || 'TIP_FAILED',
+    message: (outcome && outcome.reason) || 'Tipping failed.',
+  };
 }
 
 // Build a data: URL for the branded, white-theme chia:// error page. Uses the shared
@@ -3175,19 +3240,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Creator tips (#379, child of #377): one-tap manual $DIG tip for the active DIG resource's
-  // creator. EXECUTION is the dig-node tipping subsystem's job (#377/#369 WS): the node resolves the
-  // store's creator, builds + broadcasts the $DIG spend, and (with auto-tip) runs it unattended under
-  // the configured caps. That subsystem is NOT built yet, so this is a FLAGGED STUB — it returns the
-  // catalogued code TIP_SUBSYSTEM_UNAVAILABLE so the widget can honestly say tipping is coming soon.
-  // When #377 lands, replace the stub body with the node tipping RPC/WS call
-  // (`controlRpc`/`rpcCall(endpoint, 'dig.tipCreator', { store_id, amount_dig })`) and return its txId.
+  // Creator tips (#379/#380, child of #377): one-tap manual $DIG tip for the active DIG resource's
+  // creator. EXECUTION is the dig-node tipping subsystem (#377, SPEC §18.23, shipped v0.21.0): the node
+  // resolves the store's owner, builds + signs + broadcasts the $DIG spend. This routes `tip.manual`
+  // over the /ws wallet+control transport (token-gated). The node returns a TipOutcome — a real tip is
+  // `{ result:'tipped', txid }`; anything not sent is `{ result:'skipped', reason }`. Until the node's
+  // live broadcaster lands (#428) a manual tip returns `skipped` — surfaced honestly, never as success.
   if (message.action === ACTIONS.tipCreator) {
-    sendResponse({
-      success: false,
-      code: 'TIP_SUBSYSTEM_UNAVAILABLE',
-      message: 'The DIG node tipping service is not available yet.',
-    });
+    (async () => {
+      const storeId = String((message.storeId || '')).trim();
+      if (!storeId) { sendResponse({ success: false, code: 'TIP_NO_STORE', message: 'No store to tip.' }); return; }
+      const outcome = await runTipRpc('tip.manual', { store_id: storeId });
+      sendResponse(tipOutcomeToTipResult(outcome));
+    })();
+    return true;
+  }
+
+  // Tip tab (#380): the config/ledger/manual surface over the node tipping subsystem (SPEC §18.23),
+  // carried on the /ws wallet+control transport. `tip.get_config`/`tip.get_ledger` are OPEN reads;
+  // `tip.set_config`/`tip.manual` are token-gated mutations (the socket attaches the paired token).
+  // A single method-allowlisted dispatcher — reads return the node result as-is; mutations that need a
+  // token the caller doesn't have surface -32030 so the UI shows a "pair to manage" gate.
+  if (message.action === ACTIONS.tipRpc) {
+    (async () => {
+      const method = String(message.method || '');
+      if (!TIP_RPC_METHODS.includes(method)) {
+        sendResponse({ success: false, code: 'TIP_BAD_METHOD', message: `unknown tip method: ${method}` });
+        return;
+      }
+      const resp = await tipRpc(method, message.params || {});
+      if (resp && resp.result !== undefined) { sendResponse(resp.result); return; }
+      const code = resp && resp.error && resp.error.code;
+      sendResponse({
+        success: false,
+        code: code === -32030 ? -32030 : (code ?? 'TIP_RPC_FAILED'),
+        error: (resp && resp.error && resp.error.message) || 'tip RPC failed',
+        message: (resp && resp.error && resp.error.message) || 'tip RPC failed',
+      });
+    })();
     return true;
   }
 

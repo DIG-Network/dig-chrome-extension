@@ -30,6 +30,7 @@ export default defineConfig({
     '**/settings-prefs.spec.ts',
     '**/accounts-keys.spec.ts',
     '**/wallet-sync-status.spec.ts',
+    '**/tipping-tab.spec.ts',
   ],
   fullyParallel: true,
   reporter: 'list',

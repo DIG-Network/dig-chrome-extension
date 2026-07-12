@@ -14,9 +14,10 @@ describe('desktopNav model (#85)', () => {
     expect(keys).toContain('home');
     expect(keys).toContain('apps');
     expect(keys).toContain('network');
-    // Fullscreen-only tabs (#393 Peers, #411 Advertise) are first-class sidebar entries.
+    // Fullscreen-only tabs (#393 Peers, #411 Advertise, #380 Tipping) are first-class sidebar entries.
     expect(keys).toContain('peers');
     expect(keys).toContain('advertise');
+    expect(keys).toContain('tipping');
     expect(new Set(keys).size).toBe(keys.length);
   });
 
@@ -31,6 +32,7 @@ describe('desktopNav model (#85)', () => {
   it('resolves the fullscreen-only tabs as their own active nav key', () => {
     expect(activeNavKey('peers', 'home')).toBe('peers');
     expect(activeNavKey('advertise', 'home')).toBe('advertise');
+    expect(activeNavKey('tipping', 'home')).toBe('tipping');
   });
 
   it('resolves the active item from the route: wallet sub-views match walletView, other tabs match tab', () => {

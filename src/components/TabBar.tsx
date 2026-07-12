@@ -11,6 +11,7 @@ const TAB_META: Record<Tab, { glyph: string; labelId: string }> = {
   network: { glyph: '🌐', labelId: 'tab.network' },
   peers: { glyph: '🛰️', labelId: 'tab.peers' },
   advertise: { glyph: '📣', labelId: 'tab.advertise' },
+  tipping: { glyph: '💸', labelId: 'tab.tipping' },
 };
 
 /**
