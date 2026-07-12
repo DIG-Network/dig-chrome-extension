@@ -73,6 +73,7 @@ test('CUSTODY_ACTIONS lists exactly the offscreen-routed vault ops', () => {
       'listCoins',
       'prepareSplit',
       'prepareCombine',
+      'prepareConsolidation',
       'listClawbacks',
       'prepareClawbackAction',
       'confirmClawbackAction',

@@ -238,8 +238,16 @@ import { DIG_ERR } from './error-codes';
  * the URN bar. The SW also gained a `chrome.commands.onCommand` listener (no new action — it flips
  * the existing `toolbar.enabled` storage key directly, which both toolbar mounts already react to
  * live via `storage.onChanged`).
+ *
+ * v34 (#417 auto-consolidate): added `prepareConsolidation` — the recovery step when a send/spend
+ * can't be funded within the coin-count cap because the wallet is coin-fragmented. It merges the
+ * smallest up-to-cap coins of an asset into one self coin (self-send) and holds the built spend under
+ * a pending id; the UI broadcasts it via the existing `confirmSend` and re-tries the original spend.
+ * `prepareSend` now funds from a capped, high-value-first selection and may fail with the coded
+ * `NEEDS_CONSOLIDATION` / `INSUFFICIENT_FUNDS` (surfaced through the standard failure shape) — no
+ * request-field change. Purely additive.
  */
-export const MESSAGE_PROTOCOL_VERSION = 33;
+export const MESSAGE_PROTOCOL_VERSION = 34;
 
 /**
  * Discriminator on messages the service worker forwards to the offscreen keystore vault
@@ -361,6 +369,9 @@ export const ACTIONS = Object.freeze({
   listCoins: 'listCoins',
   prepareSplit: 'prepareSplit',
   prepareCombine: 'prepareCombine',
+  // ── auto-consolidate (#417): merge the smallest up-to-cap coins so a fragmented wallet can fund a
+  // spend that hit the coin-count cap (confirmed via confirmSend) ──
+  prepareConsolidation: 'prepareConsolidation',
   // ── clawback (#152): list pending incoming/outgoing + claim (receiver) / claw back (sender);
   // confirmed via confirmSend. Send-WITH-clawback is prepareSend's own `clawbackSeconds` field. ──
   listClawbacks: 'listClawbacks',
@@ -859,6 +870,11 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Build (not sign/broadcast) a COMBINE of two or more of the wallet coins into a SINGLE self coin (coin control #91); hold it under a pending id and return the decoded summary to approve. Broadcast via confirmSend. Routed on assetId (#121).',
     request: '{ action, coinIds:string[] /* hex, ≥2 */, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */ }',
     response: "{ pendingId:string, coinOpSummary:{ asset, kind:'combine', inputCoinCount, outputCoinCount, total, fee } } | { success:false, code, message }",
+  },
+  [ACTIONS.prepareConsolidation]: {
+    summary: 'Build (not sign/broadcast) an auto-CONSOLIDATION (#417): merge the SMALLEST up-to-cap coins of an asset into a single self coin so a coin-fragmented wallet can then fund a spend that selectCoins rejected as NEEDS_CONSOLIDATION. Holds it under a pending id; returns the decoded (self-send-verified) summary. Broadcast via confirmSend, then re-try the original send. Routed on assetId (#121).',
+    request: '{ action, fee?:string /* mojos */, assetId?:string /* CAT TAIL hex; omit for native XCH */ }',
+    response: "{ pendingId:string, coinOpSummary:{ asset, kind:'combine', inputCoinCount, outputCoinCount, total, fee } } | { success:false, code:'NOTHING_TO_CONSOLIDATE'|..., message }",
   },
   [ACTIONS.listClawbacks]: {
     summary: "List the wallet's currently-pending clawbacks (#152): INCOMING (discovered on chain by hint at the active index's own addresses) plus OUTGOING (checked against LIVE chain state from the caller's own clawbackCandidates — sourced from the local activity log's 'clawback' entries, since the vault has no other way to enumerate a wallet's past clawback sends). Read-only.",

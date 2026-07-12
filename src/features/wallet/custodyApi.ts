@@ -358,6 +358,12 @@ export const custodyApi = api.injectEndpoints({
     prepareCombine: build.mutation<PreparedCoinOp, { coinIds: string[]; fee?: string; assetId?: string }>({
       query: (arg) => ({ action: ACTIONS.prepareCombine, ...arg }),
     }),
+    // #417 — build (not broadcast) an auto-CONSOLIDATION: merge the smallest up-to-cap coins of an
+    // asset into one self coin so a fragmented wallet can then fund a spend the coin cap rejected.
+    // Held under a pending id; confirmed via confirmSend, after which the original send is re-tried.
+    prepareConsolidation: build.mutation<PreparedCoinOp, { fee?: string; assetId?: string }>({
+      query: (arg) => ({ action: ACTIONS.prepareConsolidation, ...(arg.fee ? { fee: arg.fee } : {}), ...(arg.assetId ? { assetId: arg.assetId } : {}) }),
+    }),
     // Poll whether a broadcast send has confirmed.
     sendStatus: build.query<{ confirmed: boolean }, { coinId: string }>({
       query: (arg) => ({ action: ACTIONS.sendStatus, ...arg }),
@@ -513,6 +519,7 @@ export const {
   useGetCoinsQuery,
   usePrepareSplitMutation,
   usePrepareCombineMutation,
+  usePrepareConsolidationMutation,
   useGetClawbacksQuery,
   usePrepareClawbackActionMutation,
   useConfirmClawbackActionMutation,

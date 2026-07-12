@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { listCoins, prepareSplit, prepareCombine, decodeCoinOpSummary, distinctSplitAmounts, type CoinsWasm } from './coins';
+import { listCoins, prepareSplit, prepareCombine, prepareConsolidation, decodeCoinOpSummary, distinctSplitAmounts, type CoinsWasm } from './coins';
 import { buildXchSend, type SendWasm } from './send';
 import { buildKeyring, type SendFlowWasm } from './sendFlow';
 import { issueCatTo, type CatSimWasm, type SimHandle } from '@/test/catSim';
@@ -288,5 +288,62 @@ describe('decodeCoinOpSummary — self-send invariant', () => {
         inputCoinCount: 1,
       }),
     ).toThrow(/SELF_SEND_VIOLATION/);
+  });
+});
+
+describe('prepareConsolidation (#417)', () => {
+  it('merges the SMALLEST up-to-cap XCH coins into one self coin (Simulator-validated)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
+    const ph0 = ring[0].puzzleHashHex;
+    const sim = new chia.Simulator();
+    // A fragmented wallet: one large coin + several small ones. Cap 3 → the 3 smallest merge.
+    sim.newCoin(chia.fromHex(ph0), 5_000_000_000_000n);
+    sim.newCoin(chia.fromHex(ph0), 100n);
+    sim.newCoin(chia.fromHex(ph0), 200n);
+    sim.newCoin(chia.fromHex(ph0), 300n);
+
+    const before = await listCoins(asCoins(), simChain(sim), { seed, activeIndex: 0 });
+    expect(before).toHaveLength(4);
+
+    const prepared = await prepareConsolidation(asCoins(), simChain(sim), { seed, activeIndex: 0, cap: 3 });
+    expect(prepared.coinOpSummary.kind).toBe('combine');
+    expect(prepared.coinOpSummary.inputCoinCount).toBe(3); // the 3 SMALLEST, not the 5-XCH coin
+    expect(prepared.coinOpSummary.outputCoinCount).toBe(1);
+    expect(prepared.coinOpSummary.total).toBe('600'); // 100 + 200 + 300, fee 0
+
+    pushPrepared(sim, prepared as never);
+    const after = await listCoins(asCoins(), simChain(sim), { seed, activeIndex: 0 });
+    // 4 → 2 (the untouched 5-XCH coin + the merged 600-mojo coin).
+    expect(after).toHaveLength(2);
+    expect(after.map((c) => c.amount).sort()).toEqual(['5000000000000', '600']);
+  });
+
+  it('throws NOTHING_TO_CONSOLIDATE when fewer than two coins exist', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
+    await expect(prepareConsolidation(asCoins(), simChain(sim), { seed, activeIndex: 0 })).rejects.toThrow(/NOTHING_TO_CONSOLIDATE/);
+  });
+
+  it('consolidates CAT coins into one CAT coin, asset preserved (#121)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(asFlow(), seed, { index: 0 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 5_000_000_000_000n);
+    const tail = issueCatTo(chia, asSig(), sim, ring, 1000n);
+    // Split the single CAT into 3, then consolidate them back to one.
+    const catId = (await listCoins(asCoins(), simChain(sim), { seed, assetId: tail, activeIndex: 0 }))[0].coinId;
+    pushPrepared(sim, (await prepareSplit(asCoins(), simChain(sim), { seed, assetId: tail, coinIds: [catId], outputs: 3, fee: 0n, activeIndex: 0 })) as never);
+    expect(await listCoins(asCoins(), simChain(sim), { seed, assetId: tail, activeIndex: 0 })).toHaveLength(3);
+
+    const prepared = await prepareConsolidation(asCoins(), simChain(sim), { seed, assetId: tail, activeIndex: 0 });
+    expect(prepared.coinOpSummary.asset).toBe(tail);
+    expect(prepared.coinOpSummary.outputCoinCount).toBe(1);
+    pushPrepared(sim, prepared as never);
+    const after = await listCoins(asCoins(), simChain(sim), { seed, assetId: tail, activeIndex: 0 });
+    expect(after).toHaveLength(1);
+    expect(after[0].amount).toBe('1000');
   });
 });

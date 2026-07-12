@@ -49,27 +49,38 @@ function getChip35(): Promise<Chip35Wasm> {
 }
 /* c8 ignore stop */
 
-const NEEDS_CHIA = new Set<VaultRequest['op']>(['getReceiveAddress', 'scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listDids', 'prepareDidCreate', 'prepareDidTransfer', 'prepareDidProfileUpdate', 'prepareNftDidAssign', 'listCoins', 'prepareSplit', 'prepareCombine', 'listClawbacks', 'prepareClawbackAction', 'getPublicKeys', 'getAssetBalance', 'getAssetCoins', 'decodeDappSpend', 'signDappSpend', 'signMessage', 'broadcastDappBundle']);
-const NEEDS_CHAIN = new Set<VaultRequest['op']>(['scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'makeOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listDids', 'prepareDidCreate', 'prepareDidTransfer', 'prepareDidProfileUpdate', 'prepareNftDidAssign', 'listCoins', 'prepareSplit', 'prepareCombine', 'listClawbacks', 'prepareClawbackAction', 'getAssetBalance', 'getAssetCoins', 'broadcastDappBundle']);
+const NEEDS_CHIA = new Set<VaultRequest['op']>(['getReceiveAddress', 'scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'makeOffer', 'inspectOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listDids', 'prepareDidCreate', 'prepareDidTransfer', 'prepareDidProfileUpdate', 'prepareNftDidAssign', 'listCoins', 'prepareSplit', 'prepareCombine', 'prepareConsolidation', 'listClawbacks', 'prepareClawbackAction', 'getPublicKeys', 'getAssetBalance', 'getAssetCoins', 'decodeDappSpend', 'signDappSpend', 'signMessage', 'broadcastDappBundle']);
+const NEEDS_CHAIN = new Set<VaultRequest['op']>(['scanBalances', 'prepareSend', 'confirmSend', 'sendStatus', 'makeOffer', 'prepareTrade', 'confirmTrade', 'listNfts', 'prepareNftTransfer', 'prepareNftMint', 'listDids', 'prepareDidCreate', 'prepareDidTransfer', 'prepareDidProfileUpdate', 'prepareNftDidAssign', 'listCoins', 'prepareSplit', 'prepareCombine', 'prepareConsolidation', 'listClawbacks', 'prepareClawbackAction', 'getAssetBalance', 'getAssetCoins', 'broadcastDappBundle']);
 /** Ops whose crypto goes through `digwx1.ts` (create/import write a V2 record; unlock/reveal/export
  * decrypt EITHER version) — dig_ecosystem #147 Phase B. */
 const NEEDS_KEYSTORE_WASM = new Set<VaultRequest['op']>(['createWallet', 'importWallet', 'unlockWallet', 'revealPhrase', 'exportPrivateKey']);
-/** #228: the coinset-direct chain-anchored-root walk — independent of NEEDS_CHIA/NEEDS_CHAIN (it
- * needs neither chia-wallet-sdk-wasm nor its wasm RpcClient; see anchoredRoot.ts's doc comment). */
-const NEEDS_CHIP35 = new Set<VaultRequest['op']>(['resolveCoinsetAnchoredRoot']);
+/** Ops needing the `@dignetwork/chip35-dl-coin-wasm` module: the #228 coinset chain-anchored-root
+ * walk, and #417's capped coin selection (`selectCoins`) on the send path. */
+const NEEDS_CHIP35 = new Set<VaultRequest['op']>(['resolveCoinsetAnchoredRoot', 'prepareSend']);
+/** Ops needing the plain-fetch coinset lineage client — ONLY the #228 chain-anchored-root walk (the
+ * selection-only chip35 users above need the module but not a lineage client). */
+const NEEDS_LINEAGE_CLIENT = new Set<VaultRequest['op']>(['resolveCoinsetAnchoredRoot']);
 
 async function depsFor(req: VaultRequest & { coinsetUrl?: string }): Promise<VaultDeps> {
   const deps: VaultDeps = {};
   if (NEEDS_KEYSTORE_WASM.has(req.op)) deps.keystoreWasm = await getKeystoreWasm();
   if (NEEDS_CHIP35.has(req.op)) {
-    deps.chip35 = await getChip35();
-    const lineageUrl = req.coinsetUrl || DEFAULT_COINSET_URL;
-    let lineageClient = lineageClientByUrl.get(lineageUrl);
-    if (!lineageClient) {
-      lineageClient = makeFetchLineageClient(lineageUrl);
-      lineageClientByUrl.set(lineageUrl, lineageClient);
+    // Best-effort on the send path: a chip35 load failure must NOT block a send — it only forgoes
+    // the capped selection (the driver auto-selects). The anchored-root walk still requires it.
+    try {
+      deps.chip35 = await getChip35();
+    } catch (e) {
+      if (NEEDS_LINEAGE_CLIENT.has(req.op)) throw e;
     }
-    deps.lineageClient = lineageClient;
+    if (NEEDS_LINEAGE_CLIENT.has(req.op)) {
+      const lineageUrl = req.coinsetUrl || DEFAULT_COINSET_URL;
+      let lineageClient = lineageClientByUrl.get(lineageUrl);
+      if (!lineageClient) {
+        lineageClient = makeFetchLineageClient(lineageUrl);
+        lineageClientByUrl.set(lineageUrl, lineageClient);
+      }
+      deps.lineageClient = lineageClient;
+    }
   }
   if (!NEEDS_CHIA.has(req.op)) return deps;
   const chia = await getChia();

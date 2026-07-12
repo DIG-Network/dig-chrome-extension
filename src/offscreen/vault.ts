@@ -41,7 +41,7 @@ import {
 } from '@/lib/keystore/derive';
 import type { ChainClient, ChainCoin } from '@/offscreen/chain';
 import { prepareXchSend, prepareCatSend, signAndBundle, buildKeyring, type SendFlowWasm } from '@/offscreen/sendFlow';
-import { listCoins as buildCoinList, prepareSplit as buildSplit, prepareCombine as buildCombine, type CoinsWasm, type CoinInfo, type CoinOpSummary } from '@/offscreen/coins';
+import { listCoins as buildCoinList, prepareSplit as buildSplit, prepareCombine as buildCombine, prepareConsolidation as buildConsolidation, type CoinsWasm, type CoinInfo, type CoinOpSummary } from '@/offscreen/coins';
 import {
   listNfts,
   prepareNftTransfer,
@@ -224,6 +224,10 @@ export type VaultOp =
   | 'listCoins'
   | 'prepareSplit'
   | 'prepareCombine'
+  // Auto-consolidate (#417): merge the smallest up-to-cap coins of an asset into one self coin, so a
+  // coin-fragmented wallet can fund a spend that `selectCoins` rejected as NEEDS_CONSOLIDATION.
+  // Broadcast via the shared confirmSend path exactly like prepareCombine.
+  | 'prepareConsolidation'
   // Clawback (#152): list pending incoming/outgoing clawbacks; build the CLAIM (receiver) / CLAW
   // BACK (sender) spend — broadcast via the shared confirmSend path. Send-WITH-clawback is the
   // ordinary 'prepareSend' plus its `clawbackSeconds` field (no separate op).
@@ -656,6 +660,8 @@ export class Vault {
           return await this.prepareSplit(req, deps);
         case 'prepareCombine':
           return await this.prepareCombine(req, deps);
+        case 'prepareConsolidation':
+          return await this.prepareConsolidation(req, deps);
         case 'listClawbacks':
           return await this.listClawbacks(req, deps);
         case 'prepareClawbackAction':
@@ -931,6 +937,10 @@ export class Vault {
     // Coin control (#91): a hand-picked coin selection overrides the driver's auto-selection.
     const selection = req.coinIds && req.coinIds.length ? { selectedCoinIds: req.coinIds } : {};
     const memoOpt = req.memo ? { memo: req.memo } : {};
+    // #417 — when chip35 is available, fund from a capped, high-value-first selection so a
+    // coin-fragmented wallet fails LOUDLY (NEEDS_CONSOLIDATION / INSUFFICIENT_FUNDS) instead of
+    // overshooting the Chia block-cost coin limit. A #91 hand-picked selection still overrides it.
+    const selectOpt = deps.chip35?.selectCoins ? { select: deps.chip35.selectCoins } : {};
     const prepared = isCat
       ? await prepareCatSend(chia, deps.chain, {
           seed,
@@ -940,6 +950,7 @@ export class Vault {
           fee: BigInt(req.fee ?? '0'),
           activeIndex: req.activeIndex ?? 0,
           ...selection,
+          ...selectOpt,
           ...memoOpt,
         })
       : await prepareXchSend(chia, deps.chain, {
@@ -949,6 +960,7 @@ export class Vault {
           fee: BigInt(req.fee ?? '0'),
           activeIndex: req.activeIndex ?? 0,
           ...selection,
+          ...selectOpt,
           ...(req.clawbackSeconds != null ? { clawbackSeconds: BigInt(req.clawbackSeconds) } : {}),
           ...memoOpt,
         });
@@ -1493,6 +1505,27 @@ export class Vault {
       seed,
       ...(req.assetId ? { assetId: req.assetId } : {}),
       coinIds: req.coinIds,
+      fee: BigInt(req.fee ?? '0'),
+      activeIndex: req.activeIndex ?? 0,
+    });
+    return this.holdCoinOp(chia, prepared);
+  }
+
+  /**
+   * AUTO-CONSOLIDATE (#417) — merge the smallest up-to-cap coins of an asset into one self coin so a
+   * coin-fragmented wallet can then fund a spend `selectCoins` rejected as NEEDS_CONSOLIDATION. Builds
+   * + holds under a pending id (broadcast via the shared `confirmSend`); returns the decoded summary.
+   * Does NOT sign or broadcast. The UI runs it in a loop: on a send's NEEDS_CONSOLIDATION, prepare →
+   * confirm → poll → retry the send, repeating until selectable or the user cancels.
+   */
+  private async prepareConsolidation(req: VaultRequest, deps: VaultDeps): Promise<VaultResponse> {
+    if (!deps.chia || !deps.chain) return { success: false, code: 'CHAIN_UNAVAILABLE', message: 'chain unavailable' };
+    const seed = await this.heldSeed();
+    if (!seed) return { success: false, code: 'LOCKED', message: 'wallet is locked' };
+    const chia = deps.chia as unknown as CoinsWasm;
+    const prepared = await buildConsolidation(chia, deps.chain, {
+      seed,
+      ...(req.assetId ? { assetId: req.assetId } : {}),
       fee: BigInt(req.fee ?? '0'),
       activeIndex: req.activeIndex ?? 0,
     });

@@ -44,9 +44,14 @@ export interface LineageDataStore {
   delegatedPuzzles?: unknown[];
 }
 
-/** The `@dignetwork/chip35-dl-coin-wasm` surface this walk needs. */
+/** The `@dignetwork/chip35-dl-coin-wasm` surface the offscreen document uses: the chain-anchored-root
+ *  walk (`dataStoreFromSpend`) plus the pure capped coin selector (#417 — `selectCoins`, used on the
+ *  send path so a fragmented wallet fails recoverably; see `coinSelect.ts`). */
 export interface Chip35Wasm {
   dataStoreFromSpend(coinSpend: LineageCoinSpend, prevDelegatedPuzzles: unknown[]): LineageDataStore;
+  /** Optional so the anchored-root walk's test fakes (which never select coins) need not stub it;
+   *  the real chip35 module always exports it, so the send path finds it at runtime. */
+  selectCoins?: import('@/offscreen/coinSelect').SelectCoinsFn;
 }
 
 /** The coinset chain-read surface the walk needs (see the module doc for why this is its own,

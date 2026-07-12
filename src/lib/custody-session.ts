@@ -140,6 +140,9 @@ export const CUSTODY_ACTIONS = Object.freeze([
   'listCoins',
   'prepareSplit',
   'prepareCombine',
+  // Auto-consolidate (#417): merge the smallest up-to-cap coins so a fragmented wallet can fund a
+  // spend that hit the coin-count cap. Broadcast via the shared confirmSend path.
+  'prepareConsolidation',
   // Clawback (#152): list pending incoming/outgoing + claim (receiver) / claw back (sender).
   'listClawbacks',
   'prepareClawbackAction',
@@ -171,6 +174,7 @@ export const SIGNING_REQUIRED_ACTIONS = Object.freeze([
   'prepareSend',
   'prepareSplit',
   'prepareCombine',
+  'prepareConsolidation',
   'makeOffer',
   'prepareTrade',
   'prepareNftTransfer',

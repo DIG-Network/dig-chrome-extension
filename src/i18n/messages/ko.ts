@@ -1115,4 +1115,17 @@ export const ko: Record<string, string> = {
   'custody.source.sage.save': '소스 저장',
   'custody.source.sage.connected': 'Sage에 연결됨 — {endpoint}에서 지갑 데이터를 읽는 중입니다.',
   'custody.source.sage.unreachable': 'Sage 엔드포인트에 연결할 수 없습니다.',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': '소액 코인 합치기',
+  'consolidate.body': '지갑에 소액 코인이 많습니다. 그중 {count}개를 하나로 합치면 이 결제를 진행할 수 있습니다. 잔액은 그대로 유지됩니다.',
+  'consolidate.fee': '합치기 네트워크 수수료: {fee}',
+  'consolidate.combine': '코인 합치기',
+  'consolidate.cancel': '나중에',
+  'consolidate.progress.consolidating': '코인을 합치는 중…',
+  'consolidate.progress.confirming': '확인을 기다리는 중…',
+  'consolidate.progress.retrying': '결제를 다시 시도하는 중…',
+  'consolidate.progress.note': '잠시 걸릴 수 있습니다. 이 창을 열어 두세요.',
+  'send.error.needsConsolidation': '이 결제를 위해 먼저 소액 코인을 합쳐야 합니다. 다시 시도하여 합치세요.',
+  'send.error.consolidationTimeout': '합치기가 제때 확인되지 않았습니다. 잠시 후 다시 시도하세요.',
 };

@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { buildKeyring, prepareXchSend, prepareCatSend, signAndBundle, type SendFlowWasm } from './sendFlow';
+import type { Coin as Chip35Coin, PaymentAsset, SelectCoinsResult } from '@dignetwork/chip35-dl-coin-wasm';
 import { signCoinSpends, TESTNET11_AGG_SIG_ME, type SigningWasm } from './signing';
 import type { ChainClient, ChainCoin, ChainCoinSpend, ChainSpendBundle } from './chain';
 import { mnemonicToSeed } from '@/lib/keystore/bip39';
@@ -258,5 +259,105 @@ describe('prepareCatSend (Simulator-validated)', () => {
     const bundle = signAndBundle(flow(), prepared.coinSpends, prepared.secretKeys, TESTNET11_AGG_SIG_ME);
     const res = await chain.pushSpendBundle(bundle);
     expect(res.success).toBe(true);
+  });
+});
+
+describe('prepareXchSend capped selection (#417)', () => {
+  it('funds ONLY the coins the injected selector chose (not the driver auto-selection)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { index: 0 });
+    const ph0 = ring[0].puzzleHashHex;
+    const sim = new chia.Simulator();
+    const small = sim.newCoin(chia.fromHex(ph0), 1_000_000_000_000n); // 1 XCH
+    const big = sim.newCoin(chia.fromHex(ph0), 3_000_000_000_000n); // 3 XCH
+    const idSmall = chia.toHex(small.coinId()).replace(/^0x/i, '').toLowerCase();
+    const idBig = chia.toHex(big.coinId()).replace(/^0x/i, '').toLowerCase();
+    const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
+
+    // A selector that returns ONLY the big coin — even though the small one alone would cover the
+    // target. If the send used the driver's own auto-selection it could pick the small coin; proving
+    // it spent the big one proves the selector's choice was threaded through `filterSelected`.
+    const select = vi.fn((coins: Chip35Coin[], _t: bigint, asset: PaymentAsset): SelectCoinsResult => {
+      const chosen = coins.filter((c) => c.amount === 3_000_000_000_000n);
+      return { ok: true, coins: chosen, total: 3_000_000_000_000n, change: 0n, coinCount: chosen.length, asset };
+    });
+
+    const prepared = await prepareXchSend(flow(), simChain(sim), {
+      seed,
+      recipient,
+      amount: 100_000_000_000n, // 0.1 XCH — the small coin alone would suffice
+      fee: 0n,
+      activeIndex: 0,
+      select,
+    });
+    expect(select).toHaveBeenCalledOnce();
+    const inputIds = prepared.coinSpends.map((cs) => chia.toHex(cs.coin.coinId()).replace(/^0x/i, '').toLowerCase());
+    expect(inputIds).toContain(idBig);
+    expect(inputIds).not.toContain(idSmall);
+  });
+
+  it('rejects with NEEDS_CONSOLIDATION when the selector signals fragmentation', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { index: 0 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
+    const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
+    const select = (_c: Chip35Coin[], _t: bigint, asset: PaymentAsset): SelectCoinsResult => ({
+      ok: false,
+      needsConsolidation: true,
+      asset,
+      availableCoinCount: 200,
+      availableTotal: 9_000_000_000_000n,
+      required: 100_000_000_000n,
+      cap: 50,
+    });
+    await expect(
+      prepareXchSend(flow(), simChain(sim), { seed, recipient, amount: 100_000_000_000n, fee: 0n, activeIndex: 0, select }),
+    ).rejects.toThrow(/^NEEDS_CONSOLIDATION:/);
+  });
+
+  it('rejects with INSUFFICIENT_FUNDS when the selector signals a genuine shortfall', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { index: 0 });
+    const sim = new chia.Simulator();
+    sim.newCoin(chia.fromHex(ring[0].puzzleHashHex), 1_000_000_000_000n);
+    const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
+    const select = (_c: Chip35Coin[], _t: bigint, asset: PaymentAsset): SelectCoinsResult => ({
+      ok: false,
+      needsConsolidation: false,
+      asset,
+      availableCoinCount: 1,
+      availableTotal: 1n,
+      required: 100_000_000_000n,
+      cap: 50,
+    });
+    await expect(
+      prepareXchSend(flow(), simChain(sim), { seed, recipient, amount: 100_000_000_000n, fee: 0n, activeIndex: 0, select }),
+    ).rejects.toThrow(/^INSUFFICIENT_FUNDS:/);
+  });
+
+  it('a #91 hand-picked selection overrides the selector (selector never called)', async () => {
+    const seed = await mnemonicToSeed(golden.mnemonic);
+    const ring = buildKeyring(flow(), seed, { index: 0 });
+    const ph0 = ring[0].puzzleHashHex;
+    const sim = new chia.Simulator();
+    const coinA = sim.newCoin(chia.fromHex(ph0), 1_000_000_000_000n);
+    sim.newCoin(chia.fromHex(ph0), 2_000_000_000_000n);
+    const idA = chia.toHex(coinA.coinId()).replace(/^0x/i, '').toLowerCase();
+    const recipient = new chia.Address(new Uint8Array(32).fill(9), 'xch').encode();
+    const select = vi.fn();
+
+    const prepared = await prepareXchSend(flow(), simChain(sim), {
+      seed,
+      recipient,
+      amount: 100_000_000_000n,
+      fee: 0n,
+      activeIndex: 0,
+      selectedCoinIds: [idA],
+      select: select as never,
+    });
+    expect(select).not.toHaveBeenCalled();
+    const inputIds = prepared.coinSpends.map((cs) => chia.toHex(cs.coin.coinId()).replace(/^0x/i, '').toLowerCase());
+    expect(inputIds).toContain(idA);
   });
 });

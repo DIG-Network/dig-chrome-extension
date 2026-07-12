@@ -1116,4 +1116,17 @@ export const es: Record<string, string> = {
   'custody.source.sage.save': 'Guardar origen',
   'custody.source.sage.connected': 'Sage conectado — leyendo los datos de la billetera desde {endpoint}.',
   'custody.source.sage.unreachable': 'No se puede alcanzar el endpoint de Sage.',
+
+  // #417 — auto-consolidate modal + send errors
+  'consolidate.title': 'Combinar monedas pequeñas',
+  'consolidate.body': 'Tu billetera tiene muchas monedas pequeñas. Combinar {count} de ellas en una permite realizar este pago. Tu saldo no cambia.',
+  'consolidate.fee': 'Comisión de red para combinar: {fee}',
+  'consolidate.combine': 'Combinar monedas',
+  'consolidate.cancel': 'Ahora no',
+  'consolidate.progress.consolidating': 'Combinando monedas…',
+  'consolidate.progress.confirming': 'Esperando confirmación…',
+  'consolidate.progress.retrying': 'Reintentando tu pago…',
+  'consolidate.progress.note': 'Esto puede tardar un momento. Mantén esto abierto.',
+  'send.error.needsConsolidation': 'Este pago necesita que primero combines tus monedas pequeñas. Inténtalo de nuevo para combinarlas.',
+  'send.error.consolidationTimeout': 'La combinación no se confirmó a tiempo. Espera un momento e inténtalo de nuevo.',
 };
