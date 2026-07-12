@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.90.0] - 2026-07-12
+
+### Features
+- **ext:** Capped coin selection + auto-consolidate loop on send/spend (#417) (#123)
+
 ## [1.89.0] - 2026-07-11
 
 ### Features
