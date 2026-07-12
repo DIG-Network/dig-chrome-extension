@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.93.0] - 2026-07-12
+
+### Features
+- **ext:** Flag-gated node-custody/migration/signer machinery for thin client (refs #374 #375) (#126)
+
 ## [1.92.0] - 2026-07-12
 
 ### Features
