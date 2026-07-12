@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.95.0] - 2026-07-12
+
+### Features
+- **ext:** Light/dark theme switcher button in the URN bar (#429) (#128)
+
 ## [1.94.0] - 2026-07-12
 
 ### Features
