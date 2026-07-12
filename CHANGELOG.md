@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.92.0] - 2026-07-12
+
+### Features
+- **ext:** Move wallet+control onto node WS; first-class syncing/disconnected UI (#372, #373) (#125)
+
 ## [1.91.0] - 2026-07-12
 
 ### Features
