@@ -16,6 +16,7 @@ export const zhTW: Record<string, string> = {
   'shell.theme.light': '淺色',
   'shell.theme.dark': '深色',
   'shell.theme.system': '跟隨系統',
+  'toolbar.theme.toggle': '切換淺色或深色主題',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': '首頁',

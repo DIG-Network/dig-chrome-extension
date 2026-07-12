@@ -16,6 +16,7 @@ export const zhCN: Record<string, string> = {
   'shell.theme.light': '浅色',
   'shell.theme.dark': '深色',
   'shell.theme.system': '跟随系统',
+  'toolbar.theme.toggle': '切换浅色或深色主题',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': '首页',

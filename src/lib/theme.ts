@@ -37,3 +37,15 @@ export function resolveEffectiveTheme(mode: ThemeMode, prefersDark: boolean): Ef
   if (mode === 'system') return prefersDark ? 'dark' : 'light';
   return mode;
 }
+
+/**
+ * The mode a one-tap light↔dark toggle flips TO, given the theme currently PAINTED (the resolved
+ * {@link EffectiveTheme}). Always an EXPLICIT `light`/`dark` — never `system` — so the quick
+ * switcher (the URN-bar theme button, #429) locks in a deterministic choice that overrides + persists;
+ * the tri-state `system` option stays reachable from the fuller theme control (the footer selector).
+ * Toggling from a `system`-resolved paint therefore commits the OPPOSITE explicit paint, the
+ * least-surprising one-tap outcome.
+ */
+export function nextTheme(current: EffectiveTheme): ThemeMode {
+  return current === 'dark' ? 'light' : 'dark';
+}

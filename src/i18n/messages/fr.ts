@@ -16,6 +16,7 @@ export const fr: Record<string, string> = {
   'shell.theme.light': 'Clair',
   'shell.theme.dark': 'Sombre',
   'shell.theme.system': 'Système',
+  'toolbar.theme.toggle': 'Basculer le thème clair ou sombre',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Accueil',

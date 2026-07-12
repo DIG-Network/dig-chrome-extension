@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { THEME_MODES, DEFAULT_THEME_MODE, isThemeMode, resolveEffectiveTheme } from '@/lib/theme';
+import { THEME_MODES, DEFAULT_THEME_MODE, isThemeMode, resolveEffectiveTheme, nextTheme } from '@/lib/theme';
 
 describe('theme (#111)', () => {
   it('ships light/dark/system, defaulting to light (#211 — the original white theme is the default)', () => {
@@ -30,5 +30,11 @@ describe('theme (#111)', () => {
   it('resolves "system" from the OS prefers-color-scheme signal', () => {
     expect(resolveEffectiveTheme('system', true)).toBe('dark');
     expect(resolveEffectiveTheme('system', false)).toBe('light');
+  });
+
+  it('nextTheme flips the painted light/dark to the opposite EXPLICIT mode (#429 one-tap toggle)', () => {
+    // The quick toggle always commits an explicit light/dark (never `system`), so it overrides + persists.
+    expect(nextTheme('light')).toBe('dark');
+    expect(nextTheme('dark')).toBe('light');
   });
 });

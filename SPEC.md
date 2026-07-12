@@ -715,12 +715,20 @@ compact popup and `WalletTopbar` for the desktop workspace) — NOT the Home tab
 the options page. Flipping it shows/hides both mounts live (injected via `storage.onChanged`;
 built-in via the store-bridged key).
 
-The bar is styled as **native browser chrome** and **theme-matched to the browser** via
-`prefers-color-scheme` (`toolbarTheme` → `TOOLBAR_PALETTES`, shared by both mounts): light mode is a
-neutral Chrome grey (`#f1f3f4` background, `#dadce0` border), dark mode a dark Chrome toolbar surface
-(`#292a2d`) — NEVER the DIG brand gradient, so it reads as browser UI, not a branded widget. The
-injected bar re-mounts on a live `prefers-color-scheme` change; the built-in bar subscribes to the
-same media query. It carries:
+The bar is styled as **native browser chrome** from the ONE shared `TOOLBAR_PALETTES` (both mounts):
+light mode is a neutral Chrome grey (`#f1f3f4` background, `#dadce0` border), dark mode a dark Chrome
+toolbar surface (`#292a2d`) — NEVER the DIG brand gradient, so it reads as browser UI, not a branded
+widget. The two mounts choose WHICH palette differently, by design:
+
+- The **built-in** bar (on `chrome-extension://` pages) resolves its paint from the PERSISTED theme
+  preference (`ui.theme`, the #111 theme system): `resolveEffectiveTheme(ui.theme, prefersDark)`
+  — an explicit `light`/`dark` pass through, `system` follows the OS. It therefore agrees with the ext
+  pages (which read the same `ui.theme` via `useAppliedTheme`/`theme.css`) and repaints instantly when
+  the theme toggle below flips the pref. Its root carries `data-theme` = the resolved paint.
+- The **injected** bar (on ordinary web pages, no Redux store) follows the OS `prefers-color-scheme`
+  directly (`toolbarTheme`) and re-mounts on a live change — genuine browser chrome on a third-party page.
+
+It carries:
 
 - **A dedicated `chia://`/URN address bar** (`data-testid="dig-toolbar-urn-input"` injected /
   `builtin-dig-toolbar-urn-input` built-in) — its OWN input, distinct from the page's real address
@@ -758,6 +766,15 @@ same media query. It carries:
   reflects the ACTUAL bound key when resolvable — the injected bar asks the SW (`getToolbarShortcut`,
   §7), the built-in bar calls `chrome.commands.getAll()` directly — falling back to the manifest
   default (`Alt+Shift+D`) via `toolbarShortcutHint` until resolved / when the binding is cleared.
+- **A light/dark theme toggle** (`data-testid="builtin-dig-toolbar-theme-toggle"`, BUILT-IN bar only
+  — #429): a small unobtrusive icon button (a sun while dark, a moon while light) at the trailing end
+  of the bar. One tap commits the OPPOSITE explicit mode (`nextTheme`) to `ui.theme` and persists it
+  via the shared `wallet.settings.theme` read-modify-write (the SAME path the footer theme selector +
+  locale use), so it survives reload and syncs to every open surface through `storageSync`; the bar +
+  ext pages repaint immediately. It is a real toggle button — a stable, localized accessible name
+  (`toolbar.theme.toggle`, react-intl, all 14 locales), `aria-pressed` = dark-active, full keyboard
+  operability + a visible focus ring. It is a QUICK toggle only; the tri-state `light`/`dark`/`system`
+  control remains the footer theme selector.
 
 Labels are localized from a compact self-contained table (`toolbarLabels`) rather than the full shell
 catalog (the content script runs on every page and must stay lean); the brand phrase "Verified on

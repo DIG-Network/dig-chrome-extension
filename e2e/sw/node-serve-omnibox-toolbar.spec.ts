@@ -96,6 +96,15 @@ async function setToolbarViaWorker(on: boolean): Promise<void> {
   }, on);
 }
 
+/** Set the persisted theme mode (#429/#111) via the shared `wallet.settings` blob (read-modify-write
+ *  so unrelated settings survive) from an extension page with chrome.storage access. */
+async function setThemeMode(page: Page, mode: 'light' | 'dark' | 'system'): Promise<void> {
+  await page.evaluate(async (m) => {
+    const cur = ((await chrome.storage.local.get('wallet.settings'))['wallet.settings'] as Record<string, unknown>) || {};
+    await chrome.storage.local.set({ 'wallet.settings': { ...cur, theme: m } });
+  }, mode);
+}
+
 /** Open the (extension) dig-viewer page — a chrome-extension:// tab with chrome.* access we can
  *  drive the SW from (mirrors the live-node harness's extPage). */
 async function extPage(): Promise<Page> {
@@ -511,6 +520,9 @@ test('#366 — the manifest registers the toggle-dig-toolbar keyboard command (A
 test('#306 — screenshot the built-in toolbar + header switch (light/dark, desktop/mobile)', async () => {
   const cfg = await extPage();
   await setToolbar(cfg, true);
+  // #429: the built-in bar now paints from the PERSISTED theme pref, not raw prefers-color-scheme —
+  // so put the pref in `system` here to keep this test's OS-signal (emulateMedia) light/dark shots valid.
+  await setThemeMode(cfg, 'system');
   await cfg.close();
 
   const page = await context.newPage();
@@ -526,6 +538,75 @@ test('#306 — screenshot the built-in toolbar + header switch (light/dark, desk
       await expect(page.getByTestId('builtin-dig-toolbar')).toBeVisible({ timeout: 10_000 });
       await expect(page.getByTestId('header-toolbar-toggle')).toBeVisible();
       await page.screenshot({ path: `e2e/__screenshots__/urn-toolbar-${scheme}-${w.label}.png` });
+    }
+  }
+  await page.close();
+});
+
+// ── #429 — the light/dark theme switcher button in the built-in URN bar ─────────────────────────────
+
+test('#429 — the URN-bar theme toggle flips light↔dark, applies to the ext page, and persists across reload', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await setThemeMode(cfg, 'light'); // known start (the #211 product default)
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/app.html`);
+
+  const bar = page.getByTestId('builtin-dig-toolbar');
+  const toggle = page.getByTestId('builtin-dig-toolbar-theme-toggle');
+  await expect(bar).toBeVisible({ timeout: 10_000 });
+  await expect(toggle).toBeVisible();
+
+  // Starts light: bar painted light, toggle not pressed, the ext page itself is light.
+  await expect(bar).toHaveAttribute('data-theme', 'light');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect
+    .poll(async () => page.evaluate(() => document.documentElement.dataset.digTheme))
+    .toBe('light');
+
+  // One tap → dark: the bar AND the whole ext page repaint immediately.
+  await toggle.click();
+  await expect(bar).toHaveAttribute('data-theme', 'dark');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect
+    .poll(async () => page.evaluate(() => document.documentElement.dataset.digTheme))
+    .toBe('dark');
+
+  // Persisted to wallet.settings.theme (real chrome.storage — survives reload).
+  const persisted = await worker.evaluate(
+    async () => ((await chrome.storage.local.get('wallet.settings'))['wallet.settings'] as { theme?: string })?.theme,
+  );
+  expect(persisted).toBe('dark');
+
+  // Reload the extension page: the choice sticks (hydrated from storage on boot).
+  await page.reload();
+  await expect(page.getByTestId('builtin-dig-toolbar')).toHaveAttribute('data-theme', 'dark', { timeout: 10_000 });
+  await expect(page.getByTestId('builtin-dig-toolbar-theme-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await page.close();
+});
+
+test('#429 — screenshot the URN-bar theme toggle in both light + dark (desktop/mobile)', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await cfg.close();
+
+  const page = await context.newPage();
+  const widths = [
+    { label: 'desktop', size: { width: 1200, height: 820 } },
+    { label: 'mobile', size: { width: 372, height: 780 } },
+  ];
+  for (const mode of ['light', 'dark'] as const) {
+    const setter = await extPage();
+    await setThemeMode(setter, mode); // explicit pref drives the bar (not the OS)
+    await setter.close();
+    for (const w of widths) {
+      await page.setViewportSize(w.size);
+      await page.goto(`chrome-extension://${extensionId}/app.html`);
+      await expect(page.getByTestId('builtin-dig-toolbar')).toHaveAttribute('data-theme', mode, { timeout: 10_000 });
+      await expect(page.getByTestId('builtin-dig-toolbar-theme-toggle')).toBeVisible();
+      await page.screenshot({ path: `e2e/__screenshots__/urn-theme-toggle-${mode}-${w.label}.png` });
     }
   }
   await page.close();

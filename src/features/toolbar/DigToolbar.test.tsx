@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { renderWithProviders } from '@/test/harness';
+import { createStore } from '@/app/store';
+import { setTheme } from '@/features/ui/uiSlice';
+import { readWalletSettings } from '@/features/wallet/custody/settings';
 import { DigToolbar } from '@/features/toolbar/DigToolbar';
 import { TOOLBAR_ENABLED_KEY } from '@/lib/toolbar';
 
@@ -16,10 +20,11 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
   beforeEach(async () => {
     sendMessage().mockClear();
     await enable(false);
+    await chrome.storage.local.remove('wallet.settings');
   });
 
   it('renders nothing while the toolbar toggle is OFF', async () => {
-    const { container } = render(<DigToolbar />);
+    const { container } = renderWithProviders(<DigToolbar />);
     // give useStorageValue a tick to hydrate the (absent) value
     await new Promise((r) => setTimeout(r, 0));
     expect(container.querySelector('[data-testid="builtin-dig-toolbar"]')).toBeNull();
@@ -27,7 +32,7 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
 
   it('shows the URN bar when enabled and routes a chia:// address via navigateToDigUrl (#289 path)', async () => {
     await enable(true);
-    render(<DigToolbar />);
+    renderWithProviders(<DigToolbar />);
     const input = await screen.findByTestId('builtin-dig-toolbar-urn-input');
     await userEvent.type(input, `chia://${STORE}{Enter}`);
     await waitFor(() =>
@@ -40,7 +45,7 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
 
   it('routes an *.on.dig.net shorthand via navigateDigInput (HEAD→URN #308)', async () => {
     await enable(true);
-    render(<DigToolbar />);
+    renderWithProviders(<DigToolbar />);
     const input = await screen.findByTestId('builtin-dig-toolbar-urn-input');
     await userEvent.type(input, 'shop.on.dig.net{Enter}');
     await waitFor(() =>
@@ -53,7 +58,7 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
 
   it('#308 — rewrites a bare *.on.dig.net submit to the canonical chia:// form (never to localhost)', async () => {
     await enable(true);
-    render(<DigToolbar />);
+    renderWithProviders(<DigToolbar />);
     const input = (await screen.findByTestId('builtin-dig-toolbar-urn-input')) as HTMLInputElement;
     await userEvent.type(input, 'shop.on.dig.net{Enter}');
     // The visible URN bar shows the canonical chia:// address for the subdomain — NOT the local
@@ -63,7 +68,7 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
 
   it('#308 — accepts the canonical chia://<sub>.on.dig.net form and routes it HEAD→URN', async () => {
     await enable(true);
-    render(<DigToolbar />);
+    renderWithProviders(<DigToolbar />);
     const input = (await screen.findByTestId('builtin-dig-toolbar-urn-input')) as HTMLInputElement;
     await userEvent.type(input, 'chia://shop.on.dig.net{Enter}');
     await waitFor(() =>
@@ -77,7 +82,7 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
 
   it('marks the field invalid on non-DIG input instead of navigating', async () => {
     await enable(true);
-    render(<DigToolbar />);
+    renderWithProviders(<DigToolbar />);
     const input = await screen.findByTestId('builtin-dig-toolbar-urn-input');
     await userEvent.type(input, 'just some words{Enter}');
     expect(input).toHaveAttribute('aria-invalid', 'true');
@@ -86,17 +91,66 @@ describe('DigToolbar — built-in fullscreen URN toolbar (#306 item 1)', () => {
 
   it('renders the verified + local badges when a node serve verdict is supplied', async () => {
     await enable(true);
-    render(<DigToolbar verdict={{ verified: true, root: null, source: 'local' }} />);
+    renderWithProviders(<DigToolbar verdict={{ verified: true, root: null, source: 'local' }} />);
     expect(await screen.findByTestId('builtin-dig-toolbar-badge-verified')).toHaveAttribute('data-ok', 'true');
     expect(screen.getByTestId('builtin-dig-toolbar-badge-local')).toBeInTheDocument();
   });
 
   it('#366 — shows the show/hide keyboard-shortcut hint (default when chrome.commands is unresolved)', async () => {
     await enable(true);
-    render(<DigToolbar />);
+    renderWithProviders(<DigToolbar />);
     const hint = await screen.findByTestId('builtin-dig-toolbar-shortcut-hint');
     // With no chrome.commands binding resolvable in the unit env, the manifest default is shown.
     expect(hint).toHaveTextContent('Alt+Shift+D');
     expect(hint).toHaveTextContent(/show\/hide/i);
+  });
+
+  // ── #429 — the light/dark theme switcher button in the URN bar ────────────────────────────────
+  describe('#429 — light/dark theme toggle', () => {
+    it('renders a labelled toggle button; the default (light) is not pressed', async () => {
+      await enable(true);
+      renderWithProviders(<DigToolbar />);
+      const btn = await screen.findByTestId('builtin-dig-toolbar-theme-toggle');
+      // Accessible: a real toggle button with a stable name + pressed state (WAI-ARIA APG).
+      expect(btn.tagName).toBe('BUTTON');
+      expect(btn).toHaveAttribute('aria-pressed', 'false'); // #211 default is explicit light
+      expect(btn).toHaveAccessibleName(/theme/i);
+      // The bar paints light by default (matches the ext-page white product theme).
+      expect(screen.getByTestId('builtin-dig-toolbar')).toHaveAttribute('data-theme', 'light');
+    });
+
+    it('clicking flips the pref to dark, repaints the bar, and persists to wallet.settings.theme', async () => {
+      await enable(true);
+      const { store } = renderWithProviders(<DigToolbar />);
+      const btn = await screen.findByTestId('builtin-dig-toolbar-theme-toggle');
+
+      await userEvent.click(btn);
+
+      // Store flips immediately → the bar repaints dark + the toggle reflects the pressed state.
+      expect(store.getState().ui.theme).toBe('dark');
+      expect(screen.getByTestId('builtin-dig-toolbar')).toHaveAttribute('data-theme', 'dark');
+      expect(btn).toHaveAttribute('aria-pressed', 'true');
+      // Persisted (read-modify-write) so it survives reload + syncs to every open surface.
+      await waitFor(async () => expect((await readWalletSettings()).theme).toBe('dark'));
+    });
+
+    it('when the stored pref is dark the bar paints dark; toggling returns to an explicit light + persists', async () => {
+      await enable(true);
+      const store = createStore();
+      store.dispatch(setTheme('dark'));
+      renderWithProviders(<DigToolbar />, { store });
+
+      const bar = await screen.findByTestId('builtin-dig-toolbar');
+      expect(bar).toHaveAttribute('data-theme', 'dark');
+      const btn = screen.getByTestId('builtin-dig-toolbar-theme-toggle');
+      expect(btn).toHaveAttribute('aria-pressed', 'true');
+
+      await userEvent.click(btn);
+
+      expect(store.getState().ui.theme).toBe('light');
+      expect(bar).toHaveAttribute('data-theme', 'light');
+      expect(btn).toHaveAttribute('aria-pressed', 'false');
+      await waitFor(async () => expect((await readWalletSettings()).theme).toBe('light'));
+    });
   });
 });

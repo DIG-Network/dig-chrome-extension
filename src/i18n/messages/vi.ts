@@ -16,6 +16,7 @@ export const vi: Record<string, string> = {
   'shell.theme.light': 'Sáng',
   'shell.theme.dark': 'Tối',
   'shell.theme.system': 'Theo hệ thống',
+  'toolbar.theme.toggle': 'Chuyển giao diện sáng hoặc tối',
 
   // ── tabs (mobile-OS bottom nav) ──
   'tab.home': 'Trang chủ',
