@@ -1006,6 +1006,66 @@ UNCHANGED.
   DISCONNECTED alert and labels any still-visible content as cached/out-of-date. There is no silent
   degraded mode and no coinset fallback for wallet DATA when the wallet source is the node.
 
+### 11.2 Thin-client node custody, one-time seed migration & node-only wallet source (#374/#375)
+
+The end state of epic #365: the extension holds **NO key material**. The dig-node is the sole
+custodian + signer + wallet-data source; the extension is a controller over it. This cutover is
+**flag-gated** — `feature.thinClientCutover` (`src/lib/thin-client-flags.ts`, default **OFF**) is the
+single master switch. While OFF the local self-custody model (§15.4, §18) is byte-unchanged; the
+switch flips ON only once a wallet's seed has been migrated to the node and the node is proven to
+sign for it. Nothing routes to the node-only path — and nothing is purged — while the flag is OFF.
+
+- **Provisioning/custody → node.** Onboarding/create/import/restore/unlock/lock/status/delete drive
+  the node's `wallet.*` custody-lifecycle methods (dig-node SPEC §18.20) over the authorized `/ws`
+  transport (§11.1), each gated by the paired control token (§7.12). `src/lib/node-custody.ts`
+  (`makeNodeCustodyClient`) maps these 1:1: `wallet.status {}` → `{ state, address? }`;
+  `wallet.create { password }` / `wallet.unlock { password }` → `{ address }`; `wallet.import` /
+  `wallet.restore { mnemonic, password }` → `{ address }`; `wallet.lock` / `wallet.delete` → state.
+  The node generates + encrypts the seed and NEVER returns it; backup/reveal is node-local only.
+- **One-time guided seed migration (`src/lib/node-migration.ts`).** A legacy self-custody wallet's
+  existing seed is moved to the node ONCE, then purged locally. The flow is **safety-gated**
+  (`runSeedMigration`) and MUST hold these invariants:
+  1. **Verify before purge.** Local key material is purged ONLY after (a) `wallet.import` returned an
+     address AND (b) `nodeProvesCanSign` holds — the node's UNLOCKED `wallet.status` reports the SAME
+     `xch1…` index-0 receive address the extension derives from the seed it sent (the fingerprint
+     round-trip proving the node loaded the identical key and can sign for this wallet). A mismatch or
+     a not-unlocked node ABORTS with the seed still local.
+  2. **Idempotent.** The node is imported into ONLY from `status.state === 'none'`; a re-run with the
+     seed already on the node skips straight to verify — never a double-import.
+  3. **Resumable.** A crash after import but before purge leaves the seed local and the node holding a
+     `locked` seed; a re-run unlocks, verifies, and purges — the seed cannot be lost mid-migration.
+  4. The ONLY caller of the purge is a passing verify FOR THAT wallet; the `!local` (no decryptable
+     seed) path NEVER purges, since no verify is possible.
+- **PER-WALLET scoped purge (`src/lib/node-purge.ts`) — the multi-wallet safety rule.** The extension
+  is MULTI-wallet: `wallet.registry` is a `WalletEntry[]`, each entry carrying its OWN encrypted DIGWX1
+  `record` (`wallet.keystore` mirrors only the ACTIVE one). Migration MUST remove ONLY the one verified
+  wallet's entry — NEVER the whole `wallet.registry` array (that would destroy the seeds of wallets the
+  node was never sent and cannot sign for → permanent fund loss). `purgeWalletFromRegistry` removes the
+  verified entry, recomputes the active id + mirror over what remains, and reports `fullTeardown` ONLY
+  when no entry remains; `applyScopedPurge` then either REWRITES the registry (minus that entry) + the
+  mirror + clears the unlock window, or — only on full teardown — removes `wallet.keystore` /
+  `wallet.registry` / `wallet.activeId` / the session unlock-expiry wholesale and zeroizes the vault.
+  Post-cutover NO seed/entropy/DIGWX1 record remains; a wallet the node was not proven to custody stays
+  locally intact.
+- **Multi-wallet flip eligibility (`cutoverEligibility`).** Node custody is currently SINGLE-wallet
+  (dig-node #370: one seed / one `wallet.status`), so the cutover can fully migrate at most ONE custody
+  wallet. With >1 wallet holding a `record` the flip is REFUSED (`multi-wallet-needs-node-custody`) and
+  the extra seeds stay local — never over-purged; completing it needs node-side multi-wallet custody (a
+  #370 follow-up). Watch-only entries hold no secret and do not count.
+- **Sign/spend → node (`src/lib/node-signer.ts`).** Every spend/offer/mint/transfer routes to the
+  node's sign+broadcast-on-behalf path (dig-node SPEC §18.21): the extension issues the Sage mutation
+  method (`send_xch`/`send_cat`/`make_offer`/… with `auto_submit`) over the paired `/ws`; the node
+  builds → signs (native BLS with its custodied key) → validates (`dig-clvm`) → broadcasts. The
+  extension constructs NO spend bundles locally. **Per-op consent** (§18.21) stays the extension's
+  responsibility: it surfaces the confirm and only then issues the op; an unconsented/unauthorized op
+  fails closed node-side (nothing spent).
+- **Node-only wallet source; node-down = DISCONNECTED (#375).** With the cutover ON the node is the
+  ONLY wallet-data + spend source — there is NO coinset.org fallback that bypasses the node and no
+  user-facing source switch. Node-down is the DISCONNECTED view (§11.1), never a silent coinset
+  degrade; cached read-only *content* may still show, labeled offline (the local `.dig` cache reads
+  are unaffected). The §5.3 custom-node override (§8.3) remains user-facing. The `chia://` RESOLVER
+  content path (§8, §5.4) is UNCHANGED and stays node-served.
+
 ### 9.1 In-window app-view framing bypass (`*.on.dig.net`)
 
 The extension's in-window app-view embeds a launched DIG dApp in an iframe. DIG's own subdomain
