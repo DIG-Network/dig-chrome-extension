@@ -16,28 +16,34 @@
  *     (`X-Dig-Verified`) and "Loaded from local" (`X-Dig-Source: local`);
  *   - ONE button that opens the fullscreen extension surface (`openExtensionPage`) — replacing the
  *     earlier per-page Wallet/DIG Shields/Control Panel icon row.
- * Toggling the setting injects or removes the bar live.
+ * Toggling the setting injects or removes the bar live. The bar's light/dark paint follows its OWN
+ * independent, persisted `toolbar.theme` preference (#459) — resolved + live-synced the SAME way as
+ * every other pref here, and NEVER the main app theme (`uiSlice.theme` / `wallet.settings.theme`).
  *
  * This is DOM + chrome.* mounting glue; the decision logic (toggle key/default, inject-or-not,
- * URN-bar submit resolution, badge state, localized labels) lives in the unit-tested pure core
- * `@/lib/toolbar`. esbuild bundles it into a self-contained classic script (dist/dig-toolbar.js),
- * inlining the pure imports; the built-extension Playwright e2e
+ * URN-bar submit resolution, badge state, theme resolution, localized labels) lives in the
+ * unit-tested pure core `@/lib/toolbar`. esbuild bundles it into a self-contained classic script
+ * (dist/dig-toolbar.js), inlining the pure imports; the built-extension Playwright e2e
  * (e2e/sw/node-serve-omnibox-toolbar.spec.ts) validates the behaviour.
  */
 import {
   TOOLBAR_ENABLED_KEY,
   TOOLBAR_ENABLED_DEFAULT,
   TOOLBAR_OPEN_PAGE,
+  TOOLBAR_THEME_KEY,
+  TOOLBAR_THEME_DEFAULT,
   shouldInjectToolbar,
   badgesFromHeaders,
   toolbarBadges,
   resolveUrnBarSubmit,
   toolbarLabels,
-  toolbarTheme,
+  resolveToolbarTheme,
   toolbarShortcutHint,
+  isToolbarThemeMode,
   TOOLBAR_PALETTES,
   type BadgeState,
   type ToolbarLabels,
+  type ToolbarThemeMode,
 } from '@/lib/toolbar';
 import { ACTIONS } from '@/lib/messages';
 
@@ -133,12 +139,18 @@ function refreshShortcutHint(hintEl: HTMLElement, labels: ToolbarLabels): void {
   }
 }
 
-/** Build the shadow-DOM toolbar and mount it. Idempotent — a second call replaces the first. */
-function mountToolbar(badges: BadgeState | null): void {
+/** Build the shadow-DOM toolbar and mount it. Idempotent — a second call replaces the first.
+ *  `themeMode` is the URN bar's OWN independent, persisted theme preference (#459) — NEVER the
+ *  main app theme (this content script has no Redux store / `wallet.settings` access, and must
+ *  not gain one just to paint a colour). */
+function mountToolbar(badges: BadgeState | null, themeMode: ToolbarThemeMode): void {
   removeToolbar();
   const labels = toolbarLabels(navigator.languages);
-  // Theme-match the browser (#306 item 2): the SAME palette the built-in fullscreen bar uses.
-  const c = TOOLBAR_PALETTES[toolbarTheme(prefersDark())];
+  // #459 — resolve the SAME independent `toolbar.theme` preference the built-in fullscreen bar's
+  // switcher writes; `system` (the default) falls back to prefers-color-scheme, reproducing the
+  // pre-#459 always-follow-the-OS look. Same shared palette (#306 item 2) either way.
+  const effective = resolveToolbarTheme(themeMode, prefersDark());
+  const c = TOOLBAR_PALETTES[effective];
 
   const host = document.createElement('div');
   host.id = HOST_ID;
@@ -223,6 +235,8 @@ function mountToolbar(badges: BadgeState | null): void {
   bar.setAttribute('role', 'toolbar');
   bar.setAttribute('aria-label', labels.toolbar);
   bar.setAttribute('data-testid', 'dig-toolbar');
+  // #459 — mirrors the built-in bar's `data-theme` attribute so both mounts are provably in sync.
+  bar.setAttribute('data-theme', effective);
 
   const mark = document.createElement('span');
   mark.className = 'mark';
@@ -335,26 +349,35 @@ function mountToolbar(badges: BadgeState | null): void {
   }
 }
 
-/** Read the toggle + apply: inject when enabled on an ordinary top-frame web page, else remove. */
+/** Read the toggle + the independent theme pref (#459), then apply: inject when enabled on an
+ *  ordinary top-frame web page, else remove. */
 async function refresh(): Promise<void> {
   let enabled: boolean = TOOLBAR_ENABLED_DEFAULT;
+  let themeMode: ToolbarThemeMode = TOOLBAR_THEME_DEFAULT;
   try {
-    const got = await chrome.storage.local.get(TOOLBAR_ENABLED_KEY);
+    const got = await chrome.storage.local.get([TOOLBAR_ENABLED_KEY, TOOLBAR_THEME_KEY]);
     if (typeof got[TOOLBAR_ENABLED_KEY] === 'boolean') enabled = got[TOOLBAR_ENABLED_KEY] as boolean;
+    if (isToolbarThemeMode(got[TOOLBAR_THEME_KEY])) themeMode = got[TOOLBAR_THEME_KEY];
   } catch {
-    /* storage unavailable — keep the default (off) */
+    /* storage unavailable — keep the defaults (off / system) */
   }
   if (!shouldInjectToolbar(enabled, location.href, isTop)) {
     removeToolbar();
     return;
   }
-  mountToolbar(await readVerdict());
+  mountToolbar(await readVerdict(), themeMode);
 }
 
-// React to live toggles from the window-header switch / options page.
+// React to live toggles from the window-header switch / options page, AND to the URN-bar's OWN
+// independent theme pref (#459) flipping from the built-in bar's switcher or another tab — so this
+// injected mount repaints in lockstep without ever reading the app-theme store/settings blob.
 try {
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && Object.prototype.hasOwnProperty.call(changes, TOOLBAR_ENABLED_KEY)) {
+    if (
+      area === 'local' &&
+      (Object.prototype.hasOwnProperty.call(changes, TOOLBAR_ENABLED_KEY) ||
+        Object.prototype.hasOwnProperty.call(changes, TOOLBAR_THEME_KEY))
+    ) {
       void refresh();
     }
   });

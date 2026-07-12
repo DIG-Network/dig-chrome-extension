@@ -105,6 +105,14 @@ async function setThemeMode(page: Page, mode: 'light' | 'dark' | 'system'): Prom
   }, mode);
 }
 
+/** Set the URN bar's OWN independent theme preference (#459) — a FLAT `toolbar.theme` key, never
+ *  the `wallet.settings` blob the app theme lives in. */
+async function setToolbarThemeMode(page: Page, mode: 'light' | 'dark' | 'system'): Promise<void> {
+  await page.evaluate(async (m) => {
+    await chrome.storage.local.set({ 'toolbar.theme': m });
+  }, mode);
+}
+
 /** Open the (extension) dig-viewer page — a chrome-extension:// tab with chrome.* access we can
  *  drive the SW from (mirrors the live-node harness's extPage). */
 async function extPage(): Promise<Page> {
@@ -520,9 +528,10 @@ test('#366 — the manifest registers the toggle-dig-toolbar keyboard command (A
 test('#306 — screenshot the built-in toolbar + header switch (light/dark, desktop/mobile)', async () => {
   const cfg = await extPage();
   await setToolbar(cfg, true);
-  // #429: the built-in bar now paints from the PERSISTED theme pref, not raw prefers-color-scheme —
-  // so put the pref in `system` here to keep this test's OS-signal (emulateMedia) light/dark shots valid.
-  await setThemeMode(cfg, 'system');
+  // #429/#459: the built-in bar paints from its OWN independent, persisted theme pref
+  // (`toolbar.theme`), not raw prefers-color-scheme and not the app theme — so put THAT pref in
+  // `system` here to keep this test's OS-signal (emulateMedia) light/dark shots valid.
+  await setToolbarThemeMode(cfg, 'system');
   await cfg.close();
 
   const page = await context.newPage();
@@ -545,10 +554,11 @@ test('#306 — screenshot the built-in toolbar + header switch (light/dark, desk
 
 // ── #429 — the light/dark theme switcher button in the built-in URN bar ─────────────────────────────
 
-test('#429 — the URN-bar theme toggle flips light↔dark, applies to the ext page, and persists across reload', async () => {
+test('#429/#459 — the URN-bar theme toggle flips light↔dark, persists under its OWN key, and survives reload — WITHOUT touching the app theme', async () => {
   const cfg = await extPage();
   await setToolbar(cfg, true);
-  await setThemeMode(cfg, 'light'); // known start (the #211 product default)
+  await setThemeMode(cfg, 'light'); // app theme known start (the #211 product default)
+  await setToolbarThemeMode(cfg, 'light'); // URN-bar theme known start, independently
   await cfg.close();
 
   const page = await context.newPage();
@@ -559,35 +569,43 @@ test('#429 — the URN-bar theme toggle flips light↔dark, applies to the ext p
   await expect(bar).toBeVisible({ timeout: 10_000 });
   await expect(toggle).toBeVisible();
 
-  // Starts light: bar painted light, toggle not pressed, the ext page itself is light.
+  // Starts light both ways: bar painted light, toggle not pressed, the ext page itself is light.
   await expect(bar).toHaveAttribute('data-theme', 'light');
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await expect
     .poll(async () => page.evaluate(() => document.documentElement.dataset.digTheme))
     .toBe('light');
 
-  // One tap → dark: the bar AND the whole ext page repaint immediately.
+  // One tap → dark: the bar repaints immediately; the REST of the ext page (app theme) is UNCHANGED
+  // (#459 — the bug this ticket fixes was the toggle also flipping document.dataset.digTheme).
   await toggle.click();
   await expect(bar).toHaveAttribute('data-theme', 'dark');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect
     .poll(async () => page.evaluate(() => document.documentElement.dataset.digTheme))
-    .toBe('dark');
+    .toBe('light');
 
-  // Persisted to wallet.settings.theme (real chrome.storage — survives reload).
-  const persisted = await worker.evaluate(
+  // Persisted to the toolbar's OWN key (real chrome.storage — survives reload) — NEVER
+  // wallet.settings.theme, which stays exactly what the app-theme control last set (light).
+  const toolbarPersisted = await worker.evaluate(async () => (await chrome.storage.local.get('toolbar.theme'))['toolbar.theme']);
+  expect(toolbarPersisted).toBe('dark');
+  const appPersisted = await worker.evaluate(
     async () => ((await chrome.storage.local.get('wallet.settings'))['wallet.settings'] as { theme?: string })?.theme,
   );
-  expect(persisted).toBe('dark');
+  expect(appPersisted).toBe('light');
 
-  // Reload the extension page: the choice sticks (hydrated from storage on boot).
+  // Reload the extension page: the URN-bar choice sticks (hydrated from its own key on boot); the
+  // app theme is still light.
   await page.reload();
   await expect(page.getByTestId('builtin-dig-toolbar')).toHaveAttribute('data-theme', 'dark', { timeout: 10_000 });
   await expect(page.getByTestId('builtin-dig-toolbar-theme-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await expect
+    .poll(async () => page.evaluate(() => document.documentElement.dataset.digTheme))
+    .toBe('light');
   await page.close();
 });
 
-test('#429 — screenshot the URN-bar theme toggle in both light + dark (desktop/mobile)', async () => {
+test('#429/#459 — screenshot the URN-bar theme toggle in both light + dark (desktop/mobile)', async () => {
   const cfg = await extPage();
   await setToolbar(cfg, true);
   await cfg.close();
@@ -599,7 +617,7 @@ test('#429 — screenshot the URN-bar theme toggle in both light + dark (desktop
   ];
   for (const mode of ['light', 'dark'] as const) {
     const setter = await extPage();
-    await setThemeMode(setter, mode); // explicit pref drives the bar (not the OS)
+    await setToolbarThemeMode(setter, mode); // the URN bar's OWN independent pref drives the bar
     await setter.close();
     for (const w of widths) {
       await page.setViewportSize(w.size);
@@ -609,5 +627,85 @@ test('#429 — screenshot the URN-bar theme toggle in both light + dark (desktop
       await page.screenshot({ path: `e2e/__screenshots__/urn-theme-toggle-${mode}-${w.label}.png` });
     }
   }
+  await page.close();
+});
+
+// ── #459 — the URN-bar theme is decoupled from the main app theme ──────────────────────────────────
+
+test('#459 — the URN-bar theme is independent of the app theme, proven in BOTH directions', async () => {
+  const cfg = await extPage();
+  await setToolbar(cfg, true);
+  await setThemeMode(cfg, 'light');
+  await setToolbarThemeMode(cfg, 'light');
+  await cfg.close();
+
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/app.html`);
+
+  const bar = page.getByTestId('builtin-dig-toolbar');
+  const toggle = page.getByTestId('builtin-dig-toolbar-theme-toggle');
+  const themeSelect = page.getByTestId('theme-select');
+  await expect(bar).toBeVisible({ timeout: 10_000 });
+  await expect(themeSelect).toHaveValue('light');
+  await expect(bar).toHaveAttribute('data-theme', 'light');
+
+  // Direction 1: flip the APP theme via the real footer control (AppFooter's <select>, #111) — the
+  // URN bar must NOT move.
+  await themeSelect.selectOption('dark');
+  await expect
+    .poll(async () => page.evaluate(() => document.documentElement.dataset.digTheme))
+    .toBe('dark');
+  await expect(bar).toHaveAttribute('data-theme', 'light'); // unaffected
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+  // Direction 2: flip the URN-bar toggle — the app theme (still on 'dark' from step 1) must NOT move.
+  await toggle.click();
+  await expect(bar).toHaveAttribute('data-theme', 'dark');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(themeSelect).toHaveValue('dark'); // unchanged by the toolbar toggle
+  await expect
+    .poll(async () => page.evaluate(() => document.documentElement.dataset.digTheme))
+    .toBe('dark');
+
+  // Prove it's genuine decoupling, not coincidence: diverge them (app → light, toolbar stays dark)
+  // and confirm the toolbar is untouched by the app-theme flip back.
+  await themeSelect.selectOption('light');
+  await expect
+    .poll(async () => page.evaluate(() => document.documentElement.dataset.digTheme))
+    .toBe('light');
+  await expect(bar).toHaveAttribute('data-theme', 'dark');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+  await page.close();
+});
+
+test('#459 — the INJECTED content-script toolbar reads the SAME independent theme key, live, and never touches the app theme', async () => {
+  await setToolbarViaWorker(true);
+  // Clear the app-theme blob so a stray leftover value from an earlier test can't hide a coupling bug.
+  await worker.evaluate(async () => {
+    await chrome.storage.local.remove('wallet.settings');
+    await chrome.storage.local.set({ 'toolbar.theme': 'dark' });
+  });
+
+  const page = await context.newPage();
+  await page.goto(`${nodeBase}/plain`);
+  const bar = page.getByTestId('dig-toolbar');
+  await expect(bar).toBeVisible({ timeout: 10_000 });
+  // Shares the SAME persisted key the built-in fullscreen bar's switcher writes.
+  await expect(bar).toHaveAttribute('data-theme', 'dark');
+  await page.screenshot({ path: 'e2e/__screenshots__/toolbar-injected-theme-dark.png' });
+
+  // Live-sync: flipping the shared key (as the fullscreen switcher would) repaints THIS mount too,
+  // with no reload/navigation — the same chrome.storage.onChanged wiring the enable toggle uses.
+  await worker.evaluate(async () => {
+    await chrome.storage.local.set({ 'toolbar.theme': 'light' });
+  });
+  await expect(bar).toHaveAttribute('data-theme', 'light', { timeout: 10_000 });
+  await page.screenshot({ path: 'e2e/__screenshots__/toolbar-injected-theme-light.png' });
+
+  // Never wrote to the app-theme blob (#459 decoupling — the injected mount has no Redux store).
+  const walletSettings = await worker.evaluate(async () => (await chrome.storage.local.get('wallet.settings'))['wallet.settings']);
+  expect(walletSettings).toBeUndefined();
+
   await page.close();
 });

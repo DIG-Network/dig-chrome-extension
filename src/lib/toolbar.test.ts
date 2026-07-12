@@ -13,6 +13,12 @@ import {
   toolbarTheme,
   toolbarShortcutHint,
   TOOLBAR_PALETTES,
+  TOOLBAR_THEME_KEY,
+  TOOLBAR_THEME_DEFAULT,
+  TOOLBAR_THEME_MODES,
+  isToolbarThemeMode,
+  resolveToolbarTheme,
+  nextToolbarTheme,
 } from '@/lib/toolbar';
 import { LOCALES } from '@/i18n/locales';
 
@@ -135,6 +141,43 @@ describe('toolbar theme (#306 — prefers-color-scheme match, both mounts share 
       expect(p.okText).toMatch(/^#/);
       expect(p.warnText).toMatch(/^#/);
     }
+  });
+});
+
+describe('URN-bar independent theme state (#459 — decoupled from the main app theme)', () => {
+  it('persists under its OWN flat storage key, distinct from the app theme (wallet.settings.theme)', () => {
+    expect(TOOLBAR_THEME_KEY).toBe('toolbar.theme');
+    expect(TOOLBAR_THEME_KEY).not.toBe('wallet.settings.theme');
+    expect(TOOLBAR_THEME_KEY).not.toBe('theme');
+  });
+
+  it('defaults to system — reproduces the toolbar\'s pre-#459 always-follow-the-OS behavior', () => {
+    expect(TOOLBAR_THEME_DEFAULT).toBe('system');
+    expect(TOOLBAR_THEME_MODES).toContain('system');
+    expect(TOOLBAR_THEME_MODES).toEqual(['light', 'dark', 'system']);
+  });
+
+  it('isToolbarThemeMode accepts light/dark/system and rejects anything else', () => {
+    expect(isToolbarThemeMode('light')).toBe(true);
+    expect(isToolbarThemeMode('dark')).toBe(true);
+    expect(isToolbarThemeMode('system')).toBe(true);
+    expect(isToolbarThemeMode('sepia')).toBe(false);
+    expect(isToolbarThemeMode('')).toBe(false);
+    expect(isToolbarThemeMode(undefined)).toBe(false);
+    expect(isToolbarThemeMode(null)).toBe(false);
+    expect(isToolbarThemeMode(1)).toBe(false);
+  });
+
+  it('resolveToolbarTheme: system follows the OS signal; light/dark pass through as explicit locks', () => {
+    expect(resolveToolbarTheme('system', true)).toBe('dark');
+    expect(resolveToolbarTheme('system', false)).toBe('light');
+    expect(resolveToolbarTheme('light', true)).toBe('light');
+    expect(resolveToolbarTheme('dark', false)).toBe('dark');
+  });
+
+  it('nextToolbarTheme always resolves to an explicit opposite, never back to system', () => {
+    expect(nextToolbarTheme('light')).toBe('dark');
+    expect(nextToolbarTheme('dark')).toBe('light');
   });
 });
 

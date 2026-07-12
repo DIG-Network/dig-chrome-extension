@@ -17,8 +17,10 @@
  * not the options page — `TOOLBAR_ENABLED_KEY` is unchanged so existing persisted state carries over.
  *
  * This module owns the toggle key/default, the inject-or-not decision, the URN-bar submit decision,
- * the badge state, and a compact localized label set; the content-script glue does the DOM / shadow-
- * root mounting + native-grey styling. Pure + DOM-free → unit-tested.
+ * the badge state, the URN bar's OWN independent theme preference (#459 — `TOOLBAR_THEME_KEY` /
+ * {@link resolveToolbarTheme}, decoupled from the main app theme in `theme.ts`/`uiSlice.ts`), and a
+ * compact localized label set; the content-script glue does the DOM / shadow-root mounting +
+ * native-grey styling. Pure + DOM-free → unit-tested.
  *
  * i18n note: the labels live in a small self-contained table here (not the full shell catalog)
  * BECAUSE this runs as a content script on EVERY page and must stay lean — pulling in all 14
@@ -128,6 +130,60 @@ export type ToolbarTheme = 'light' | 'dark';
 /** Choose the toolbar theme from the OS/browser dark-mode signal (`prefers-color-scheme: dark`). */
 export function toolbarTheme(prefersDark: boolean): ToolbarTheme {
   return prefersDark ? 'dark' : 'light';
+}
+
+/**
+ * #459 — the URN bar's OWN independent theme preference, fully decoupled from the main app theme
+ * (`uiSlice.theme` / persisted `wallet.settings.theme`, #111/#429). `system` follows the OS
+ * `prefers-color-scheme` signal (same as the toolbar's pre-#459 always-follow-the-OS behavior);
+ * `light`/`dark` are explicit, user-locked choices set by the #429 switcher.
+ */
+export const TOOLBAR_THEME_MODES = ['light', 'dark', 'system'] as const;
+export type ToolbarThemeMode = (typeof TOOLBAR_THEME_MODES)[number];
+
+/**
+ * `chrome.storage.local` key persisting the URN bar's independent theme preference. Deliberately
+ * a FLAT top-level key — same idiom as {@link TOOLBAR_ENABLED_KEY} — NOT a field inside the
+ * `wallet.settings` blob `uiSlice`/`AppFooter` read/write for the main app theme, so the two
+ * preferences can never cross-write each other even by an accidental read-modify-write merge.
+ */
+export const TOOLBAR_THEME_KEY = 'toolbar.theme';
+
+/**
+ * Default `system` — before #459 the toolbar ALWAYS painted from `prefers-color-scheme` directly
+ * with no persisted preference at all, so defaulting the new independent state to `system`
+ * reproduces that exact look for every existing user (no jarring first-run change).
+ */
+export const TOOLBAR_THEME_DEFAULT: ToolbarThemeMode = 'system';
+
+const TOOLBAR_THEME_MODE_SET = new Set<string>(TOOLBAR_THEME_MODES);
+
+/** True if `value` is one of the three supported URN-bar theme modes. */
+export function isToolbarThemeMode(value: unknown): value is ToolbarThemeMode {
+  return typeof value === 'string' && TOOLBAR_THEME_MODE_SET.has(value);
+}
+
+/**
+ * Resolve the URN bar's independent theme preference to the concrete paint to apply: `system`
+ * follows the caller-supplied OS signal (`prefers-color-scheme: dark`); `light`/`dark` pass
+ * through unchanged. Mirrors `resolveEffectiveTheme` (`theme.ts`) in SHAPE only — this is a fully
+ * separate resolver over a fully separate preference, so the URN bar never shares state (or an
+ * import edge that could later grow one) with the main app theme (#459).
+ */
+export function resolveToolbarTheme(mode: ToolbarThemeMode, prefersDark: boolean): ToolbarTheme {
+  if (mode === 'system') return toolbarTheme(prefersDark);
+  return mode;
+}
+
+/**
+ * The mode a one-tap light↔dark toggle on the URN bar flips TO, given the theme currently
+ * PAINTED. Always an explicit `light`/`dark` — never `system` — so the #429 switcher locks in a
+ * deterministic choice that overrides + persists (the tri-state `system` default is reachable
+ * again only by clearing the pref; #459 keeps scope to the one-tap switcher, no fuller
+ * toolbar-theme control).
+ */
+export function nextToolbarTheme(current: ToolbarTheme): ToolbarThemeMode {
+  return current === 'dark' ? 'light' : 'dark';
 }
 
 /** The colour tokens the toolbar renders with, per theme. ONE palette source shared by the injected
