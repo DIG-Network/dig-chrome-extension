@@ -24,7 +24,7 @@ import { dirname, join } from 'node:path';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (f) => readFileSync(join(root, f), 'utf8');
 
-const DISCORD = 'https://discord.gg/dignetwork';
+const DISCORD = 'https://discord.gg/v78aygUZt';
 
 test('welcome.html upsell uses the chia:// content-open scheme (no user-facing dig://)', () => {
   const html = read('welcome.html');
