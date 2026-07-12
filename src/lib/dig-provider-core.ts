@@ -9,7 +9,7 @@
  *
  * Re-exported here so agent-surface.mjs and the provider tests keep importing
  * `./dig-provider-core.mjs` unchanged. The PROVIDER_INFO the package ships is the EXTENSION
- * edition (transport:'walletconnect', edition:'extension') — the value this consumer needs.
+ * edition (transport:'injected', edition:'extension') — the value this consumer needs.
  * See the package SPEC.md for the normative contract.
  */
 export {

@@ -102,6 +102,33 @@ const STUB = `
     }
     if (a === 'confirmOptionMint') return { spentCoinId: 'option-mint-coin-1' };
     if (a === 'getOptions') return { options: [] };
+    // DIG Shields (#134) + server-side verification ledger (#307). The verify ledger deliberately
+    // carries one RPC-sourced FAILURE so the aggregate badge reads "Unverified" and the modal shows a
+    // tampered resource. index.html's proof is a real golden fold (leaf 00.. + right sibling 11..) so a
+    // client re-verify passes; the rpc entry's proofRoot is bogus so its re-verify honestly fails.
+    if (a === 'getShieldLedger') return {
+      capsule: { storeId: 'aa'.repeat(32), rootHash: 'bb'.repeat(32) },
+      verification: { state: 'failed' },
+      group: {
+        passed: [{ resourcePath: 'index.html', storeId: 'aa'.repeat(32), rootHash: 'bb'.repeat(32), inclusionProofPassed: true, errorCode: '', executionProofStatus: '' }],
+        failed: [{ resourcePath: 'evil.js', storeId: 'aa'.repeat(32), rootHash: 'bb'.repeat(32), inclusionProofPassed: false, errorCode: 'DIG_ERR_PROOF_MISMATCH', executionProofStatus: '' }],
+        passedCount: 1, failedCount: 1, total: 2, allPassed: false, empty: false,
+      },
+      entries: [],
+    };
+    if (a === 'getVerifyLedger') {
+      var GOLD = 'eeeb4ecba0277be1cc99ab5a984379dc42ebe5ebb576c65535f44de80086fa4a';
+      return {
+        storeId: 'aa'.repeat(32),
+        root: GOLD,
+        aggregate: { verified: false, anyRpcFailed: true, counts: { total: 3, verified: 2, failed: 1, bySource: { local: 1, peer: 1, rpc: 1 } } },
+        resources: [
+          { resourceKey: 'index.html', source: 'local', verified: true, root: GOLD, proof: { leafHash: '00'.repeat(32), siblings: [{ hash: '11'.repeat(32), dir: 'right' }], leafIndex: 0, proofRoot: GOLD }, failReason: null },
+          { resourceKey: 'assets/app.css', source: 'peer', verified: true, root: GOLD, proof: { leafHash: '22'.repeat(32), siblings: [{ hash: '33'.repeat(32), dir: 'left' }, { hash: '44'.repeat(32), dir: 'right' }], leafIndex: 2, proofRoot: GOLD }, failReason: null },
+          { resourceKey: 'evil.js', source: 'rpc', verified: false, root: GOLD, proof: { leafHash: 'ff'.repeat(32), siblings: [{ hash: '99'.repeat(32), dir: 'right' }], leafIndex: 1, proofRoot: 'cd'.repeat(32) }, failReason: 'DIG_ERR_PROOF_MISMATCH' },
+        ],
+      };
+    }
     if (a === 'getDigNodeStatus') return { reachable: true, base: 'https://dig.local' };
     if (a === 'getControlStatus') return { mode: 'manage', localNode: true, base: 'https://dig.local', status: null, controlMethods: [] };
     if (a === 'getConnection') return { connected: false };
@@ -655,4 +682,36 @@ test('fullscreen trade — Options "Your options" tab shows the empty state', as
   await page.getByTestId('options-list-empty').waitFor();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-options-list-empty.png' });
+});
+
+// Verification ledger consumer (#307): the Shield panel headlines an aggregate "Verified by Chia" /
+// "Unverified" badge from the local dig-node's /verify ledger; clicking it opens the proof-inspection
+// modal (per-resource source + verdict + Merkle proof data + client re-verification). The canned
+// ledger carries one tampered RPC resource → the badge reads "Unverified" and the modal shows it.
+test('popup verify badge + proof-inspection modal (#307)', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page, 'popup.html', 'network/shield');
+  await page.getByTestId('shield-panel').waitFor();
+  const badge = page.getByTestId('verify-badge');
+  await badge.waitFor();
+  await expect(badge).toContainText('Unverified');
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-verify-badge.png' });
+  await badge.click();
+  await page.getByTestId('verify-modal').waitFor();
+  await page.getByTestId('verify-resource-toggle').last().click(); // expand the tampered RPC resource
+  await page.getByTestId('verify-proof').waitFor();
+  await page.waitForTimeout(500); // let the async client re-verify settle
+  await page.screenshot({ path: 'e2e/__screenshots__/popup-verify-modal.png' });
+});
+
+test('fullscreen verify proof-inspection modal (#307)', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, 'app.html', 'network/shield');
+  await page.getByTestId('shield-panel').waitFor();
+  await page.getByTestId('verify-badge').click();
+  await page.getByTestId('verify-modal').waitFor();
+  await page.getByTestId('verify-resource-toggle').last().click();
+  await page.getByTestId('verify-proof').waitFor();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-verify-modal.png' });
 });

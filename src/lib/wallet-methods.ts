@@ -13,8 +13,8 @@
  *   - a Goby/Sage alias (`transfer`, `createOffer`, `getNFTs`, …) → its broker name.
  *   - any other bare name (e.g. "getPublicKeys") is namespaced to `chip0002_<name>`.
  *
- * Re-exported here so the background SW, wallet-broker, wallet-wc, agent-surface, and the tests
- * keep importing `./wallet-methods.mjs` unchanged.
+ * Re-exported here so the background SW, wallet-broker, agent-surface, and the tests keep
+ * importing `./wallet-methods.mjs` unchanged.
  */
 export {
   CHIP0002_METHODS,

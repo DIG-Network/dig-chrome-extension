@@ -11,8 +11,8 @@ const pkg = JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8')) a
 
 // Plain Vite multi-page build for the extension's React surfaces (popup + full page). CRXJS
 // was evaluated but rejected: it would take over building the hand-tuned MV3 service worker,
-// content scripts, injected provider, WalletConnect vendoring, and store-interceptor that
-// build.js owns (and whose SW relative-link routing shipped in v1.5.1). Keeping those in
+// content scripts, injected provider, and store-interceptor that build.js owns (and whose SW
+// relative-link routing shipped in v1.5.1). Keeping those in
 // build.js and using plain Vite ONLY for the React pages preserves that path byte-for-byte.
 // HMR is not relied upon (MV3 extension_pages CSP is `script-src 'self'`); production builds
 // are the only shipped builds. build.js runs `vite build` then copies dist-web/* into dist/.

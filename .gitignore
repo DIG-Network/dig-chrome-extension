@@ -4,11 +4,6 @@ dist/
 dist-web/
 *.zip
 
-# Vendored WalletConnect SignClient — a generated, same-origin ESM bundle (~440 KB) emitted
-# by scripts/bundle-walletconnect.js (run via `node build.js` / `npm run vendor:wc`). It is a
-# reproducible build artifact, not source, so it is not tracked (regenerate with the build).
-vendor/
-
 # Node modules
 node_modules/
 server/node_modules/
