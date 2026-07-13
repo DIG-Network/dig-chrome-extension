@@ -95,7 +95,7 @@ describe('CustodyWallet — fiat currency preference (#112)', () => {
     // The rate fetch is deliberately held open: the total must show a loading skeleton, never the
     // "unavailable" text, and the per-asset lines keep their last-known USD figures (unaffected by
     // the in-flight fx fetch, since only the TOTAL currency changed so far).
-    await waitFor(() => expect(screen.getByTestId('portfolio-value-loading')).toBeInTheDocument());
+    expect(await screen.findByTestId('portfolio-value-loading')).toBeInTheDocument();
     expect(screen.getByTestId('portfolio-value')).not.toHaveTextContent(/unavailable/i);
 
     resolveFx?.();

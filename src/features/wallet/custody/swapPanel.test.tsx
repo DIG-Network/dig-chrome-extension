@@ -146,7 +146,7 @@ describe('SwapPanel', () => {
     await screen.findByTestId('swap-quote-result');
     fillAmount();
     fireEvent.click(screen.getByTestId('swap-review'));
-    await waitFor(() => expect(screen.getByTestId('swap-build-error')).toBeInTheDocument());
+    expect(await screen.findByTestId('swap-build-error')).toBeInTheDocument();
   });
 
   it('has no WCAG violations (swap picker)', async () => {

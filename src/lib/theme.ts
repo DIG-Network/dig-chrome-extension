@@ -7,8 +7,14 @@
  * preference (§6.6), so the choice survives a popup reopen and applies to popup + fullscreen alike.
  */
 
-/** The three selectable theme modes — `system` follows the OS `prefers-color-scheme`. */
-export const THEME_MODES = ['light', 'dark', 'system'] as const;
+/**
+ * The selectable theme picks (#111, #495). `light`/`dark` are explicit paints and `system` follows
+ * the OS `prefers-color-scheme`; `tanggang` is the **TangGangOnChia** named palette (#495) — a
+ * warm citrus-orange-on-near-black skin with sprout-green accents, pulled from tanggangchia.com's
+ * "TANGGANG" (orange) + "chia" (green) wordmark. `tanggang` is a concrete palette (a dark ground),
+ * so it resolves to itself (never through the OS signal) exactly like an explicit `light`/`dark`.
+ */
+export const THEME_MODES = ['light', 'dark', 'system', 'tanggang'] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
 
 /**
@@ -26,12 +32,13 @@ export function isThemeMode(value: unknown): value is ThemeMode {
   return typeof value === 'string' && MODES.has(value);
 }
 
-/** The two concrete paints a `ThemeMode` can resolve to. */
-export type EffectiveTheme = 'light' | 'dark';
+/** The concrete paints a `ThemeMode` can resolve to (each has a `[data-dig-theme]` palette block). */
+export type EffectiveTheme = 'light' | 'dark' | 'tanggang';
 
 /**
- * Resolve a `ThemeMode` to the concrete paint to apply: `light`/`dark` pass through unchanged;
- * `system` follows the caller-supplied OS signal (`matchMedia('(prefers-color-scheme: dark)').matches`).
+ * Resolve a `ThemeMode` to the concrete paint to apply: `light`/`dark`/`tanggang` pass through
+ * unchanged (each is an explicit palette keyed by `data-dig-theme`); only `system` consults the
+ * caller-supplied OS signal (`matchMedia('(prefers-color-scheme: dark)').matches`).
  */
 export function resolveEffectiveTheme(mode: ThemeMode, prefersDark: boolean): EffectiveTheme {
   if (mode === 'system') return prefersDark ? 'dark' : 'light';
@@ -44,8 +51,9 @@ export function resolveEffectiveTheme(mode: ThemeMode, prefersDark: boolean): Ef
  * switcher (the URN-bar theme button, #429) locks in a deterministic choice that overrides + persists;
  * the tri-state `system` option stays reachable from the fuller theme control (the footer selector).
  * Toggling from a `system`-resolved paint therefore commits the OPPOSITE explicit paint, the
- * least-surprising one-tap outcome.
+ * least-surprising one-tap outcome. A `tanggang` paint (a dark ground) flips to `light` — the
+ * least-surprising exit from the named palette into the plain product light theme.
  */
 export function nextTheme(current: EffectiveTheme): ThemeMode {
-  return current === 'dark' ? 'light' : 'dark';
+  return current === 'light' ? 'dark' : 'light';
 }

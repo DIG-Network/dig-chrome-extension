@@ -21,13 +21,13 @@ describe('XchtipButtonSection', () => {
   it('prompts to unlock when there is no wallet address', async () => {
     mockSw(null);
     renderWithProviders(<XchtipButtonSection />);
-    await waitFor(() => expect(screen.getByTestId('tip-xchtip-empty')).toBeTruthy());
+    expect(await screen.findByTestId('tip-xchtip-empty')).toBeTruthy();
   });
 
   it('generates the jar link, embed snippet, and builder link for a valid xch address', async () => {
     mockSw(ADDR);
     renderWithProviders(<XchtipButtonSection />);
-    await waitFor(() => expect(screen.getByTestId('tip-xchtip-link')).toBeTruthy());
+    expect(await screen.findByTestId('tip-xchtip-link')).toBeTruthy();
     expect((screen.getByTestId('tip-xchtip-link') as HTMLInputElement).value).toBe(`https://xchtip.app/jar/${ADDR}`);
     expect((screen.getByTestId('tip-xchtip-embed') as HTMLTextAreaElement).value).toContain(`data-recipient="${ADDR}"`);
     expect(screen.getByTestId('tip-xchtip-open').getAttribute('href')).toBe(`https://xchtip.app/jar/${ADDR}`);
@@ -39,7 +39,7 @@ describe('XchtipButtonSection', () => {
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     mockSw(ADDR);
     renderWithProviders(<XchtipButtonSection />);
-    await waitFor(() => expect(screen.getByTestId('tip-xchtip-link-copy')).toBeTruthy());
+    expect(await screen.findByTestId('tip-xchtip-link-copy')).toBeTruthy();
     fireEvent.click(screen.getByTestId('tip-xchtip-link-copy'));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(`https://xchtip.app/jar/${ADDR}`));
   });

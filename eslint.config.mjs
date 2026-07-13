@@ -6,6 +6,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
+import testingLibrary from 'eslint-plugin-testing-library';
 import globals from 'globals';
 
 export default tseslint.config(
@@ -29,10 +30,18 @@ export default tseslint.config(
     },
   },
   {
-    // Test files may use a few looser patterns (non-null in fixtures, etc.).
+    // Test files may use a few looser patterns (non-null in fixtures, etc.), and are held to the
+    // Testing-Library async-query discipline (#489): ban a sync `getBy*` after an async action (the
+    // #488 flaky-render class) — `prefer-find-by` steers `waitFor(() => getBy*)` to `findBy*`,
+    // `await-async-queries` forces awaiting `findBy*`, and `no-await-sync-queries` bans awaiting a
+    // sync query. Zero-error gate.
     files: ['src/**/*.test.{ts,tsx}'],
+    plugins: { 'testing-library': testingLibrary },
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
+      'testing-library/prefer-find-by': 'error',
+      'testing-library/await-async-queries': 'error',
+      'testing-library/no-await-sync-queries': 'error',
     },
   },
   {

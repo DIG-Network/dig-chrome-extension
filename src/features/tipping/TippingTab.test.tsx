@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { TippingTab } from '@/features/tipping/TippingTab';
 
@@ -29,7 +29,7 @@ describe('TippingTab', () => {
   it('renders the three sections + the #428 activation note', async () => {
     mockSw({ nodeOnline: true });
     renderWithProviders(<TippingTab />);
-    await waitFor(() => expect(screen.getByTestId('tipping-panel')).toBeTruthy());
+    expect(await screen.findByTestId('tipping-panel')).toBeTruthy();
     expect(screen.getByTestId('tipping-activation-note')).toBeTruthy();
     expect(screen.getByTestId('tip-history')).toBeTruthy();
     expect(screen.getByTestId('tip-manage')).toBeTruthy();
@@ -39,7 +39,7 @@ describe('TippingTab', () => {
   it('surfaces the node-down state for the node-dependent sections when the node is offline', async () => {
     mockSw({ nodeOnline: false });
     renderWithProviders(<TippingTab />);
-    await waitFor(() => expect(screen.getByTestId('tip-history-nodedown')).toBeTruthy());
+    expect(await screen.findByTestId('tip-history-nodedown')).toBeTruthy();
     expect(screen.getByTestId('tip-manage-nodedown')).toBeTruthy();
     // The xchtip section is node-independent and still renders.
     expect(screen.getByTestId('tip-xchtip')).toBeTruthy();

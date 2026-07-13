@@ -39,13 +39,13 @@ describe('TipHistorySection', () => {
   it('renders an informative empty-state when the ledger is empty (the #428 pre-broadcaster reality)', async () => {
     mockSw([]);
     renderWithProviders(<TipHistorySection nodeOnline />);
-    await waitFor(() => expect(screen.getByTestId('tip-history-empty')).toBeTruthy());
+    expect(await screen.findByTestId('tip-history-empty')).toBeTruthy();
   });
 
   it('renders ledger rows with amount + tx link + a summary', async () => {
     mockSw([entry()]);
     renderWithProviders(<TipHistorySection nodeOnline />);
-    await waitFor(() => expect(screen.getByTestId('tip-history-table')).toBeTruthy());
+    expect(await screen.findByTestId('tip-history-table')).toBeTruthy();
     expect(screen.getByTestId('tip-amount').textContent).toContain('1.5 $DIG');
     expect(screen.getByTestId('tip-tx-link')).toBeTruthy();
     expect(screen.getByTestId('tip-history-summary')).toBeTruthy();
@@ -55,7 +55,7 @@ describe('TipHistorySection', () => {
     const old = entry({ id: 'old', ts: nowSecs - 40 * 86400 });
     mockSw([entry({ id: 'recent' }), old]);
     renderWithProviders(<TipHistorySection nodeOnline />);
-    await waitFor(() => expect(screen.getByTestId('tip-history-table')).toBeTruthy());
+    expect(await screen.findByTestId('tip-history-table')).toBeTruthy();
     expect(screen.getAllByTestId('tip-row')).toHaveLength(2); // "all" default
     fireEvent.click(screen.getByTestId('tip-timeframe-today'));
     await waitFor(() => expect(screen.getAllByTestId('tip-row')).toHaveLength(1));

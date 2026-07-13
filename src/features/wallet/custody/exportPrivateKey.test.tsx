@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { ExportPrivateKey } from '@/features/wallet/custody/ExportPrivateKey';
 
@@ -35,7 +35,7 @@ describe('ExportPrivateKey (#96)', () => {
     renderWithProviders(<ExportPrivateKey />);
     fireEvent.change(screen.getByTestId('export-pk-password'), { target: { value: 'pw' } });
     fireEvent.click(screen.getByTestId('export-pk-reveal'));
-    await waitFor(() => screen.getByTestId('export-pk-result'));
+    await screen.findByTestId('export-pk-result');
     expect(screen.getByTestId('export-pk-unhardened')).toBeInTheDocument();
     expect(screen.getByTestId('export-pk-hardened')).toBeInTheDocument();
     // The hex is inside a CLOSED shadow root — only the (non-secret) word count is on the host.
@@ -47,7 +47,7 @@ describe('ExportPrivateKey (#96)', () => {
     renderWithProviders(<ExportPrivateKey />);
     fireEvent.change(screen.getByTestId('export-pk-password'), { target: { value: 'nope' } });
     fireEvent.click(screen.getByTestId('export-pk-reveal'));
-    await waitFor(() => screen.getByTestId('export-pk-error'));
+    await screen.findByTestId('export-pk-error');
     expect(screen.queryByTestId('export-pk-result')).toBeNull();
   });
 
@@ -69,7 +69,7 @@ describe('ExportPrivateKey (#96)', () => {
     fireEvent.click(screen.getByTestId('export-pk-reveal'));
     // Resolve the reveal mutation (fake timers don't stall microtasks, but waitFor needs real ones).
     vi.useRealTimers();
-    await waitFor(() => screen.getByTestId('export-pk-copy-unhardened'));
+    await screen.findByTestId('export-pk-copy-unhardened');
     vi.useFakeTimers();
     fireEvent.click(screen.getByTestId('export-pk-copy-unhardened'));
     await Promise.resolve();

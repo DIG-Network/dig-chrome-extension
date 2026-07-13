@@ -22,6 +22,11 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
+    // Flaky-test containment (#489): in CI, retry a failing test up to twice before failing the job,
+    // so an intermittent async-render race SURFACES (Vitest reports the retry) without red-flaking a
+    // green suite. Locally `retry: 0` keeps failures loud + fast. A retry is a signal to de-flake,
+    // never a way to hide a real failure.
+    retry: process.env.CI ? 2 : 0,
     coverage: {
       provider: 'v8',
       all: true,

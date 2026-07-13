@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { CustodyWallet } from '@/features/wallet/custody/CustodyWallet';
 import { DIG_ASSET_ID, GET_DIG_SOURCES } from '@/lib/links';
@@ -33,7 +33,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('CustodyWallet — "Get more $DIG" menu (#202)', () => {
   it('renders the Get-more trigger on the $DIG row only, opening the 3 canonical venues', async () => {
     renderWithProviders(<CustodyWallet />);
-    await waitFor(() => expect(screen.getByTestId('asset-dig')).toBeInTheDocument());
+    expect(await screen.findByTestId('asset-dig')).toBeInTheDocument();
 
     // The $DIG row carries the trigger; the XCH hero row does not.
     const digRow = screen.getByTestId('asset-dig');

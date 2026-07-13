@@ -21,6 +21,11 @@
   --dig-accent-2: #c13de0;
   --dig-accent-ink: #5b23d6;
   --dig-accent-soft: rgba(122, 61, 255, 0.1);
+  /* Text/icon colour that sits ON the accent (the primary-button gradient). White reads fine on the
+     dark violet→magenta accent of the light+dark themes; a light-on-accent theme (e.g. the bright
+     citrus-orange TangGangOnChia palette, #495) overrides this to a dark ink so the button label
+     keeps WCAG-AA contrast against the light accent. */
+  --dig-on-accent: #ffffff;
   --dig-good: #14b981;
   --dig-warn: #d98a00;
   --dig-bad: #e23b52;
@@ -62,6 +67,37 @@
   --dig-warn: #f0a83a;
   --dig-bad: #ff5c72;
   --dig-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* ── TangGangOnChia theme (#495) — a THIRD selectable named palette (`data-dig-theme='tanggang'`),
+   picked from the same footer theme control as light/dark/system. Faithful to tanggangchia.com:
+   a warm near-black ground with a fiery CITRUS-ORANGE primary (`#ff9000`, the site's nav-button /
+   "TANGGANG" wordmark orange, sampled from the live site) and a SPROUT-GREEN secondary accent
+   (`#57c528`, the site's "chia" wordmark / 🌱 green). The brand gradient (brand dot, primary
+   button, balance hero) runs orange→green, mirroring the site's orange-"TANGGANG" + green-"chia"
+   lockup. Same `--dig-*` token set as the other themes, so this ONE block re-skins the entire shell
+   (popup + fullscreen) with no component changes. Because the accent is a BRIGHT colour, the
+   on-accent label switches to a dark ink (`--dig-on-accent`) so primary buttons keep WCAG-AA
+   contrast. Playful + warm, matching the meme mood, while every text/surface pair stays AA. ── */
+:root[data-dig-theme='tanggang'] {
+  color-scheme: dark;
+  --dig-bg: #0e0a05;
+  --dig-bg-raised: #1a1109;
+  --dig-bg-elev: #241708;
+  --dig-border: #3a2611;
+  --dig-border-strong: #533718;
+  --dig-text: #fdf3e7;
+  --dig-text-dim: #d3bda0;
+  --dig-text-faint: #a98d6b;
+  --dig-accent: #ff9000;
+  --dig-accent-2: #57c528;
+  --dig-accent-ink: #ffb84d;
+  --dig-accent-soft: rgba(255, 144, 0, 0.16);
+  --dig-on-accent: #2b1500;
+  --dig-good: #57c528;
+  --dig-warn: #ffb020;
+  --dig-bad: #ff6b6b;
+  --dig-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -266,10 +302,10 @@ h2.dig-heading {
 .dig-btn--primary {
   background: linear-gradient(120deg, var(--dig-accent), var(--dig-accent-2));
   border-color: transparent;
-  color: #fff;
+  color: var(--dig-on-accent);
 }
 .dig-btn--primary:hover:not(:disabled) {
-  color: #fff;
+  color: var(--dig-on-accent);
   filter: brightness(1.05);
 }
 .dig-btn--block {

@@ -81,7 +81,7 @@ describe('#162 switching the active wallet resets stale data and shows loading',
     // The instant the switch is confirmed, the balances view must fall back to LOADING — never keep
     // showing wallet A's stale portfolio value (the #162 bug) — and the gate must NOT have remounted
     // (the wallet body, not the top-level custody-gate placeholder, is what's visible).
-    await waitFor(() => expect(screen.getByTestId('custody-balances-loading')).toBeInTheDocument());
+    expect(await screen.findByTestId('custody-balances-loading')).toBeInTheDocument();
     expect(screen.queryByText(/^1\.000000000000$/)).not.toBeInTheDocument();
     expect(screen.getByTestId('custody-wallet')).toBeInTheDocument();
 

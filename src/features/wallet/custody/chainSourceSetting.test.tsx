@@ -80,7 +80,7 @@ describe('ChainSourceSetting (#217)', () => {
     // Auto hint mentions the fallback.
     expect(screen.getByText(/otherwise fall back to coinset\.org/i)).toBeInTheDocument();
     fireEvent.change(select, { target: { value: 'node' } });
-    await waitFor(() => expect(screen.getByText(/Always read from your local dig-node/i)).toBeInTheDocument());
+    expect(await screen.findByText(/Always read from your local dig-node/i)).toBeInTheDocument();
   });
 });
 

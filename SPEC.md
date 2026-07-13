@@ -324,6 +324,52 @@ loading/error/empty/success via `FourState`.
   activates once your DIG node's wallet is ready to send"); config/management + xchtip generation are
   fully functional now. The home-tab one-tap `tipCreator` (§2.1c) now routes to the same `tip.manual`.
 
+### 2.1e Fullscreen Security tab (#433, child of EPIC #431)
+
+A fullscreen-only top-level tab (`security`, in `FULLSCREEN_ONLY_TABS`; deep-link `#security`; desktop
+sidebar entry; NOT in the compact bottom nav — §145 tiering) that manages the dig-node's node-managed
+unlock authentication (dig-node SPEC §18.24). The node is the LOCAL auth authority + key custodian; this
+tab is the FRONTEND that presents credentials to the node and reads the resulting posture — it NEVER
+holds the key. Component tree in `src/features/security/`: `SecurityTab` (container) → `SessionStateSection`
+· `UnlockModeSection` · `AuthMethodSection`. All copy is react-intl (`security.*` ids, 14 locales); every
+async surface renders loading/error/empty/success via `FourState`. Node-dependent + paired-gated: a
+node-offline state renders honestly, and the sections render only behind the control-token `PairingSection`
+(the `auth.*` surface is paired-token gated, dig-node §7.12).
+
+- **WS transport (`securityApi.ts`, SW `authRpc` action).** A method-allowlisted SW dispatcher
+  (`ACTIONS.authRpc`, `MESSAGE_PROTOCOL_VERSION` 36) drives the `auth.*` methods over `/ws` (WS-first via
+  `controlViaWsOrHttp`, HTTP fallback); the socket attaches the paired control token. A wrong wallet
+  password/TOTP code is a node `-32030` surfaced as a RECOVERABLE credential error that — unlike a
+  credential-less unauthorized read — does NOT clear the pairing token (a typo must not unpair). No node
+  reachable → `NODE_UNAVAILABLE`. RTK Query tag `Auth`; every auth mutation invalidates it so the tab +
+  the sign gate re-read the live posture. `getSignAuthority` reports the thin-client-cutover flag
+  (`{ nodeIsSigner }`, #374).
+- **Pure model (`src/lib/node-auth.ts`).** DOM-free shapes mirroring §18.24 (`AuthStatus`, `UnlockMode ∈
+  {per_transaction, session_unlock_all}`, `AuthMethod ∈ {password, totp, passkey}`, `AuthCredential`,
+  `TotpEnrollment`), fail-secure normalizers (`normalizeAuthStatus` defaults every field to the SECURE
+  posture — a garbage blob can never present as unlocked or a weaker mode/method), and the mode-aware gate
+  derivations (`signPromptNeeded`, `modeChangeNeedsCredential`, `unlockView`, `credentialToParams`,
+  `isTotpCode`). `PASSKEY_AVAILABLE = false` (node WebAuthn verify is deferred).
+- **1. Session state (`SessionStateSection`).** Live lock/session state from `auth.status` (locked ·
+  unlocked-read-only · unlocked-for-session), an armed-signature indicator, Unlock (establish a session)
+  and Lock (`auth.lock` — clears the session + drops any armed grant).
+- **2. Unlock mode (`UnlockModeSection`).** The one policy knob, honest tradeoff copy (no dark pattern,
+  §6.0): `per_transaction` (DEFAULT, secure — the session reads only, every signature re-prompts) vs
+  `session_unlock_all` (convenience, off by default). Switching INTO session-unlock-all WEAKENS the posture
+  so it re-verifies the current factor (`auth.set_mode` with the credential); tightening back needs none.
+- **3. Auth method (`AuthMethodSection`).** Choose/enroll the method: password (default); TOTP — enroll
+  (`auth.enroll_totp`, re-verifying the current factor) then show the QR + one-time base32 secret and a
+  REAL end-to-end verify (`auth.unlock` with the new code); reset to password-only (`auth.set_method`,
+  re-verifying the current factor). Passkey is shown as a DISABLED "coming soon" option (node verify
+  deferred), never a broken button.
+- **Per-transaction unlock prompt (`useSignGate` + `SignUnlockModal`).** The single seam a signing UI uses
+  so the unencrypted key never lingers: before a signing op it runs the op directly when NO fresh unlock is
+  needed (the node is not the signer — the local-vault default — OR the session already covers signing),
+  else it opens the prompt and runs the op ONLY after `auth.sign_unlock` arms exactly one signature.
+  Fail-secure: while `auth.status` is unknown it assumes the secure default (prompt required). Wired into
+  `SendPanel`'s confirm (the canonical send/spend); the remaining confirm sites adopt the same primitive as
+  the node-signer custody cutover (#374) lands.
+
 ### 2.2 State & data architecture
 
 - **Redux Toolkit + RTK Query**, one store per document (`src/app/store.ts`). The single `api`
@@ -720,6 +766,24 @@ light mode is a neutral Chrome grey (`#f1f3f4` background, `#dadce0` border), da
 toolbar surface (`#292a2d`) — NEVER the DIG brand gradient, so it reads as browser UI, not a branded
 widget.
 
+**App theme catalog (#111/#495).** The extension shell (popup + fullscreen) paints from ONE set of
+`--dig-*` CSS custom properties (`styles/theme.css`); the active theme is a `data-dig-theme` attribute
+on `documentElement`, set by `useAppliedTheme` from `resolveEffectiveTheme(ui.theme, prefersDark)` and
+persisted to `wallet.settings.theme` via `uiSlice`. The footer theme control (`THEME_MODES`,
+`shell.theme.*` labels) offers `light` (default — the DIG white product theme), `dark`, `system`
+(follows the OS `prefers-color-scheme`), and **`tanggang`** — the **TangGangOnChia** named palette
+(#495): a warm near-black ground with a citrus-orange primary (`--dig-accent: #ff9000`) and a
+sprout-green secondary accent (`--dig-accent-2: #57c528`), derived from tanggangchia.com's
+orange-"TANGGANG" / green-"chia" wordmark; the brand gradient (brand dot, primary button, balance
+hero) runs orange→green. `light`/`dark`/`tanggang` are concrete paints (each a
+`:root[data-dig-theme='…']` block that repaints the whole `--dig-*` set); only `system` consults the OS
+signal. Because `tanggang`'s accent is a bright colour, its `--dig-on-accent` token flips to a dark ink
+(`#2b1500`) so the primary-button label keeps WCAG 2.2 AA contrast — every text/surface pair in the
+palette clears AA (asserted by `styles/tanggang-theme.test.ts`). The DIG-branded loader (`.dig-loader`)
+keeps its own dark brand tokens in every theme (on.dig.net parity). The settings/options page honours
+the same `data-dig-theme` pick via a matching palette block. `tanggang` applies to the app theme set
+ONLY — the URN bar's independent theme (below) stays a neutral browser-chrome light/dark/system.
+
 **The URN bar's theme is INDEPENDENT of the main app theme (#459).** It is NOT derived from `ui.theme`
 (the #111 theme system, persisted `wallet.settings.theme`) — that would couple two conceptually
 separate preferences (the whole extension's product theme vs. this one bar's browser-chrome paint).
@@ -900,7 +964,7 @@ non-DIG query goes to the chosen fallback, never back through the DIG sentinel.
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the frozen
 `ACTIONS` object, documented in `MESSAGE_CATALOGUE`, and versioned by
-`MESSAGE_PROTOCOL_VERSION` (currently `35`). Consumers MUST reference `ACTIONS.<name>` rather
+`MESSAGE_PROTOCOL_VERSION` (currently `36`). Consumers MUST reference `ACTIONS.<name>` rather
 than raw strings. Adding a handler without a catalogue entry is a contract violation (guarded
 by `messages.test.mjs`).
 
@@ -1055,6 +1119,17 @@ transparently falling back to the existing HTTP POST path when it is not. The po
 `getWalletSyncStatus` and live-patches it from the SW's `walletSyncStatusChanged` broadcast (no
 polling), driving the first-class syncing/disconnected UI. Purely additive — no existing
 action/shape changed; the `chia://` resolver transport is UNCHANGED.
+
+`MESSAGE_PROTOCOL_VERSION` `36` (#431/#432/#433 node-managed unlock auth + Security tab, §18) added
+`authRpc` — a dispatcher that drives one allowlisted `auth.*` method (dig-node SPEC §18.24:
+`auth.status` / `auth.get_method` / `auth.set_mode` / `auth.set_method` / `auth.enroll_totp` /
+`auth.enroll_passkey_begin` / `auth.enroll_passkey_finish` / `auth.unlock` / `auth.sign_unlock` /
+`auth.lock`) over the `/ws` wallet+control transport (paired-token gated, §7.12) — and
+`getSignAuthority` — the thin-client-cutover flag (`{ nodeIsSigner }`, #374) the per-transaction
+sign gate reads before a spend. Both back the fullscreen Security tab (choose/enroll the unlock
+method · toggle per-transaction vs session-unlock-all · live lock/session state) and the
+per-transaction unlock prompt shown before every signing op when the node is the signer. Purely
+additive — no existing action/shape changed.
 
 `MESSAGE_PROTOCOL_VERSION` MUST be bumped on any breaking change to the action set or a DTO
 shape.
