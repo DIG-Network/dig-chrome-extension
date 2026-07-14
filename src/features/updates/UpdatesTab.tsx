@@ -3,6 +3,7 @@ import { FormattedMessage, FormattedDate } from 'react-intl';
 import { FourState } from '@/components/FourState';
 import { StatusPill } from '@/components/StatusPill';
 import { PairingSection } from '@/features/control/PairingSection';
+import { NodeVersionSection } from '@/features/updates/NodeVersionSection';
 import { controlPanelViewModel } from '@/lib/dig-control';
 import { useGetControlStatusQuery } from '@/features/control/controlApi';
 import {
@@ -229,6 +230,11 @@ function UpdaterStatusGate() {
  * compact popup. Node-dependent + paired-gated: a node-offline state renders honestly (never a
  * broken view), and the panel renders only once the control-token pairing is established (the
  * SAME auth the other paired management sections use — no new auth surface, dig-node #515).
+ *
+ * Also renders {@link NodeVersionSection} (#583): the running **dig-node**'s own version + an
+ * out-of-date badge, compared against the public update-feed manifest. This is deliberately a
+ * SEPARATE, ALWAYS-rendered section — it needs no control-token pairing (unlike the beacon panel)
+ * and must never be confused with the beacon/updater version `UpdaterPanel` shows just below it.
  */
 export function UpdatesTab() {
   const control = useGetControlStatusQuery();
@@ -243,6 +249,12 @@ export function UpdatesTab() {
       <p className="dig-muted" style={{ marginTop: 0 }}>
         <FormattedMessage id="updates.tab.intro" />
       </p>
+
+      {/* The running dig-node's OWN version + out-of-date badge (#583) — distinct from the beacon
+          version below, and shown unconditionally (no pairing needed, unlike the beacon panel). */}
+      <div style={{ marginBottom: 16 }}>
+        <NodeVersionSection />
+      </div>
 
       <FourState
         isLoading={control.isLoading}

@@ -3,12 +3,15 @@ import { test, expect, type Page } from '@playwright/test';
 /**
  * End-user e2e + screenshots for the fullscreen Updates tab (#504-K/#516, child of epic #504). Serves
  * the real built `app.html` over the static harness with a stubbed `chrome.*` that answers the
- * `getControlStatus` (node online), `pairingState` (paired, so the panel shows), and the
- * `controlAuthed` proxy for `control.updater.status` / `.pause` / `.resume` / `.checkNow` — the SAME
- * dig-node #515 wire contract the real extension drives. Proves the tab renders the beacon readout,
- * the pause/resume toggle flips, check-now surfaces its own recoverable error on a decline, and the
- * beacon-absent case renders a graceful empty state rather than an error wall. Output →
- * e2e/__screenshots__/.
+ * `getControlStatus` (node online), `pairingState` (paired, so the panel shows), the `controlAuthed`
+ * proxy for `control.updater.status` / `.pause` / `.resume` / `.checkNow`, and `getNodeLiveStatus`
+ * (the running dig-node's own version, #239) — the SAME dig-node wire contracts the real extension
+ * drives — plus a routed `updates.dig.net` feed-manifest response for {@link NodeVersionSection}
+ * (#583). Proves the tab renders the beacon readout, the pause/resume toggle flips, check-now
+ * surfaces its own recoverable error on a decline, the beacon-absent case renders a graceful empty
+ * state rather than an error wall, AND the running dig-node version + its out-of-date badge render
+ * distinctly from the beacon version (up-to-date, update-available, node-offline, and
+ * feed-unreachable — never a false "up to date"). Output → e2e/__screenshots__/.
  */
 
 /** A mutable beacon status the stub mutates as the UI drives pause/resume (mirrors the real
@@ -35,15 +38,21 @@ const BEACON = {
   },
 };
 
-function stub(beacon: unknown): string {
+/** The running dig-node's own live status (#239's `getNodeLiveStatus`) — defaults to a connected
+ *  node whose version matches the feed default below (an "up to date" verdict). */
+const NODE_LIVE_CONNECTED = { state: 'connected', base: 'https://dig.local', addr: '127.0.0.1:9778', version: '0.31.1', commit: 'abc123', updatedAt: 0 };
+
+function stub(beacon: unknown, nodeLiveStatus: unknown = NODE_LIVE_CONNECTED): string {
   return `
 (() => {
   const BEACON = ${JSON.stringify(beacon)};
+  const NODE_LIVE_STATUS = ${JSON.stringify(nodeLiveStatus)};
   const canned = (msg) => {
     const a = msg && msg.action;
     if (a === 'getLockState') return { lockState: 'unlocked' };
     if (a === 'getControlStatus') return { mode: 'manage', localNode: true, base: 'https://dig.local', controlEndpoint: 'https://dig.local/', readFallback: 'https://rpc.dig.net', status: {}, authRequired: false, controlMethods: [] };
     if (a === 'pairingState') return { phase: 'paired' };
+    if (a === 'getNodeLiveStatus') return NODE_LIVE_STATUS;
     if (a === 'controlAuthed') {
       const m = msg.method;
       if (m === 'control.updater.status') return BEACON;
@@ -80,9 +89,26 @@ function stub(beacon: unknown): string {
 `;
 }
 
-async function open(page: Page, beacon: unknown = BEACON) {
-  await page.addInitScript(stub(beacon));
+/** The feed's advertised dig-node version — 'unreachable' simulates the feed being down (network
+ *  error), matching how `fetchFeedComponents` classifies it (feed-manifest.ts). */
+async function routeFeedManifest(page: Page, latestDigNodeVersion: string | 'unreachable') {
+  await page.route('**/v1/alpha/manifest.json', (route) => {
+    if (latestDigNodeVersion === 'unreachable') return route.abort('failed');
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ manifest: { components: [{ name: 'dig-node', version: latestDigNodeVersion }] } }),
+    });
+  });
+}
+
+async function open(
+  page: Page,
+  opts: { beacon?: unknown; nodeLiveStatus?: unknown; feedDigNodeVersion?: string | 'unreachable' } = {},
+) {
+  const { beacon = BEACON, nodeLiveStatus = NODE_LIVE_CONNECTED, feedDigNodeVersion = '0.31.1' } = opts;
+  await page.addInitScript(stub(beacon, nodeLiveStatus));
   await page.route('**/store.json', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ apps: [] }) }));
+  await routeFeedManifest(page, feedDigNodeVersion);
   await page.goto('/app.html#updates');
   await page.getByTestId('updates-tab-panel').waitFor();
   await page.waitForTimeout(300);
@@ -109,7 +135,35 @@ test('fullscreen Updates tab — renders the beacon readout + controls (desktop)
   await expect(page.getByTestId('updates-component-row')).toHaveCount(3);
   await expect(page.getByTestId('updates-pause')).toBeVisible();
   await expect(page.getByTestId('updates-check-now')).toBeVisible();
+  // The running dig-node version (#583) sits ABOVE the beacon panel, distinctly labeled + "up to
+  // date" (the fixture's node version 0.31.1 matches the fixture's feed version).
+  await expect(page.getByTestId('updates-node-version-value')).toHaveText('dig-node v0.31.1');
+  await expect(page.getByTestId('updates-node-version-badge')).toHaveText('Up to date');
+  await expect(page.getByTestId('updates-version')).toHaveText('Beacon v0.6.0'); // never conflated
   await page.screenshot({ path: 'e2e/__screenshots__/fullscreen-updates.png', fullPage: true });
+});
+
+test('Updates tab (#583) — an out-of-date dig-node shows "Update available — vX.Y.Z"', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, { nodeLiveStatus: { ...NODE_LIVE_CONNECTED, version: '0.30.0' }, feedDigNodeVersion: '0.31.1' });
+  await expect(page.getByTestId('updates-node-version-value')).toHaveText('dig-node v0.30.0');
+  await expect(page.getByTestId('updates-node-version-badge')).toHaveText('Update available — v0.31.1');
+  await page.screenshot({ path: 'e2e/__screenshots__/updates-node-outdated.png', fullPage: true });
+});
+
+test('Updates tab (#583) — the feed being unreachable shows "couldn\'t check", never a false "up to date"', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, { feedDigNodeVersion: 'unreachable' });
+  // The running version still renders — losing the feed must not hide what we DO know.
+  await expect(page.getByTestId('updates-node-version-value')).toHaveText('dig-node v0.31.1');
+  await expect(page.getByTestId('updates-node-version-badge')).toHaveText("Couldn't check for updates");
+});
+
+test('Updates tab (#583) — a disconnected dig-node shows "Node offline", never a false "up to date"', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page, { nodeLiveStatus: { state: 'disconnected', base: null, addr: null, version: null, commit: null, updatedAt: 0 } });
+  await expect(page.getByTestId('updates-node-version-badge')).toHaveText('Node offline');
+  await expect(page.getByTestId('updates-node-version-value')).toHaveCount(0);
 });
 
 test('Updates tab — the pause control flips to resume once the node reports paused', async ({ page }) => {
@@ -129,7 +183,7 @@ test('Updates tab — a declined check-now surfaces a recoverable inline error, 
 
 test('Updates tab — beacon-absent renders a graceful empty state, never an error wall', async ({ page }) => {
   await page.setViewportSize(TABLET);
-  await open(page, { installed: false });
+  await open(page, { beacon: { installed: false } });
   await expect(page.getByTestId('updates-status-empty')).toBeVisible();
   await expect(page.getByTestId('updates-status-error')).toHaveCount(0);
   await page.screenshot({ path: 'e2e/__screenshots__/updates-not-installed.png', fullPage: true });
@@ -140,5 +194,6 @@ test('Updates tab — mobile width layout', async ({ page }) => {
   await open(page);
   await expect(page.getByTestId('updates-panel')).toBeVisible();
   await expect(page.getByTestId('updates-controls')).toBeVisible();
+  await expect(page.getByTestId('updates-node-version-badge')).toHaveText('Up to date');
   await page.screenshot({ path: 'e2e/__screenshots__/mobile-updates.png', fullPage: true });
 });

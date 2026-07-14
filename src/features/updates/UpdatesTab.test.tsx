@@ -47,8 +47,22 @@ type BeaconState = typeof NOT_INSTALLED | typeof INSTALLED_NEVER_CHECKED | typeo
 /** A mutable beacon state the stub mutates as pause/resume/checkNow drive it (mirrors the real
  *  dig-updater CLI's status.json refresh-after-every-mutation behavior, dig-updater SPEC §13.2).
  *  `checkNowFails` simulates the CLI declining (dig-node #515 `CliError::Declined`), so the panel's
- *  inline action-error path is exercisable. */
-function mockSw({ node, phase, beacon, checkNowFails = false }: { node: typeof NODE_UP | typeof NODE_DOWN; phase: string; beacon: BeaconState; checkNowFails?: boolean }) {
+ *  inline action-error path is exercisable. `nodeLiveStatus` backs {@link NodeVersionSection}'s
+ *  (#583) `getNodeLiveStatus` read — defaults to "disconnected" (untested here beyond composition;
+ *  its own state-matrix lives in NodeVersionSection.test.tsx). */
+function mockSw({
+  node,
+  phase,
+  beacon,
+  checkNowFails = false,
+  nodeLiveStatus = { state: 'disconnected', version: null },
+}: {
+  node: typeof NODE_UP | typeof NODE_DOWN;
+  phase: string;
+  beacon: BeaconState;
+  checkNowFails?: boolean;
+  nodeLiveStatus?: { state: string; version: string | null };
+}) {
   const state = JSON.parse(JSON.stringify(beacon));
   (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = vi.fn(
     (msg: Sent | undefined, cb?: (r: unknown) => void) => {
@@ -56,6 +70,7 @@ function mockSw({ node, phase, beacon, checkNowFails = false }: { node: typeof N
       let r: unknown = { success: true };
       if (m.action === 'getControlStatus') r = node;
       else if (m.action === 'pairingState') r = { phase };
+      else if (m.action === 'getNodeLiveStatus') r = { ...nodeLiveStatus, base: null, addr: null, commit: null, updatedAt: 0 };
       else if (m.action === 'controlAuthed' && m.method === 'control.updater.status') r = state;
       else if (m.action === 'controlAuthed' && m.method === 'control.updater.pause') {
         if (state.installed) state.status.paused = true;
@@ -131,5 +146,21 @@ describe('UpdatesTab (#504-K/#516)', () => {
     const checkNowBtn = await screen.findByTestId('updates-check-now');
     fireEvent.click(checkNowBtn);
     expect(await screen.findByTestId('updates-action-error')).toBeTruthy();
+  });
+
+  it('shows the running dig-node version distinctly from the beacon version (#583)', async () => {
+    mockSw({
+      node: NODE_UP,
+      phase: 'paired',
+      beacon: INSTALLED_ACTIVE,
+      nodeLiveStatus: { state: 'connected', version: '0.31.1' },
+    });
+    renderWithProviders(<UpdatesTab />);
+    // The beacon readout still reads "Beacon v0.6.0" (INSTALLED_ACTIVE's status.version).
+    expect(await screen.findByTestId('updates-version')).toHaveTextContent('0.6.0');
+    // The node's OWN version (from the live WS status, not the beacon) renders as a separate value —
+    // never the same number by coincidence in this fixture, so a conflation would fail this assertion.
+    expect(await screen.findByTestId('updates-node-version-value')).toHaveTextContent('0.31.1');
+    expect(screen.getByTestId('updates-node-version-value')).not.toHaveTextContent('0.6.0');
   });
 });

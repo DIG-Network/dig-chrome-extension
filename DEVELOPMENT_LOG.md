@@ -865,3 +865,25 @@ doomed query, trapping the user) instead of the pairing affordance.
 **Takeaway:** node-reachable ≠ authorized. Gate any `control.*` read on pairing, not just on
 `nodeOnline`; treat a `-32030` on a `control.*` query as "needs pairing" (offer the pair CTA), never
 as a retryable transient error.
+
+## The Updates tab already had a live, WS-based node version — don't build a second one (#583)
+
+Before adding a "running dig-node version" query for #583, the obvious move (a fresh `GET /version`
+fetch) turned out to be a duplicate: `getNodeLiveStatus` (#239, `nodeApi.ts`) already carries the
+node's OWN reported `version` on every WS `/ws/status` snapshot — the SAME field
+`LiveStatusSection.tsx` already reads for its compact "Connected · addr · vX" line — and it needs no
+pairing (unlike `control.status`, which requires the token gate per the entry above). The fix was to
+REUSE that existing query for `NodeVersionSection`, not add a second `getNodeVersion` action calling
+`/version` — always check whether a live signal you're about to add already exists under a
+differently-named query before wiring new SW plumbing (§2.0 already-shipped check applies to internal
+data sources, not just whole features).
+
+## A `*/` inside prose closes a JSDoc block comment early — esbuild fails with a confusing column error
+
+Writing `/** … (no chrome.*/react-intl) … */` breaks: the literal `*/` inside the parenthetical ends
+the `/** … */` block right there, and everything after becomes plain (broken) code — esbuild's error
+points at the SECOND `*/` with "Expected \";\" but found \")\"", nowhere near the actual `*/` that
+closed the comment. Any doc-comment prose mentioning a glob/wildcard immediately followed by a slash
+(`chrome.*/foo`, `src/**/*.ts` is fine — three-plus stars are OK, it's specifically `*` + `/`) needs a
+rewrite ("no chrome.* API, no react-intl") rather than an escape (JS block comments have no escape
+for `*/`).
