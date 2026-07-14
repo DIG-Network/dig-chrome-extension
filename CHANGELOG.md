@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.99.1] - 2026-07-14
+
+### Bug Fixes
+- **peers:** Gate the Peers view behind pairing so an unpaired node is not a dead error (#560) (#135)
+
 ## [1.99.0] - 2026-07-14
 
 ### Features
