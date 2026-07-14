@@ -3,6 +3,24 @@
 High-signal realizations from debugging/development. Concise durable facts with context — not a
 change diary. See CLAUDE.md §4.5.
 
+## Nightlies release + the Chrome `manifest.version` prerelease trap (#596, epic #590)
+
+Releases are no longer cut on merge to `main`. `nightly-release.yml` (converted from the old
+push:main `release.yml`) runs a **midnight-UTC cron + `workflow_dispatch`** (`channel`
+stable|nightly|both, `force` bool) and drives two channels: STABLE (package.json version-detect →
+skip-if-`vX.Y.Z`-tagged → git-cliff changelog + tag with `RELEASE_TOKEN` → fires `deploy.yml` +
+`publish-chrome-web-store.yml`, unchanged) and NIGHTLY (build main HEAD → `prerelease` zip under
+dated `nightly-YYYYMMDD` + rolling `nightly` tags, keep-14 retention, **sideload-only — never the Web
+Store**). Contract: `SPEC.md` §19; ops: `runbooks/release.md`. **The trap:** a nightly's semver
+version is `X.Y.Z-nightly.YYYYMMDD.<sha>`, but Chrome's `manifest.json` `version` MUST be 1–4
+dot-separated integers — a prerelease suffix there makes the packaged zip FAIL to load unpacked,
+silently defeating the entire sideload nightly. Fix (`build.js`): the nightly stamps `package.json`
+in the CI workspace only (single source → Vite `__APP_VERSION__` + `injectAppVersion` +
+`agent-surface.json` + zip name all pick it up), and `build.js` strips the `-…`/`+…` suffix for
+`manifest.version` (Chrome-valid dotted base) while preserving the FULL string in Chrome's
+`version_name` (the human label in `chrome://extensions` + §6.7 bug-report attribution). Stable builds
+have no suffix, so `version_name` stays unset and behaviour is unchanged.
+
 ## The rewards-vault / badge-staking view is hub.dig.net, NOT the extension (#409 triage)
 
 A bug report titled "extension rewards vault (staking) fails" (`StakeView.container-*.js`,

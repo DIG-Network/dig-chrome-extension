@@ -181,10 +181,25 @@ function copyFiles() {
         // rather than trusting a hand-edited literal that silently drifts (it had: 1.29.1 vs
         // package.json's 1.37.1). package.json is the single source of truth for the shipped
         // version (§6.7 app-version attribution); manifest.json's source-tree copy is untouched.
+        //
+        // #596 (nightly channel): a nightly build stamps package.json with a semver PRERELEASE
+        // version `X.Y.Z-nightly.YYYYMMDD.<sha>`. Chrome's manifest `version` MUST be 1–4 dotted
+        // integers, so the prerelease suffix cannot go there — a zip carrying it would fail to load
+        // (defeating a sideload nightly). Strip the suffix for `version` (the dotted base stays
+        // Chrome-valid) and preserve the FULL string in `version_name` — Chrome's human-readable
+        // label shown in chrome://extensions, which keeps each nightly identifiable + attributable
+        // in bug reports. A stable build has no suffix, so version_name stays unset and behaviour is
+        // unchanged.
         const manifest = JSON.parse(fs.readFileSync(src, 'utf8'));
-        manifest.version = require('./package.json').version;
+        const fullVersion = require('./package.json').version;
+        const [dottedVersion] = String(fullVersion).split(/[-+]/);
+        manifest.version = dottedVersion;
+        if (fullVersion !== dottedVersion) manifest.version_name = fullVersion;
         fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
-        log(`✓ Copied: ${file} (version synced to package.json)`, 'green');
+        const versionNote = manifest.version_name
+          ? `version ${dottedVersion} + version_name ${fullVersion}`
+          : 'version synced to package.json';
+        log(`✓ Copied: ${file} (${versionNote})`, 'green');
       } else {
         fs.copyFileSync(src, dest);
         log(`✓ Copied: ${file}`, 'green');

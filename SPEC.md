@@ -1800,7 +1800,16 @@ extension MUST NOT diverge from it.
   vendoring — the extension is a self-custody wallet.
 - The bundled `dist/wallet-methods.mjs` MUST retain the same named exports and contain NO surviving
   bare `@dignetwork/*` import; the build fails loudly otherwise.
-- `node build.js --zip` additionally produces a versioned `.zip` for distribution.
+- `node build.js --zip` additionally produces a versioned `.zip` for distribution
+  (`dig-network-extension-v<package.json version>.zip`).
+- **Manifest version + `version_name` (§19 nightly channel).** The manifest `version` is set from
+  `package.json` at build time. Chrome requires `version` to be 1–4 dot-separated integers, so when
+  `package.json` carries a semver PRERELEASE (a nightly build stamps it `X.Y.Z-nightly.YYYYMMDD.<sha>`),
+  `build.js` strips the `-…`/`+…` suffix for `version` (keeping the Chrome-valid dotted base, so the
+  packaged zip still loads unpacked) and preserves the FULL string in `version_name` (Chrome's
+  human-readable label shown in `chrome://extensions`). A stable build has no suffix, so `version_name`
+  is left unset. The full string also flows to `__APP_VERSION__` and `agent-surface.json`, so a bug
+  report from a nightly records the exact build (§2.3 / §6.7 app-version attribution).
 - `node build.js --json` emits one JSON result on stdout (machine mode), prose on stderr.
 - Exit codes: `0` success · `2` a required source file is missing (validation) · `3` a build
   step failed (bundling / artifact write).
@@ -4139,3 +4148,103 @@ reference test this module mirrors uses a 1-mojo toy strike, which would hide a 
 bug a real-sized strike would expose. Covers expiration rejection, insufficient-funds rejection, and
 that a second exercise attempt after the first correctly reports `OPTION_NOT_FOUND`. Never
 broadcasts to mainnet in CI.
+
+---
+
+## 19. Release pipeline — nightly cron + manual dispatch
+
+How this extension is built and released. Releases are **batched to a nightly cron plus manual
+dispatch** — NOT cut on every merge to `main` (#596, epic #590). This is the JS / Chrome-Web-Store
+adaptation of the ecosystem's reference nightlies system (`DIG-Network/dig-updater`). Two channels
+ship from one orchestrator, `.github/workflows/nightly-release.yml`.
+
+### 19.1 Trigger
+
+The orchestrator triggers ONLY on:
+
+- `schedule: cron '0 0 * * *'` — **midnight UTC** (GitHub Actions cron is always UTC; a top-of-hour
+  cron MAY be delayed under load — acceptable, since both channels are idempotent), and
+- `workflow_dispatch` with two inputs: `channel` (`both` | `stable` | `nightly`, default `both`) and
+  `force` (boolean, default `false`).
+
+It MUST NOT trigger on `push` to `main`. A schedule run exercises BOTH channels; a dispatch runs the
+selected channel(s).
+
+**60-day auto-disable caveat.** GitHub auto-disables a `schedule:` trigger after 60 days with no
+repo activity on a public repo, with no auto-re-enable — and since this cron is the ONLY automatic
+release trigger (there is no more push-to-main tagger), a quiet repo can silently stop releasing
+with no error surfaced anywhere. Detect it with `gh api
+repos/DIG-Network/dig-chrome-extension/actions/workflows/nightly-release.yml --jq .state` (a value of
+`disabled_inactivity` means it was auto-disabled) and recover with `gh workflow enable
+nightly-release.yml`. Any repo activity resets the 60-day counter (see `runbooks/release.md`).
+
+### 19.2 Stable channel
+
+Cuts a semver `vX.Y.Z` **stable** release when — and only when — the version in `package.json`
+(`.version`) has advanced beyond the newest existing `vX.Y.Z` tag. The **skip-if-already-tagged**
+check IS the version-changed check: an unchanged version means the tag already exists, so the run is
+a no-op. Cutting a release means: `git-cliff` regenerates `CHANGELOG.md` from the Conventional-Commit
+history, commits it to `main` as `chore(release): vX.Y.Z`, tags THAT commit `vX.Y.Z` (so the changelog
+is inside the tag), and pushes commit + tag with `RELEASE_TOKEN` (the stable checkout pins `ref: main`
+so the commit + tag can only land on `main` HEAD). The pushed `v*` tag fires the STABLE build/publish,
+UNCHANGED: `deploy.yml` builds + packages the zip and attaches it to the GitHub Release, and
+`publish-chrome-web-store.yml` uploads + publishes to the Chrome Web Store (a graceful no-op until the
+`CHROME_*` store secrets are provisioned).
+
+`force: true` on a manual dispatch bypasses the skip-if-tagged guard and re-cuts the current version
+(moving the existing tag onto a fresh changelog commit — `main` is never force-pushed). This is the
+manual "re-release this version" escape hatch (e.g. after a failed build/publish).
+
+**Force is guarded against mutating a published release (supply-chain invariant, R1).** A force
+re-cut MUST be refused — with a non-zero exit and a clear `::error::` — when BOTH: (a) a PUBLISHED
+(non-draft) GitHub Release already exists at the version's `vX.Y.Z` tag, AND (b) that tag currently
+points at a commit DIFFERENT from the commit this run would build. Moving a published release's tag
+to different code would silently replace its shipped zip/Web-Store build with unreviewed code under
+the same version number. Force MAY proceed when either condition is false: a same-commit re-cut (the
+tag already points at the commit being built — a legitimate "the build failed, re-fire `deploy.yml`"
+retry) or a tag with no published release yet (repairing a bare/failed tag). A version that genuinely
+needs new code released MUST bump `package.json`, not force-move an existing tag.
+
+### 19.3 Nightly channel
+
+Every night (and on demand) builds `main` HEAD and publishes a GitHub **pre-release** — so a fresh
+nightly always exists regardless of a version bump. It:
+
+- **Synthesizes the version at build time** (nothing is committed): `X.Y.Z-nightly.YYYYMMDD.<shortsha>`
+  from the current `package.json` version + UTC date + `git rev-parse --short HEAD`. As a semver
+  prerelease it sorts BELOW the plain `X.Y.Z`, so a nightly never outranks the stable release. The
+  version is stamped into `package.json` in the CI workspace only (never committed), so `build.js` +
+  Vite carry it into the manifest `version_name`, `__APP_VERSION__`, `agent-surface.json`, and the zip
+  name; the manifest `version` keeps the Chrome-valid dotted base (§13).
+- **Packages the extension zip** (`npm run build:zip` → `dig-network-extension-v<nightly>.zip`) and
+  publishes it under a **dated tag `nightly-YYYYMMDD`** AND force-moves a **rolling `nightly` tag** to
+  the same build, with `prerelease: true` and **never** `latest` (title `Nightly YYYY-MM-DD
+  (<shortsha>)`). Both the dated and the rolling pre-release carry this run's zip. Idempotent: a
+  same-day re-run refreshes today's dated release + the rolling pointer rather than erroring.
+- **Retention:** keeps the newest **14** dated nightlies (`KEEP_NIGHTLIES`) plus the rolling
+  `nightly`, pruning older dated pre-releases AND their `nightly-YYYYMMDD` tags together (`gh release
+  delete --cleanup-tag`). `v*` stable tags/releases and the rolling `nightly` are NEVER pruned.
+
+**GitHub-zip-only (ext adaptation).** A nightly is the GitHub pre-release ZIP for **sideload only**
+(download → load unpacked). It is NEVER auto-published to the Chrome Web Store: that would ship
+unstable code to every user and burn store-review latency. A separate unlisted "DIG (nightly)"
+Web-Store item is a possible future follow-up, not built here. Neither `nightly-*` nor `nightly`
+matches `deploy.yml`'s `v*` trigger, so the nightly channel never fires the stable build/publish.
+
+### 19.4 RELEASE_TOKEN posture (both channels)
+
+Releasing uses the `RELEASE_TOKEN` org PAT, not the default `GITHUB_TOKEN`: a tag pushed by
+`GITHUB_TOKEN` does not trigger downstream workflows (GitHub anti-recursion) and `GITHUB_TOKEN` cannot
+push a changelog commit past branch protection. If `RELEASE_TOKEN` is absent, EVERY channel NO-OPS
+with a clear `::warning::` — never a half-release. A `concurrency: nightly-release` group
+(cancel-in-progress `false`) serializes runs so an overlapping cron + dispatch cannot race on
+tags/releases.
+
+### 19.5 Workflow inventory
+
+| Workflow | Trigger | Role |
+|---|---|---|
+| `nightly-release.yml` | `schedule` (midnight UTC) + `workflow_dispatch` | The orchestrator: stable channel (changelog + tag) and nightly channel (build + dated/rolling pre-release zip + prune). |
+| `deploy.yml` | `push: tags: v*` (+ dispatch canary) | Builds + packages the zip and attaches it to the STABLE GitHub Release for a `vX.Y.Z` tag. |
+| `publish-chrome-web-store.yml` | `push: tags: v*` (+ dispatch) | Uploads + publishes the STABLE zip to the Chrome Web Store (graceful no-op without the `CHROME_*` secrets). |
+| `ci.yml` | PR + push to main | The full lint/typecheck/test/coverage/build gate (pre-merge). |

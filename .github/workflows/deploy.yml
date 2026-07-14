@@ -1,12 +1,15 @@
 name: deploy
 
 # Browser extension — no S3/CloudFront origin. "Deploy" = build the packaged extension
-# (node build.js --zip -> ./dist + a .zip), publish the zip as a build artifact on every
-# push to main, and attach it to a GitHub Release when a v* tag is pushed (the artifact you
-# upload to the Chrome Web Store / Edge Add-ons dashboard).
+# (node build.js --zip -> ./dist + a .zip) and attach it to a GitHub Release when a v* tag is
+# pushed (the artifact you upload to the Chrome Web Store / Edge Add-ons dashboard).
+#
+# Tag-triggered ONLY (#590/#596): releases are batched to the nightly cron + manual dispatch
+# (nightly-release.yml), so nothing builds/publishes on merge to main anymore. Per-PR build
+# coverage comes from ci.yml; daily main-HEAD build coverage comes from the nightly channel. The
+# `workflow_dispatch` is kept as a manual "does main still build + package?" canary.
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch: {}
 
