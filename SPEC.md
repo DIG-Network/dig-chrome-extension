@@ -410,6 +410,22 @@ control-token `PairingSection` — the SAME auth the other paired management sec
 - **Beacon-absent empty state.** `{ installed: false }` renders a clear, honest "not installed yet"
   panel through the SAME `FourState` empty branch other panels use — never an error wall (family #516
   requirement).
+- **Running dig-node version + out-of-date badge (#583, `NodeVersionSection.tsx`).** Renders
+  UNCONDITIONALLY above the beacon panel (no pairing needed) and is deliberately labeled + sourced
+  distinctly from the beacon version above: the running **dig-node**'s own build, read from the SAME
+  live `getNodeLiveStatus` WS status (#239) the popup's connection pill already shows (`state`,
+  `version`) — never `control.updater.status`'s `version`, which is the beacon's own build. That
+  running version is compared, via a tolerant semver compare (`src/lib/node-version.ts`
+  `compareVersions`/`isOlder` — leading `v`, missing minor/patch, build metadata, and prerelease
+  precedence all handled; never a string compare), against the PUBLIC update-feed manifest's
+  advertised `dig-node` entry (`https://updates.dig.net/v1/alpha/manifest.json`, fetched directly over
+  HTTPS by `feedManifestApi.ts` — a separate RTK Query slice from the SW seam, exactly like
+  `priceApi`/`catMetadataApi` — via `src/lib/feed-manifest.ts`; the signature is NOT verified here,
+  since an unverified "latest version" used only to color a badge carries no install authority, unlike
+  the beacon's own verified install decision). The badge (`nodeVersionBadge`) renders one of four
+  honest states — `upToDate`, `updateAvailable` (names the version), `nodeOffline` (the node isn't
+  connected or its version isn't yet known), `feedUnreachable` (the feed couldn't be read) — and NEVER
+  fabricates "up to date" from either an offline node or an unreachable feed.
 
 ### 2.2 State & data architecture
 

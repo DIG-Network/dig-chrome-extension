@@ -3,6 +3,7 @@ import { api } from '@/api/api';
 import { priceApi } from '@/features/wallet/priceApi';
 import { catMetadataApi } from '@/features/wallet/catMetadataApi';
 import { feeApi } from '@/features/wallet/custody/feeApi';
+import { feedManifestApi } from '@/features/updates/feedManifestApi';
 import { uiReducer } from '@/features/ui/uiSlice';
 import { walletReducer } from '@/features/wallet/walletSlice';
 // Register feature endpoints (side-effect imports wire them into the single api slice).
@@ -35,10 +36,14 @@ export function createStore() {
       // Network-fee estimates (#206/#110) ride their own direct-HTTPS slice too — a short-TTL fetch of
       // coinset's get_fee_estimate, independent of the SW seam (feeApi.ts).
       [feeApi.reducerPath]: feeApi.reducer,
+      // Update-feed manifest (#583) — the same direct-HTTPS pattern: a public read of updates.dig.net,
+      // independent of the SW seam (feedManifestApi.ts).
+      [feedManifestApi.reducerPath]: feedManifestApi.reducer,
       ui: uiReducer,
       wallet: walletReducer,
     },
-    middleware: (getDefault) => getDefault().concat(api.middleware, priceApi.middleware, catMetadataApi.middleware, feeApi.middleware),
+    middleware: (getDefault) =>
+      getDefault().concat(api.middleware, priceApi.middleware, catMetadataApi.middleware, feeApi.middleware, feedManifestApi.middleware),
     // Batch RTK Query store notifications on the microtask queue rather than the default
     // requestAnimationFrame. `raf` defers a coalescing callback to the next animation frame (a ~16 ms
     // macrotask); under jsdom that frame can fire after a test's window is torn down and throw from
