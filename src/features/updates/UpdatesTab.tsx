@@ -14,6 +14,7 @@ import {
 import {
   updaterActionLabelId,
   updaterOutcomeLabelId,
+  updaterResultLabelId,
   updaterResultTone,
   updaterPausedTone,
   type UpdaterStatus,
@@ -134,7 +135,9 @@ function UpdaterPanel({ status }: { status: UpdaterStatus }) {
                   </span>
                 )}
                 <span style={{ marginLeft: 'auto' }}>
-                  <StatusPill tone={updaterResultTone(c.result)}>{c.result ?? '—'}</StatusPill>
+                  <StatusPill tone={updaterResultTone(c.result)}>
+                    <FormattedMessage id={updaterResultLabelId(c.result)} />
+                  </StatusPill>
                 </span>
               </li>
             ))}

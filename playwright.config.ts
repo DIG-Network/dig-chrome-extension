@@ -40,13 +40,13 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4199',
+    baseURL: 'http://127.0.0.1:4173',
     headless: true,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: `python -m http.server 4199 --directory ${__dirname}/dist-web`,
-    url: 'http://127.0.0.1:4199/popup.html',
+    command: `python -m http.server 4173 --directory ${__dirname}/dist-web`,
+    url: 'http://127.0.0.1:4173/popup.html',
     reuseExistingServer: true,
     timeout: 30_000,
   },

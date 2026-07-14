@@ -129,8 +129,28 @@ export function updaterOutcomeLabelId(outcome: string | null): string {
   }
 }
 
+/** Message-catalog id for a component's `result` (dig-updater SPEC §13.2), forward-compat safe. */
+export function updaterResultLabelId(result: string | null): string {
+  switch (result) {
+    case 'installed':
+      return 'updates.result.installed';
+    case 'updated':
+      return 'updates.result.updated';
+    case 'skipped':
+      return 'updates.result.skipped';
+    case 'deferred':
+      return 'updates.result.deferred';
+    case 'rolled_back':
+      return 'updates.result.rolledBack';
+    case 'staged':
+      return 'updates.result.staged';
+    default:
+      return 'updates.result.unknown';
+  }
+}
+
 /** The {@link StatusPill} tone for a component's `result`, so the list scans at a glance. Never
- *  meaning-by-color-alone: the pill always pairs with the {@link updaterActionLabelId} text. */
+ *  meaning-by-color-alone: the pill always pairs with the {@link updaterResultLabelId} text. */
 export function updaterResultTone(result: string | null): PillTone {
   switch (result) {
     case 'installed':
