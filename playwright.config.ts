@@ -33,6 +33,7 @@ export default defineConfig({
     '**/tipping-tab.spec.ts',
     '**/security-tab.spec.ts',
     '**/updates-tab.spec.ts',
+    '**/peers-tab.spec.ts',
   ],
   fullyParallel: true,
   // Flaky-test containment (#489): retry a failing spec up to twice in CI (Playwright marks it
