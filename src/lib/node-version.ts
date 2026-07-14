@@ -20,18 +20,28 @@ export interface NodeVersionBadge {
   latestVersion?: string;
 }
 
+/** Check if a version string is well-formed enough to compare (at least one digit in the
+ *  release part, after stripping leading `v`). A malformed feed entry (e.g. "invalid", empty)
+ *  is treated as unreachable, preventing a false "up to date" verdict from a garbage feed. */
+function hasValidVersionFormat(raw: string): boolean {
+  const trimmed = raw.trim().replace(/^v/i, '');
+  if (!trimmed) return false; // empty string
+  const core = trimmed.split('-')[0]; // prerelease is after the first `-`
+  return /\d/.test(core); // at least one digit in the release part
+}
+
 /**
  * Decide the badge from the two independent, already-settled reads: the node's own live status
  * (`getNodeLiveStatus`, #239 — unrelated to beacon health) and the feed manifest's advertised
  * `dig-node` version (`feed-manifest.ts`). Every input is the CALLER's job to have already resolved
  * (loading is a component-level concern, not this function's) — passing a `null` for either version
  * is exactly how "don't know yet" is expressed, and this function never guesses "up to date" from a
- * `null`.
+ * `null` or a malformed feed entry.
  *
  * @param nodeOnline the node's live-status connection is `'connected'` (see `dig-node-ws.ts`).
  * @param runningVersion the node's own reported version, or `null` if not connected / not yet known.
  * @param latestVersion the feed's `dig-node` version, or `null` if the feed is unreachable or the
- *   feed's manifest doesn't (yet) carry a `dig-node` entry.
+ *   feed's manifest doesn't (yet) carry a `dig-node` entry. If present but malformed, treated as unreachable.
  */
 export function nodeVersionBadge({
   nodeOnline,
@@ -43,7 +53,7 @@ export function nodeVersionBadge({
   latestVersion: string | null;
 }): NodeVersionBadge {
   if (!nodeOnline || !runningVersion) return { kind: 'nodeOffline' };
-  if (!latestVersion) return { kind: 'feedUnreachable' };
+  if (!latestVersion || !hasValidVersionFormat(latestVersion)) return { kind: 'feedUnreachable' };
   return isOlder(runningVersion, latestVersion) ? { kind: 'updateAvailable', latestVersion } : { kind: 'upToDate' };
 }
 

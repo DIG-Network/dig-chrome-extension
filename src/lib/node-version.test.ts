@@ -70,6 +70,15 @@ describe('nodeVersionBadge', () => {
     });
   });
 
+  it('is "feedUnreachable" when the feed version is present but malformed (no digits in release)', () => {
+    expect(nodeVersionBadge({ nodeOnline: true, runningVersion: '0.31.1', latestVersion: 'invalid' })).toEqual({
+      kind: 'feedUnreachable',
+    });
+    expect(nodeVersionBadge({ nodeOnline: true, runningVersion: '0.31.1', latestVersion: '' })).toEqual({
+      kind: 'feedUnreachable',
+    });
+  });
+
   it('is "upToDate" when the running version matches or exceeds the feed', () => {
     expect(nodeVersionBadge({ nodeOnline: true, runningVersion: '0.31.1', latestVersion: '0.31.1' })).toEqual({
       kind: 'upToDate',

@@ -8,6 +8,12 @@ function makeStore() {
   return configureStore({
     reducer: { [feedManifestApi.reducerPath]: feedManifestApi.reducer },
     middleware: (getDefault) => getDefault().concat(feedManifestApi.middleware),
+    // Batch RTK Query store notifications on the microtask queue rather than the default
+    // requestAnimationFrame — same override as src/app/store.ts. Under jsdom, rAF can fire
+    // after a test's window is torn down and throw from inside RTK's autoBatchEnhancer,
+    // surfacing as a flaky "unhandled error" even though every test passes. `tick`
+    // (queueMicrotask) coalesces just as effectively and always drains within the turn.
+    enhancers: (getDefaultEnhancers) => getDefaultEnhancers({ autoBatch: { type: 'tick' } }),
   });
 }
 
