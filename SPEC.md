@@ -370,6 +370,47 @@ node-offline state renders honestly, and the sections render only behind the con
   `SendPanel`'s confirm (the canonical send/spend); the remaining confirm sites adopt the same primitive as
   the node-signer custody cutover (#374) lands.
 
+### 2.1f Fullscreen Updates tab (#504-K/#516, child of epic #504)
+
+A fullscreen-only top-level tab (`updates`, in `FULLSCREEN_ONLY_TABS`; deep-link `#updates`; desktop
+sidebar entry; NOT in the compact bottom nav — §145 tiering) that manages the DIG auto-update beacon
+(`dig-updater`, dig-updater SPEC §13). The beacon owns EVERY update decision — trust-chain
+verification, per-component install/skip, health-gated rollback (dig-updater SPEC §§1-9); this tab is
+a THIN reader/driver over the dig-node `control.updater.*` proxy (dig-node SPEC §7.13, #515), which
+itself forwards the beacon's `status.json`/CLI `--json` output VERBATIM. Component tree in
+`src/features/updates/`: `UpdatesTab` (container) → `UpdaterStatusGate` (owns the status query's four
+states) → `UpdaterPanel` (the readout + controls). All copy is react-intl (`updates.*` ids, 14
+locales); every async surface renders loading/error/empty/success via `FourState`. Node-dependent +
+paired-gated: a node-offline state renders honestly, and the panel renders only behind the
+control-token `PairingSection` — the SAME auth the other paired management sections use (dig-node
+#515: `control.updater.*` inherits the existing `control.*` gate, no new auth surface).
+
+- **WS transport (`updaterApi.ts`, SW `controlAuthed` action).** Reuses the existing token-gated
+  `control.*` dispatcher (#281) — no new SW action, no new pairing flow. `getUpdaterStatus` reads
+  `control.updater.status` (`{ installed: false }` on an absent beacon is a NORMAL result, never an
+  RTK error); `pauseUpdater`/`resumeUpdater`/`checkNowUpdater` drive `control.updater.pause` /
+  `.resume` / `.checkNow`, each invalidating the `Updater` tag so the panel re-reads the live snapshot
+  on success. `checkNow` is SYNCHRONOUS on the node side (it can take minutes) — the mutation's
+  `isLoading` is the UI's only progress signal, per dig-node #515's design note.
+- **Pure model (`src/lib/updater-status.ts`).** DOM-free shapes mirroring dig-updater SPEC §13.2
+  (`UpdaterStatus`, `UpdaterComponentStatus`), a defensive `normalizeUpdaterStatus` that tolerates any
+  field being absent/malformed (the beacon's JSON is informational, not security-load-bearing, so this
+  reader stays lenient rather than fail-secure), and forward-compat label/tone mappers
+  (`updaterActionLabelId`, `updaterOutcomeLabelId`, `updaterResultTone`, `updaterPausedTone`) that fall
+  back to a generic id/tone for any value this reader doesn't yet recognize — a future beacon schema
+  bump can only ever omit a detail, never break the tab.
+- **The readout (`UpdaterPanel`).** Channel, active/paused pill, beacon version, last-check time +
+  kind (dry/full), next scheduled wake, last outcome (+ detail), and the per-component list (name +
+  plan action + version detail + a tone-colored result pill — never meaning-by-color-alone, the pill
+  always pairs with the action text).
+- **The controls.** A pause/resume TOGGLE (one button whose action flips with the reported `paused`
+  state) and a "check now" button that triggers an on-demand full pass; a shared inline recoverable
+  error (never a blank failure) surfaces if a control is declined. The tab makes NO update decisions
+  itself — it only renders what the beacon reports and forwards the operator's three commands.
+- **Beacon-absent empty state.** `{ installed: false }` renders a clear, honest "not installed yet"
+  panel through the SAME `FourState` empty branch other panels use — never an error wall (family #516
+  requirement).
+
 ### 2.2 State & data architecture
 
 - **Redux Toolkit + RTK Query**, one store per document (`src/app/store.ts`). The single `api`

@@ -8,6 +8,7 @@ import { PeersTab } from '@/features/peers/PeersTab';
 import { AdvertiseTab } from '@/features/advertise/AdvertiseTab';
 import { TippingTab } from '@/features/tipping/TippingTab';
 import { SecurityTab } from '@/features/security/SecurityTab';
+import { UpdatesTab } from '@/features/updates/UpdatesTab';
 
 /**
  * Render the active mobile-OS screen in an ARIA tabpanel. The `key={tab}` remounts on switch so the
@@ -34,6 +35,7 @@ export function ActiveTabPanel() {
       {tab === 'advertise' && <AdvertiseTab />}
       {tab === 'tipping' && <TippingTab />}
       {tab === 'security' && <SecurityTab />}
+      {tab === 'updates' && <UpdatesTab />}
     </div>
   );
 }
