@@ -846,3 +846,22 @@ node unreachable:
 **Takeaway:** `connect-src` must list every local origin a client fetches, not just its WebSocket
 sibling — a probe/health-check path and a live-status socket often target the SAME hostname over
 DIFFERENT schemes, and CSP does not infer one from the other.
+
+## Every `control.*` read is token-gated — an ext surface reading one MUST gate on pairing (#560)
+
+The dig-node authorizes control methods with `is_authorized` (dig-node `control.rs`): **anything
+matching `control.*` requires a valid paired control token**, while `dig.*` / `cache.*` /
+`rpc.discover` reads are open. So `control.peerStatus` is token-gated even though the node's own
+`peer.rs` comment calls it "always safe to call" — that means safe to *invoke* (won't block/crash,
+returns `running:false` pre-network), NOT "needs no auth". Unpaired, the SW's `controlAuthed` handler
+short-circuits with `-32030` "not paired" before the node is even reached, which RTK Query maps to an
+error. Any extension surface that reads a `control.*` method (peers, upstream, hosted-stores, sync)
+must therefore render behind the pairing gate (`<PairingSection>`, or `skip` the query until
+`phase === 'paired'`) — the ControlTab's management sections already do. The #560 regression was the
+standalone Peers tab reading `control.peerStatus` gated only on node-reachability, so an
+online-but-unpaired node surfaced a dead "Couldn't load peers / try again" (retry re-fired the same
+doomed query, trapping the user) instead of the pairing affordance.
+
+**Takeaway:** node-reachable ≠ authorized. Gate any `control.*` read on pairing, not just on
+`nodeOnline`; treat a `-32030` on a `control.*` query as "needs pairing" (offer the pair CTA), never
+as a retryable transient error.

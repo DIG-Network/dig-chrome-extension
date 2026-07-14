@@ -3,12 +3,24 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PeersTab } from '@/features/peers/PeersTab';
 import { renderWithProviders } from '@/test/harness';
+import { initialPairingState, type PairingState } from '@/lib/dig-pairing';
 
 type Reply = unknown;
-/** Route sendMessage by action + control method so each test declares its node responses. */
+
+/** A `paired` pairing state — the precondition for reading the token-gated `control.peerStatus`. */
+const PAIRED: PairingState = { ...initialPairingState(), phase: 'paired' };
+/** An `unpaired` pairing state — the node is reachable but the extension holds no control token. */
+const UNPAIRED: PairingState = initialPairingState();
+
+/**
+ * Route sendMessage by action + control method so each test declares its node responses. Peers is a
+ * TOKEN-GATED surface: `control.peerStatus` only answers once the extension is paired, so a test
+ * that expects peer content must also declare a `pairing: PAIRED` state (mirrors the SW gate).
+ */
 function mockSw(routes: {
   control?: Reply;
   peerStatus?: Reply;
+  pairing?: PairingState;
   onCall?: (msg: { action?: string; method?: string; params?: unknown }) => void;
 }) {
   (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = vi.fn(
@@ -16,6 +28,7 @@ function mockSw(routes: {
       routes.onCall?.(msg ?? {});
       let reply: Reply = { success: true };
       if (msg?.action === 'getControlStatus') reply = routes.control ?? { mode: 'install', localNode: false };
+      else if (msg?.action === 'pairingState') reply = routes.pairing ?? UNPAIRED;
       else if (msg?.action === 'controlAuthed' && msg?.method === 'control.peerStatus') reply = routes.peerStatus ?? {};
       if (cb) cb(reply);
       return Promise.resolve(reply);
@@ -24,6 +37,9 @@ function mockSw(routes: {
 }
 
 const NODE_UP = { mode: 'manage', localNode: true, base: 'http://dig.local', status: {}, authRequired: false };
+
+/** The SW's reply when a token-gated `control.*` call is made with no paired token (#281). */
+const NOT_PAIRED_ERROR = { success: false, error: 'not paired', code: -32030 };
 
 describe('PeersTab (#393)', () => {
   beforeEach(() => {
@@ -39,8 +55,22 @@ describe('PeersTab (#393)', () => {
     expect(screen.queryByTestId('peers-manage')).toBeNull();
   });
 
+  // Regression (super-repo #560): the node is RUNNING but the extension is NOT paired. `control.peerStatus`
+  // is token-gated, so firing it unpaired returns -32030 ("not paired"). The tab must offer the PAIRING
+  // affordance (the forward path), NOT surface a dead "couldn't load peers / try again" error that leaves
+  // the user trapped — pairing, not retry, is the real precondition for reading peers.
+  it('offers the pairing affordance (not a dead "try again" error) when the node is online but not paired', async () => {
+    mockSw({ control: NODE_UP, pairing: UNPAIRED, peerStatus: NOT_PAIRED_ERROR });
+    renderWithProviders(<PeersTab />);
+    // The pairing CTA is the way forward.
+    expect(await screen.findByTestId('control-pairing-start')).toBeInTheDocument();
+    // The token-gated peer content (and its dead "try again" error) is NOT rendered while unpaired.
+    expect(screen.queryByTestId('peers-list-error')).toBeNull();
+    expect(screen.queryByTestId('peers-status')).toBeNull();
+  });
+
   it('shows summary + a "needs a newer node" note when the node reports only a count', async () => {
-    mockSw({ control: NODE_UP, peerStatus: { running: true, connected_peers: 3 } });
+    mockSw({ control: NODE_UP, pairing: PAIRED, peerStatus: { running: true, connected_peers: 3 } });
     renderWithProviders(<PeersTab />);
     // Summary reflects the count-only status.
     expect(await screen.findByTestId('peers-count')).toHaveTextContent('3');
@@ -57,6 +87,7 @@ describe('PeersTab (#393)', () => {
   it('renders the peer table + enables management when the node advertises support', async () => {
     mockSw({
       control: NODE_UP,
+      pairing: PAIRED,
       peerStatus: {
         running: true,
         connected_peers: 1,
@@ -81,6 +112,7 @@ describe('PeersTab (#393)', () => {
     const calls: { action?: string; method?: string; params?: unknown }[] = [];
     mockSw({
       control: NODE_UP,
+      pairing: PAIRED,
       peerStatus: { running: true, connected_peers: 0, management_supported: true, peers: [], bans: [] },
       onCall: (m) => calls.push(m),
     });
