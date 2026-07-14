@@ -32,6 +32,7 @@ export default defineConfig({
     '**/wallet-sync-status.spec.ts',
     '**/tipping-tab.spec.ts',
     '**/security-tab.spec.ts',
+    '**/updates-tab.spec.ts',
   ],
   fullyParallel: true,
   // Flaky-test containment (#489): retry a failing spec up to twice in CI (Playwright marks it
@@ -39,13 +40,13 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://127.0.0.1:4199',
     headless: true,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'python -m http.server 4173 --directory dist-web',
-    url: 'http://127.0.0.1:4173/popup.html',
+    command: `python -m http.server 4199 --directory ${__dirname}/dist-web`,
+    url: 'http://127.0.0.1:4199/popup.html',
     reuseExistingServer: true,
     timeout: 30_000,
   },

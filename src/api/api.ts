@@ -52,6 +52,9 @@ export const TAGS = [
   // session-state) read over the /ws transport; every auth mutation (set_mode/set_method/enroll/
   // unlock/sign_unlock/lock) invalidates it so the Security tab + sign gate re-read the live posture.
   'Auth',
+  // Auto-update beacon status (#504-K/#516, dig-updater SPEC §13.2): the node's `control.updater.status`
+  // mirror; pause/resume/checkNow invalidate it so the Updates tab re-reads the live snapshot.
+  'Updater',
 ] as const;
 
 /**

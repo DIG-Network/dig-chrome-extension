@@ -36,13 +36,14 @@ export const DESKTOP_NAV: readonly DesktopNavItem[] = [
   { key: 'did', tab: 'wallet', walletView: 'did', labelId: 'wallet.view.did', glyph: '🪪' },
   { key: 'apps', tab: 'apps', labelId: 'tab.apps', glyph: '🧩' },
   { key: 'network', tab: 'network', labelId: 'tab.network', glyph: '🌐' },
-  // Fullscreen-only tabs (#393 Peers, #411 Advertise, #380 Tipping, #433 Security) — sidebar entries
-  // with no compact bottom-nav counterpart; the desktop workspace has the room these advanced
-  // surfaces need.
+  // Fullscreen-only tabs (#393 Peers, #411 Advertise, #380 Tipping, #433 Security, #516 Updates) —
+  // sidebar entries with no compact bottom-nav counterpart; the desktop workspace has the room
+  // these advanced surfaces need.
   { key: 'peers', tab: 'peers', labelId: 'tab.peers', glyph: '🛰️' },
   { key: 'advertise', tab: 'advertise', labelId: 'tab.advertise', glyph: '📣' },
   { key: 'tipping', tab: 'tipping', labelId: 'tab.tipping', glyph: '💸' },
   { key: 'security', tab: 'security', labelId: 'tab.security', glyph: '🔒' },
+  { key: 'updates', tab: 'updates', labelId: 'tab.updates', glyph: '🔄' },
 ] as const;
 
 /**
