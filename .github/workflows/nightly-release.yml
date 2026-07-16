@@ -101,7 +101,7 @@ jobs:
 
       - name: Checkout
         if: steps.token.outputs.present == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # Pin to `main` explicitly (opus hardening the fan-out copies carry): a schedule/dispatch
           # run already defaults to the branch it ran on, but pinning makes the `HEAD:main` push
@@ -234,7 +234,7 @@ jobs:
 
       - name: Checkout (main HEAD, with push credentials)
         if: steps.token.outputs.present == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: main
           fetch-depth: 0
@@ -242,7 +242,7 @@ jobs:
 
       - name: Set up Node
         if: steps.token.outputs.present == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: 20
           cache: npm
@@ -384,12 +384,12 @@ jobs:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
       REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: main
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: 20
           cache: npm

@@ -174,7 +174,11 @@ test('#289 — local node reachable → the tab navigates to the node-served pla
   await navigateToDigUrl(page, CHIA_URL);
 
   // The tab is redirected to the node's plaintext /s/ surface — an ordinary http(s) website.
-  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  // `waitUntil: 'commit'` (NOT the default 'load') is load-bearing: the SW navigates the tab through a
+  // CHAIN (dig-loader.html → the destination), so the intermediate hop's `load` event is aborted by
+  // the very next navigation (`net::ERR_ABORTED; maybe frame was detached?` — the #600/#646 flake).
+  // Asserting on URL COMMIT resolves the moment the destination commits, immune to that abort race.
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000, waitUntil: 'commit' });
   const nav = new URL(page.url());
   expect(nav.protocol).toBe('http:');
   expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
@@ -190,7 +194,7 @@ test('#289 — no local node → keep the sandbox dig-viewer + rpc path (privacy
 
   // With no reachable node the tab falls back to the extension's sandbox viewer (chrome-extension://),
   // never the node URL — a browser cannot get plaintext from the public gateway.
-  await page.waitForURL((u) => u.pathname.startsWith('/dig-viewer.html'), { timeout: 15_000 });
+  await page.waitForURL((u) => u.pathname.startsWith('/dig-viewer.html'), { timeout: 15_000, waitUntil: 'commit' });
   expect(new URL(page.url()).protocol).toBe('chrome-extension:');
   expect(page.url()).toContain('urn=');
   await page.close();
@@ -252,7 +256,7 @@ test('#293 — the URN address bar resolves a typed chia:// value on Enter via t
 
   // Enter feeds handleDigUrlNavigation — with the fixture node reachable, the tab lands on the
   // node-served plaintext surface (the same #289 path the omnibox/nav use).
-  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000, waitUntil: 'commit' });
   expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
   await expect(page.locator('h1')).toHaveText(MARKER);
 });
@@ -372,7 +376,7 @@ test('#306 — the built-in fullscreen URN bar resolves a chia:// value through 
   await expect(input).toBeVisible({ timeout: 10_000 });
   await input.fill(CHIA_URL);
   await input.press('Enter');
-  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000, waitUntil: 'commit' });
   expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
   await expect(page.locator('h1')).toHaveText(MARKER);
   await page.close();
@@ -384,7 +388,7 @@ test('#310/#362 — a bare urn:dig:chia: input resolves via the shared core to t
   const page = await extPage();
   await setServerHost(page, nodeBase);
   await navigateDigInput(page, `urn:dig:chia:${STORE}/index.html`);
-  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000, waitUntil: 'commit' });
   expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
   await expect(page.locator('h1')).toHaveText(MARKER);
   await page.close();
@@ -399,7 +403,7 @@ test('#362 — the DIG search resolver loads a DIG query through the local node'
 
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/dig-search.html?q=${encodeURIComponent(CHIA_URL)}`);
-  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000 });
+  await page.waitForURL((u) => u.pathname.startsWith(`/s/${STORE}/`), { timeout: 15_000, waitUntil: 'commit' });
   expect(page.url()).toBe(`${nodeBase}/s/${STORE}/index.html`);
   await expect(page.locator('h1')).toHaveText(MARKER);
   await page.close();
@@ -412,7 +416,7 @@ test('#362 — the DIG search resolver sends a NON-DIG query to the configured f
     route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>ddg</title>ok' }),
   );
   await page.goto(`chrome-extension://${extensionId}/dig-search.html?q=${encodeURIComponent('best chia wallet')}`);
-  await page.waitForURL(/duckduckgo\.com/, { timeout: 15_000 });
+  await page.waitForURL(/duckduckgo\.com/, { timeout: 15_000, waitUntil: 'commit' });
   expect(page.url()).toContain('duckduckgo.com/?q=');
   expect(decodeURIComponent(page.url())).toContain('best chia wallet');
   await page.close();
@@ -448,7 +452,7 @@ test('#311 — a URN-bar submit paints the DIG loader instantly, then swaps to t
   await input.press('Enter');
 
   // The SW settles the tab on the resolved destination (no local node → the sandbox dig-viewer).
-  await page.waitForURL((u) => u.pathname.endsWith('/dig-viewer.html'), { timeout: 20_000 });
+  await page.waitForURL((u) => u.pathname.endsWith('/dig-viewer.html'), { timeout: 20_000, waitUntil: 'commit' });
   expect(page.url()).toContain('urn=');
 
   // The branded DIG loader was flashed FIRST (an extension page), as an instant never-blank
