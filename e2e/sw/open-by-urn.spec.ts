@@ -116,11 +116,13 @@ test('dig-dns unreachable: opens the address in the chrome-extension:// content 
   await page.getByTestId('home-openurn-go').click();
 
   // The background's REAL navigateToDigUrl handler redirects THIS tab to dig-viewer.html — never a
-  // new tab, never the resource's own origin. `waitUntil: 'commit'` (not the default 'load') dodges
-  // the #646 flake: the SW navigates the tab through the dig-loader.html hop first, whose `load` event
-  // is aborted by the next navigation (`net::ERR_ABORTED; maybe frame was detached?`); asserting on
-  // URL COMMIT is immune to that abort race.
-  await page.waitForURL((url) => url.pathname.startsWith('/dig-viewer.html'), { timeout: 15_000, waitUntil: 'commit' });
+  // new tab, never the resource's own origin. POLL the URL string rather than `page.waitForURL`,
+  // which dodges the #646 flake: the SW navigates the tab through the dig-loader.html hop first, whose
+  // load is aborted by the next navigation (`net::ERR_ABORTED; maybe frame was detached?` — recurs
+  // even with `waitUntil: 'commit'`). Sampling `page.url()` is immune to the navigation lifecycle.
+  await expect
+    .poll(() => new URL(page.url()).pathname.startsWith('/dig-viewer.html'), { timeout: 15_000 })
+    .toBe(true);
   const url = new URL(page.url());
   expect(url.protocol).toBe('chrome-extension:');
   expect(url.pathname).toBe('/dig-viewer.html');
