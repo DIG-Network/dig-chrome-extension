@@ -7,11 +7,25 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const esbuild = require('esbuild');
+const crx = require('./crx.js');
 
 // CLI flags. `--json` (machine mode) emits ONE JSON object to stdout, routes all human prose
 // to stderr, and suppresses color — the ecosystem-wide CLI convention (AGENT_FRIENDLY.md).
 const JSON_MODE = process.argv.includes('--json');
 const MAKE_ZIP = process.argv.includes('--zip') || process.argv.includes('-z');
+// `--crx` packs + signs a self-hosted CRX3 (+ emits the per-channel Omaha updates.xml) for the
+// force-install auto-update path (#607). `--channel <nightly|stable>` picks the updates.dig.net
+// path + the version scheme; the RSA signing key comes from the EXT_NIGHTLY_CRX_KEY env (never a
+// file in the tree). See crx.js + SPEC §19.
+const MAKE_CRX = process.argv.includes('--crx');
+const CHANNEL = (() => {
+  const i = process.argv.indexOf('--channel');
+  const v = i >= 0 ? process.argv[i + 1] : 'stable';
+  if (v !== 'nightly' && v !== 'stable') {
+    throw new Error(`--channel must be 'nightly' or 'stable' (got ${JSON.stringify(v)})`);
+  }
+  return v;
+})();
 
 // Documented, stable build exit codes (see README). 0 success / 2 validation failed (a
 // required source file is missing) / 3 a build step (vendoring / artifact write) failed.
@@ -185,14 +199,16 @@ function copyFiles() {
         // #596 (nightly channel): a nightly build stamps package.json with a semver PRERELEASE
         // version `X.Y.Z-nightly.YYYYMMDD.<sha>`. Chrome's manifest `version` MUST be 1–4 dotted
         // integers, so the prerelease suffix cannot go there — a zip carrying it would fail to load
-        // (defeating a sideload nightly). Strip the suffix for `version` (the dotted base stays
-        // Chrome-valid) and preserve the FULL string in `version_name` — Chrome's human-readable
-        // label shown in chrome://extensions, which keeps each nightly identifiable + attributable
-        // in bug reports. A stable build has no suffix, so version_name stays unset and behaviour is
+        // (defeating a sideload nightly). crx.chromeManifestVersion() maps it to a Chrome-valid
+        // version: a stable `X.Y.Z` passes through unchanged; a nightly becomes
+        // `X.Y.Z.<days-since-2020-01-01>` (#607) so the packed CRX version STRICTLY INCREASES each
+        // night — the mechanism that makes the self-hosted force-install auto-update fire. The FULL
+        // string is preserved in `version_name` (Chrome's human-readable label + §6.7 bug-report
+        // attribution). A stable build has no suffix, so version_name stays unset — behaviour is
         // unchanged.
         const manifest = JSON.parse(fs.readFileSync(src, 'utf8'));
         const fullVersion = require('./package.json').version;
-        const [dottedVersion] = String(fullVersion).split(/[-+]/);
+        const dottedVersion = crx.chromeManifestVersion(fullVersion);
         manifest.version = dottedVersion;
         if (fullVersion !== dottedVersion) manifest.version_name = fullVersion;
         fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
@@ -366,6 +382,78 @@ function createZip() {
   } catch (error) {
     log('⚠️  Could not create zip file. You can manually zip the dist/ folder.', 'yellow');
     log(`   Error: ${error.message}`, 'yellow');
+  }
+}
+
+/**
+ * Zip the CONTENTS of dist/ into `destPath` (manifest.json at the archive root — the shape a CRX3
+ * wraps). Cross-platform: PowerShell Compress-Archive on Windows, `zip` elsewhere (present on the
+ * ubuntu CI runner). Returns `destPath`.
+ */
+function zipDistToFile(destPath) {
+  fs.rmSync(destPath, { force: true });
+  if (process.platform === 'win32') {
+    const distGlob = path.join(DIST_DIR, '*');
+    execSync(`powershell -Command "Compress-Archive -Path '${distGlob}' -DestinationPath '${destPath}' -Force"`, {
+      stdio: JSON_MODE ? 'ignore' : 'inherit',
+    });
+  } else {
+    // -r recurse, -X drop extra OS metadata, -q quiet. Run from dist/ so paths are archive-root-relative.
+    execSync(`cd "${DIST_DIR}" && zip -r -X -q "${destPath}" .`, { stdio: JSON_MODE ? 'ignore' : 'inherit' });
+  }
+  return destPath;
+}
+
+/**
+ * Pack + sign the built dist/ into a self-hosted CRX3 and emit the channel's Omaha `updates.xml`
+ * beside it (#607). The signing key is the RSA private key in the `EXT_NIGHTLY_CRX_KEY` env (never a
+ * file in the tree); the packed id MUST equal the canonical id pinned by the committed manifest
+ * `key`. The CRX filename + updates.xml `codebase`/`version` all use the Chrome-valid manifest
+ * version so a polling browser detects the update. Artifacts land at the repo root:
+ *   dig-network-extension-v<version>.crx  +  updates.xml
+ */
+function createCrx(channel) {
+  log(`\n🔏 Packing + signing CRX3 (channel: ${channel})...`, 'blue');
+  const privateKeyPem = process.env.EXT_NIGHTLY_CRX_KEY;
+  if (!privateKeyPem || !privateKeyPem.trim()) {
+    throw new Error('createCrx: EXT_NIGHTLY_CRX_KEY (PEM RSA private key) is not set — cannot sign the CRX.');
+  }
+
+  // The version inside dist/manifest.json (Chrome-valid, monotonic) is the single source of truth
+  // for the artifact name + the updates.xml — read it back rather than re-deriving.
+  const manifest = JSON.parse(fs.readFileSync(path.join(DIST_DIR, 'manifest.json'), 'utf8'));
+  const version = manifest.version;
+
+  const zipPath = path.join(__dirname, `.crx-payload-v${version}.zip`);
+  try {
+    zipDistToFile(zipPath);
+    const zip = fs.readFileSync(zipPath);
+    const { crx: crxBytes, id } = crx.packCrx3({ zip, privateKeyPem });
+
+    if (id !== crx.CANONICAL_EXTENSION_ID) {
+      throw new Error(
+        `createCrx: packed extension id ${id} != canonical ${crx.CANONICAL_EXTENSION_ID} — the ` +
+          'EXT_NIGHTLY_CRX_KEY does not match the committed manifest `key`. Refusing to publish a ' +
+          'CRX under a drifted id (it would break every force-installed browser).',
+      );
+    }
+
+    const crxPath = path.join(__dirname, `dig-network-extension-v${version}.crx`);
+    fs.writeFileSync(crxPath, crxBytes);
+
+    const xml = crx.generateUpdatesXml({
+      appid: id,
+      codebase: crx.crxDownloadUrl(channel, version),
+      version,
+    });
+    const xmlPath = path.join(__dirname, 'updates.xml');
+    fs.writeFileSync(xmlPath, xml);
+
+    log(`✓ Wrote: ${path.basename(crxPath)} (id ${id}, ${(crxBytes.length / 1024).toFixed(0)} KB)`, 'green');
+    log(`✓ Wrote: updates.xml (${channel}, version ${version})`, 'green');
+    return { crxPath, xmlPath, id, version, channel };
+  } finally {
+    fs.rmSync(zipPath, { force: true });
   }
 }
 
@@ -698,9 +786,15 @@ async function main() {
   // Emit the machine-readable agent-surface index (single source of truth: messages.mjs etc).
   const surface = await generateAgentSurface();
 
-  // Create zip (optional)
+  // Create zip (optional) — the store/sideload artifact.
   if (MAKE_ZIP) {
     createZip();
+  }
+
+  // Pack + sign the self-hosted CRX3 + emit the channel's updates.xml (optional, #607).
+  let crxResult = null;
+  if (MAKE_CRX) {
+    crxResult = createCrx(CHANNEL);
   }
 
   log('\n✅ Build complete!', 'green');
@@ -719,6 +813,7 @@ async function main() {
     version: surface.version,
     distDir: path.basename(DIST_DIR),
     zip: MAKE_ZIP,
+    crx: crxResult ? { id: crxResult.id, version: crxResult.version, channel: crxResult.channel } : false,
     artifacts: ['manifest.json', 'background.js', 'agent-surface.json'],
     agentSurface: surface,
   });

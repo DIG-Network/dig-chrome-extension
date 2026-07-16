@@ -204,6 +204,15 @@ jobs:
     if: >-
       ${{ github.event_name == 'schedule' || inputs.channel == 'nightly' || inputs.channel == 'both' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # publish pre-releases / upload assets
+    # Expose the synthesized version + dated tag so the gated `nightly-publish-crx` job can re-stamp
+    # the SAME nightly version, pack+sign the CRX, and publish it to updates.dig.net/ext/nightly/.
+    outputs:
+      present: ${{ steps.token.outputs.present }}
+      version: ${{ steps.v.outputs.version }}
+      dated_tag: ${{ steps.v.outputs.dated_tag }}
+      title: ${{ steps.v.outputs.title }}
     env:
       # How many dated `nightly-YYYYMMDD` pre-releases to retain; older ones (and their tags) are
       # pruned each run. The rolling `nightly` and all `v*` stable releases are NEVER pruned.
@@ -354,3 +363,77 @@ jobs:
             gh release delete "$tag" --repo "$REPO" --yes --cleanup-tag
           done
           echo "Retention: kept newest $KEEP_NIGHTLIES dated nightlies + the rolling nightly."
+
+  # ───────────────────────────── NIGHTLY self-update publish (gated) ─────────────────────────────
+  # Pack + sign the nightly CRX3 (#607) and publish it + its Omaha updates.xml to
+  # updates.dig.net/ext/nightly/ so force-installed browsers on the nightly channel auto-update. The
+  # SIGNING KEY and the PUBLISH ROLE are collapsed behind the `release` GitHub ENVIRONMENT — only
+  # this gated job can sign or publish, so the automated sideload-zip nightly above stays ungated.
+  # It re-stamps the SAME synthesized nightly version the `nightly` job built, so the CRX manifest
+  # version = X.Y.Z.<days-since-2020-01-01> matches the version_name on the sideload zip.
+  nightly-publish-crx:
+    name: Nightly — sign + publish CRX3
+    needs: nightly
+    if: needs.nightly.outputs.present == 'true' && needs.nightly.outputs.version != ''
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write # attach the CRX + updates.xml to the nightly pre-releases
+      id-token: write # OIDC: assume the updates.dig.net ext deploy role
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci || npm install
+      - run: npm run allow-scripts
+      - name: Re-stamp the nightly version (never committed)
+        env:
+          NIGHTLY_VERSION: ${{ needs.nightly.outputs.version }}
+        run: node -e "const fs=require('fs');const p=require('./package.json');p.version=process.env.NIGHTLY_VERSION;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');console.log('stamped',p.version)"
+      - name: Pack + sign the nightly CRX3 + emit updates.xml
+        env:
+          EXT_NIGHTLY_CRX_KEY: ${{ secrets.EXT_NIGHTLY_CRX_KEY }}
+        run: |
+          if [ -z "$EXT_NIGHTLY_CRX_KEY" ]; then
+            echo "::error::EXT_NIGHTLY_CRX_KEY (release-environment secret) is not set — cannot sign the nightly CRX."
+            exit 1
+          fi
+          node build.js --crx --channel nightly # ./dist + ./dig-network-extension-v<version>.crx + ./updates.xml
+      - name: Attach CRX + updates.xml to the dated + rolling pre-releases
+        env:
+          DATED_TAG: ${{ needs.nightly.outputs.dated_tag }}
+        run: |
+          set -euo pipefail
+          CRX="$(ls dig-network-extension-v*.crx | head -n1)"
+          for tag in "${DATED_TAG}" nightly; do
+            gh release upload "$tag" "$CRX" updates.xml --repo "$REPO" --clobber
+          done
+      - name: Assume the updates.dig.net ext deploy role (OIDC)
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ vars.UPDATES_EXT_DEPLOY_ROLE }}
+          aws-region: us-east-1
+      - name: Publish nightly CRX + updates.xml to updates.dig.net/ext/nightly/
+        env:
+          BUCKET: ${{ vars.UPDATES_BUCKET }}
+          DISTRIBUTION: ${{ vars.UPDATES_CF_DISTRIBUTION_ID }}
+        run: |
+          set -euo pipefail
+          CRX="$(ls dig-network-extension-v*.crx | head -n1)"
+          # Publish order (updates.dig.net runbooks/ext-hosting.md): the immutable CRX FIRST, then the
+          # updates.xml LAST — so the manifest never advertises a CRX that isn't uploaded yet.
+          aws s3 cp "$CRX" "s3://${BUCKET}/ext/nightly/" \
+            --cache-control "public, max-age=31536000, immutable" --content-type "application/x-chrome-extension"
+          aws s3 cp updates.xml "s3://${BUCKET}/ext/nightly/updates.xml" \
+            --cache-control "max-age=60, must-revalidate" --content-type "text/xml"
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths "/ext/nightly/*"
+          echo "Published nightly CRX + updates.xml to updates.dig.net/ext/nightly/."

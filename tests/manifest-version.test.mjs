@@ -40,13 +40,21 @@ test('build.js keeps manifest.version Chrome-valid for a nightly prerelease + pr
   // still loads) and preserve the FULL string in `version_name` (Chrome's human-readable label +
   // §6.7 bug-report attribution). A stable build (no suffix) sets no version_name.
   const buildJs = read('build.js');
-  // Splits off a semver prerelease/build suffix (`-`/`+`) for the dotted-integer manifest version.
+  const crxJs = read('crx.js');
+  // The Chrome-valid-version derivation now lives in the pure, unit-tested crx.chromeManifestVersion
+  // (#607); build.js must delegate to it rather than re-deriving inline.
   assert.match(
     buildJs,
-    /\.split\(\s*\/\[\-\+\]\/\s*\)/,
-    'build.js must split the package.json version on `-`/`+` to derive the dotted-integer manifest.version',
+    /crx\.chromeManifestVersion\(/,
+    'build.js must derive the manifest.version via crx.chromeManifestVersion()',
   );
-  // Assigns the full string to version_name only when it differs from the dotted base.
+  // crx.js is the module that strips a semver prerelease/build suffix (`-`/`+`) to a dotted base.
+  assert.match(
+    crxJs,
+    /\.split\(\s*\/\[\-\+\]\/\s*\)/,
+    'crx.js must split the version on `-`/`+` to derive the dotted-integer base',
+  );
+  // build.js still assigns the full string to version_name only when it differs from the dotted base.
   assert.match(
     buildJs,
     /manifest\.version_name\s*=/,
