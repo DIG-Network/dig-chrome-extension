@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "DIG Network Extension",
   "version": "1.29.1",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmyEm/8/Hz2cTQqF9OaeoPrhU+XUEF3OxLAJ2KNIwUPVmqbnK6TU1svF4dAggwKNcpmDNEM1RHBxShWjJ+oyoOSg9eGSsBf5ewo4UEFNGoh12e1/XTN9Q6tvlLSMgyScZwFcJOONuPvl8XcAp06mlZArONQm2B6JFZjaxoDZTQcR0sttZ9hankgm2CwFp914Se64lq0NdeSFXjrlDKNHk62fbc52QUPMAoma571NAjMyIjzvbeEHpEvvJG59CNmvUK9HQZb+yyVwhY+fGl9UZ1g9Elajy7WZxbUy02/m4ymSfAArsibPLE2dsEoNgUXTet59C+6MMqJ+gbPBTWej+ZQIDAQAB",
   "description": "The DIG Network on any browser: chia:// resolution (verified + decrypted), a Chia wallet, DIG Shields, node control, and the DIG dApp store \u2014 a clean 5-tab experience.",
   "host_permissions": [
     "http://localhost/*",

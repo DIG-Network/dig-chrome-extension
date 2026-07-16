@@ -33,9 +33,7 @@ jobs:
       # fmt/lint/typecheck/tests/coverage/build, §2.4a) already ran on the exact merged tree; a
       # redundant re-run here only re-exposes a green-tested release to flake (it once blocked
       # v1.96.0 — #488). Deploy = build + package + publish only.
-      # Package dist/ + the release zip. The extension is a self-custody wallet — no WalletConnect
-      # vendoring or project id (the injected window.chia provider is served directly).
-      - run: npm run build:zip # node build.js --zip -> ./dist + dist/*.zip
+      - run: npm run build:zip # node build.js --zip -> ./dist + ./dig-network-extension-v<version>.zip
       - name: upload build artifact
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
@@ -47,8 +45,67 @@ jobs:
         uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
         with:
           # build.js (--zip) writes the archive to the repo root as
-          # dig-network-extension-v<version>.zip — NOT dist/. The old `dist/*.zip` glob
-          # matched nothing, so every tagged release shipped with NO downloadable asset
-          # (softprops succeeds on an empty match). Match the real output path.
+          # dig-network-extension-v<version>.zip (Chrome-Web-Store / sideload artifact).
           files: dig-network-extension-v*.zip
           fail_on_unmatched_files: true
+
+  # Pack + sign the self-hosted STABLE CRX3 (#607) and publish it + its Omaha updates.xml to
+  # updates.dig.net/ext/stable/ so force-installed browsers (dig-installer #612) auto-update. The
+  # SIGNING KEY and the PUBLISH ROLE are both collapsed behind the `release` GitHub ENVIRONMENT:
+  # EXT_NIGHTLY_CRX_KEY is a release-environment secret and the updates-dig-net-ext-deploy OIDC role
+  # trusts `environment:release` — so only this gated job can sign or publish, retiring the broad
+  # refs/tags/* trust arm. The CRX3 id-binding + HTTPS are the anti-tamper: a MITM cannot swap in a
+  # CRX of the same id (mlibddmbhlgogepnjdienclhnkfpkfah) without the private key.
+  publish-update:
+    name: publish stable CRX + updates.xml
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write # attach the CRX + updates.xml to the release
+      id-token: write # OIDC: assume the updates.dig.net ext deploy role
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 20
+      - run: npm ci || npm install
+      - run: npm run allow-scripts
+      - name: Pack + sign the stable CRX3 + emit updates.xml
+        env:
+          EXT_NIGHTLY_CRX_KEY: ${{ secrets.EXT_NIGHTLY_CRX_KEY }}
+        run: |
+          if [ -z "$EXT_NIGHTLY_CRX_KEY" ]; then
+            echo "::error::EXT_NIGHTLY_CRX_KEY (release-environment secret) is not set — cannot sign the stable CRX."
+            exit 1
+          fi
+          node build.js --crx --channel stable # ./dist + ./dig-network-extension-v<version>.crx + ./updates.xml
+      - name: attach CRX + updates.xml to release
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
+        with:
+          files: |
+            dig-network-extension-v*.crx
+            updates.xml
+          fail_on_unmatched_files: true
+      - name: Assume the updates.dig.net ext deploy role (OIDC)
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ vars.UPDATES_EXT_DEPLOY_ROLE }}
+          aws-region: us-east-1
+      - name: Publish stable CRX + updates.xml to updates.dig.net/ext/stable/
+        env:
+          BUCKET: ${{ vars.UPDATES_BUCKET }}
+          DISTRIBUTION: ${{ vars.UPDATES_CF_DISTRIBUTION_ID }}
+        run: |
+          set -euo pipefail
+          CRX="$(ls dig-network-extension-v*.crx | head -n1)"
+          # Publish order (updates.dig.net runbooks/ext-hosting.md): the immutable CRX FIRST, then the
+          # updates.xml LAST — so the manifest never advertises a CRX that isn't uploaded yet.
+          aws s3 cp "$CRX" "s3://${BUCKET}/ext/stable/" \
+            --cache-control "public, max-age=31536000, immutable" --content-type "application/x-chrome-extension"
+          aws s3 cp updates.xml "s3://${BUCKET}/ext/stable/updates.xml" \
+            --cache-control "max-age=60, must-revalidate" --content-type "text/xml"
+          # Invalidate the short-TTL manifest (and the channel path) so browsers see the new version.
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths "/ext/stable/*"
+          echo "Published stable CRX + updates.xml to updates.dig.net/ext/stable/."

@@ -1802,14 +1802,20 @@ extension MUST NOT diverge from it.
   bare `@dignetwork/*` import; the build fails loudly otherwise.
 - `node build.js --zip` additionally produces a versioned `.zip` for distribution
   (`dig-network-extension-v<package.json version>.zip`).
-- **Manifest version + `version_name` (§19 nightly channel).** The manifest `version` is set from
-  `package.json` at build time. Chrome requires `version` to be 1–4 dot-separated integers, so when
-  `package.json` carries a semver PRERELEASE (a nightly build stamps it `X.Y.Z-nightly.YYYYMMDD.<sha>`),
-  `build.js` strips the `-…`/`+…` suffix for `version` (keeping the Chrome-valid dotted base, so the
-  packaged zip still loads unpacked) and preserves the FULL string in `version_name` (Chrome's
-  human-readable label shown in `chrome://extensions`). A stable build has no suffix, so `version_name`
-  is left unset. The full string also flows to `__APP_VERSION__` and `agent-surface.json`, so a bug
-  report from a nightly records the exact build (§2.3 / §6.7 app-version attribution).
+- **Manifest version + `version_name` (§19 nightly channel, §19.6 CRX version scheme).** The manifest
+  `version` is set from `package.json` at build time via `crx.chromeManifestVersion()`. Chrome requires
+  `version` to be 1–4 dot-separated integers, each 0–65535. A stable `X.Y.Z` passes through unchanged.
+  When `package.json` carries a semver PRERELEASE (a nightly build stamps it `X.Y.Z-nightly.YYYYMMDD.<sha>`),
+  the manifest `version` becomes `X.Y.Z.<N>` where `N` = the number of whole UTC days since 2020-01-01
+  (§19.6) — a Chrome-valid, strictly day-over-day-increasing 4th part (raw `YYYYMMDD` would overflow
+  65535). The FULL string is preserved in `version_name` (Chrome's human-readable label shown in
+  `chrome://extensions`). A stable build has no suffix, so `version_name` is left unset. The full string
+  also flows to `__APP_VERSION__` and `agent-surface.json`, so a bug report from a nightly records the
+  exact build (§2.3 / §6.7 app-version attribution).
+- `node build.js --crx --channel <nightly|stable>` additionally packs + signs a self-hosted **CRX3**
+  (`dig-network-extension-v<version>.crx`) and emits the channel's Omaha `updates.xml` (§19.6). The RSA
+  private key is read from the `EXT_NIGHTLY_CRX_KEY` env (never a file in the tree); the packed
+  extension id MUST equal the canonical id or the build fails.
 - `node build.js --json` emits one JSON result on stdout (machine mode), prose on stderr.
 - Exit codes: `0` success · `2` a required source file is missing (validation) · `3` a build
   step failed (bundling / artifact write).
@@ -4244,7 +4250,74 @@ tags/releases.
 
 | Workflow | Trigger | Role |
 |---|---|---|
-| `nightly-release.yml` | `schedule` (midnight UTC) + `workflow_dispatch` | The orchestrator: stable channel (changelog + tag) and nightly channel (build + dated/rolling pre-release zip + prune). |
-| `deploy.yml` | `push: tags: v*` (+ dispatch canary) | Builds + packages the zip and attaches it to the STABLE GitHub Release for a `vX.Y.Z` tag. |
-| `publish-chrome-web-store.yml` | `push: tags: v*` (+ dispatch) | Uploads + publishes the STABLE zip to the Chrome Web Store (graceful no-op without the `CHROME_*` secrets). |
+| `nightly-release.yml` | `schedule` (midnight UTC) + `workflow_dispatch` | The orchestrator: stable channel (changelog + tag) and nightly channel (build + dated/rolling pre-release zip + **signed CRX3 + updates.xml publish**, §19.6 + prune). |
+| `deploy.yml` | `push: tags: v*` (+ dispatch canary) | Builds + packages the zip, the **signed STABLE CRX3 + updates.xml** (§19.6), attaches them to the STABLE GitHub Release, and publishes the CRX/updates.xml to `updates.dig.net/ext/stable/`. |
+| `publish-chrome-web-store.yml` | `push: tags: v*` (+ dispatch) | Uploads + publishes the STABLE zip to the Chrome Web Store (graceful no-op without the `CHROME_*` secrets). Deferred optional future migration — the shipping stable channel is self-hosted CRX3, §19.6. |
 | `ci.yml` | PR + push to main | The full lint/typecheck/test/coverage/build gate (pre-merge). |
+
+### 19.6 Self-hosted CRX3 auto-update (both channels)
+
+The extension is force-installed across Chromium browsers (dig-installer #612) and auto-updates from
+**updates.dig.net** — NOT the Chrome Web Store. Both the nightly and stable channels self-host, using
+ONE signing keypair and ONE stable extension id.
+
+**The id-pin (must not drift).** A Chromium extension's id IS `SHA-256(public key SPKI)[:16]` mapped
+into the `a`–`p` alphabet; a browser accepts an update only if the new CRX is signed by the SAME key
+as the installed copy. The DIG id is therefore pinned, once and forever, to a single RSA-2048 keypair:
+
+- id = **`mlibddmbhlgogepnjdienclhnkfpkfah`** (canonical; gh var `EXT_NIGHTLY_CRX_ID`).
+- public SPKI (base64) is committed as the manifest **`key`** field (gh var `EXT_NIGHTLY_CRX_PUBKEY`)
+  so an unpacked/dev build derives the same id as a signed CRX3.
+- private key = gh secret **`EXT_NIGHTLY_CRX_KEY`** (never printed/committed; AWS Secrets Manager
+  `ext/nightly-crx-key` backup). Rotating it changes the id and breaks every force-installed browser.
+
+`crx.js` derives the id, so the build FAILS if the signing key ever stops matching the committed
+`key` — a CRX under a drifted id is never published.
+
+**CRX3 format.** `packCrx3()` emits `"Cr24" | uint32le 3 | uint32le headerLen | CrxFileHeader | zip`.
+The `CrxFileHeader` carries one `sha256_with_rsa` `AsymmetricKeyProof` (public key + signature) and a
+`signed_header_data` (`SignedData { crx_id = SHA-256(pubkey)[:16] }`). The signature is
+RSASSA-PKCS1-v1_5 / SHA-256 over `"CRX3 SignedData\0" | uint32le(len(signed_header_data)) |
+signed_header_data | zip`.
+
+**Version scheme (Chrome-valid + monotonic).** `manifest.version` is 1–4 dot-separated integers, each
+0–65535. Stable = the plain `X.Y.Z` from `package.json` (SemVer bumps keep it strictly increasing).
+Nightly = `X.Y.Z.N`, where `N` is the number of whole UTC days since **2020-01-01** — a strictly
+day-over-day-increasing 4th part that fits 16 bits until ~2199 (raw `YYYYMMDD` overflows 65535). The
+`updates.xml` `version` equals this manifest version, so a polling browser detects each new build as a
+strict upgrade. The GitHub pre-release tag stays `nightly-YYYYMMDD`; only the manifest/updates.xml
+version is numeric.
+
+**Omaha update manifest.** Each channel serves a `gupdate` (protocol 2.0) manifest at
+`https://updates.dig.net/ext/<channel>/updates.xml`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
+  <app appid="mlibddmbhlgogepnjdienclhnkfpkfah">
+    <updatecheck codebase="https://updates.dig.net/ext/<channel>/dig-network-extension-v<version>.crx" version="<version>" />
+  </app>
+</gupdate>
+```
+
+**Hosting + publish (updates.dig.net, #608).** The signed CRX and `updates.xml` publish to
+`s3://<UPDATES_BUCKET>/ext/<channel>/` (nightly via `nightly-release.yml`'s `nightly-publish-crx`
+job, stable via `deploy.yml`'s `publish-update` job on the `v*` tag). The publish order is fixed by
+the hosting runbook: upload the immutable CRX FIRST (`Cache-Control: public, max-age=31536000,
+immutable`, `Content-Type: application/x-chrome-extension`), then write `updates.xml` LAST
+(`Cache-Control: max-age=60, must-revalidate`, `Content-Type: text/xml`) so the manifest never
+advertises a CRX that is not yet uploaded, then `cloudfront:CreateInvalidation` on `/ext/<channel>/*`.
+The role/bucket/distribution are CI variables (`UPDATES_EXT_DEPLOY_ROLE`, `UPDATES_BUCKET`,
+`UPDATES_CF_DISTRIBUTION_ID`), never hardcoded.
+
+**Security gating — the `release` GitHub environment.** CRX signing and publishing both live in a job
+bound to the `release` GitHub ENVIRONMENT: the `EXT_NIGHTLY_CRX_KEY` private key is a
+`release`-environment secret and the `updates-dig-net-ext-deploy` OIDC role trusts
+`environment:release`. This collapses the signing key and the publish role behind one gated
+environment — only that job can sign or publish, retiring a broad `refs/tags/*` trust arm. The
+automated sideload/store ZIP build stays UNgated (the nightly cron always ships a sideload zip); only
+the CRX signing+publish is release-gated. Inside the gated job a missing signing key is a hard error,
+never a silent skip. The force-install `update_url` is a fixed compiled-in HTTPS constant (not a
+user-writable path); HTTPS + the CRX3 id-binding are the anti-tamper — a MITM cannot swap in a CRX of
+the same id without the private key. The optional future migration of the STABLE channel to the
+Chrome Web Store is a channel repoint, not a code prerequisite.
