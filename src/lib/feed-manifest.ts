@@ -15,8 +15,16 @@
  * unit-testable with a fake fetch.
  */
 
-/** The live primary feed, matching dig-updater-worker's `PRIMARY_FEED_BASE` + `/manifest.json`. */
-export const UPDATE_FEED_MANIFEST_URL = 'https://updates.dig.net/v1/alpha/manifest.json';
+import type { UpdateChannel } from '@/lib/updater-channel';
+
+/** The primary feed base, matching dig-updater-worker's `PRIMARY_FEED_BASE`. Each channel gets its
+ *  own independently-signed manifest under a per-channel path (`/v1/<channel>/manifest.json`, #591). */
+export const UPDATE_FEED_BASE = 'https://updates.dig.net/v1';
+
+/** The manifest URL for a given channel's feed (#591 per-channel manifest paths). */
+export function feedManifestUrl(channel: UpdateChannel): string {
+  return `${UPDATE_FEED_BASE}/${channel}/manifest.json`;
+}
 
 /** One component's latest advertised version, as read from the manifest (extra fields ignored). */
 export interface FeedComponentVersion {
@@ -71,10 +79,13 @@ export function latestVersionFor(components: FeedComponentVersion[], name: strin
  * {@link FeedManifestUnavailableError} on any network/HTTP/JSON failure — the caller (an RTK Query
  * `queryFn`) turns that into an honest "couldn't check for updates" state, never a false "up to date".
  */
-export async function fetchFeedComponents(fetchImpl: typeof fetch = fetch): Promise<FeedComponentVersion[]> {
+export async function fetchFeedComponents(
+  channel: UpdateChannel,
+  fetchImpl: typeof fetch = fetch,
+): Promise<FeedComponentVersion[]> {
   let res: Response;
   try {
-    res = await fetchImpl(UPDATE_FEED_MANIFEST_URL);
+    res = await fetchImpl(feedManifestUrl(channel));
   } catch (e) {
     throw new FeedManifestUnavailableError(e instanceof Error ? e.message : 'Update feed unreachable');
   }

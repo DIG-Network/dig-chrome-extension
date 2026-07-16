@@ -59,6 +59,12 @@ function stub(beacon: unknown, nodeLiveStatus: unknown = NODE_LIVE_CONNECTED): s
       if (m === 'control.updater.pause') { if (BEACON.installed) BEACON.status.paused = true; return { ok: true }; }
       if (m === 'control.updater.resume') { if (BEACON.installed) BEACON.status.paused = false; return { ok: true }; }
       if (m === 'control.updater.checkNow') return { success: false, error: 'dig-updater declined the request' };
+      if (m === 'control.updater.setChannel') {
+        const ch = msg.params && msg.params.channel;
+        (window.__setChannelCalls = window.__setChannelCalls || []).push(ch);
+        if (BEACON.installed) BEACON.status.channel = ch;
+        return { ok: true };
+      }
       return { success: true };
     }
     return { success: true };
@@ -92,7 +98,9 @@ function stub(beacon: unknown, nodeLiveStatus: unknown = NODE_LIVE_CONNECTED): s
 /** The feed's advertised dig-node version — 'unreachable' simulates the feed being down (network
  *  error), matching how `fetchFeedComponents` classifies it (feed-manifest.ts). */
 async function routeFeedManifest(page: Page, latestDigNodeVersion: string | 'unreachable') {
-  await page.route('**/v1/alpha/manifest.json', (route) => {
+  // Match ANY per-channel manifest path (#606): the badge fetches `/v1/<tracked-channel>/manifest.json`
+  // — `stable` or `nightly` (`alpha` maps onto nightly) — so route the whole family to one fixture.
+  await page.route('**/v1/*/manifest.json', (route) => {
     if (latestDigNodeVersion === 'unreachable') return route.abort('failed');
     return route.fulfill({
       contentType: 'application/json',
@@ -131,7 +139,8 @@ test('fullscreen Updates tab — renders the beacon readout + controls (desktop)
   await page.setViewportSize(TABLET);
   await open(page);
   await expect(page.getByTestId('updates-panel')).toBeVisible();
-  await expect(page.getByTestId('updates-channel')).toHaveText('alpha');
+  // The channel is now a switcher; the fixture's legacy `alpha` maps onto the `nightly` option (#606).
+  await expect(page.getByTestId('updates-channel-select')).toHaveValue('nightly');
   await expect(page.getByTestId('updates-component-row')).toHaveCount(3);
   await expect(page.getByTestId('updates-pause')).toBeVisible();
   await expect(page.getByTestId('updates-check-now')).toBeVisible();
@@ -187,6 +196,22 @@ test('Updates tab — beacon-absent renders a graceful empty state, never an err
   await expect(page.getByTestId('updates-status-empty')).toBeVisible();
   await expect(page.getByTestId('updates-status-error')).toHaveCount(0);
   await page.screenshot({ path: 'e2e/__screenshots__/updates-not-installed.png', fullPage: true });
+});
+
+test('Updates tab (#606) — switches the update channel via control.updater.setChannel', async ({ page }) => {
+  await page.setViewportSize(TABLET);
+  await open(page);
+  const select = page.getByTestId('updates-channel-select');
+  // Starts on nightly (the fixture's `alpha` alias); switch to stable.
+  await expect(select).toHaveValue('nightly');
+  await select.selectOption('stable');
+  // The refreshed status (setChannel mutated the fixture) flips the switcher to the persisted value,
+  // and the exact token was forwarded to the node proxy verbatim.
+  await expect(select).toHaveValue('stable');
+  const calls = await page.evaluate(() => (window as unknown as { __setChannelCalls?: string[] }).__setChannelCalls ?? []);
+  expect(calls).toEqual(['stable']);
+  await settlePaint(page);
+  await page.screenshot({ path: 'e2e/__screenshots__/updates-channel-switcher.png', fullPage: true });
 });
 
 test('Updates tab — mobile width layout', async ({ page }) => {

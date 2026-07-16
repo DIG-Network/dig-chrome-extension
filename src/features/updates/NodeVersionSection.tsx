@@ -2,7 +2,9 @@ import { FormattedMessage } from 'react-intl';
 import { StatusPill } from '@/components/StatusPill';
 import { useGetNodeLiveStatusQuery } from '@/features/control/nodeApi';
 import { useGetFeedManifestQuery } from '@/features/updates/feedManifestApi';
+import { useGetUpdaterStatusQuery } from '@/features/updates/updaterApi';
 import { latestVersionFor } from '@/lib/feed-manifest';
+import { normalizeChannel } from '@/lib/updater-channel';
 import { nodeVersionBadge, nodeVersionBadgeLabelId, nodeVersionBadgeTone } from '@/lib/node-version';
 
 /** The feed's component name for the dig-node build (matches dig-updater-trust's `Component.name`). */
@@ -21,7 +23,16 @@ const DIG_NODE_COMPONENT = 'dig-node';
  */
 export function NodeVersionSection() {
   const live = useGetNodeLiveStatusQuery();
-  const feed = useGetFeedManifestQuery();
+  const nodeOnline = live.data?.state === 'connected';
+
+  // The badge must compare against the SAME channel the node auto-updates from (#606), so it reads
+  // the beacon's tracked channel and keys the feed fetch by it. The status query rides the paired
+  // `controlAuthed` transport, so it is SKIPPED until the node is online (avoids a doomed authed
+  // call on a down node); when it's unavailable (offline / unpaired / uninstalled) the channel
+  // falls back to the safe `stable` default (§591), which is exactly the right feed to check.
+  const updater = useGetUpdaterStatusQuery(undefined, { skip: !nodeOnline });
+  const trackedChannel = normalizeChannel(updater.data?.status?.channel);
+  const feed = useGetFeedManifestQuery(trackedChannel);
 
   // Both reads settle independently and quickly (a cached SW snapshot + a long-TTL public fetch);
   // showing one brief skeleton for the pair is simpler than a two-speed loading UI and avoids ever
@@ -34,7 +45,6 @@ export function NodeVersionSection() {
     );
   }
 
-  const nodeOnline = live.data?.state === 'connected';
   const runningVersion = live.data?.version ?? null;
   const latestVersion = feed.data ? latestVersionFor(feed.data, DIG_NODE_COMPONENT) : null;
   const badge = nodeVersionBadge({ nodeOnline, runningVersion, latestVersion });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FormattedMessage, FormattedDate } from 'react-intl';
+import { FormattedMessage, FormattedDate, useIntl } from 'react-intl';
 import { FourState } from '@/components/FourState';
 import { StatusPill } from '@/components/StatusPill';
 import { PairingSection } from '@/features/control/PairingSection';
@@ -11,7 +11,14 @@ import {
   usePauseUpdaterMutation,
   useResumeUpdaterMutation,
   useCheckNowUpdaterMutation,
+  useSetChannelUpdaterMutation,
 } from '@/features/updates/updaterApi';
+import {
+  UPDATE_CHANNELS,
+  channelDescriptionId,
+  channelOptionLabelId,
+  normalizeChannel,
+} from '@/lib/updater-channel';
 import {
   updaterActionLabelId,
   updaterOutcomeLabelId,
@@ -31,12 +38,20 @@ type MutationOutcome = { data: unknown } | { error: unknown };
  * no update decisions of its own.
  */
 function UpdaterPanel({ status }: { status: UpdaterStatus }) {
+  const intl = useIntl();
   const [pause, pauseState] = usePauseUpdaterMutation();
   const [resume, resumeState] = useResumeUpdaterMutation();
   const [checkNow, checkNowState] = useCheckNowUpdaterMutation();
+  const [setChannel, setChannelState] = useSetChannelUpdaterMutation();
   const [actionError, setActionError] = useState(false);
+  const [channelError, setChannelError] = useState(false);
 
-  const busy = pauseState.isLoading || resumeState.isLoading || checkNowState.isLoading;
+  const busy =
+    pauseState.isLoading || resumeState.isLoading || checkNowState.isLoading || setChannelState.isLoading;
+
+  // The channel the beacon currently tracks, mapped to a known option (`alpha` ≡ nightly; unknown →
+  // stable, #591) so the select always has a valid, honest current value to show.
+  const currentChannel = normalizeChannel(status.channel);
 
   // Every control shares one outcome handler: clear any prior error, run the trigger, and surface a
   // recoverable inline error on failure (the query's own `Updater` tag invalidation refreshes the
@@ -45,6 +60,18 @@ function UpdaterPanel({ status }: { status: UpdaterStatus }) {
     setActionError(false);
     const outcome = await trigger();
     if (!('data' in outcome)) setActionError(true);
+  }
+
+  // Switching channel is a real change, so it's fully reversible (just switch back) rather than
+  // trapped behind a modal — the honest per-channel copy below the select lets the user choose
+  // informed (§6.0/§6.1). On failure the select snaps back to the beacon's actual channel (the
+  // refetched status is the source of truth), with a recoverable inline error.
+  async function onChannelChange(next: string) {
+    const channel = normalizeChannel(next);
+    if (channel === currentChannel) return;
+    setChannelError(false);
+    const outcome = await setChannel({ channel });
+    if (!('data' in outcome)) setChannelError(true);
   }
 
   return (
@@ -64,10 +91,39 @@ function UpdaterPanel({ status }: { status: UpdaterStatus }) {
 
         <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 8, columnGap: 12, margin: '12px 0 0' }}>
           <dt className="dig-muted">
-            <FormattedMessage id="updates.channel.label" />
+            <label htmlFor="updates-channel-select">
+              <FormattedMessage id="updates.channel.label" />
+            </label>
           </dt>
-          <dd data-testid="updates-channel" style={{ margin: 0, fontFamily: 'monospace' }}>
-            {status.channel ?? '—'}
+          <dd data-testid="updates-channel" style={{ margin: 0 }}>
+            <select
+              id="updates-channel-select"
+              className="dig-select"
+              data-testid="updates-channel-select"
+              value={currentChannel}
+              disabled={busy}
+              aria-describedby="updates-channel-desc"
+              aria-label={intl.formatMessage({ id: 'updates.channel.select.label' })}
+              onChange={(e) => void onChannelChange(e.target.value)}
+            >
+              {UPDATE_CHANNELS.map((channel) => (
+                <option key={channel} value={channel}>
+                  {intl.formatMessage({ id: channelOptionLabelId(channel) })}
+                </option>
+              ))}
+            </select>
+            <p id="updates-channel-desc" className="dig-muted" data-testid="updates-channel-desc" style={{ margin: '4px 0 0', fontSize: 13 }}>
+              {setChannelState.isLoading ? (
+                <FormattedMessage id="updates.channel.pending" />
+              ) : (
+                <FormattedMessage id={channelDescriptionId(currentChannel)} />
+              )}
+            </p>
+            {channelError && (
+              <p className="dig-error-text" role="alert" data-testid="updates-channel-error" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                <FormattedMessage id="updates.channel.error" />
+              </p>
+            )}
           </dd>
 
           <dt className="dig-muted">
