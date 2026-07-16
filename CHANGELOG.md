@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.102.0] - 2026-07-16
+
+### Features
+- **ext:** CRX3 pack+sign + per-channel updates.xml self-update (#607) (#140)
+
 ## [1.101.0] - 2026-07-16
 
 ### Features
