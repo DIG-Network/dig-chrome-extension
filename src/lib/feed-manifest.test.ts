@@ -4,7 +4,7 @@ import {
   latestVersionFor,
   fetchFeedComponents,
   FeedManifestUnavailableError,
-  UPDATE_FEED_MANIFEST_URL,
+  feedManifestUrl,
 } from '@/lib/feed-manifest';
 
 const SIGNED_MANIFEST = {
@@ -57,25 +57,25 @@ describe('latestVersionFor', () => {
 });
 
 describe('fetchFeedComponents', () => {
-  it('fetches the live feed URL and parses the component list', async () => {
+  it('fetches the tracked channel\'s feed URL and parses the component list', async () => {
     const fetchImpl = (async (url: RequestInfo | URL) => {
-      expect(String(url)).toBe(UPDATE_FEED_MANIFEST_URL);
+      expect(String(url)).toBe(feedManifestUrl('stable'));
       return { ok: true, json: async () => SIGNED_MANIFEST } as Response;
     }) as typeof fetch;
-    const components = await fetchFeedComponents(fetchImpl);
+    const components = await fetchFeedComponents('stable', fetchImpl);
     expect(latestVersionFor(components, 'dig-node')).toBe('0.31.1');
   });
 
   it('throws FeedManifestUnavailableError on a non-2xx response', async () => {
     const fetchImpl = (async () => ({ ok: false, status: 503 }) as Response) as typeof fetch;
-    await expect(fetchFeedComponents(fetchImpl)).rejects.toBeInstanceOf(FeedManifestUnavailableError);
+    await expect(fetchFeedComponents('stable', fetchImpl)).rejects.toBeInstanceOf(FeedManifestUnavailableError);
   });
 
   it('throws FeedManifestUnavailableError on a network failure', async () => {
     const fetchImpl = (async () => {
       throw new Error('offline');
     }) as typeof fetch;
-    await expect(fetchFeedComponents(fetchImpl)).rejects.toBeInstanceOf(FeedManifestUnavailableError);
+    await expect(fetchFeedComponents('stable', fetchImpl)).rejects.toBeInstanceOf(FeedManifestUnavailableError);
   });
 
   it('throws FeedManifestUnavailableError on unparsable JSON', async () => {
@@ -85,6 +85,6 @@ describe('fetchFeedComponents', () => {
         throw new Error('bad json');
       },
     })) as unknown as typeof fetch;
-    await expect(fetchFeedComponents(fetchImpl)).rejects.toBeInstanceOf(FeedManifestUnavailableError);
+    await expect(fetchFeedComponents('stable', fetchImpl)).rejects.toBeInstanceOf(FeedManifestUnavailableError);
   });
 });

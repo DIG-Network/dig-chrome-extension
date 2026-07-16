@@ -55,13 +55,17 @@ function mockSw({
   phase,
   beacon,
   checkNowFails = false,
+  setChannelFails = false,
   nodeLiveStatus = { state: 'disconnected', version: null },
+  onSetChannel,
 }: {
   node: typeof NODE_UP | typeof NODE_DOWN;
   phase: string;
   beacon: BeaconState;
   checkNowFails?: boolean;
+  setChannelFails?: boolean;
   nodeLiveStatus?: { state: string; version: string | null };
+  onSetChannel?: (channel: unknown) => void;
 }) {
   const state = JSON.parse(JSON.stringify(beacon));
   (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = vi.fn(
@@ -80,6 +84,14 @@ function mockSw({
         r = { ok: true };
       } else if (m.action === 'controlAuthed' && m.method === 'control.updater.checkNow') {
         r = checkNowFails ? { success: false, error: 'dig-updater declined the request' } : { ok: true };
+      } else if (m.action === 'controlAuthed' && m.method === 'control.updater.setChannel') {
+        onSetChannel?.(m.params?.channel);
+        if (setChannelFails) {
+          r = { success: false, error: 'dig-updater declined the request' };
+        } else {
+          if (state.installed) state.status.channel = m.params?.channel;
+          r = { ok: true };
+        }
       }
       if (cb) cb(r);
       return Promise.resolve(r);
@@ -116,7 +128,8 @@ describe('UpdatesTab (#504-K/#516)', () => {
     mockSw({ node: NODE_UP, phase: 'paired', beacon: INSTALLED_ACTIVE });
     renderWithProviders(<UpdatesTab />);
     expect(await screen.findByTestId('updates-panel')).toBeTruthy();
-    expect(screen.getByTestId('updates-channel')).toHaveTextContent('alpha');
+    // The legacy `alpha` channel maps onto the `nightly` option in the switcher (#591 alias).
+    expect((screen.getByTestId('updates-channel-select') as HTMLSelectElement).value).toBe('nightly');
     expect(screen.getAllByTestId('updates-component-row')).toHaveLength(2);
     expect(screen.getByTestId('updates-pause')).toBeTruthy();
     expect(screen.getByTestId('updates-check-now')).toBeTruthy();
@@ -146,6 +159,31 @@ describe('UpdatesTab (#504-K/#516)', () => {
     const checkNowBtn = await screen.findByTestId('updates-check-now');
     fireEvent.click(checkNowBtn);
     expect(await screen.findByTestId('updates-action-error')).toBeTruthy();
+  });
+
+  it('switches the channel via control.updater.setChannel and reflects the refreshed status (#606)', async () => {
+    const sent: unknown[] = [];
+    mockSw({ node: NODE_UP, phase: 'paired', beacon: INSTALLED_ACTIVE, onSetChannel: (c) => sent.push(c) });
+    renderWithProviders(<UpdatesTab />);
+    const select = (await screen.findByTestId('updates-channel-select')) as HTMLSelectElement;
+    // Starts on nightly (alpha alias); switch to stable.
+    expect(select.value).toBe('nightly');
+    fireEvent.change(select, { target: { value: 'stable' } });
+    // The mutation forwards the chosen token verbatim, and the invalidated status refetch flips the
+    // select to the beacon's freshly-persisted channel.
+    expect(await screen.findByDisplayValue('Stable')).toBeTruthy();
+    expect(sent).toEqual(['stable']);
+    expect((screen.getByTestId('updates-channel-select') as HTMLSelectElement).value).toBe('stable');
+  });
+
+  it('surfaces a recoverable inline error when a channel switch is declined (#606)', async () => {
+    mockSw({ node: NODE_UP, phase: 'paired', beacon: INSTALLED_ACTIVE, setChannelFails: true });
+    renderWithProviders(<UpdatesTab />);
+    const select = (await screen.findByTestId('updates-channel-select')) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'stable' } });
+    expect(await screen.findByTestId('updates-channel-error')).toBeTruthy();
+    // On failure the select snaps back to the beacon's actual (unchanged) channel — no false success.
+    expect((screen.getByTestId('updates-channel-select') as HTMLSelectElement).value).toBe('nightly');
   });
 
   it('shows the running dig-node version distinctly from the beacon version (#583)', async () => {

@@ -1,5 +1,6 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { fetchFeedComponents, type FeedComponentVersion } from '@/lib/feed-manifest';
+import type { UpdateChannel } from '@/lib/updater-channel';
 
 /**
  * Update-feed manifest RTK Query slice (#583) — a SEPARATE api slice from the SW-seam `api` slice,
@@ -21,10 +22,13 @@ export const feedManifestApi = createApi({
   keepUnusedDataFor: FEED_MANIFEST_TTL_SECONDS,
   refetchOnMountOrArgChange: FEED_MANIFEST_TTL_SECONDS,
   endpoints: (build) => ({
-    getFeedManifest: build.query<FeedComponentVersion[], void>({
-      queryFn: async () => {
+    // Keyed by the beacon's tracked channel (#606): the out-of-date badge must compare the running
+    // build against the SAME stream the node auto-updates from, so a nightly node isn't flagged
+    // "out of date" against the stable feed (and vice-versa). RTK caches one entry per channel arg.
+    getFeedManifest: build.query<FeedComponentVersion[], UpdateChannel>({
+      queryFn: async (channel) => {
         try {
-          return { data: await fetchFeedComponents() };
+          return { data: await fetchFeedComponents(channel) };
         } catch (e) {
           return { error: { message: e instanceof Error ? e.message : 'Update feed unavailable' } };
         }

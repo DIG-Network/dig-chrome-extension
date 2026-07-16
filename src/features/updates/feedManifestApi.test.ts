@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { feedManifestApi, FEED_MANIFEST_TTL_SECONDS } from '@/features/updates/feedManifestApi';
-import { UPDATE_FEED_MANIFEST_URL } from '@/lib/feed-manifest';
+import { feedManifestUrl } from '@/lib/feed-manifest';
 
 /** Spin up an isolated store with just this slice, so the queryFn runs end-to-end. */
 function makeStore() {
@@ -24,23 +24,35 @@ describe('feedManifestApi.getFeedManifest', () => {
     expect(FEED_MANIFEST_TTL_SECONDS).toBeGreaterThan(0);
   });
 
-  it('resolves the parsed component list from the live feed (fetch mocked)', async () => {
+  it("resolves the parsed component list from the tracked channel's feed (fetch mocked)", async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
-      expect(String(input)).toBe(UPDATE_FEED_MANIFEST_URL);
+      expect(String(input)).toBe(feedManifestUrl('stable'));
       return Promise.resolve({
         ok: true,
         json: async () => ({ manifest: { components: [{ name: 'dig-node', version: '0.31.1' }] } }),
       } as Response);
     });
     const store = makeStore();
-    const res = await store.dispatch(feedManifestApi.endpoints.getFeedManifest.initiate());
+    const res = await store.dispatch(feedManifestApi.endpoints.getFeedManifest.initiate('stable'));
     expect(res.data).toEqual([{ name: 'dig-node', version: '0.31.1' }]);
+  });
+
+  it('fetches the per-channel manifest path for the nightly channel (#606)', async () => {
+    const seen: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+      seen.push(String(input));
+      return Promise.resolve({ ok: true, json: async () => ({ manifest: { components: [] } }) } as Response);
+    });
+    const store = makeStore();
+    await store.dispatch(feedManifestApi.endpoints.getFeedManifest.initiate('nightly'));
+    expect(seen).toEqual([feedManifestUrl('nightly')]);
+    expect(seen[0]).toContain('/v1/nightly/manifest.json');
   });
 
   it('surfaces an error (never throws) when the feed is unreachable', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
     const store = makeStore();
-    const res = await store.dispatch(feedManifestApi.endpoints.getFeedManifest.initiate());
+    const res = await store.dispatch(feedManifestApi.endpoints.getFeedManifest.initiate('stable'));
     expect(res.data).toBeUndefined();
     expect(res.error).toBeTruthy();
   });

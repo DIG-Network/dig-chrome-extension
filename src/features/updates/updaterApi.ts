@@ -1,6 +1,7 @@
 import { api } from '@/api/api';
 import { ACTIONS } from '@/lib/messages';
 import { normalizeUpdaterStatus, type UpdaterStatusResponse } from '@/lib/updater-status';
+import type { UpdateChannel } from '@/lib/updater-channel';
 
 /**
  * The fullscreen Updates-tab data surface (#504-K/#516): a THIN reader/driver over the dig-node
@@ -35,6 +36,19 @@ export const updaterApi = api.injectEndpoints({
       invalidatesTags: ['Updater'],
     }),
 
+    // Switch the tracked update channel (`nightly | stable`, dig-node v0.32.0 #605). Forwarded
+    // VERBATIM to the beacon's `channel set` CLI — the beacon is the SOLE validator, so this sends
+    // the token as-is. Invalidating `Updater` refetches the status, so the switcher reflects the
+    // beacon's freshly-persisted channel rather than an optimistic guess (dig-updater SPEC §13.3).
+    setChannelUpdater: build.mutation<unknown, { channel: UpdateChannel }>({
+      query: ({ channel }) => ({
+        action: ACTIONS.controlAuthed,
+        method: 'control.updater.setChannel',
+        params: { channel },
+      }),
+      invalidatesTags: ['Updater'],
+    }),
+
     // An on-demand full pass, identical gating to the beacon's daily schedule. SYNCHRONOUS on the
     // node side — it can take a while (fetch + verify + install behind the health gate) — the
     // caller's `isLoading` is the UI's only progress signal (dig-node #515 design note).
@@ -51,4 +65,5 @@ export const {
   usePauseUpdaterMutation,
   useResumeUpdaterMutation,
   useCheckNowUpdaterMutation,
+  useSetChannelUpdaterMutation,
 } = updaterApi;
