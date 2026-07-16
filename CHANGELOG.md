@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.101.0] - 2026-07-16
+
+### Features
+- **ext:** Updates-tab channel switcher (nightly|stable) + channel-aware feed badge (#139)
+
 ## [1.100.2] - 2026-07-15
 
 ### CI
