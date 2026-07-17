@@ -84,8 +84,33 @@ let context: BrowserContext;
 let extensionId: string;
 let worker: Worker;
 
-function swSend<T>(page: Page, message: Record<string, unknown>): Promise<T> {
-  return page.evaluate((msg) => new Promise<T>((res) => chrome.runtime.sendMessage(msg, res as (r: unknown) => void)), message);
+/**
+ * Send one message to the background SW and await its reply — with a BOUNDED per-attempt wait + one
+ * retry (#646 de-flake). The bare `chrome.runtime.sendMessage(msg, cb)` callback is dropped silently
+ * if the MV3 service worker recycles mid-request (the worker is torn down after ~30s idle, and the
+ * live coinset round-trips in this file's later serial cases give it wall-clock time to do so). A
+ * dropped callback makes the raw promise hang until the test's 60s budget — the observed CI timeout.
+ * Bounding each attempt and retrying once turns that indefinite hang into a fast, deterministic
+ * re-send that re-wakes the worker; a genuine two-attempt failure rejects with a clear diagnostic
+ * instead of a mysterious timeout. The real SW + fake node are still exercised — no behaviour mocked.
+ */
+async function swSend<T>(page: Page, message: Record<string, unknown>, attemptMs = 20_000): Promise<T> {
+  const sendOnce = () =>
+    page.evaluate(
+      ({ msg, attemptMs }) =>
+        new Promise<{ ok: true; value: unknown } | { ok: false }>((res) => {
+          const timer = setTimeout(() => res({ ok: false }), attemptMs);
+          chrome.runtime.sendMessage(msg, (value: unknown) => {
+            clearTimeout(timer);
+            res({ ok: true, value });
+          });
+        }),
+      { msg: message, attemptMs },
+    );
+  let outcome = await sendOnce();
+  if (!outcome.ok) outcome = await sendOnce(); // one retry re-wakes a recycled worker
+  if (!outcome.ok) throw new Error(`swSend timed out twice (${attemptMs}ms each) for ${JSON.stringify(message)}`);
+  return outcome.value as T;
 }
 
 /** Write the wallet-data source selection straight into `wallet.settings` (what the SW reads). The
