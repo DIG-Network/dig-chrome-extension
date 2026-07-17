@@ -589,9 +589,16 @@ urn:dig:<chain>:<storeID>[:<rootHash>][/<resourceKey>][?salt=<hex>]
 1. A `chia://` scheme prefix (stripped, case-insensitive).
 2. Leading slashes (stripped).
 3. A `urn:dig:` prefix (stripped, case-insensitive).
-4. A bare `<chain>:<storeID>[:<rootHash>][/<resourceKey>]`.
-5. A chainless `<storeID>[:<rootHash>][/<resourceKey>]` (chain defaults to `chia`).
+4. A chain-prefixed `<chain>:<storeID>[:<rootHash>][/<resourceKey>]`.
+5. A chainless `<storeID>[:<rootHash>][/<resourceKey>]` (chain defaults to `chia`) — this is the
+   canonical user-facing content link `chia://<storeID>:<rootHash>[/<resourceKey>]` (#686) once its
+   `chia://` scheme is stripped.
 6. Any of the above with a `?salt=<hex>` query param.
+
+Forms 4 and 5 are disambiguated by the leading segment: a `<storeID>`/`<rootHash>` is ALWAYS exactly
+64 hex, whereas a `<chain>` label is a short alphanumeric name (e.g. `chia`) and is NEVER 64 hex.
+`parseURN` therefore matches the chainless form (5) FIRST — a leading 64-hex segment is the storeId,
+so `chia://<storeID>:<rootHash>` is never mis-read as `chain=<storeID>`.
 
 ### 4.3 Result
 

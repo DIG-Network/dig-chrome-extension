@@ -38,6 +38,36 @@ test('bare storeId (no chain prefix) assumes chia', () => {
   });
 });
 
+// #686 canonical user-facing content link: chia://<storeId>:<root>[/resource].
+// After the chia:// strip the parser sees `<64hex-storeId>:<64hex-root>`; the LEADING
+// 64-hex segment is the storeId, NOT a chain label (a chain label is a short alnum like
+// `chia`, never 64-hex). Regression guard for the swap bug (super-repo #741).
+test('#686 bare rooted content link: leading 64-hex is the storeId, not a chain', () => {
+  assert.deepEqual(parseURN(`chia://${STORE}:${ROOT}`), {
+    chain: 'chia', storeId: STORE, roothash: ROOT, resourceKey: '', salt: null,
+  });
+});
+
+test('#686 bare rooted content link with a nested resource path', () => {
+  assert.deepEqual(parseURN(`chia://${STORE}:${ROOT}/path/x.png`), {
+    chain: 'chia', storeId: STORE, roothash: ROOT, resourceKey: 'path/x.png', salt: null,
+  });
+});
+
+test('bare rooted content link without the chia:// scheme still parses', () => {
+  assert.deepEqual(parseURN(`${STORE}:${ROOT}/index.html`), {
+    chain: 'chia', storeId: STORE, roothash: ROOT, resourceKey: 'index.html', salt: null,
+  });
+});
+
+// The chain-prefixed form store-refs.ts emits (`chia://chia:<storeId>:<root>/res`) must
+// keep resolving with chain=chia — the fix must not regress it.
+test('chain-prefixed rooted form (chia:<storeId>:<root>) still parses with chain=chia', () => {
+  assert.deepEqual(parseURN(`chia://chia:${STORE}:${ROOT}/style.css`), {
+    chain: 'chia', storeId: STORE, roothash: ROOT, resourceKey: 'style.css', salt: null,
+  });
+});
+
 test('strips a chia:// scheme prefix (background.js behaviour)', () => {
   assert.deepEqual(parseURN(`chia://urn:dig:chia:${STORE}/p.png`), {
     chain: 'chia', storeId: STORE, roothash: null, resourceKey: 'p.png', salt: null,
