@@ -236,6 +236,17 @@ test('a rewritten relative ref round-trips through the background parseURN (late
   assert.equal(parsed.resourceKey, 'img/x.png');
 });
 
+test('the bare rooted chia:// form also round-trips through parseURN (consistency guard)', () => {
+  // buildDigUrl emits the chain-prefixed form, but the bare rooted #686 link
+  // `chia://<storeId>:<root>/res` an emitter could equally produce MUST round-trip identically —
+  // the chain prefix is a consistency choice, not a correctness requirement (super-repo #741).
+  const bare = `chia://${STORE}:${ROOT}/style.css`;
+  const parsed = parseURN(bare)!;
+  assert.equal(parsed.storeId, STORE);
+  assert.equal(parsed.roothash, ROOT);
+  assert.equal(parsed.resourceKey, 'style.css');
+});
+
 // ---------------------------------------------------------------------------
 // contentType — MIME inference (mirror of the resolver SW + dig-embed map)
 // ---------------------------------------------------------------------------

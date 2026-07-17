@@ -185,14 +185,13 @@ export function classifyReference(rawRef: unknown, ctx?: ClassifyContext): Class
 /**
  * Build the `chia://` URL the background `proxyRequest` reads, from a resolved ref.
  *
- * The body is emitted CHAIN-PREFIXED — `chia://chia:<storeId>[:<root>]/<key>` — the same shape
- * the omnibox produces for a pasted `urn:dig:chia:` value. The prefix is load-bearing: the shared
- * `parseURN` reads the FIRST `:`-delimited token as the chain, so a bare `chia://<storeId>:<root>/`
- * would be mis-parsed (the storeId taken as the chain, the root as the storeId). With the explicit
- * `chia:` chain, `parseURN` recovers `{ storeId, roothash }` correctly for both the rooted and the
- * rootless case. A `latest` (or null) root is emitted ROOTLESS (the background treats a rootless
- * URN as the latest capsule); a concrete 64-hex root pins the capsule. A private-store salt rides
- * as `?salt=<hex>`.
+ * The body is emitted CHAIN-PREFIXED — `chia://chia:<storeId>[:<root>]/<key>` — for CONSISTENCY
+ * with the shape the omnibox produces for a pasted `urn:dig:chia:` value, keeping one canonical
+ * emitted form across the rewrite and paste paths. (`parseURN` also accepts the bare rooted
+ * `chia://<storeId>:<root>` form — a leading 64-hex segment is disambiguated as the storeId — so
+ * the prefix is a consistency choice, not a correctness requirement.) A `latest` (or null) root is
+ * emitted ROOTLESS (the background treats a rootless URN as the latest capsule); a concrete 64-hex
+ * root pins the capsule. A private-store salt rides as `?salt=<hex>`.
  */
 export function buildDigUrl(ref: StoreRef): string {
   const storeId = ref.storeId;
