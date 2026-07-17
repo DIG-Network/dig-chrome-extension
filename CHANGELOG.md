@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.102.2] - 2026-07-17
+
+### Bug Fixes
+- **manifest:** Remove invalid port from loopback match patterns (CWS-valid) (#143)- **manifest:** Description within CWS 132-char limit + CWS field-limit guard test (#144)
+
 ## [1.102.0] - 2026-07-16
 
 ### Features
