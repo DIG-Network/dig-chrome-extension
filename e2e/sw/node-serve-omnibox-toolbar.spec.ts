@@ -42,6 +42,16 @@ let worker: Worker;
 let server: Server;
 let nodeBase: string;
 
+/** HTML-escape helper for safely interpolating user-derived content into HTML. */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 /** A fixture dig-node: answers the §5.3 probe at `/` and serves `/s/<store>[:root]/<path>` (GET +
  *  HEAD) with the DIG Shields headers a real local node sets (#289 serve contract). */
 function startFixture(): Promise<void> {
@@ -62,7 +72,7 @@ function startFixture(): Promise<void> {
           return;
         }
         cres.writeHead(200, headers);
-        cres.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>DIG store</title></head><body><h1>${MARKER}</h1><p>${url}</p></body></html>`);
+        cres.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>DIG store</title></head><body><h1>${MARKER}</h1><p>${escapeHtml(url)}</p></body></html>`);
         return;
       }
       // Probe / any other path → a plain 200 so resolveDigNode treats the node as reachable.
