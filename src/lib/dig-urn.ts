@@ -158,33 +158,38 @@ function parseURN(urnString: string): ParsedUrn | null {
   // Strip salt param (handles ?salt=… or &salt=…) then strip any remaining query string
   urnString = urnString.replace(/[?&]salt=[0-9a-f]+/i, '').replace(/\?.*$/, '');
 
-  // Parse components
-  // Format: {chain}:{storeId}:{roothash}/{resourceKey}
-  // or: {chain}:{storeId}/{resourceKey} (no roothash)
-  const match = urnString.match(/^([^:]+):([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
-
-  if (!match) {
-    // Try without chain prefix (assume chia)
-    const simpleMatch = urnString.match(/^([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
-    if (simpleMatch) {
-      return {
-        chain: 'chia',
-        storeId: simpleMatch[1].toLowerCase(),
-        roothash: simpleMatch[2] ? simpleMatch[2].toLowerCase() : null,
-        resourceKey: simpleMatch[3] || '',
-        salt,
-      };
-    }
-    return null;
+  // Two forms share this string, and they are ambiguous unless the bare form is tried
+  // FIRST (super-repo #741):
+  //   1. bare (#686 canonical content link):  {storeId}[:{roothash}][/{resourceKey}]
+  //   2. chain-prefixed:                       {chain}:{storeId}[:{roothash}][/{resourceKey}]
+  // A storeId/roothash is always 64 hex; a chain label is a short alnum like `chia`, NEVER
+  // 64 hex. So a LEADING 64-hex segment is unambiguously the storeId — matching the bare
+  // form first prevents `chia://<storeId>:<root>` from being mis-read as chain=<storeId>.
+  const bareMatch = urnString.match(/^([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
+  if (bareMatch) {
+    return {
+      chain: 'chia',
+      storeId: bareMatch[1].toLowerCase(),
+      roothash: bareMatch[2] ? bareMatch[2].toLowerCase() : null,
+      resourceKey: bareMatch[3] || '',
+      salt,
+    };
   }
 
-  return {
-    chain: match[1].toLowerCase(),
-    storeId: match[2].toLowerCase(),
-    roothash: match[3] ? match[3].toLowerCase() : null,
-    resourceKey: match[4] || '',
-    salt,
-  };
+  // Chain-prefixed form — the leading segment is a chain label (never 64 hex, so it can
+  // only reach here after the bare match above declined).
+  const chainMatch = urnString.match(/^([^:]+):([a-f0-9]{64})(?::([a-f0-9]{64}))?(?:\/(.+))?$/i);
+  if (chainMatch) {
+    return {
+      chain: chainMatch[1].toLowerCase(),
+      storeId: chainMatch[2].toLowerCase(),
+      roothash: chainMatch[3] ? chainMatch[3].toLowerCase() : null,
+      resourceKey: chainMatch[4] || '',
+      salt,
+    };
+  }
+
+  return null;
 }
 
 /**
