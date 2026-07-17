@@ -1537,8 +1537,9 @@ response: { phase: 'unknown'|'direct'|'proxy'|'unavailable', boundPort: number|n
 ```
 
 **Manifest requirements:** the `proxy` permission (to call `chrome.proxy.settings`); `host_permissions`
-covering `http://127.0.0.5/*` + `http://127.0.0.5:*/*` (loopback, so the SW's probe/health fetches
-are not subject to CORS); and the `extension_pages` CSP `connect-src` includes `http://127.0.0.5:*`
+covering `http://127.0.0.5/*` (a match pattern MUST NOT carry a port — it already matches the host on
+every port; a port-bearing pattern is rejected by the CWS validator; loopback, so the SW's probe/health
+fetches are not subject to CORS); and the `extension_pages` CSP `connect-src` includes `http://127.0.0.5:*`
 (regression #122 pattern — a host fetched by the extension MUST be in BOTH `host_permissions` and
 CSP `connect-src`, or the real browser silently blocks the request while unit tests, which mock
 fetch, do not catch it).
