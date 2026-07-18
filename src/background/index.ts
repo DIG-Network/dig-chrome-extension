@@ -191,6 +191,16 @@ import {
 // node signing). OFF by default: local-vault custody, so the node auth gate (#431/#433) is inert.
 import { isThinClientCutoverEnabled, THIN_CLIENT_FLAG_KEY } from '@/lib/thin-client-flags';
 
+// SIGN-4 (#950) APP-SIGN — the paired dig-app identity/signing channel (dig-app SPEC §5.6). A
+// SECOND channel to the dig-app tray process, distinct from the dig-node content channel above:
+// the extension is the trusted-once MEDIATOR that relays dapp connect/sign to dig-app over
+// `ws://127.0.0.1:9779` with the browser-COMMITTED origin. dig-app holds the key + raises the
+// native confirm; the extension can request but never approve.
+import { createAppSignController } from '@/lib/app-sign/app-sign-ws';
+import { AppSignRelay } from '@/lib/app-sign/relay';
+import { PairingStore } from '@/lib/app-sign/pairing-store';
+import { AppSignError } from '@/lib/app-sign/errors';
+
 // DIG Shields per-resource proof LEDGER (#134, mirrored from the browser): the per-tab/
 // per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
 import { LedgerStore, groupLedger } from '@/lib/dig-ledger';
@@ -532,6 +542,35 @@ const walletControlWs = createWalletControlWsController({
 });
 try {
   walletControlWs.start();
+} catch { /* no WebSocket in some test contexts */ }
+
+// ─── SIGN-4 (#950) APP-SIGN dig-app identity/signing relay ──────────────────────────────────────
+//
+// The relay pairs with dig-app + relays dapp connect/sign over `ws://127.0.0.1:9779` (SPEC §5.6).
+// The pairing record lives in chrome.storage.local (via a thin KvStore adapter); the connect/sign
+// handlers ALWAYS pass the browser-committed sender origin (never a page-supplied string) — the
+// true-origin passthrough is enforced at the SW message boundary below.
+
+/** A thin `chrome.storage.local` adapter for the chrome-free {@link PairingStore}. */
+const appSignKv = {
+  get: async (key) => (await chrome.storage.local.get(key))[key],
+  set: async (key, value) => chrome.storage.local.set({ [key]: value }),
+  remove: async (key) => chrome.storage.local.remove(key),
+};
+
+const appSignController = createAppSignController({
+  onConnStateChange: (connState) => broadcastRuntime({ action: 'appSignConnStateChanged', connState }),
+});
+const appSignRelay = new AppSignRelay({
+  controller: appSignController,
+  pairingStore: new PairingStore(appSignKv),
+  // The Origin header the browser sends on the WS handshake is `chrome-extension://<this id>`; dig-app
+  // pins it, so `pair.begin` must vouch the same value (SPEC §5.6.2/§5.6.3).
+  extId: `chrome-extension://${chrome.runtime.id}`,
+  extLabel: 'DIG Browser Extension',
+});
+try {
+  appSignController.start();
 } catch { /* no WebSocket in some test contexts */ }
 
 /** True when a WS request errored purely at the transport layer (→ fall back to HTTP). */
@@ -3074,6 +3113,49 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try { await revokeAllOrigins(chrome.storage.local); sendResponse({ success: true }); }
       catch { try { sendResponse({ success: false, code: 'REVOKE_FAILED', message: 'could not revoke sites' }); } catch { /* port closed */ } }
+    })();
+    return true; // async
+  }
+
+  // ─── APP-SIGN (SIGN-4, #950): the dig-app paired identity/signing relay ───────────────────────
+  //
+  // A uniform `{ ok, data? , code? }` envelope; on failure `code` is the §5.6.7 (or transport)
+  // AppSignError code the UI keys its messaging off (§6.2). The connect/sign handlers derive the
+  // dapp origin from `sender.origin` — the browser-COMMITTED, page-unspoofable origin — NEVER from
+  // the message payload. This is the true-origin passthrough that closes the "loopback cannot
+  // authenticate the caller" gap (SPEC §7.1 "Origin spoof").
+  if (
+    message.action === ACTIONS.appSignStatus ||
+    message.action === ACTIONS.appSignPair ||
+    message.action === ACTIONS.appSignUnpair ||
+    message.action === ACTIONS.appSignConnect ||
+    message.action === ACTIONS.appSignSign
+  ) {
+    (async () => {
+      // The committed origin the browser recorded for the sender frame; a page cannot forge it.
+      const committedOrigin = sender && sender.origin ? sender.origin : null;
+      try {
+        if (message.action === ACTIONS.appSignStatus) {
+          sendResponse({ ok: true, data: { paired: await appSignRelay.isPaired(), connState: appSignController.getConnState() } });
+        } else if (message.action === ACTIONS.appSignPair) {
+          await appSignRelay.pair();
+          sendResponse({ ok: true });
+        } else if (message.action === ACTIONS.appSignUnpair) {
+          await appSignRelay.unpair();
+          sendResponse({ ok: true });
+        } else if (message.action === ACTIONS.appSignConnect) {
+          if (!committedOrigin) throw new AppSignError('CONNECT_REQUIRED', 'no committed sender origin');
+          sendResponse({ ok: true, data: await appSignRelay.connect(committedOrigin, message.params || {}) });
+        } else if (message.action === ACTIONS.appSignSign) {
+          if (!committedOrigin) throw new AppSignError('CONNECT_REQUIRED', 'no committed sender origin');
+          sendResponse({ ok: true, data: await appSignRelay.sign(committedOrigin, message.params || {}) });
+        }
+      } catch (e) {
+        const code = e instanceof AppSignError ? e.code : 'BAD_RESPONSE';
+        // `success:false` lets the RTK chromeBaseQuery surface this as an `isError` state keyed on
+        // `code`; `ok:false` is the parallel shape the raw (non-RTK) callers + e2e branch on.
+        try { sendResponse({ ok: false, success: false, code, message: (e && e.message) || String(e) }); } catch { /* port closed */ }
+      }
     })();
     return true; // async
   }

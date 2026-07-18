@@ -306,6 +306,13 @@ export const ACTIONS = Object.freeze({
   listConnectedSites: 'listConnectedSites',
   revokeConnectedSite: 'revokeConnectedSite',
   revokeAllConnectedSites: 'revokeAllConnectedSites',
+  // ── APP-SIGN dig-app paired identity channel (SIGN-4, #950): the UI ↔ SW channel. The connect/
+  // sign RELAY ops derive the dapp origin from the browser-committed sender, never from params. ──
+  appSignStatus: 'appSignStatus', // { paired, connState } — for the UI paired-state surface
+  appSignPair: 'appSignPair', // trigger dig-app's native pairing confirm + store the token
+  appSignUnpair: 'appSignUnpair', // delete the local pairing record
+  appSignConnect: 'appSignConnect', // relay connect.request with the committed sender origin
+  appSignSign: 'appSignSign', // relay sign.request with the committed sender origin
   // ── self-custody wallet (#56): keystore ops the SW routes to the offscreen vault ──
   createWallet: 'createWallet',
   importWallet: 'importWallet',
@@ -585,6 +592,33 @@ export const MESSAGE_CATALOGUE = Object.freeze({
     summary: 'Connected sites (#67 P0-4): revoke EVERY connected origin at once.',
     request: '{ action }',
     response: '{ success:true } | { success:false, code, message }',
+  },
+  [ACTIONS.appSignStatus]: {
+    summary: 'APP-SIGN (SIGN-4, #950): report the dig-app pairing + channel-connection state for the UI.',
+    request: '{ action }',
+    response: '{ ok:true, data:{ paired:boolean, connState } }',
+  },
+  [ACTIONS.appSignPair]: {
+    summary: 'APP-SIGN (#950): trigger dig-app’s native pairing confirm and store the channel token.',
+    request: '{ action }',
+    response: '{ ok:true } | { ok:false, code, message }',
+  },
+  [ACTIONS.appSignUnpair]: {
+    summary: 'APP-SIGN (#950): delete the local dig-app pairing record (the local half of unpair).',
+    request: '{ action }',
+    response: '{ ok:true }',
+  },
+  [ACTIONS.appSignConnect]: {
+    summary:
+      'APP-SIGN (#950): relay a dapp connect.request to dig-app with the browser-COMMITTED sender origin (never a page-supplied string).',
+    request: '{ action, params:{ dappName?, dappIconUrl?, requestedPermissions? } }',
+    response: '{ ok:true, data:{ granted, profile_did?, addresses?, pubkeys? } } | { ok:false, code, message }',
+  },
+  [ACTIONS.appSignSign]: {
+    summary:
+      'APP-SIGN (#950): relay a dapp sign.request to dig-app with the browser-COMMITTED sender origin; dig-app raises the native confirm and returns only the signature.',
+    request: '{ action, params:{ payloadType, payloadB64, decodeHint?, context? } }',
+    response: '{ ok:true, data:{ signature_b64, pubkey_hex } } | { ok:false, code, message }',
   },
   [ACTIONS.createWallet]: {
     summary:

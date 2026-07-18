@@ -146,6 +146,21 @@ export const en: Record<string, string> = {
   'security.sign.authorize': 'Authorize',
   'security.sign.authorizing': 'Authorizing…',
   'security.sign.cancel': 'Cancel',
+  // APP-SIGN dig-app pairing (SIGN-4, #950)
+  'appSign.title': 'DIG app pairing',
+  'appSign.intro':
+    'Pair this extension with the DIG desktop app so websites can request signatures from your DIG identity. The app holds your keys and confirms every signature — this extension never sees your keys.',
+  'appSign.state.paired': 'Paired',
+  'appSign.state.notPaired': 'Not paired',
+  'appSign.state.appDown': 'DIG app not running',
+  'appSign.paired.desc': 'This extension is paired with the DIG app.',
+  'appSign.appDown.desc':
+    'The DIG desktop app is not running. Start it (or install it) to pair and sign with your DIG identity.',
+  'appSign.pair': 'Pair with the DIG app',
+  'appSign.pairing': 'Waiting for the DIG app…',
+  'appSign.unpair': 'Unpair',
+  'appSign.pair.failed': 'Pairing did not complete ({code}).',
+  'appSign.error.status': 'Could not read the DIG app pairing state.',
   // Session / lock state
   'security.session.title': 'Session',
   'security.session.state.locked': 'Locked',
