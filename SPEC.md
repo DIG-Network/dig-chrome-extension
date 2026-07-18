@@ -1789,6 +1789,69 @@ extension MUST NOT diverge from it.
 
 ---
 
+## 12a. APP-SIGN — dig-app paired identity/signing channel (SIGN-4, #950)
+
+The extension is the browser-reachable IDENTITY path to the **dig-app** desktop agent: a web dapp
+reaches dig-app *through* this extension, which relays connect/sign over a paired loopback WebSocket.
+This is DISTINCT from — and additive to — the extension↔dig-node CONTENT channel (§5, `chia://`
+resolution): APP-SIGN carries identity/signing only and terminates at the dig-app tray process, which
+holds the user key and raises the OS-native confirm. The extension is a **trusted-once MEDIATOR**: it
+may request a connect or a sign and vouches the dapp's true origin, but can NEVER approve either.
+
+The byte-level contract is **dig-app `SPEC.md §5.6` + §7.1**; this section states what the extension
+side (`src/lib/app-sign/*`) MUST do to consume it. On any conflict, dig-app §5.6 is authoritative.
+
+### 12a.1 Transport
+
+- Connect to `ws://127.0.0.1:9779` (the CSP `connect-src` allows `ws://127.0.0.1:*` + `ws://localhost:*`
+  but NOT `ws://[::1]:*`; the dig-app `[::1]` bind is reached via `localhost`). JSON-RPC 2.0 text
+  frames, one message per WS frame: `{ jsonrpc:"2.0", id, method, params, auth? }` →
+  `{ jsonrpc:"2.0", id, result }` | `{ jsonrpc:"2.0", id, error:{ code, message, data } }`.
+- The §5.6.7 symbolic error code is carried in `error.data` (the stable UPPER_SNAKE string); the UI
+  keys off the code, never the prose. A refused/absent socket ⇒ `APP_NOT_RUNNING` (no HTTP fallback
+  exists for this channel — the UI surfaces a launch/install-dig-app affordance).
+
+### 12a.2 Pairing + per-frame auth (§5.6.3)
+
+- `pair.begin { ext_id, ext_label?, requested_at }` is the ONLY frame with no `auth`. `ext_id` is
+  `chrome-extension://<this extension id>` (matching the WS-handshake `Origin` dig-app pins). On the
+  user's native confirm dig-app returns `{ pairing_id, channel_token_b64 }` (base64 of a 32-byte
+  CSPRNG secret); the extension stores `{ pairing_id, channel_token_b64, nonce }` in
+  `chrome.storage.local`.
+- Every subsequent frame carries `auth:{ pairing_id, nonce, mac_b64 }` where
+  `mac_b64 = base64(HMAC-SHA256(channel_secret, canonical_frame_bytes))` and
+  `canonical_frame_bytes = utf8(nonce_decimal) ‖ 0x00 ‖ utf8(method) ‖ 0x00 ‖ canonical_json(params)`.
+  `nonce` is a strictly-monotonic per-pairing `u64` (persisted; bars replay — `AUTH_REPLAY`).
+- **`canonical_json` MUST serialize with object keys sorted by UNICODE CODEPOINT (= UTF-8 byte
+  order = Rust `str` Ord), compact (no insignificant whitespace), `undefined`-valued entries omitted.
+  This is NOT JS's default UTF-16-code-unit key sort (the two diverge for supplementary-plane keys) —
+  a mismatch fails `AUTH_BAD_MAC`.** The token grants CHANNEL ACCESS only; it is never sign authority
+  (dig-app's terminal native confirm binds every sign).
+
+### 12a.3 Relay + the true-origin passthrough (the security crux, §7.1)
+
+- `connect.request { origin, dapp_name?, dapp_icon_url?, requested_permissions? }` and
+  `sign.request { origin, payload_type, payload_b64, decode_hint?, context? }` are relayed on the dapp's
+  behalf; `connect.revoke { origin }` removes a whitelist entry.
+- **`origin` MUST be the browser-COMMITTED sender origin (MV3 `sender.origin`) — the origin the
+  browser recorded for the sender tab/frame, which a page cannot forge — NEVER a page-supplied string.**
+  The relay API takes the committed origin as a required first-class argument and has NO code path that
+  reads an origin out of the request params; the SW message boundary derives it from `sender.origin` and
+  discards any page-claimed `origin`. This is what lets dig-app trust the one paired extension to vouch
+  for origin, closing the "loopback cannot authenticate the caller" gap.
+- The extension NEVER holds the user key and NEVER approves a sign; it returns dig-app's
+  `{ signature_b64, pubkey_hex }` (or the §5.6.7 error code) to the dapp.
+
+### 12a.4 Error taxonomy (§5.6.7)
+
+The extension surfaces these server codes verbatim: `AUTH_REQUIRED`, `AUTH_BAD_MAC`, `AUTH_REPLAY`,
+`PAIR_DENIED`, `PAIR_TIMEOUT`, `CONNECT_REQUIRED`, `CONNECT_DENIED`, `CONNECT_TIMEOUT`, `SIGN_DENIED`,
+`SIGN_TIMEOUT`, `SIGN_UNKNOWN_TYPE`, `SIGN_BAD_PAYLOAD`, `SIGN_NO_CONFIRMER`, `LOCKED` — plus the
+extension-local transport codes `APP_NOT_RUNNING`, `NOT_PAIRED`, `TRANSPORT_TIMEOUT`,
+`TRANSPORT_CLOSED`, `BAD_RESPONSE`.
+
+---
+
 ## 13. Build contract (`build.js`)
 
 - `node build.js` validates required source files and copies them into `dist/`, **builds the React

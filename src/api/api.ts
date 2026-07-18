@@ -55,6 +55,9 @@ export const TAGS = [
   // Auto-update beacon status (#504-K/#516, dig-updater SPEC §13.2): the node's `control.updater.status`
   // mirror; pause/resume/checkNow invalidate it so the Updates tab re-reads the live snapshot.
   'Updater',
+  // APP-SIGN dig-app pairing (SIGN-4, #950, dig-app SPEC §5.6): the paired-state + identity-channel
+  // connection posture; pair/unpair invalidate it so the Security tab re-reads the live state.
+  'AppSign',
 ] as const;
 
 /**

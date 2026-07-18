@@ -7,6 +7,7 @@ import { useGetAuthStatusQuery } from '@/features/security/securityApi';
 import { SessionStateSection } from '@/features/security/SessionStateSection';
 import { UnlockModeSection } from '@/features/security/UnlockModeSection';
 import { AuthMethodSection } from '@/features/security/AuthMethodSection';
+import { AppSignPairingSection } from '@/features/security/AppSignPairingSection';
 
 /**
  * The paired, node-dependent panel: reads the live `auth.status` (SPEC §18.24) and composes the three
@@ -61,6 +62,12 @@ export function SecurityTab() {
       <p className="dig-muted" style={{ marginTop: 0 }}>
         <FormattedMessage id="security.tab.intro" />
       </p>
+
+      {/* dig-app identity pairing (SIGN-4, #950) — independent of the dig-node control pairing
+          below, so it renders regardless of node state. */}
+      <div style={{ marginBottom: 16 }}>
+        <AppSignPairingSection />
+      </div>
 
       <FourState
         isLoading={control.isLoading}
