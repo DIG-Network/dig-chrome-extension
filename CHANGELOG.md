@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.102.5] - 2026-07-18
+
+### Bug Fixes
+- **ci:** De-flake sw-harness e2e + SHA-pin CRX-signing actions (#141)- **urn:** Parse canonical bare rooted chia://<storeId>:<root> content link (#146)
+
+### Chores
+- **store-assets:** Add Chrome Web Store listing images (#145)
+
 ## [1.102.2] - 2026-07-17
 
 ### Bug Fixes
