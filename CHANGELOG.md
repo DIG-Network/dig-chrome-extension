@@ -4,10 +4,10 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
-## [1.103.0] - 2026-07-17
+## [1.103.0] - 2026-07-19
 
 ### Features
-- **ext:** Pair with dig-app + relay dapp connect/sign over ws:9779 (APP-SIGN, SIGN-4) (#950)
+- **ext:** Pair with dig-app + relay dapp connect/sign over ws:9779 (SIGN-4, #950) (#147)
 
 ## [1.102.5] - 2026-07-18
 
