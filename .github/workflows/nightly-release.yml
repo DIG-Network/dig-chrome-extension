@@ -318,22 +318,68 @@ jobs:
           if [ -z "$ZIP" ]; then echo "::error::no packaged nightly zip found" >&2; exit 1; fi
           NOTES="Automated nightly pre-release built from \`main\` HEAD (${TITLE}). Version \`${NIGHTLY_VERSION}\`. Pre-release — NOT a stable release; download the zip and load it unpacked (sideload) to track the nightly channel. This is NOT published to the Chrome Web Store."
 
+          # The GitHub Releases asset API is intermittently flaky (transient HTTP 5xx — a real
+          # `HTTP 503: No server is currently available` on 2026-07-20 reddened this step and dropped
+          # the nightly zip, dig_ecosystem#1293). Under `set -e` a single blip aborts the whole
+          # publish, so wrap each network gh call in retry-with-backoff: up to 5 attempts, 5s→10s→
+          # 15s→20s linear backoff, and only THEN fail loudly. A persistent failure still reds the
+          # step (never a silent miss); a transient one is absorbed.
+          retry() {
+            local n=1 max=5 delay=5
+            until "$@"; do
+              if [ "$n" -ge "$max" ]; then
+                echo "::error::\`$*\` still failing after ${max} attempts" >&2
+                return 1
+              fi
+              echo "attempt ${n}/${max} of \`$*\` failed — retrying in ${delay}s..." >&2
+              sleep "$delay"
+              n=$((n + 1)); delay=$((delay + 5))
+            done
+          }
+
+          # Existence probe that survives a flaky Releases API WITHOUT misrouting a transient view
+          # blip into a spurious `create` (dig_ecosystem#1293 review). A `gh release view` on a
+          # missing release AND a 5xx both exit 1, so they are indistinguishable by exit code alone —
+          # disambiguate on stderr: "release not found" (a genuine 404) means proceed to create; any
+          # other failure is a transient API error, retried with the same backoff and only THEN
+          # failing loudly (a non-404 must never be silently treated as "absent" — that would create
+          # a duplicate/overwrite a real release). Echoes `yes`/`no`; returns non-zero on a persistent
+          # transient error so the caller aborts under `set -e`.
+          release_exists() {
+            local tag="$1" n=1 max=5 delay=5 out
+            while :; do
+              if out="$(gh release view "$tag" --repo "$REPO" 2>&1)"; then echo yes; return 0; fi
+              if printf '%s' "$out" | grep -qi 'release not found'; then echo no; return 0; fi
+              if [ "$n" -ge "$max" ]; then
+                echo "::error::gh release view $tag failed transiently after ${max} attempts: ${out}" >&2
+                return 1
+              fi
+              echo "attempt ${n}/${max} of release-existence probe for ${tag} failed transiently — retrying in ${delay}s..." >&2
+              sleep "$delay"
+              n=$((n + 1)); delay=$((delay + 5))
+            done
+          }
+
           # Ensure a prerelease exists at the tag, keep its metadata current, and replace ALL of its
           # assets with THIS run's zip. The zip filename embeds the date+sha, so a stale asset would
           # otherwise linger on the rolling `nightly` release — clear then upload. `--latest=false`
           # keeps the nightly out of the `latest` slot (only a stable release moves it). Applied to
           # both the immutable dated tag and the rolling `nightly` pointer.
           refresh_release() {
-            local tag="$1"
-            gh release view "$tag" --repo "$REPO" >/dev/null 2>&1 \
-              || gh release create "$tag" --repo "$REPO" --verify-tag \
-                   --prerelease --latest=false --title "$TITLE" --notes "$NOTES"
-            gh release edit "$tag" --repo "$REPO" --prerelease --latest=false --title "$TITLE" >/dev/null
-            gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name' \
-              | while read -r asset; do
-                  [ -n "$asset" ] && gh release delete-asset "$tag" "$asset" --repo "$REPO" --yes
-                done
-            gh release upload "$tag" "$ZIP" --repo "$REPO"
+            local tag="$1" exists assets
+            exists="$(release_exists "$tag")"   # aborts under set -e on a persistent transient error
+            if [ "$exists" = "no" ]; then
+              retry gh release create "$tag" --repo "$REPO" --verify-tag \
+                --prerelease --latest=false --title "$TITLE" --notes "$NOTES"
+            fi
+            retry gh release edit "$tag" --repo "$REPO" --prerelease --latest=false --title "$TITLE" >/dev/null
+            # Capture the (retried) asset listing into a variable first — piping the raw `gh release
+            # view` straight into `while read` left the listing unretried and aborting on a 5xx.
+            assets="$(retry gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name')"
+            while read -r asset; do
+              [ -n "$asset" ] && retry gh release delete-asset "$tag" "$asset" --repo "$REPO" --yes
+            done <<< "$assets"
+            retry gh release upload "$tag" "$ZIP" --repo "$REPO"
           }
 
           refresh_release "${DATED_TAG}"
@@ -413,9 +459,23 @@ jobs:
           DATED_TAG: ${{ needs.nightly.outputs.dated_tag }}
         run: |
           set -euo pipefail
+          # Same transient-5xx guard as the sideload-zip publish (dig_ecosystem#1293): the Releases
+          # asset API blips, so retry each upload with backoff before failing loudly.
+          retry() {
+            local n=1 max=5 delay=5
+            until "$@"; do
+              if [ "$n" -ge "$max" ]; then
+                echo "::error::\`$*\` still failing after ${max} attempts" >&2
+                return 1
+              fi
+              echo "attempt ${n}/${max} of \`$*\` failed — retrying in ${delay}s..." >&2
+              sleep "$delay"
+              n=$((n + 1)); delay=$((delay + 5))
+            done
+          }
           CRX="$(ls dig-network-extension-v*.crx | head -n1)"
           for tag in "${DATED_TAG}" nightly; do
-            gh release upload "$tag" "$CRX" updates.xml --repo "$REPO" --clobber
+            retry gh release upload "$tag" "$CRX" updates.xml --repo "$REPO" --clobber
           done
       - name: Assume the updates.dig.net ext deploy role (OIDC)
         uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
