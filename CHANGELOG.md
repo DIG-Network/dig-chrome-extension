@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.103.1] - 2026-07-21
+
+### Bug Fixes
+- **ci:** Retry transient GitHub API errors when publishing nightly pre-release (#148)
+
 ## [1.103.0] - 2026-07-19
 
 ### Features
