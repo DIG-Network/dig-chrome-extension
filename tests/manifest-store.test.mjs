@@ -76,3 +76,12 @@ test('build.js zips deterministically via zip.js (no shell zip / Compress-Archiv
   // word may still appear in an explanatory comment, but never as an executed command).
   assert.doesNotMatch(buildJs, /powershell/i, 'no powershell/Compress-Archive invocation may remain');
 });
+
+test('the Chrome Web Store publish workflow packages via the --store build', () => {
+  // Coherence guard (#710): the CWS upload must ship the store-valid zip (no key / no update_url),
+  // never the --zip sideload artifact — otherwise the store mode is unused and CWS gets the key.
+  const wf = read('.github/workflows/publish-chrome-web-store.yml');
+  assert.match(wf, /npm run build:store/, 'CWS workflow must build the store package');
+  assert.match(wf, /dig-network-extension-store-v\*\.zip/, 'CWS workflow must upload the store zip');
+  assert.doesNotMatch(wf, /npm run build:zip/, 'CWS workflow must not use the sideload --zip build');
+});

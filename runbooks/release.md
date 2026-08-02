@@ -119,6 +119,9 @@ moves the rolling `nightly` tag to it, and prunes old nightlies.
 npm ci
 npm run allow-scripts        # re-run the reviewed install-script allowlist (esbuild/@swc)
 npm run build                # node build.js -> dist/
-npm run build:zip            # + dig-network-extension-v<version>.zip
+npm run build:zip            # + dig-network-extension-v<version>.zip (sideload; keeps the self-hosted key)
+npm run build:store          # + dig-network-extension-store-v<version>.zip (Chrome Web Store: no key,
+                             #   no update_url, plain X.Y.Z version; deterministic — used by
+                             #   publish-chrome-web-store.yml)
 npm run test:node            # the build/wiring assertion suite (includes the workflow-shape guard)
 ```

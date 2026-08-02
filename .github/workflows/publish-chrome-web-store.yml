@@ -6,8 +6,8 @@ name: publish-chrome-web-store
 #   - a pushed `v*` tag (the release cut), or
 #   - manual `workflow_dispatch` (optionally to trusted testers only).
 #
-# How it works: it reuses the same `npm run build:zip` as the regular deploy workflow to
-# produce dist/ + a packaged zip, then uploads + publishes that zip with the official
+# How it works: it runs `npm run build:store` (#710) to produce dist/ + a Chrome-Web-Store-valid
+# packaged zip (no `key`, no `update_url`, plain X.Y.Z version), then uploads + publishes it with the official
 # `chrome-webstore-upload-cli` (binary: `chrome-webstore-upload`). Run with NO subcommand the
 # CLI both uploads and publishes the new version of an existing store item.
 #
@@ -90,18 +90,21 @@ jobs:
       # (ci.yml, §2.4a) already validated the exact merged tree; re-running here only re-exposes a
       # green-tested release to flake (it once blocked v1.96.0 — #488). Publish = build + package + upload.
 
-      # Reuse the SAME packaging path as deploy.yml: build dist/ + the packaged zip. The extension
-      # is a self-custody wallet — no WalletConnect vendoring or project id.
+      # Package the CHROME-WEB-STORE-valid zip (#710): --store emits a manifest with no `key` and no
+      # `update_url` (CWS assigns the id + signs the item and rejects a self-hosted update_url) and a
+      # plain X.Y.Z version, packed deterministically. This is distinct from deploy.yml's `--zip`
+      # sideload artifact (which keeps the self-hosted `key`). The extension is a self-custody wallet —
+      # no WalletConnect vendoring or project id.
       - if: steps.creds.outputs.present == 'true'
-        run: npm run build:zip # node build.js --zip -> ./dist + ./dig-network-extension-v<version>.zip
+        run: npm run build:store # node build.js --store -> ./dist + ./dig-network-extension-store-v<version>.zip
 
-      # Resolve the packaged zip path (the version is read from package.json by build.js).
+      # Resolve the packaged store zip path (the version is read from package.json by build.js).
       - name: locate packaged zip
         id: zip
         if: steps.creds.outputs.present == 'true'
         run: |
-          ZIP="$(ls dig-network-extension-v*.zip | head -n1)"
-          if [ -z "$ZIP" ]; then echo "No packaged zip found" >&2; exit 1; fi
+          ZIP="$(ls dig-network-extension-store-v*.zip | head -n1)"
+          if [ -z "$ZIP" ]; then echo "No packaged store zip found" >&2; exit 1; fi
           echo "path=$ZIP" >> "$GITHUB_OUTPUT"
           echo "Packaged: $ZIP"
 
