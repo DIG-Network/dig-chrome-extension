@@ -4,7 +4,7 @@
  * resolution" indicator renders. Kept separate from the state machine itself so the presentation
  * mapping is independently testable, mirroring `resolve-status.ts`'s split for the node ladder.
  */
-import type { PillTone } from '@/components/StatusPill';
+import type { PillTone } from '@/lib/pill-tone';
 import type { DigDnsPhase, DigDnsSnapshot } from '@/lib/dig-dns';
 
 /** The tone + react-intl message id the indicator renders for one {@link DigDnsPhase}. */

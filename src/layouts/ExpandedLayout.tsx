@@ -1,4 +1,4 @@
-import { AppFooter } from '@/components/AppFooter';
+import { AppFooter } from '@/app/AppFooter';
 import { ActiveTabPanel } from '@/app/ActiveTabPanel';
 import { WalletSidebar } from '@/layouts/WalletSidebar';
 import { WalletTopbar } from '@/layouts/WalletTopbar';

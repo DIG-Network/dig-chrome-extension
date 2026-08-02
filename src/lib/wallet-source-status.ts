@@ -12,7 +12,7 @@
  * showing "detected" there would be redundant with (or contradict, on a strict-unavailable read)
  * the four-state error UI those modes already surface on failure.
  */
-import type { PillTone } from '@/components/StatusPill';
+import type { PillTone } from '@/lib/pill-tone';
 import type { ChainSourceMode, ResolvedWalletSource } from '@/lib/wallet-source';
 
 /** The tone + react-intl message id (+ endpoint interpolation) the indicator renders, or hidden. */
