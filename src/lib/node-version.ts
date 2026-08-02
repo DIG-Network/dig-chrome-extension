@@ -1,4 +1,4 @@
-import type { PillTone } from '@/components/StatusPill';
+import type { PillTone } from '@/lib/pill-tone';
 
 /**
  * The running dig-node's own version, compared against the public update-feed manifest, so the

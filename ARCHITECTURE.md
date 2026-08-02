@@ -11,8 +11,9 @@ AES-256-GCM-SIV decryption **client-side** using the `dig_client` WASM module
 chia:// URL
   │  (intercepted by content scripts / page script / omnibox / nav)
   ▼
-background.js  ── module service worker ("type":"module")
-  │  parseURN()            (shared, from dig-urn.mjs)
+dist/background.js  ── module service worker ("type":"module"),
+  │                     esbuild-bundled from src/background/index.ts
+  │  parseURN()            (shared, from src/lib/dig-urn.ts)
   │  retrievalKey()        ┐
   │  verifyInclusion()     │  dig_client.js + dig_client_bg.wasm
   │  deriveKey()           │  (SRI-pinned read-crypto WASM)
@@ -23,52 +24,53 @@ rpc.dig.net  ── JSON-RPC 2.0 dig.getContent  →  ciphertext + inclusion pro
 verified + decrypted bytes  →  data: URL  →  returned to the requesting page
 ```
 
-`background.js` is the heart of the extension. It is loaded as an **ES module
-service worker** (`manifest.json` → `background.service_worker` with
-`"type": "module"`), which is required because `dig_client.js` is a
-`wasm-bindgen` ES module that uses `import.meta.url` and cannot be loaded via
-`importScripts()`. The WASM binary is integrity-checked (SHA-256) against a
+`src/background/index.ts` is the heart of the extension. `build.js`'s `bundleBackground()`
+esbuild-bundles it into `dist/background.js`, loaded as an **ES module service worker**
+(`manifest.json` → `background.service_worker` with `"type": "module"`), which is required
+because `dig_client.js` is a `wasm-bindgen` ES module that uses `import.meta.url` and cannot
+be loaded via `importScripts()`. `./dig_client.js` is kept an EXTERNAL runtime import (never
+inlined — the wasm URL + SRI pin depend on it staying a sibling file); everything else the
+service worker needs is bundled in. The WASM binary is integrity-checked (SHA-256) against a
 pinned digest before any crypto runs — a mismatch fails closed.
 
 ## File map (what actually ships)
 
-`build.js` (`node build.js`) validates and copies these files into `dist/`:
+`build.js` (`node build.js`) builds and assembles these into `dist/`:
 
 | File | Role |
 |---|---|
 | `manifest.json` | MV3 manifest: module SW, content scripts, permissions, omnibox, web-accessible resources |
-| `background.js` | Module service worker — URN parse, RPC fetch, WASM verify + decrypt, caching |
-| `dig-urn.mjs` | **Shared** URN parser + base36 store-id helpers (single source of truth; ES module) |
-| `messages.mjs` | **Versioned MESSAGE catalogue** — the frozen `ACTIONS` enum + JSDoc-typed request/response DTOs for every `chrome.runtime` action, plus the `getCapabilities` self-description. Imported by `background.js` / `dig-viewer.js`. |
-| `error-codes.mjs` | **Catalogued chia:// loader error codes** (`DIG_ERR_*`) + `classifyError`/`makeError`. The four canonical codes mirror docs.dig.net `error-codes.json` `dig-loader`. |
-| `dig-control.mjs` | **DIG Control Panel** decision logic (the `dig://control` parity surface): `decideControlView` (detect a local dig-node → manage vs install), `controlPanelViewModel`, the catalogued `CONTROL_METHODS` (`control.*`), `CONTROL_ERR` codes, and `controlInstallPrompt`. Byte-consistent with the dig-node control RPC contract (`dig-companion` `control.rs`/`meta.rs`). Imported by `background.js` (the `getControlStatus` handler + `controlRpc` bridge) and the popup. |
-| `dig-ledger.mjs` | **DIG Shields per-resource proof ledger** (#134) — `LedgerStore`, `groupLedger`, `inclusionProofDisplay`, `executionProofDisplay`. A **byte-mirror** of the native browser's `dig/shields/dig_ledger.mjs`; the dig-viewer records each resolved resource's inclusion verdict into the active tab's ledger (the `recordLedgerEntry` action) and the popup's Shield action lists it. Execution proofs are kept honest (never green-checked when mock/absent). |
-| `dig-provider-core.mjs` / `wallet-methods.mjs` | Thin re-exports of the canonical **`@dignetwork/chia-provider`** package (the single source of truth for the `window.chia` surface, shared byte-for-byte with the native DIG Browser). Kept as import points so the SW/UI/agent-surface/tests import them unchanged. |
-| `dig-provider.entry.mjs` → `dist/dig-provider.js` | The MAIN-world injected provider: `build.js` esbuild-bundles this entry (which wraps the package's `buildProvider` with the extension's postMessage transport) into a self-contained IIFE. NOT a hand-copied surface. |
-| `agent-surface.mjs` → `dist/agent-surface.json` | Machine-readable self-description (actions + wallet methods + error codes + provider surface) generated at build time from the modules above. |
-| `dig_client.js` + `dig_client_bg.wasm` | SRI-pinned read-crypto WASM (`retrievalKey`, `deriveKey`, `verifyInclusion`, `decryptChunk`). **Do not edit** — it is the byte-identical cross-system crypto artifact (see `../../SYSTEM.md`). |
-| `content.js` | Content script — rewrites `chia://` resource references (img/script/link/srcset/etc.) on every page |
-| `middleware.js` | Content script — fallback-strategy ordering for resolving `chia://` requests |
-| `page-script.js` | Injected into the page (main world) to intercept `chia://` before the browser fetches it |
-| `popup.html` + `app.html` (React shell, `src/entries/popup.tsx` / `app.tsx`) | Toolbar popup + full-page wallet — the React/TypeScript shell built by Vite (Wallet · Shield · Control Panel · Apps, mobile-OS layout). Owns the wallet, the DIG Shields proof-ledger, the Control Panel (via `dig-control.mjs` / `dig-ledger.mjs`), open-`chia://`, the resolution toggle, and ecosystem funnels. (The old hand-written vanilla popup `popup.js` / `popup-wallet.js` / `popup.css` was superseded by this React shell and removed.) |
-| `dig-viewer.html` / `dig-viewer.js` | Standalone viewer iframe that fetches + embeds DIG content via the SW |
+| `dist/background.js` ← `src/background/index.ts` | Module service worker, esbuild-bundled by `bundleBackground()` — URN parse, RPC fetch, WASM verify + decrypt, caching. `src/background/app-sign-handlers.ts` holds the AppSign-pairing message handlers. |
+| `src/lib/dig-urn.ts` | **Shared** URN parser + base36 store-id helpers (single source of truth), pinned by `src/lib/dig-urn-codec.test.ts` |
+| `src/lib/*` (dig-loader, dig-node-*, dig-dns*, dig-control, dig-ledger, dig-cache, dig-pairing, dig-serve-headers, apps, dexie, autoTip, download, activity-log, clipboard, custody-session, dapp-approval, …) | The extension's TypeScript logic layer — one focused module per concern, each with a co-located `*.test.ts`. `dig-control.ts` is the **DIG Control Panel** decision logic (the `dig://control` parity surface, byte-consistent with the dig-node control RPC contract); `dig-ledger.ts` is the **DIG Shields per-resource proof ledger** (#134), a byte-mirror of the native browser's `dig/shields/dig_ledger.mjs`. |
+| `src/offscreen/*` | The offscreen-document wallet vault — coin selection/control, signing, sends, NFTs/DIDs, CAT issuance/discovery, options/clawback, real-WASM chain calls — each module with a co-located test |
+| `src/api/*`, `src/app/*`, `src/features/*` | Redux Toolkit + RTK Query store (`src/app/store.ts`), the app shell (`AppHeader`/`AppFooter`/`ActiveTabPanel`/routing/theme), and the feature-sliced UI (wallet, security, toolbar, control, …) per the `react-app-architecture` skill (§6.4) |
+| `dig-provider-core.ts` / `wallet-methods` re-exports | Thin re-exports of the canonical **`@dignetwork/chia-provider`** package (the single source of truth for the `window.chia` surface, shared byte-for-byte with the native DIG Browser). Kept as import points so the SW/UI/agent-surface/tests import them unchanged. |
+| `src/entries/dig-provider.entry.ts` → `dist/dig-provider.js` | The MAIN-world injected provider: `build.js`'s `bundleProvider()` esbuild-bundles this entry (which wraps the package's `buildProvider` with the extension's postMessage transport) into a self-contained IIFE. NOT a hand-copied surface. |
+| `src/agent-surface.ts` → `dist/agent-surface.json` | Machine-readable self-description (actions + wallet methods + error codes + provider surface) generated at build time by `generateAgentSurface()` from the modules above. |
+| `dig_client.js` + `dig_client_bg.wasm` | SRI-pinned read-crypto WASM (`retrievalKey`, `deriveKey`, `verifyInclusion`, `decryptChunk`). **Do not edit** — it is the byte-identical cross-system crypto artifact (see `../../SYSTEM.md`). Kept as an external runtime import by `bundleBackground()` (never inlined). |
+| `src/content/content.ts` → `dist/content.js` | Content script — rewrites `chia://` resource references (img/script/link/srcset/etc.) on every page |
+| `src/content/middleware.ts` → `dist/middleware.js` | Content script — fallback-strategy ordering for resolving `chia://` requests |
+| `src/content/page-script.ts` → `dist/page-script.js` | Injected into the page (main world) to intercept `chia://` before the browser fetches it |
+| `src/entries/store-interceptor.entry.ts` → `dist/store-interceptor.js` | Self-contained IIFE (esbuild-bundled by `bundleStoreInterceptor()`) loaded as an external same-origin script by the sandboxed `dig-store-frame.html` |
+| `popup.html` + `app.html` (React shell, `src/entries/popup.tsx` / `app.tsx`) | Toolbar popup + full-page wallet — the React/TypeScript shell built by `vite build` (Wallet · Shield · Control Panel · Apps, mobile-OS layout), copied into `dist/` by `buildWebApp()`. Owns the wallet, the DIG Shields proof-ledger, the Control Panel, open-`chia://`, the resolution toggle, and ecosystem funnels. |
+| `dig-viewer.html` / `src/entries/dig-viewer.ts` | Standalone viewer iframe (Vite-built) that fetches + embeds DIG content via the SW |
 | `src/icons/icon-{16,32,48,128}.png` | The DIG Mark manifest icon set (#153) — one crisp file per size (toolbar `action.default_icon` + extension-management/store-listing `icons`), sourced from the canonical DIG icon set (dig-browser's `dig/branding/product_logo_*.png`). Every shipped extension page also links `src/icons/icon-32.png` as its `<link rel="icon">` tab favicon. |
 | `src/favicon.png`, `src/logo.png` | Notification/omnibox icon (regenerated crisp from the same DIG Mark, #153) + popup logo |
 
 The Node test server in `server/` and the root `stub-server.js`
 are **development-only** and are not part of the shipped extension. The dev server
-imports `dig-urn.mjs` (via dynamic `import()`, since it runs as CommonJS) so it
-shares the exact same URN parser as the extension.
+imports the URN parser (via dynamic `import()`, since it runs as CommonJS) so it
+shares the exact same implementation as the extension.
 
-## Shared URN parser (`dig-urn.mjs`)
+## Shared URN parser (`src/lib/dig-urn.ts`)
 
-There is exactly **one** `parseURN` implementation, in `dig-urn.mjs`. It accepts the
+There is exactly **one** `parseURN` implementation, in `src/lib/dig-urn.ts`. It accepts the
 union of inputs every caller passes — a `chia://` scheme prefix, leading slashes, the
 `urn:dig:` prefix, and an optional `?salt=<hex>` private-store param — and returns
-`{ chain, storeId, roothash, resourceKey, salt }`. The module service worker imports
-it directly (`import { parseURN } from './dig-urn.mjs'`); the dev server imports it
-via dynamic `import()`. The parser is pinned by `tests/parse-urn.test.mjs`
-(`node --test tests/`).
+`{ chain, storeId, roothash, resourceKey, salt }`. The module service worker bundle imports
+it directly; the dev server imports it via dynamic `import()`. The parser is pinned by
+`src/lib/dig-urn-codec.test.ts` (`npm run test:web`).
 
 A parsed URN **with** a `roothash` identifies a specific *capsule* — one immutable
 store generation, the pair `storeId:roothash` (a store is a sequence of capsules,
@@ -89,7 +91,7 @@ three are generated from single-source modules and surfaced as one JSON artifact
 `dist/agent-surface.json` (a `web_accessible_resource`) — also printable with
 `node build.js --json`.
 
-### 1. The background MESSAGE protocol — `messages.mjs`
+### 1. The background MESSAGE protocol — `src/lib/messages.ts`
 
 Every `chrome.runtime` `message.action` the service worker handles is enumerated in the
 frozen `ACTIONS` enum, documented in `MESSAGE_CATALOGUE` (one entry per action with a
@@ -98,10 +100,10 @@ Consumers import `ACTIONS.proxyRequest` instead of the raw string. The
 `getCapabilities` action returns the whole self-description
 (`{ version, messageProtocol, actions, walletMethods, stateChangingMethods, errorCodes, bridge }`).
 The page↔extension provider bridge is `BRIDGE.WALLET_REQUEST` / `BRIDGE.WALLET_RESPONSE`
-(window.postMessage). `messages.test.mjs` fails if a handler is added without a catalogue
-entry (drift guard).
+(window.postMessage). `src/lib/messages.test.ts` fails if a handler is added without a
+catalogue entry (drift guard).
 
-### 2. chia:// loader error codes — `error-codes.mjs`
+### 2. chia:// loader error codes — `src/lib/error-codes.ts`
 
 Every read-path failure carries a stable `DIG_ERR_*` code alongside the friendly human
 message — `proxyRequest` / `convertDigUrl` / `getDataUrl` return
@@ -118,7 +120,7 @@ are kept byte-identical with docs.dig.net's `static/error-codes.json`:
 
 Two extension-local codes (not part of the shared subset): `DIG_ERR_INVALID_URN`,
 `DIG_ERR_DIGNODE_REQUIRED`. The friendly human copy is unchanged (the error page still never
-leaks crypto strings — see `error-page.mjs`); the code is purely the machine discriminant.
+leaks crypto strings — see `src/lib/error-page.ts`); the code is purely the machine discriminant.
 
 ### 3. The injected `window.chia` provider — `@dignetwork/chia-provider`
 
@@ -145,11 +147,16 @@ self-describing: `window.chia.version`, `window.chia.info`
 ```bash
 npm run build         # node build.js  → dist/ (+ dist/agent-surface.json)
 npm run build:zip     # same, plus a versioned .zip for distribution
+npm run build:store   # node build.js --store  → CWS-mode dist/ (key/update_url stripped)
 node build.js --json  # machine mode: ONE JSON result on stdout, prose on stderr
 ```
 
-Build exit codes: `0` success · `2` validation failed (a required source file is missing) ·
-`3` a build step failed (bundling / artifact write).
+`build.js` orchestrates the whole pipeline: `bundleBackground()` (the module service worker),
+`bundleContentScript()`/`bundlePageScript()` (the three content-script-layer entries),
+`bundleProvider()` (the injected `window.chia`), `bundleStoreInterceptor()`, `generateAgentSurface()`,
+then `buildWebApp()` (`vite build` for the popup/full-page/viewer React surfaces) copies its
+`dist-web/` output into `dist/`. Build exit codes: `0` success · `2` validation failed (a required
+source file is missing) · `3` a build step failed (bundling / artifact write).
 
 `build.js` fails if any required file is missing. Load the unpacked extension from
 `dist/` via `chrome://extensions` → Developer mode → Load unpacked.
@@ -157,18 +164,21 @@ Build exit codes: `0` success · `2` validation failed (a required source file i
 ## Tests
 
 ```bash
-npm test              # node --test tests/ — the full unit suite
-npm run test:coverage # c8 node --test tests/ — same suite, gated at >=80% coverage
+npm run test:node      # node --test tests/            — repo-shape/build/manifest/wiring tests
+npm run test:web       # vitest run --coverage          — the TS logic + React suite, gated at >=80%
+npm run test:coverage  # npm run test:node && npm run test:web — the full gate (both suites)
 ```
 
-The unit suite pins every shared-module contract (URN parser, message protocol, error codes,
-wallet surface, node resolution, shields ledger, control panel). Coverage is measured by c8
-over the shipped `.mjs` logic modules (config in `.c8rc.json`) and CI-gated at >=80% on lines,
-branches, functions, and statements — a run below the floor fails the build (deploy.yml +
-publish-chrome-web-store.yml both run `npm run test:coverage`).
+The `test:web` (vitest) suite pins every shared-module contract (URN parser, message protocol,
+error codes, wallet surface, node resolution, shields ledger, control panel) via each module's
+co-located `*.test.ts`, plus the React/Redux UI (`@testing-library/react`). Coverage is measured
+by vitest's V8 provider over `src/**` and CI-gated at >=80% on lines, branches, functions, and
+statements — a run below the floor fails the build. `test:node` covers repo-shape checks that
+don't need a DOM (manifest wiring, icon/branding consistency, release-workflow shape, supply
+chain). CI (`deploy.yml` + `publish-chrome-web-store.yml`) runs `npm run test:coverage`.
 
 The repo's normative contract lives in [`SPEC.md`](./SPEC.md) — the authoritative,
 implementation-independent spec for the `chia://` read path + `dig.getContent` wire, the
 internal message protocol, the loader error taxonomy, the `window.chia` provider, the
-node-resolution ladder, configuration, and the security invariants. `tests/spec-consistency.test.mjs`
+node-resolution ladder, configuration, and the security invariants. `src/test/spec-consistency.test.ts`
 guards SPEC.md against drift from the code.

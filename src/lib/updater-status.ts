@@ -1,4 +1,4 @@
-import type { PillTone } from '@/components/StatusPill';
+import type { PillTone } from '@/lib/pill-tone';
 
 /**
  * dig-updater status model (dig-updater SPEC §13.2, #504-K / #516) — the PURE, DOM-free view model

@@ -1,5 +1,5 @@
-import { AppHeader } from '@/components/AppHeader';
-import { AppFooter } from '@/components/AppFooter';
+import { AppHeader } from '@/app/AppHeader';
+import { AppFooter } from '@/app/AppFooter';
 import { TabBar } from '@/components/TabBar';
 import { ActiveTabPanel } from '@/app/ActiveTabPanel';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';

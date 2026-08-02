@@ -9,6 +9,7 @@
  * new-tab page (newtab.js) as a module; the values are the same the browser NTP hard-codes.
  */
 import { isDigShapedInput } from '@/lib/dig-nav';
+import { DIG_ASSET_ID } from '@/lib/links';
 
 /**
  * Ordered app-directory entries shown in the "App Store" tab of DIG Home.
@@ -61,13 +62,6 @@ export const DIG_APPS: DigApp[] = [
     chip: 'Read',
   },
 ];
-
-/**
- * The DIG CAT asset id (tail hash) — pinned, mirrors hub `apps/web/lib/links.js` so the
- * dexie/9mm Get-$DIG venue URLs are byte-identical to the hub's canonical sources.
- */
-const DIG_ASSET_ID =
-  'a406d3a9de984d03c9591c10d917593b434d5263cabe2b42f6b367df16832f81';
 
 /**
  * Footer links shown beneath DIG Home. The Get-$DIG block surfaces the canonical THREE

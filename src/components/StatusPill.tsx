@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
+import type { PillTone } from '@/lib/pill-tone';
 
-export type PillTone = 'neutral' | 'good' | 'warn' | 'bad';
+export type { PillTone };
 
 /** A small status pill (activity finality, verification verdict, node state). Tone drives color. */
 export function StatusPill({
