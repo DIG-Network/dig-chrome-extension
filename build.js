@@ -830,3 +830,5 @@ main().catch((e) => {
   process.exit(EXIT.BUILD_STEP_FAILED);
 });
 
+
+// #710: --store CWS packaging mode + deterministic cross-platform zip (WIP stub).
