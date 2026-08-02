@@ -67,9 +67,20 @@ test('the SW imports its leaves via @/ (src) and only ./dig_client.js relatively
     'the SW must not import any #shared/… root leaf — they have all migrated to src/',
   );
 
-  // (2) the ONLY relative `./…` import is ./dig_client.js (the external wasm-bindgen ESM).
+  // (2) ./dig_client.js is the ONLY relative import kept EXTERNAL by the bundle; every OTHER
+  // relative `./…` import must be a local sibling module esbuild can inline (e.g. the typed
+  // ./app-sign-handlers extracted in #1464). External imports are only ever ./dig_client.js.
   const rel = [...sw.matchAll(/from\s+['"](\.\/[^'"]+)['"]/g)].map((m) => m[1]);
-  assert.deepEqual(rel, ['./dig_client.js'], `SW must import only ./dig_client.js relatively, found: ${rel.join(', ')}`);
+  assert.ok(rel.includes('./dig_client.js'), 'SW must import the external ./dig_client.js relatively');
+  const inlinedSiblings = rel.filter((r) => r !== './dig_client.js');
+  const unresolvable = inlinedSiblings.filter(
+    (r) => !existsSync(join(ROOT, 'src', 'background', `${r.replace(/^\.\//, '')}.ts`)),
+  );
+  assert.deepEqual(
+    unresolvable,
+    [],
+    `every non-dig_client relative SW import must resolve to a real src/background sibling (.ts) esbuild can inline; unresolvable: ${unresolvable.join(', ')}`,
+  );
 });
 
 test('dig_client.js + its wasm remain plain-copied to dist (the SW external import needs them)', () => {
