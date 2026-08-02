@@ -40,7 +40,7 @@ export default defineConfig({
         // The MV3 module service worker (#68): behaviour-frozen chrome.* runtime glue, validated by
         // the browser SW-registration harness (e2e/sw/), not jsdom unit tests — same rationale as
         // src/content/**. (@ts-nocheck infra; not unit-testable without a browser.)
-        'src/background/**',
+        'src/background/index.ts',
         // Content-script interception shims (#68): MAIN/isolated-world DOM-glue that reassigns
         // native URL-consuming globals. Not unit-testable in jsdom — validated by build.js bundle
         // guards, the tests/*.test.mjs source assertions, and e2e; same rationale as entries/.
