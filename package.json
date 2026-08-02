@@ -1,6 +1,6 @@
 {
   "name": "dig-browser-extension",
-  "version": "1.103.5",
+  "version": "1.104.0",
   "description": "DIG Network Browser Extension - DIG Home, chia:// resolution, window.chia wallet, verified badge",
   "main": "stub-server.js",
   "types": "messages.d.ts",
@@ -16,6 +16,7 @@
     "build:web": "vite build",
     "build": "node build.js",
     "build:zip": "node build.js --zip",
+    "build:store": "node build.js --store",
     "server": "cd server && npm start",
     "server:install": "cd server && npm install",
     "server:stub": "node stub-server.js",

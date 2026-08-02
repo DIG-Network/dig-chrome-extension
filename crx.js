@@ -102,6 +102,38 @@ function chromeManifestVersion(fullVersion) {
   return s.split(/[-+]/)[0];
 }
 
+/**
+ * Map a package.json version to the PLAIN `X.Y.Z` semver the Chrome Web Store expects (#710). CWS
+ * assigns and displays a plain three-part version and rejects the self-hosted 4th build-number part
+ * that `chromeManifestVersion` mints for a nightly CRX — so a store build strips any suffix AND any
+ * 4th part, keeping exactly major.minor.patch.
+ */
+function storeManifestVersion(fullVersion) {
+  const base = String(fullVersion).split(/[-+]/)[0];
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(base);
+  if (!m) {
+    throw new Error(`storeManifestVersion: expected an X.Y.Z semver, got ${JSON.stringify(fullVersion)}`);
+  }
+  return `${m[1]}.${m[2]}.${m[3]}`;
+}
+
+/**
+ * Transform the committed source manifest into a Chrome-Web-Store-VALID manifest (#710). CWS packs +
+ * signs the extension itself under a store-assigned id, so a store package MUST NOT carry:
+ *   • `key`        — pins a self-hosted id; CWS assigns its own and rejects/ignores a committed key.
+ *   • `update_url`  — declares self-hosting; CWS rejects any manifest with an `update_url`.
+ *   • `version_name`/a 4-part `version` — the store wants a plain `X.Y.Z`.
+ * Returns a NEW object (the source manifest is never mutated); the dev/CRX build path is untouched.
+ */
+function toStoreManifest(sourceManifest, fullVersion) {
+  const manifest = { ...sourceManifest };
+  delete manifest.key;
+  delete manifest.update_url;
+  delete manifest.version_name;
+  manifest.version = storeManifestVersion(fullVersion);
+  return manifest;
+}
+
 // ───────────────────────────── updates.xml (Omaha gupdate protocol=2.0) ─────────────────────────────
 
 /** Escape a string for use inside an XML double-quoted attribute value. */
@@ -277,6 +309,8 @@ module.exports = {
   crxIdBytes,
   buildNumberFromYmd,
   chromeManifestVersion,
+  storeManifestVersion,
+  toStoreManifest,
   escapeXmlAttr,
   updateXmlUrl,
   crxDownloadUrl,

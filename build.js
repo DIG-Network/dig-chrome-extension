@@ -8,11 +8,20 @@ const path = require('path');
 const { execSync } = require('child_process');
 const esbuild = require('esbuild');
 const crx = require('./crx.js');
+const zip = require('./zip.js');
 
 // CLI flags. `--json` (machine mode) emits ONE JSON object to stdout, routes all human prose
 // to stderr, and suppresses color — the ecosystem-wide CLI convention (AGENT_FRIENDLY.md).
 const JSON_MODE = process.argv.includes('--json');
 const MAKE_ZIP = process.argv.includes('--zip') || process.argv.includes('-z');
+// `--store` produces a Chrome-Web-Store-VALID zip (#710): the emitted manifest strips `key` +
+// `update_url` and uses a plain `X.Y.Z` version (CWS assigns the id, signs the package, and rejects a
+// self-hosted `update_url`). It is an ADDITIONAL mode — the default/dev build + `--zip`/`--crx` paths
+// are unchanged. The zip is deterministic (zip.js), so the same source packs to byte-stable bytes.
+const MAKE_STORE = process.argv.includes('--store');
+// Files never shipped to the store (sourcemaps). Vite emits none today; excluded defensively so a
+// future `build.sourcemap` flip can't leak a `.map` into a store submission.
+const STORE_ZIP_EXCLUDE = [/\.map$/];
 // `--crx` packs + signs a self-hosted CRX3 (+ emits the per-channel Omaha updates.xml) for the
 // force-install auto-update path (#607). `--channel <nightly|stable>` picks the updates.dig.net
 // path + the version scheme; the RSA signing key comes from the EXT_NIGHTLY_CRX_KEY env (never a
@@ -208,14 +217,23 @@ function copyFiles() {
         // unchanged.
         const manifest = JSON.parse(fs.readFileSync(src, 'utf8'));
         const fullVersion = require('./package.json').version;
-        const dottedVersion = crx.chromeManifestVersion(fullVersion);
-        manifest.version = dottedVersion;
-        if (fullVersion !== dottedVersion) manifest.version_name = fullVersion;
-        fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
-        const versionNote = manifest.version_name
-          ? `version ${dottedVersion} + version_name ${fullVersion}`
-          : 'version synced to package.json';
-        log(`✓ Copied: ${file} (${versionNote})`, 'green');
+        if (MAKE_STORE) {
+          // #710: a Chrome-Web-Store package must carry no `key`, no `update_url`, and a plain
+          // `X.Y.Z` version (CWS assigns the id + signs the package). The dev/CRX transform below is
+          // untouched — this branch is only taken under `--store`.
+          const storeManifest = crx.toStoreManifest(manifest, fullVersion);
+          fs.writeFileSync(dest, JSON.stringify(storeManifest, null, 2) + '\n');
+          log(`✓ Copied: ${file} (STORE: key + update_url stripped, version ${storeManifest.version})`, 'green');
+        } else {
+          const dottedVersion = crx.chromeManifestVersion(fullVersion);
+          manifest.version = dottedVersion;
+          if (fullVersion !== dottedVersion) manifest.version_name = fullVersion;
+          fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
+          const versionNote = manifest.version_name
+            ? `version ${dottedVersion} + version_name ${fullVersion}`
+            : 'version synced to package.json';
+          log(`✓ Copied: ${file} (${versionNote})`, 'green');
+        }
       } else {
         fs.copyFileSync(src, dest);
         log(`✓ Copied: ${file}`, 'green');
@@ -352,33 +370,10 @@ function buildWebApp() {
 
 function createZip() {
   log('\n📦 Creating zip file...', 'blue');
-  
   try {
-    // Check if zip command is available (Windows has it, Linux/Mac might need zip installed)
-    const zipCommand = process.platform === 'win32' ? 'powershell' : 'zip';
-    
-    if (process.platform === 'win32') {
-      // Use PowerShell Compress-Archive on Windows
-      const zipPath = path.join(__dirname, `dig-network-extension-v${require('./package.json').version}.zip`);
-      const distPath = path.join(DIST_DIR, '*');
-      
-      execSync(
-        `powershell -Command "Compress-Archive -Path '${distPath}' -DestinationPath '${zipPath}' -Force"`,
-        { stdio: 'inherit' }
-      );
-      
-      log(`✓ Zip created: ${path.basename(zipPath)}`, 'green');
-    } else {
-      // Use zip command on Unix-like systems
-      const zipPath = `dig-network-extension-v${require('./package.json').version}.zip`;
-      
-      execSync(
-        `cd ${DIST_DIR} && zip -r ../${zipPath} .`,
-        { stdio: 'inherit' }
-      );
-      
-      log(`✓ Zip created: ${zipPath}`, 'green');
-    }
+    const zipPath = path.join(__dirname, `dig-network-extension-v${require('./package.json').version}.zip`);
+    zipDistToFile(zipPath);
+    log(`✓ Zip created: ${path.basename(zipPath)}`, 'green');
   } catch (error) {
     log('⚠️  Could not create zip file. You can manually zip the dist/ folder.', 'yellow');
     log(`   Error: ${error.message}`, 'yellow');
@@ -386,21 +381,31 @@ function createZip() {
 }
 
 /**
+ * Create the Chrome-Web-Store submission zip (#710). Runs only under `--store`; the manifest already
+ * written to dist/ has had `key` + `update_url` stripped and its version reduced to a plain `X.Y.Z`
+ * (copyFiles → crx.toStoreManifest). The zip is deterministic (zip.js) and excludes sourcemaps, so it
+ * carries exactly the shippable extension and packs to byte-stable bytes. Returns the zip path.
+ */
+function createStoreZip() {
+  log('\n🏪 Creating Chrome Web Store zip (deterministic; key + update_url stripped)...', 'blue');
+  const storeVersion = crx.storeManifestVersion(require('./package.json').version);
+  const zipPath = path.join(__dirname, `dig-network-extension-store-v${storeVersion}.zip`);
+  fs.rmSync(zipPath, { force: true });
+  const bytes = zip.zipDir(DIST_DIR, { exclude: STORE_ZIP_EXCLUDE });
+  fs.writeFileSync(zipPath, bytes);
+  log(`✓ CWS zip: ${path.basename(zipPath)} (${(bytes.length / 1024).toFixed(0)} KB, deterministic)`, 'green');
+  return zipPath;
+}
+
+/**
  * Zip the CONTENTS of dist/ into `destPath` (manifest.json at the archive root — the shape a CRX3
- * wraps). Cross-platform: PowerShell Compress-Archive on Windows, `zip` elsewhere (present on the
- * ubuntu CI runner). Returns `destPath`.
+ * wraps). Uses the pure-Node deterministic writer (zip.js) so it behaves identically on every
+ * platform — the old Windows `Compress-Archive -Path 'dist/*'` fallback dropped nested directories
+ * (dist/assets, dist/src) — and packs byte-stable output. Returns `destPath`. (#710)
  */
 function zipDistToFile(destPath) {
   fs.rmSync(destPath, { force: true });
-  if (process.platform === 'win32') {
-    const distGlob = path.join(DIST_DIR, '*');
-    execSync(`powershell -Command "Compress-Archive -Path '${distGlob}' -DestinationPath '${destPath}' -Force"`, {
-      stdio: JSON_MODE ? 'ignore' : 'inherit',
-    });
-  } else {
-    // -r recurse, -X drop extra OS metadata, -q quiet. Run from dist/ so paths are archive-root-relative.
-    execSync(`cd "${DIST_DIR}" && zip -r -X -q "${destPath}" .`, { stdio: JSON_MODE ? 'ignore' : 'inherit' });
-  }
+  fs.writeFileSync(destPath, zip.zipDir(DIST_DIR));
   return destPath;
 }
 
@@ -786,9 +791,16 @@ async function main() {
   // Emit the machine-readable agent-surface index (single source of truth: messages.mjs etc).
   const surface = await generateAgentSurface();
 
-  // Create zip (optional) — the store/sideload artifact.
+  // Create zip (optional) — the sideload artifact.
   if (MAKE_ZIP) {
     createZip();
+  }
+
+  // Create the Chrome Web Store submission zip (optional, #710) — a CWS-valid manifest
+  // (no key / no update_url / plain X.Y.Z) packed deterministically.
+  let storeZipPath = null;
+  if (MAKE_STORE) {
+    storeZipPath = createStoreZip();
   }
 
   // Pack + sign the self-hosted CRX3 + emit the channel's updates.xml (optional, #607).
@@ -813,6 +825,7 @@ async function main() {
     version: surface.version,
     distDir: path.basename(DIST_DIR),
     zip: MAKE_ZIP,
+    store: storeZipPath ? { path: path.basename(storeZipPath), version: crx.storeManifestVersion(surface.version) } : false,
     crx: crxResult ? { id: crxResult.id, version: crxResult.version, channel: crxResult.channel } : false,
     artifacts: ['manifest.json', 'background.js', 'agent-surface.json'],
     agentSurface: surface,
@@ -829,4 +842,3 @@ main().catch((e) => {
   emitJsonResult({ ok: false, error: { code: 'BUILD_STEP_FAILED', message: String(e && e.message || e) } });
   process.exit(EXIT.BUILD_STEP_FAILED);
 });
-
