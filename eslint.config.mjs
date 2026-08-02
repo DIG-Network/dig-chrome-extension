@@ -64,7 +64,12 @@ export default tseslint.config(
     // RELOCATED verbatim from the old root background.js (a MOVE, not a rewrite). Same infra-vs-
     // React-shell bar as the content shims above — it carries `// @ts-nocheck` and is validated by
     // the browser SW-registration harness (e2e/sw/), not the strict React-shell lint bar.
-    files: ['src/background/**/*.ts'],
+    //
+    // PINNED to the ONE frozen file (#1464): the carve-out used to be `src/background/**/*.ts`,
+    // which silently swallowed NEW handler modules added beside the monolith. Every OTHER file under
+    // src/background/ (e.g. app-sign-handlers.ts) is held to the strict React-shell bar and MUST be
+    // fully typed — no blanket `@ts-nocheck`. The `no-blanket-ts-nocheck` guard test enforces this.
+    files: ['src/background/index.ts'],
     rules: {
       '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
