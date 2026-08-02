@@ -5,12 +5,24 @@ import { existsSync } from 'node:fs';
 /**
  * LEG C — HOSTED-TIER live e2e for #228: a rootless `chia://` URN verifies against the CHAIN-
  * ANCHORED root with NO local dig-node reachable at all — the hosted rpc.dig.net + coinset.org path.
- * Unlike LEG B (`live-node-content-load.spec.ts`), this suite does NOT require a local dig-node and
- * does not self-skip in CI: forcing `server.host` to a dead port makes the §5.3 ladder fall straight
- * through dig.local/localhost to the hosted rpc.dig.net tier, which is exactly the scenario #228
- * fixes (rpc.dig.net doesn't serve `dig.getAnchoredRoot` — see #226's issue body — so the extension
- * must resolve the anchored root itself, directly from coinset.org, via the offscreen vault's
- * DataLayer store-coin driver wasm).
+ * Unlike LEG B (`live-node-content-load.spec.ts`), this suite does NOT require a local dig-node:
+ * forcing `server.host` to a dead port makes the §5.3 ladder fall straight through
+ * dig.local/localhost to the hosted rpc.dig.net tier, which is exactly the scenario #228 fixes
+ * (rpc.dig.net doesn't serve `dig.getAnchoredRoot` — see #226's issue body — so the extension must
+ * resolve the anchored root itself, directly from coinset.org, via the offscreen vault's DataLayer
+ * store-coin driver wasm).
+ *
+ * QUARANTINED (dig_ecosystem#1999): the C.1/C.2/C.3 tests below are unconditionally SKIPPED. They
+ * drive the SW HOSTED-tier read against LIVE api.coinset.org (the offscreen-wasm anchored-root walk,
+ * #228 — a MULTI-CALL singleton-lineage walk) + a LIVE rpc.dig.net-served store, so an outage or a
+ * store re-commit REDs the required `sw-harness` check for unrelated PRs. A Node-side reachability
+ * preflight was tried first but proved an UNRELIABLE predictor of the wasm walk: a single healthy
+ * coinset fetch let the tests run while the multi-call SW-side walk still failed `verified===false`.
+ * The two dependencies are genuinely un-mockable in this harness (see the note below on why
+ * `context.route()` can't reach the offscreen document's wasm fetch, and the content-verify path
+ * needs REAL merkle-inclusion-proof bytes that cannot be fabricated). Skipped until a captured
+ * hermetic fixture exists (follow-up ticket). Un-quarantine: restore the `test(...)` calls (drop the
+ * `.skip`) and add the fixture. The test bodies are kept intact so un-quarantine is a one-line change.
  *
  * Why this hits REAL rpc.dig.net + REAL api.coinset.org instead of mocking them: Playwright's
  * `context.route()` interception does NOT reach fetches made from inside the TRUE
@@ -71,7 +83,9 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-test('C.1 — HOSTED tier (no local node reachable): a rootless chia:// URN verifies against the coinset-resolved chain-anchored root (#228)', async () => {
+// QUARANTINED (dig_ecosystem#1999) — see the file header. `test.skip` unconditionally skips these
+// three (never runs the body) so a live-coinset/rpc outage can't RED the required sw-harness check.
+test.skip('C.1 — HOSTED tier (no local node reachable): a rootless chia:// URN verifies against the coinset-resolved chain-anchored root (#228)', async () => {
   const cfg = await extPage();
   await forceNodeDown(cfg);
 
@@ -90,7 +104,7 @@ test('C.1 — HOSTED tier (no local node reachable): a rootless chia:// URN veri
   await cfg.close();
 });
 
-test('C.2 — HOSTED tier: a ROOTED URN (its own pinned generation) still verifies unaffected by #228', async () => {
+test.skip('C.2 — HOSTED tier: a ROOTED URN (its own pinned generation) still verifies unaffected by #228', async () => {
   const cfg = await extPage();
   await forceNodeDown(cfg);
 
@@ -101,7 +115,7 @@ test('C.2 — HOSTED tier: a ROOTED URN (its own pinned generation) still verifi
   await cfg.close();
 });
 
-test('C.3 — HOSTED tier: repeat rootless reads stay verified (the short-TTL anchored-root cache does not corrupt the result)', async () => {
+test.skip('C.3 — HOSTED tier: repeat rootless reads stay verified (the short-TTL anchored-root cache does not corrupt the result)', async () => {
   const cfg = await extPage();
   await forceNodeDown(cfg);
 
