@@ -1952,3 +1952,48 @@ button.dig-widget:focus-visible {
   outline: 2px solid var(--tb-focus);
   outline-offset: 2px;
 }
+
+/* ── copyable command chip (#500) — a runnable command that copies on click ── */
+.dig-command-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dig-border-strong);
+  background: var(--dig-bg);
+  color: var(--dig-text);
+  cursor: pointer;
+  font: inherit;
+}
+.dig-command-chip:hover {
+  background: color-mix(in srgb, var(--dig-accent) 10%, var(--dig-bg));
+  border-color: var(--dig-accent);
+}
+.dig-command-chip:focus-visible {
+  outline: 2px solid var(--dig-accent);
+  outline-offset: 2px;
+}
+.dig-command-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--dig-mono);
+  font-size: 12px;
+}
+.dig-command-chip-icon {
+  display: inline-flex;
+  flex: none;
+  opacity: 0.75;
+}
+.dig-command-chip[data-copied='true'] .dig-command-chip-icon {
+  opacity: 1;
+  color: var(--dig-good);
+}
+.dig-command-chip-feedback {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--dig-good);
+}

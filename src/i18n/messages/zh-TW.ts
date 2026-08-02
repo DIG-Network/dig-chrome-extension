@@ -1070,7 +1070,7 @@ export const zhTW: Record<string, string> = {
   "control.pairing.start": "Pair to manage",
   "control.pairing.cancel": "Cancel",
   "control.pairing.unpair": "Unpair",
-  "control.pairing.awaiting.cmd": "On the computer running your node, run: dig-node pair approve {id}",
+  "control.pairing.awaiting.cmd.label": "在運行您的節點的電腦上，執行：",
   "control.pairing.unpaired.title": "Not paired",
   "control.pairing.unpaired.body": "To manage upstream, hosted stores, sync and peers from here, pair this extension with your node once. Cache management above needs no pairing.",
   "control.pairing.requesting.title": "Requesting…",
@@ -1370,4 +1370,7 @@ export const zhTW: Record<string, string> = {
   'updates.checkNow.pending': '正在檢查…',
   'updates.checkNow.hint': '完整檢查可能需要幾分鐘 — dig-node、digstore 和更新程式本身都會被驗證並就地更新。',
   'updates.error.action': '未能完成,請重試。',
+  // ── copyable command chip (#500) ──
+  'command.copy.ariaLabel': '複製命令',
+  'command.copy.copied': '已複製!',
 };

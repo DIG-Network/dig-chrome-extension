@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { FormattedMessage } from 'react-intl';
 import { StatusPill } from '@/components/StatusPill';
+import { CopyableCommand } from '@/components/CopyableCommand';
 import {
   useGetPairingStateQuery,
   useStartPairingMutation,
@@ -43,9 +44,10 @@ export function PairingSection({ children }: { children: ReactNode }) {
       {vm.phase === 'awaiting' && vm.code && (
         <div data-testid="control-pairing-code" aria-live="polite" style={{ margin: '8px 0' }}>
           <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: 4, fontFamily: 'monospace' }}>{vm.code}</div>
-          <p className="dig-muted" style={{ fontSize: 12 }}>
-            <FormattedMessage id="control.pairing.awaiting.cmd" values={{ id: vm.pairingId ?? '' }} />
+          <p className="dig-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+            <FormattedMessage id="control.pairing.awaiting.cmd.label" />
           </p>
+          <CopyableCommand command={`dig-node pair approve ${vm.pairingId ?? ''}`} testid="control-pairing-cmd" />
         </div>
       )}
 

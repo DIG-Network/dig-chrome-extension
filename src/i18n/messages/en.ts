@@ -715,7 +715,7 @@ export const en: Record<string, string> = {
   'control.pairing.start': 'Pair to manage',
   'control.pairing.cancel': 'Cancel',
   'control.pairing.unpair': 'Unpair',
-  'control.pairing.awaiting.cmd': 'On the computer running your node, run: dig-node pair approve {id}',
+  'control.pairing.awaiting.cmd.label': 'On the computer running your node, run:',
   'control.pairing.unpaired.title': 'Not paired',
   'control.pairing.unpaired.body':
     'To manage upstream, hosted stores, sync and peers from here, pair this extension with your node once. Cache management above needs no pairing.',
@@ -1415,4 +1415,7 @@ export const en: Record<string, string> = {
   'wallet.sync.syncing.detail.indeterminate': 'Catching up to the chain (block {peak}). Balances and transactions aren’t final yet.',
   'wallet.sync.disconnected.title': 'Wallet disconnected',
   'wallet.sync.disconnected.detail': 'The local dig-node isn’t reachable. Live balances and sending are unavailable; any content shown may be cached and out of date.',
+  // ── copyable command chip (#500) ──
+  'command.copy.ariaLabel': 'Copy command',
+  'command.copy.copied': 'Copied!',
 };

@@ -1071,7 +1071,7 @@ export const fr: Record<string, string> = {
   "control.pairing.start": "Pair to manage",
   "control.pairing.cancel": "Cancel",
   "control.pairing.unpair": "Unpair",
-  "control.pairing.awaiting.cmd": "On the computer running your node, run: dig-node pair approve {id}",
+  "control.pairing.awaiting.cmd.label": "Sur l'ordinateur exécutant votre nœud, exécutez :",
   "control.pairing.unpaired.title": "Not paired",
   "control.pairing.unpaired.body": "To manage upstream, hosted stores, sync and peers from here, pair this extension with your node once. Cache management above needs no pairing.",
   "control.pairing.requesting.title": "Requesting…",
@@ -1371,4 +1371,7 @@ export const fr: Record<string, string> = {
   'updates.checkNow.pending': 'Vérification…',
   'updates.checkNow.hint': 'Une vérification complète peut prendre quelques minutes — dig-node, digstore et le programme de mise à jour lui-même sont vérifiés et mis à jour sur place.',
   'updates.error.action': "Cela n'a pas fonctionné. Veuillez réessayer.",
+  // ── copyable command chip (#500) ──
+  'command.copy.ariaLabel': 'Copier la commande',
+  'command.copy.copied': 'Copié !',
 };
