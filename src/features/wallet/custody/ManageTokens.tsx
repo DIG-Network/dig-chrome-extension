@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useStorageValue } from '@/lib/useStorageValue';
-import { addWatchedCat, addHiddenCat, removeHiddenCat, parseHiddenCats } from '@/lib/wallet-assets';
+import { addWatchedCat, addHiddenCat, removeHiddenCat, parseHiddenCats, HIDDEN_CATS_KEY } from '@/lib/wallet-assets';
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { resolveCatMeta } from '@/features/wallet/catMetadata';
 import { AssetRow } from '@/components/AssetRow';
@@ -23,7 +23,7 @@ export function ManageTokens({ assets, onClose }: { assets: AssetBalance[]; onCl
   const intl = useIntl();
   const registry = useGetCatRegistryQuery();
   const [watched, setWatched] = useStorageValue<unknown>('wallet.watchedCats', []);
-  const [hidden, setHidden] = useStorageValue<unknown>('wallet.hiddenCats', []);
+  const [hidden, setHidden] = useStorageValue<unknown>(HIDDEN_CATS_KEY, []);
 
   const [idInput, setIdInput] = useState('');
   const [nameInput, setNameInput] = useState('');

@@ -10,6 +10,7 @@ import { useGetCustodyBalancesQuery, useGetReceiveAddressQuery, useGetClawbacksQ
 import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
 import { custodyAssetBalances } from '@/features/wallet/custody/balances';
+import { HIDDEN_CATS_KEY } from '@/lib/wallet-assets';
 import { splitPinnedAssets } from '@/features/wallet/custody/assetOrder';
 import { filterAssetsByQuery, assetAutocompleteSuggestions } from '@/features/wallet/custody/assetFilter';
 import { AssetFilterField } from '@/features/wallet/custody/AssetFilterField';
@@ -76,7 +77,7 @@ export function CustodyWallet({ full }: { full?: boolean } = {}) {
   }, [isFull]);
   const walletView = useAppSelector((s) => s.ui.walletView);
   const [watchedCats] = useStorageValue<unknown>('wallet.watchedCats', []);
-  const [hiddenCats] = useStorageValue<unknown>('wallet.hiddenCats', []);
+  const [hiddenCats] = useStorageValue<unknown>(HIDDEN_CATS_KEY, []);
   const balances = useGetCustodyBalancesQuery();
   const receive = useGetReceiveAddressQuery();
   const prices = useGetPricesQuery();

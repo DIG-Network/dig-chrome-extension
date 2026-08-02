@@ -2,8 +2,8 @@
  * Tiny QR renderer for the wallet Receive view (and the WalletConnect pairing URI).
  *
  * Wraps the battle-tested `qrcode-generator` (MIT) so the extension stays offline — the encoder
- * is inlined into dist/qr.mjs at build time (esbuild), so the MV3 extension-page CSP
- * (`script-src 'self'`) is satisfied with no runtime CDN. This mirrors the native DIG Browser
+ * is inlined into the Vite React/page bundles that import `@/lib/qr` at build time, so the MV3
+ * extension-page CSP (`script-src 'self'`) is satisfied with no runtime CDN. This mirrors the native DIG Browser
  * wallet's dig-wallet/wc/qr.js: same encoder, same crisp black-on-white SVG, so a receive QR
  * scans identically whether the user is on the DIG Browser or on Chrome/Edge/Brave with this
  * extension.
