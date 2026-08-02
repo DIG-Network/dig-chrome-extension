@@ -13,15 +13,14 @@ import { ACTIONS } from '@/lib/messages';
  * peer-management RPCs. This slice names the management methods it will drive so the UI is wired +
  * forward-compatible; until the node implements them (and advertises `management_supported`) the
  * calls fail and the UI keeps the management controls disabled with an honest note. When the node
- * ships these methods it lights up with no extension change.
+ * ships these methods it lights up with no extension change. The management methods this slice
+ * is forward-wired for (none implemented node-side yet):
+ *   - `control.peers.connect`       { peer }                                     — dial a peer
+ *   - `control.peers.disconnect`    { peer }                                     — drop a peer
+ *   - `control.peers.setBan`        { peer, state: 'ban'|'blacklist'|'none' }    — block/allow a peer
+ *   - `control.peers.setPoolConfig` { max_connections }                          — pool caps
+ *   - an extended `control.peerStatus` returning `peers[]` + `bans[]` + `pool` + capability flags.
  */
-export const UNIMPLEMENTED_NODE_PEER_RPCS = Object.freeze([
-  'control.peers.connect', // { peer } — dial a peer by address/peer_id
-  'control.peers.disconnect', // { peer } — drop a connected peer
-  'control.peers.setBan', // { peer, state: 'ban' | 'blacklist' | 'none' } — block/allow a peer
-  'control.peers.setPoolConfig', // { max_connections } — pool caps (dig-gossip AddressManager)
-  // and an extended `control.peerStatus` returning `peers[]` + `bans[]` + `pool` + capability flags.
-]);
 
 /** One peer the node is connected to. Addresses are IPv6-first per §5.2. */
 export interface PeerInfo {

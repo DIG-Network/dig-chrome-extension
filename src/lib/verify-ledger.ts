@@ -79,8 +79,6 @@ export interface VerifyLedger {
 /** Domain-separation tag for an internal Merkle node — byte-identical to digstore-core `NODE_TAG`. */
 export const NODE_TAG = 'digstore:node:v1';
 
-const HEX64 = /^[0-9a-f]{64}$/;
-
 function lowerHex(s: unknown): string {
   return String(s ?? '').toLowerCase();
 }
@@ -156,11 +154,6 @@ export function normalizeVerifyLedger(raw: unknown): VerifyLedger {
     aggregate: deriveAggregate(resources),
     resources,
   };
-}
-
-/** Is `s` exactly 64 hex chars (a well-formed 32-byte hash)? */
-export function isHex64(s: unknown): boolean {
-  return HEX64.test(lowerHex(s));
 }
 
 function hexToBytes(hex: string): Uint8Array {
