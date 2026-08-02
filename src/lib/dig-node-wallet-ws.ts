@@ -19,9 +19,11 @@
  *
  * This module is CHROME-FREE + DOM-free (every dependency injected — socket ctor, clock, RNG, timer
  * scheduler, base resolver, token getter), so the whole state machine + correlation logic is
- * unit-testable under vitest with a fake `WebSocketLike` (mirrors {@link createNodeWsController} in
- * `dig-node-ws.ts`). `src/background/index.ts` wires the real `WebSocket`, the §5.3 ladder resolver,
- * the paired-token getter, and broadcasts each {@link WalletSyncStatus} change to the popup.
+ * unit-testable under vitest with a fake `WebSocketLike`. The connect/reconnect/backoff/staleness
+ * loop is the shared {@link createWsReconnectLoop} (`ws-reconnect-core.ts`, #1466); this module is
+ * the `/ws` PROTOCOL layer over it — the request/response correlation + the sync-status publish.
+ * `src/background/index.ts` wires the real `WebSocket`, the §5.3 ladder resolver, the paired-token
+ * getter, and broadcasts each {@link WalletSyncStatus} change to the popup.
  *
  * ADDITIVE: when the socket is not connected, {@link WalletControlWsController.request} rejects
  * immediately, so the SW's callers transparently fall back to the existing HTTP path — nothing
@@ -30,12 +32,14 @@
 
 import {
   type WebSocketLike,
-  nextReconnectDelayMs,
-  wsBaseFor,
+  type WsProtocol,
+  type WsConnectionHandlers,
+  createWsReconnectLoop,
   DEFAULT_BASE_RECONNECT_DELAY_MS,
   DEFAULT_MAX_RECONNECT_DELAY_MS,
   DEFAULT_STALE_AFTER_MS,
-} from './dig-node-ws';
+} from './ws-reconnect-core';
+import { wsBaseFor } from './dig-node-ws';
 
 /** The controller's transport connection-state machine value. */
 export type WalletWsConnState = 'connecting' | 'connected' | 'disconnected';
@@ -193,13 +197,6 @@ export function createWalletControlWsController({
   let connState: WalletWsConnState = 'disconnected';
   let syncStatus: WalletSyncStatus = initialWalletSyncStatus(now());
   const syncListeners = new Set<(status: WalletSyncStatus) => void>();
-  let running = false;
-  let attempt = 0;
-  let socket: WebSocketLike | null = null;
-  let reconnectHandle: unknown = null;
-  let staleHandle: unknown = null;
-  /** Invalidates stragglers from a superseded connect cycle (mirrors dig-node-ws). */
-  let cycleId = 0;
   /** Monotonic request id → its pending promise settlers + timeout handle. */
   let nextRequestId = 1;
   const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: WalletWsRequestError) => void; timer: unknown }>();
@@ -226,42 +223,10 @@ export function createWalletControlWsController({
     pending.clear();
   }
 
-  function clearStaleTimer(): void {
-    if (staleHandle != null) {
-      clearScheduledTimeout(staleHandle);
-      staleHandle = null;
-    }
-  }
-
-  function armStaleTimer(myCycle: number): void {
-    clearStaleTimer();
-    staleHandle = scheduleTimeout(() => {
-      if (myCycle !== cycleId) return;
-      socket?.close();
-    }, staleAfterMs);
-  }
-
-  function clearReconnectTimer(): void {
-    if (reconnectHandle != null) {
-      clearScheduledTimeout(reconnectHandle);
-      reconnectHandle = null;
-    }
-  }
-
-  function scheduleReconnect(myCycle: number): void {
-    const delay = nextReconnectDelayMs(attempt, { baseMs: baseReconnectDelayMs, maxMs: maxReconnectDelayMs, random });
-    attempt += 1;
-    reconnectHandle = scheduleTimeout(() => {
-      if (myCycle !== cycleId) return;
-      void connectCycle();
-    }, delay);
-  }
-
-  function handleFrame(frame: WalletWsFrame, myCycle: number): void {
-    // Any frame proves the socket is alive — reset backoff + re-arm the staleness watchdog.
-    attempt = 0;
-    armStaleTimer(myCycle);
-
+  /** Dispatch one parsed node→client frame. Liveness (backoff reset + staleness re-arm) is handled
+   * by the caller via {@link WsFrameContext.markAlive} BEFORE this runs, matching the original
+   * "any frame proves the socket is alive" behaviour. */
+  function dispatchFrame(frame: WalletWsFrame): void {
     if (frame.type === 'response' && frame.id != null) {
       const entry = pending.get(Number(frame.id));
       if (!entry) return; // unknown/duplicate id — ignore
@@ -297,50 +262,56 @@ export function createWalletControlWsController({
     }
   }
 
-  async function connectCycle(): Promise<void> {
-    const myCycle = cycleId;
-    const base = await resolveBase().catch(() => null);
-    if (myCycle !== cycleId || !running) return;
-
-    if (!base) {
+  /** The `/ws` wallet+control protocol layer: sync-status publishes + request/response correlation;
+   * the shared {@link createWsReconnectLoop} owns the connect/backoff/staleness loop. */
+  const protocol: WsProtocol = {
+    urlForBase: walletWsUrlFor,
+    onNoBase() {
       setConnState('disconnected');
       publishSync({ state: 'disconnected', peakHeight: null, targetHeight: null });
-      scheduleReconnect(myCycle);
-      return;
-    }
-
-    setConnState('connecting');
-    const s = createSocket(walletWsUrlFor(base));
-    socket = s;
-
-    s.onmessage = (ev: { data: unknown }) => {
-      if (myCycle !== cycleId) return;
-      if (connState !== 'connected') setConnState('connected');
-      let frame: WalletWsFrame | null = null;
-      try {
-        frame = JSON.parse(String(ev.data)) as WalletWsFrame;
-      } catch {
-        return; // not JSON — ignore rather than tear down a live connection
-      }
-      handleFrame(frame, myCycle);
-    };
-
-    s.onclose = () => {
-      if (myCycle !== cycleId) return;
-      clearStaleTimer();
-      socket = null;
+    },
+    connect(): WsConnectionHandlers {
+      setConnState('connecting');
+      return {
+        onMessage(data, ctx) {
+          if (connState !== 'connected') setConnState('connected');
+          let frame: WalletWsFrame | null = null;
+          try {
+            frame = JSON.parse(String(data)) as WalletWsFrame;
+          } catch {
+            return; // not JSON — ignore rather than tear down a live connection
+          }
+          ctx.markAlive(); // any frame proves the socket is alive — reset backoff + re-arm watchdog
+          dispatchFrame(frame);
+        },
+        onClose() {
+          setConnState('disconnected');
+          publishSync({ state: 'disconnected', peakHeight: null, targetHeight: null });
+          failAllPending(WALLET_WS_ERR.SOCKET_CLOSED, 'wallet ws socket closed');
+        },
+      };
+    },
+    onStop() {
+      failAllPending(WALLET_WS_ERR.SOCKET_CLOSED, 'wallet ws controller stopped');
       setConnState('disconnected');
-      publishSync({ state: 'disconnected', peakHeight: null, targetHeight: null });
-      failAllPending(WALLET_WS_ERR.SOCKET_CLOSED, 'wallet ws socket closed');
-      if (running) scheduleReconnect(myCycle);
-    };
+    },
+  };
 
-    s.onerror = () => {
-      // The browser also fires close on a connection failure; onclose does the transition.
-    };
-  }
+  const loop = createWsReconnectLoop({
+    resolveBase,
+    protocol,
+    createSocket,
+    now,
+    random,
+    scheduleTimeout,
+    clearScheduledTimeout,
+    baseReconnectDelayMs,
+    maxReconnectDelayMs,
+    staleAfterMs,
+  });
 
   async function sendRequest<T>(method: string, params: Record<string, unknown>): Promise<T> {
+    const socket = loop.getSocket();
     if (connState !== 'connected' || !socket) {
       throw new WalletWsRequestError('wallet ws not connected', WALLET_WS_ERR.NOT_CONNECTED);
     }
@@ -372,20 +343,10 @@ export function createWalletControlWsController({
 
   return {
     start() {
-      if (running) return;
-      running = true;
-      attempt = 0;
-      void connectCycle();
+      loop.start();
     },
     stop() {
-      running = false;
-      cycleId += 1;
-      clearReconnectTimer();
-      clearStaleTimer();
-      failAllPending(WALLET_WS_ERR.SOCKET_CLOSED, 'wallet ws controller stopped');
-      socket?.close();
-      socket = null;
-      setConnState('disconnected');
+      loop.stop();
     },
     isConnected() {
       return connState === 'connected';

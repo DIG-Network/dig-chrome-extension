@@ -1694,6 +1694,13 @@ with a fake `WebSocketLike`:
 - A `cycleId` guard prevents a straggling async `resolveBase()`/timer from a prior cycle applying
   after a newer cycle started.
 
+The connect/reconnect/backoff/staleness/cycle-guard state machine is the shared
+`createWsReconnectLoop` (`src/lib/ws-reconnect-core.ts`), which also carries the `nextReconnectDelayMs`
+backoff math, the `DEFAULT_*` bounds, and the `WebSocketLike` type; `createNodeWsController` is the
+thin `/ws/status` protocol layer (status/heartbeat frame parsing + `NodeLiveStatus` publish) over it,
+and the `/ws` wallet+control controller (§11.x, `dig-node-wallet-ws.ts`) is a second thin protocol
+layer over the SAME core — so the reconnect timing is defined in exactly one place.
+
 `src/background/index.ts` wires the real `WebSocket` + ladder resolver and broadcasts every
 `NodeLiveStatus` transition (`nodeLiveStatusChanged`). The panel/popup read the cached snapshot on
 mount via the `getNodeLiveStatus` action and live-patch it from that broadcast — no polling for the
