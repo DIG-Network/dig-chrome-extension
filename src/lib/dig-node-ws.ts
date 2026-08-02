@@ -25,7 +25,33 @@
  * the real `WebSocket`, `resolveLocalDigNode`, and broadcasts every {@link NodeLiveStatus} change to
  * the popup (`nodeLiveStatusChanged`); the popup's `getLiveNodeStatus` RTK Query endpoint reads the
  * cached snapshot on mount and live-patches it from that broadcast (no polling for the live tier).
+ *
+ * The connect/reconnect/backoff/staleness state machine itself lives in the shared
+ * {@link createWsReconnectLoop} (`ws-reconnect-core.ts`, #1466); this file is the `/ws/status`
+ * PROTOCOL layer over it — the status-frame parsing + the {@link NodeLiveStatus} publish. The
+ * primitives it historically defined (`WebSocketLike`, `nextReconnectDelayMs`, the `DEFAULT_*`
+ * bounds) now live in the core and are RE-EXPORTED here so existing importers keep working.
  */
+
+import {
+  type WebSocketLike,
+  type WsProtocol,
+  type WsConnectionHandlers,
+  type WsFrameContext,
+  createWsReconnectLoop,
+  nextReconnectDelayMs,
+  DEFAULT_BASE_RECONNECT_DELAY_MS,
+  DEFAULT_MAX_RECONNECT_DELAY_MS,
+  DEFAULT_STALE_AFTER_MS,
+} from './ws-reconnect-core';
+
+export {
+  type WebSocketLike,
+  nextReconnectDelayMs,
+  DEFAULT_BASE_RECONNECT_DELAY_MS,
+  DEFAULT_MAX_RECONNECT_DELAY_MS,
+  DEFAULT_STALE_AFTER_MS,
+};
 
 /** The controller's current connection-state machine value. */
 export type NodeWsConnState = 'connecting' | 'connected' | 'disconnected';
@@ -69,45 +95,6 @@ export function wsUrlFor(base: string): string {
 export function wsBaseFor(base: string): string {
   const trimmed = base.replace(/\/+$/, '');
   return trimmed.replace(/^https:\/\//i, 'wss://').replace(/^http:\/\//i, 'ws://');
-}
-
-/** Default exponential-backoff bounds (ms) — see {@link nextReconnectDelayMs}. */
-export const DEFAULT_BASE_RECONNECT_DELAY_MS = 1_000;
-export const DEFAULT_MAX_RECONNECT_DELAY_MS = 30_000;
-
-/**
- * Exponential backoff with "equal jitter" (half fixed, half random) for the given zero-based
- * attempt number: `min(maxMs, baseMs * 2^attempt)`, half of it fixed and half uniformly random —
- * avoids a reconnect thundering-herd while still bounding the worst-case wait. `random` is
- * injectable (defaults to `Math.random`) so a test can assert the exact min/max bounds
- * deterministically (`random: () => 0` / `() => 1`).
- */
-export function nextReconnectDelayMs(
-  attempt: number,
-  {
-    baseMs = DEFAULT_BASE_RECONNECT_DELAY_MS,
-    maxMs = DEFAULT_MAX_RECONNECT_DELAY_MS,
-    random = Math.random,
-  }: { baseMs?: number; maxMs?: number; random?: () => number } = {},
-): number {
-  const exp = Math.min(maxMs, baseMs * Math.pow(2, Math.max(0, attempt)));
-  const fixed = exp / 2;
-  return Math.round(fixed + random() * fixed);
-}
-
-/** How long a `connected` socket may go without ANY frame before it's treated as half-open and
- * force-reconnected (client-side half of "detect a half-open connection promptly", #239). Well
- * above dig-node's own ~5s heartbeat interval so ordinary scheduling jitter never trips it. */
-export const DEFAULT_STALE_AFTER_MS = 20_000;
-
-/** The subset of the browser `WebSocket` surface this controller needs — injectable so the whole
- * state machine is testable with a fake implementation (no real socket/DOM). */
-export interface WebSocketLike {
-  onopen: ((ev: unknown) => void) | null;
-  onmessage: ((ev: { data: unknown }) => void) | null;
-  onclose: ((ev: unknown) => void) | null;
-  onerror: ((ev: unknown) => void) | null;
-  close(): void;
 }
 
 /** A parsed dig-node `/ws/status` frame (`status` or `heartbeat` — see dig-node SPEC.md). Any
@@ -169,14 +156,6 @@ export function createNodeWsController({
 }: NodeWsControllerDeps): NodeWsController {
   let status: NodeLiveStatus = initialNodeLiveStatus(now());
   const listeners = new Set<(status: NodeLiveStatus) => void>();
-  let running = false;
-  let attempt = 0;
-  let socket: WebSocketLike | null = null;
-  let reconnectHandle: unknown = null;
-  let staleHandle: unknown = null;
-  /** Bumped on every stop()/reconnect so a straggling async resolveBase() from a PRIOR cycle can
-   * never apply its result after a newer cycle has already started (avoids a stale-base race). */
-  let cycleId = 0;
 
   function publish(patch: Partial<NodeLiveStatus>): void {
     status = { ...status, ...patch, updatedAt: now() };
@@ -185,101 +164,59 @@ export function createNodeWsController({
     onStatusChange?.(snapshot);
   }
 
-  function clearStaleTimer(): void {
-    if (staleHandle != null) {
-      clearScheduledTimeout(staleHandle);
-      staleHandle = null;
-    }
-  }
-
-  function armStaleTimer(myCycle: number): void {
-    clearStaleTimer();
-    staleHandle = scheduleTimeout(() => {
-      // No frame within staleAfterMs while nominally connected: treat as half-open.
-      if (myCycle !== cycleId) return;
-      socket?.close();
-    }, staleAfterMs);
-  }
-
-  function clearReconnectTimer(): void {
-    if (reconnectHandle != null) {
-      clearScheduledTimeout(reconnectHandle);
-      reconnectHandle = null;
-    }
-  }
-
-  function scheduleReconnect(myCycle: number): void {
-    const delay = nextReconnectDelayMs(attempt, { baseMs: baseReconnectDelayMs, maxMs: maxReconnectDelayMs, random });
-    attempt += 1;
-    reconnectHandle = scheduleTimeout(() => {
-      if (myCycle !== cycleId) return;
-      void connectCycle();
-    }, delay);
-  }
-
-  async function connectCycle(): Promise<void> {
-    const myCycle = cycleId;
-    const base = await resolveBase().catch(() => null);
-    if (myCycle !== cycleId || !running) return; // stopped/superseded while resolving
-
-    if (!base) {
+  /** The `/ws/status` protocol layer: parse status/heartbeat frames into {@link NodeLiveStatus}
+   * publishes; the shared {@link createWsReconnectLoop} owns the connect/backoff/staleness loop. */
+  const protocol: WsProtocol = {
+    urlForBase: wsUrlFor,
+    onNoBase() {
       publish({ state: 'disconnected', base: null, addr: null, version: null, commit: null });
-      scheduleReconnect(myCycle);
-      return;
-    }
+    },
+    connect(base: string): WsConnectionHandlers {
+      publish({ state: 'connecting', base });
+      return {
+        onMessage(data: unknown, ctx: WsFrameContext) {
+          let frame: NodeWsFrame | null = null;
+          try {
+            frame = JSON.parse(String(data)) as NodeWsFrame;
+          } catch {
+            return; // not a JSON frame — ignore rather than tear down a live connection
+          }
+          if (frame.type !== 'status' && frame.type !== 'heartbeat') return;
+          ctx.markAlive(); // a real frame proves the connection is healthy — reset backoff + re-arm watchdog
+          publish({
+            state: 'connected',
+            base,
+            addr: frame.addr ?? status.addr,
+            version: frame.version ?? status.version,
+            commit: frame.commit ?? status.commit,
+          });
+        },
+        onClose() {
+          publish({ state: 'disconnected', addr: null, version: null, commit: null });
+        },
+      };
+    },
+  };
 
-    publish({ state: 'connecting', base });
-    const s = createSocket(wsUrlFor(base));
-    socket = s;
-
-    s.onmessage = (ev: { data: unknown }) => {
-      if (myCycle !== cycleId) return;
-      let frame: NodeWsFrame | null = null;
-      try {
-        frame = JSON.parse(String(ev.data)) as NodeWsFrame;
-      } catch {
-        return; // not a JSON frame — ignore rather than tear down a live connection
-      }
-      if (frame.type !== 'status' && frame.type !== 'heartbeat') return;
-      attempt = 0; // a real frame proves the connection is healthy — reset backoff
-      armStaleTimer(myCycle);
-      publish({
-        state: 'connected',
-        base,
-        addr: frame.addr ?? status.addr,
-        version: frame.version ?? status.version,
-        commit: frame.commit ?? status.commit,
-      });
-    };
-
-    s.onclose = () => {
-      if (myCycle !== cycleId) return;
-      clearStaleTimer();
-      socket = null;
-      publish({ state: 'disconnected', addr: null, version: null, commit: null });
-      if (running) scheduleReconnect(myCycle);
-    };
-
-    s.onerror = () => {
-      // The browser also fires a close event on a connection failure; onclose does the
-      // actual state transition + reconnect scheduling. Nothing else to do here.
-    };
-  }
+  const loop = createWsReconnectLoop({
+    resolveBase,
+    protocol,
+    createSocket,
+    now,
+    random,
+    scheduleTimeout,
+    clearScheduledTimeout,
+    baseReconnectDelayMs,
+    maxReconnectDelayMs,
+    staleAfterMs,
+  });
 
   return {
     start() {
-      if (running) return;
-      running = true;
-      attempt = 0;
-      void connectCycle();
+      loop.start();
     },
     stop() {
-      running = false;
-      cycleId += 1; // invalidate any in-flight resolveBase()/timers from the old cycle
-      clearReconnectTimer();
-      clearStaleTimer();
-      socket?.close();
-      socket = null;
+      loop.stop();
     },
     getStatus() {
       return { ...status };
