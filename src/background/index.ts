@@ -200,6 +200,11 @@ import { isThinClientCutoverEnabled, THIN_CLIENT_FLAG_KEY } from '@/lib/thin-cli
 // @ts-nocheck monolith so new code is type-checked; the SW just forwards its messages there.
 import { createAppSignHandler } from './app-sign-handlers';
 
+// Search-engine registration (add/get/isDefault/updateSearchConfig + install/startup
+// re-add) lives in the fully-typed sibling `./search-engine` (#1945) — lifted OUT of
+// this frozen @ts-nocheck monolith so it's type-checked; the SW just registers it below.
+import { registerSearchEngineManagement } from './search-engine';
+
 // DIG Shields per-resource proof LEDGER (#134, mirrored from the browser): the per-tab/
 // per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
 import { LedgerStore, groupLedger } from '@/lib/dig-ledger';
@@ -4651,172 +4656,7 @@ async function registerDigSearchRedirect() {
 }
 void registerDigSearchRedirect();
 
-// ============================================================================
-// Search Engine Management
-// ============================================================================
-
-// Default search engine configuration
-const DEFAULT_SEARCH_ENGINE = {
-  name: 'DIG Network Search',
-  keyword: 'dig',
-  faviconUrl: chrome.runtime.getURL('src/favicon.png'),
-  searchUrl: 'https://rpc.dig.net/?urn=%s' // Default to rpc.dig.net
-};
-
-// Get custom search URL from storage or use default
-async function getSearchUrl() {
-  const result = await chrome.storage.local.get(['search.url', 'search.enabled']);
-  if (result['search.enabled'] && result['search.url']) {
-    return result['search.url'];
-  }
-  return DEFAULT_SEARCH_ENGINE.searchUrl;
-}
-
-// Add or update custom search engine
-async function addCustomSearchEngine() {
-  try {
-    // Check if chrome.search API is available
-    if (!chrome.search || typeof chrome.search.get !== 'function') {
-      console.warn('DIG Extension: chrome.search API is not available');
-      return { success: false, error: 'Search API not available' };
-    }
-    
-    const searchUrl = await getSearchUrl();
-    const result = await chrome.storage.local.get(['search.name', 'search.keyword']);
-    
-    const searchEngineName = result['search.name'] || DEFAULT_SEARCH_ENGINE.name;
-    const searchKeyword = result['search.keyword'] || DEFAULT_SEARCH_ENGINE.keyword;
-    
-    // Check if search engine already exists
-    const engines = await chrome.search.get();
-    const existingEngine = engines.find(e => e.name === searchEngineName);
-    
-    if (existingEngine) {
-      // Remove existing engine first (Chrome doesn't support updating)
-      try {
-        await chrome.search.remove({ name: searchEngineName });
-      } catch (e) {
-        console.warn('DIG Extension: Could not remove existing search engine:', e);
-      }
-    }
-    
-    // Add the new search engine
-    await chrome.search.add({
-      name: searchEngineName,
-      keyword: searchKeyword,
-      faviconUrl: DEFAULT_SEARCH_ENGINE.faviconUrl,
-      searchUrl: searchUrl
-    });
-    
-    console.log('DIG Extension: Custom search engine added:', searchEngineName);
-    return { success: true, name: searchEngineName };
-  } catch (error) {
-    console.error('DIG Extension: Failed to add custom search engine:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-// Get current default search engine
-async function getDefaultSearchEngine() {
-  try {
-    // Check if chrome.search API is available
-    if (!chrome.search || typeof chrome.search.get !== 'function') {
-      console.warn('DIG Extension: chrome.search API is not available');
-      return { success: false, error: 'Search API not available' };
-    }
-    
-    const engines = await chrome.search.get();
-    const defaultEngine = engines.find(e => e.isDefault);
-    return { success: true, engine: defaultEngine };
-  } catch (error) {
-    console.error('DIG Extension: Failed to get default search engine:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-// Check if DIG search engine is set as default
-async function isDigSearchDefault() {
-  try {
-    // Check if chrome.search API is available
-    if (!chrome.search || typeof chrome.search.get !== 'function') {
-      console.warn('DIG Extension: chrome.search API is not available');
-      return { success: false, error: 'Search API not available' };
-    }
-    
-    const result = await chrome.storage.local.get(['search.name']);
-    const searchEngineName = result['search.name'] || DEFAULT_SEARCH_ENGINE.name;
-    const engines = await chrome.search.get();
-    const defaultEngine = engines.find(e => e.isDefault);
-    
-    return {
-      success: true,
-      isDefault: defaultEngine && defaultEngine.name === searchEngineName,
-      defaultEngine: defaultEngine ? defaultEngine.name : null
-    };
-  } catch (error) {
-    console.error('DIG Extension: Failed to check if DIG search is default:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-// Handle search engine management messages
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'addSearchEngine') {
-    (async () => {
-      const result = await addCustomSearchEngine();
-      sendResponse(result);
-    })();
-    return true; // Keep channel open for async response
-  }
-  
-  if (message.action === 'getDefaultSearchEngine') {
-    (async () => {
-      const result = await getDefaultSearchEngine();
-      sendResponse(result);
-    })();
-    return true;
-  }
-  
-  if (message.action === 'isDigSearchDefault') {
-    (async () => {
-      const result = await isDigSearchDefault();
-      sendResponse(result);
-    })();
-    return true;
-  }
-  
-  if (message.action === 'updateSearchConfig') {
-    // Save search configuration
-    const storageData = {};
-    if (message.name) storageData['search.name'] = message.name;
-    if (message.keyword) storageData['search.keyword'] = message.keyword;
-    if (message.url) storageData['search.url'] = message.url;
-    if (message.enabled !== undefined) storageData['search.enabled'] = message.enabled;
-    
-    chrome.storage.local.set(storageData).then(async () => {
-      // Re-add search engine with new config
-      const result = await addCustomSearchEngine();
-      sendResponse(result);
-    });
-    return true;
-  }
-  
-  return false;
-});
-
-// Add search engine on extension install/startup
-chrome.runtime.onInstalled.addListener(async () => {
-  const result = await chrome.storage.local.get(['search.enabled']);
-  if (result['search.enabled'] !== false) {
-    // Default to enabled, add search engine
-    await addCustomSearchEngine();
-  }
-});
-
-chrome.runtime.onStartup.addListener(async () => {
-  const result = await chrome.storage.local.get(['search.enabled']);
-  if (result['search.enabled'] !== false) {
-    await addCustomSearchEngine();
-  }
-});
+// Search engine registration + its message dispatch + install/startup re-add all live in
+// the fully-typed `./search-engine` module (#1945); this call wires its listeners once.
+registerSearchEngineManagement();
 
