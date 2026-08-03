@@ -204,6 +204,7 @@ import { createAppSignHandler } from './app-sign-handlers';
 // re-add) lives in the fully-typed sibling `./search-engine` (#1945) — lifted OUT of
 // this frozen @ts-nocheck monolith so it's type-checked; the SW just registers it below.
 import { registerSearchEngineManagement } from './search-engine';
+import { fetchNftMetadataJson } from './nft-metadata';
 
 // DIG Shields per-resource proof LEDGER (#134, mirrored from the browser): the per-tab/
 // per-capsule accumulator of inclusion-proof verdicts the Shield action lists.
@@ -2382,57 +2383,6 @@ async function handleCustodyActionInner(message) {
 }
 
 // NFT collection metadata + richer gallery (#98): a CHIP-0007 off-chain document is always small.
-const NFT_METADATA_MAX_BYTES = 200 * 1024; // 200 KB
-const NFT_METADATA_TIMEOUT_MS = 8000;
-
-/**
- * Fetch + JSON-decode the off-chain CHIP-0007 metadata document at `uri` (#98). Handled HERE — in
- * the service worker itself, not the offscreen vault/document — as a simple, no-vault-dependency
- * read, matching the other non-custody SW actions (`getDigDnsStatus`, `getVerification`, …).
- *
- * `metadataUris` are arbitrary third-party hosts (IPFS gateways, marketplace CDNs) the extension
- * cannot enumerate in advance. **A real gotcha, found empirically (`DEVELOPMENT_LOG.md`):** it was
- * assumed a Manifest V3 background service worker's own `fetch()` is NOT subject to the
- * extension-pages CSP `connect-src` directive (that directive's name suggests it governs only
- * extension HTML documents — popup/options/offscreen). That assumption was WRONG in practice: a
- * `getNftMetadata` call to a host outside `connect-src` failed with a network error and the request
- * never even reached the network layer — the signature of a CSP block. `connect-src` (and
- * `host_permissions`, for the extension's CORS-bypass fetch elevation — most off-chain metadata
- * hosts won't send `Access-Control-Allow-Origin`) had to be widened to `https:` / an all-hosts
- * pattern (`manifest.json`), matching the breadth `img-src` already grants NFT art (§18.11 SPEC.md).
- *
- * GET-only, time-capped, and rejects an oversized response before ever attempting to parse it.
- * Returns the RAW decoded JSON — the caller (`parseNftOffchainMetadata`,
- * `src/lib/nft-offchain-metadata.ts`) validates/shapes it, since this is untrusted third-party
- * content, not something this handler should interpret.
- */
-async function fetchNftMetadataJson(uri) {
-  if (typeof uri !== 'string' || !/^https?:\/\//i.test(uri)) {
-    return { success: false, code: 'BAD_REQUEST', message: 'metadata uri must be http(s)' };
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), NFT_METADATA_TIMEOUT_MS);
-  try {
-    const res = await fetch(uri, { signal: controller.signal });
-    if (!res.ok) return { success: false, code: 'FETCH_FAILED', message: `HTTP ${res.status}` };
-    const text = await res.text();
-    if (text.length > NFT_METADATA_MAX_BYTES) {
-      return { success: false, code: 'TOO_LARGE', message: 'metadata document too large' };
-    }
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      return { success: false, code: 'INVALID_JSON', message: 'not valid JSON' };
-    }
-    return { metadata: json };
-  } catch (e) {
-    const aborted = e && e.name === 'AbortError';
-    return { success: false, code: aborted ? 'TIMEOUT' : 'NETWORK_ERROR', message: String((e && e.message) || e) };
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 // ─── dexie marketplace integration (#102) — SW-side glue over the pure lib/dexie.ts client ───────
 // NOT custody actions (no wallet key involved): posting an already-built offer, browsing dexie's
