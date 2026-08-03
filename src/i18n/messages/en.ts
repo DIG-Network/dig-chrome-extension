@@ -739,6 +739,7 @@ export const en: Record<string, string> = {
   'control.stores.meta': '{count} capsules · {size}',
   'control.stores.pinned': 'Pinned',
   'control.stores.unpin': 'Unpin',
+  'control.stores.pin': 'Pin',
   'control.sync.title': 'Sync',
   'control.sync.available': 'Available',
   'control.sync.unavailable': 'Unavailable',
