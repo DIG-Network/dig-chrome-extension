@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl, type IntlShape } from 'react-intl';
 import { formatBaseUnits, toBaseUnits } from '@/lib/wallet-view';
 import { usePrepareDidCreateMutation, useConfirmDidCreateMutation } from '@/features/identity/identityApi';
-import { useLazySendStatusQuery } from '@/features/wallet/custodyApi';
 import { useAppSelector } from '@/app/hooks';
-import { selectActiveDerivationIndex } from '@/features/wallet/walletSlice';
+import { useLazySendStatusQuery, selectActiveDerivationIndex } from '@/features/wallet';
 import type { ChromeQueryError } from '@/api/baseQuery';
 
 const XCH_DECIMALS = 12;

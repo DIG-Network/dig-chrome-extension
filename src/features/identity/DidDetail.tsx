@@ -10,7 +10,7 @@ import {
   usePrepareDidProfileUpdateMutation,
   useConfirmDidProfileUpdateMutation,
 } from '@/features/identity/identityApi';
-import { useLazySendStatusQuery } from '@/features/wallet/custodyApi';
+import { useLazySendStatusQuery } from '@/features/wallet';
 
 const XCH_DECIMALS = 12;
 const PROFILE_NAME_MAX = 128;

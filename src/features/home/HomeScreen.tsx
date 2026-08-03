@@ -5,20 +5,23 @@ import { useStorageValue } from '@/lib/useStorageValue';
 import { FourState } from '@/components/FourState';
 import { AppLauncherGrid, AppLauncherSkeleton } from '@/features/apps/AppLauncherGrid';
 import { useGetStoreCatalogQuery } from '@/features/apps/appsApi';
-import { useGetCustodyBalancesQuery, useGetLockStateQuery, useGetCustodyActivityQuery } from '@/features/wallet/custodyApi';
-import { useGetCatRegistryQuery } from '@/features/wallet/catMetadataApi';
-import { useGetPricesQuery } from '@/features/wallet/priceApi';
 import { useGetNodeStatusQuery } from '@/features/resolver/resolverApi';
 import { OpenByUrnInput } from '@/features/home/OpenByUrnInput';
 import { TipCreatorWidget } from '@/features/home/TipCreatorWidget';
-import { custodyAssetBalances } from '@/features/wallet/custody/balances';
 import { HIDDEN_CATS_KEY } from '@/lib/wallet-assets';
-import { pickHeroBalance } from '@/features/wallet/portfolio';
-import { assetUsdValue } from '@/features/wallet/portfolioValue';
-import { resolveFiatValue } from '@/features/wallet/fiatValue';
-import { useFiatPreference } from '@/features/wallet/useFiatPreference';
-import { activityRows, type ActivityRow } from '@/features/wallet/custody/activityRows';
 import {
+  useGetCustodyBalancesQuery,
+  useGetLockStateQuery,
+  useGetCustodyActivityQuery,
+  useGetCatRegistryQuery,
+  useGetPricesQuery,
+  custodyAssetBalances,
+  pickHeroBalance,
+  assetUsdValue,
+  resolveFiatValue,
+  useFiatPreference,
+  activityRows,
+  type ActivityRow,
   BALANCE_UNIT_STORAGE_KEY,
   DEFAULT_BALANCE_UNIT,
   isBalanceUnit,
@@ -26,7 +29,7 @@ import {
   heroBalanceDisplay,
   type BalanceUnit,
   type SlotDisplay,
-} from '@/features/wallet/balanceUnit';
+} from '@/features/wallet';
 
 /** How many dApp icons the Home launcher widget shows before "see all". */
 const HOME_LAUNCHER_LIMIT = 8;

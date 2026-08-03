@@ -12,7 +12,7 @@ import {
   useConfirmNftBulkDidAssignMutation,
 } from '@/features/collectibles/collectiblesApi';
 import { useListDidsQuery } from '@/features/identity/identityApi';
-import { useLazySendStatusQuery } from '@/features/wallet/custodyApi';
+import { useLazySendStatusQuery } from '@/features/wallet';
 import { nftDisplayName } from '@/features/collectibles/nftDisplay';
 
 const XCH_DECIMALS = 12;
