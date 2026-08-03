@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.105.1] - 2026-08-03
+
+### Features
+- **ext:** Add build.js --store CWS mode + deterministic cross-platform zip (#710)- **ext:** Click-to-copy chip for dig-node command strings (#500)
+
+### Bug Fixes
+- **ext:** Pin SW @ts-nocheck carve-out to the frozen file; type APP-SIGN handlers (#150)- **ext:** Run tests/*.mjs in test:node + coverage-gate app-sign-handlers (#1945)
+
+### Refactor
+- **ext:** Extract shared ws-reconnect-core; thin both WS controllers over it (#151)- **ext:** Layering + DRY hygiene from arch-audit #325- **ext:** Extract search-engine management into a typed SW sibling (#1945)
+
+### Testing
+- **ext:** Quarantine flaky live-coinset hosted-tier #228 e2e (#153)
+
+### Chores
+- **cleanup:** Dead code + DRY + stale-comment sweep (#149)
+
 ## [1.103.1] - 2026-07-21
 
 ### Bug Fixes
