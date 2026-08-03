@@ -8,7 +8,7 @@ import { popOutToFullpage } from '@/lib/popout';
 import type { WalletNft } from '@/offscreen/nfts';
 import { usePrepareNftTransferMutation, useConfirmNftTransferMutation, usePrepareNftDidAssignMutation, useConfirmNftDidAssignMutation } from '@/features/collectibles/collectiblesApi';
 import { useListDidsQuery } from '@/features/identity/identityApi';
-import { useLazySendStatusQuery } from '@/features/wallet/custodyApi';
+import { useLazySendStatusQuery } from '@/features/wallet';
 import {
   nftDisplayName,
   editionLabel,

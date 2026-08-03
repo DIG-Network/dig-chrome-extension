@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { formatBaseUnits } from '@/lib/wallet-view';
 import { usePrepareNftMintMutation, useConfirmNftMintMutation } from '@/features/collectibles/collectiblesApi';
-import { useLazySendStatusQuery } from '@/features/wallet/custodyApi';
+import { useLazySendStatusQuery } from '@/features/wallet';
 import { validateMintForm, basisPointsToPercentLabel, EMPTY_MINT_FORM, type MintForm, type MintErrors } from '@/features/collectibles/nftMint';
 import type { NftMintSummary } from '@/offscreen/nfts';
 

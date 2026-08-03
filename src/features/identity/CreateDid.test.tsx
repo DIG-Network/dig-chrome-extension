@@ -3,7 +3,7 @@ import { screen, fireEvent } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import { renderWithProviders } from '@/test/harness';
 import { createStore } from '@/app/store';
-import { setActiveDerivationIndex } from '@/features/wallet/walletSlice';
+import { setActiveDerivationIndex } from '@/features/wallet';
 import { CreateDid } from '@/features/identity/CreateDid';
 import type { DidCreateSummary } from '@/offscreen/dids';
 

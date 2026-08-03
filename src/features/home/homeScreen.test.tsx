@@ -3,9 +3,7 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/test/harness';
 import { createStore } from '@/app/store';
 import { HomeScreen } from '@/features/home/HomeScreen';
-import { BALANCE_UNIT_STORAGE_KEY } from '@/features/wallet/balanceUnit';
-import { FIAT_CURRENCY_STORAGE_KEY } from '@/features/wallet/fiatCurrency';
-import { COINGECKO_FX_URL } from '@/features/wallet/fxRates';
+import { BALANCE_UNIT_STORAGE_KEY, FIAT_CURRENCY_STORAGE_KEY, COINGECKO_FX_URL } from '@/features/wallet';
 
 const CATALOG = { apps: [{ slug: 'chia-offer', name: 'Chia-Offer', icon: 'https://explore.dig.net/catalog/chia-offer/icon-512.png', link: 'https://chia-offer.on.dig.net/', category: 'tools', featured: true }] };
 
