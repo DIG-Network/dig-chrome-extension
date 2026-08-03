@@ -1070,7 +1070,7 @@ export const ko: Record<string, string> = {
   "control.pairing.start": "Pair to manage",
   "control.pairing.cancel": "Cancel",
   "control.pairing.unpair": "Unpair",
-  "control.pairing.awaiting.cmd": "On the computer running your node, run: dig-node pair approve {id}",
+  "control.pairing.awaiting.cmd.label": "노드를 실행 중인 컴퓨터에서 다음을 실행하세요:",
   "control.pairing.unpaired.title": "Not paired",
   "control.pairing.unpaired.body": "To manage upstream, hosted stores, sync and peers from here, pair this extension with your node once. Cache management above needs no pairing.",
   "control.pairing.requesting.title": "Requesting…",
@@ -1370,4 +1370,7 @@ export const ko: Record<string, string> = {
   'updates.checkNow.pending': '확인하는 중…',
   'updates.checkNow.hint': '전체 점검은 몇 분 정도 걸릴 수 있습니다 — dig-node, digstore, 업데이터 자체가 검증되고 즉시 업데이트됩니다.',
   'updates.error.action': '진행되지 않았습니다. 다시 시도해 주세요.',
+  // ── copyable command chip (#500) ──
+  'command.copy.ariaLabel': '명령 복사',
+  'command.copy.copied': '복사됨!',
 };

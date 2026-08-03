@@ -1070,7 +1070,7 @@ export const vi: Record<string, string> = {
   "control.pairing.start": "Pair to manage",
   "control.pairing.cancel": "Cancel",
   "control.pairing.unpair": "Unpair",
-  "control.pairing.awaiting.cmd": "On the computer running your node, run: dig-node pair approve {id}",
+  "control.pairing.awaiting.cmd.label": "Trên máy tính đang chạy node của bạn, hãy chạy:",
   "control.pairing.unpaired.title": "Not paired",
   "control.pairing.unpaired.body": "To manage upstream, hosted stores, sync and peers from here, pair this extension with your node once. Cache management above needs no pairing.",
   "control.pairing.requesting.title": "Requesting…",
@@ -1370,4 +1370,7 @@ export const vi: Record<string, string> = {
   'updates.checkNow.pending': 'Đang kiểm tra…',
   'updates.checkNow.hint': 'Một lần kiểm tra đầy đủ có thể mất vài phút — dig-node, digstore và chính trình cập nhật đều được xác minh và cập nhật tại chỗ.',
   'updates.error.action': 'Thao tác không thành công. Vui lòng thử lại.',
+  // ── copyable command chip (#500) ──
+  'command.copy.ariaLabel': 'Sao chép lệnh',
+  'command.copy.copied': 'Đã sao chép!',
 };

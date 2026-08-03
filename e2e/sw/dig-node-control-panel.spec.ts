@@ -271,6 +271,10 @@ test('control panel: live status, cache cap/evict/clear, pairing → control mut
     // (c) Pair → the operator approves (fake approves on the 2nd poll) → paired → drive a control mutation.
     await app.getByTestId('control-pairing-start').click();
     await expect(app.getByTestId('control-pairing-code')).toContainText('481920', { timeout: 10_000 });
+    // (#500) The `dig-node pair approve <id>` instruction renders as a click-to-copy chip, not bare
+    // text — the operator shouldn't have to hand-retype the hex pairing id.
+    await expect(app.getByTestId('control-pairing-cmd')).toContainText('dig-node pair approve');
+    await expect(app.getByTestId('control-pairing-cmd')).toHaveAttribute('aria-label', 'Copy command');
     await expect(app.getByTestId('control-pairing-pill')).toContainText(/paired/i, { timeout: 15_000 });
     await expect(app.getByTestId('control-upstream')).toBeVisible();
     await app.getByTestId('control-upstream-input').fill('https://my.custom.node/');

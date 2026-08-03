@@ -1070,7 +1070,7 @@ export const ja: Record<string, string> = {
   "control.pairing.start": "Pair to manage",
   "control.pairing.cancel": "Cancel",
   "control.pairing.unpair": "Unpair",
-  "control.pairing.awaiting.cmd": "On the computer running your node, run: dig-node pair approve {id}",
+  "control.pairing.awaiting.cmd.label": "ノードを実行しているコンピューターで、次を実行してください:",
   "control.pairing.unpaired.title": "Not paired",
   "control.pairing.unpaired.body": "To manage upstream, hosted stores, sync and peers from here, pair this extension with your node once. Cache management above needs no pairing.",
   "control.pairing.requesting.title": "Requesting…",
@@ -1370,4 +1370,7 @@ export const ja: Record<string, string> = {
   'updates.checkNow.pending': '確認しています…',
   'updates.checkNow.hint': '完全チェックには数分かかることがあります — dig-node、digstore、およびアップデーター自体が検証され、その場で更新されます。',
   'updates.error.action': 'うまくいきませんでした。もう一度お試しください。',
+  // ── copyable command chip (#500) ──
+  'command.copy.ariaLabel': 'コマンドをコピー',
+  'command.copy.copied': 'コピーしました!',
 };
