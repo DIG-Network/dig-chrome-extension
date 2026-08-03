@@ -136,7 +136,7 @@ import { appendOfferEntry, markOfferStatus, entriesFor as offerEntriesFor } from
 // terms, so the minting wallet remembers them (see `optionContracts.ts`'s module doc).
 import { appendOptionEntry, markOptionStatus, optionEntriesFor } from '@/lib/optionContractLog';
 // dexie.space marketplace integration (#102): pure REST client, chrome-free (fetch injected below).
-import { postOfferToDexie, fetchDexieOffer, searchDexieOffers } from '@/lib/dexie';
+import { handleDexiePost, handleDexieBrowse, handleDexieResolve } from './dexie-handlers';
 // Watched-CAT parsing (asset ids to scan) — the same shared helper the wallet UI uses.
 import { parseWatchedCats } from '@/lib/wallet-assets';
 import { DIG_ASSET_ID } from '@/lib/links';
@@ -2384,41 +2384,6 @@ async function handleCustodyActionInner(message) {
 
 // NFT collection metadata + richer gallery (#98): a CHIP-0007 off-chain document is always small.
 
-// ─── dexie marketplace integration (#102) — SW-side glue over the pure lib/dexie.ts client ───────
-// NOT custody actions (no wallet key involved): posting an already-built offer, browsing dexie's
-// public listing, and resolving a dexie link/id are all plain fetches, handled directly here
-// exactly like fetchNftMetadataJson above (`api.dexie.space` is pre-granted in both
-// `host_permissions` and the extension-pages CSP `connect-src`, confirmed live).
-
-async function handleDexiePost(offer) {
-  if (typeof offer !== 'string' || !offer.startsWith('offer1')) {
-    return { success: false, code: 'BAD_REQUEST', message: 'offer string required' };
-  }
-  try {
-    const { id, known } = await postOfferToDexie(fetch, offer);
-    return { success: true, dexieId: id, known };
-  } catch (e) {
-    const msg = e && e.message ? e.message : 'dexie post failed';
-    const codeMatch = /^([A-Z][A-Z0-9_]*):/.exec(msg);
-    return { success: false, code: codeMatch ? codeMatch[1] : 'DEXIE_POST_FAILED', message: msg };
-  }
-}
-
-async function handleDexieBrowse(offered, requested) {
-  const offers = await searchDexieOffers(fetch, {
-    ...(offered ? { offered } : {}),
-    ...(requested ? { requested } : {}),
-  });
-  return { offers };
-}
-
-async function handleDexieResolve(idOrUrl) {
-  if (typeof idOrUrl !== 'string' || idOrUrl.length === 0) {
-    return { success: false, code: 'BAD_REQUEST', message: 'idOrUrl required' };
-  }
-  const offer = await fetchDexieOffer(fetch, idOrUrl);
-  return { offer };
-}
 
 // Auto-lock: TTL sweep (alarm) + OS idle/lock → drop the key from the vault.
 try {
