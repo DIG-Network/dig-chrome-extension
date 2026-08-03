@@ -48,6 +48,20 @@ describe('ManageSections', () => {
     );
   });
 
+  it('HostedStoresSection offers pin (not unpin) for an unpinned store', async () => {
+    const { calls } = mockControlAuthed({
+      'control.hostedStores.list': { stores: [{ store_id: 'bb', pinned: false, capsule_count: 1, total_bytes: 1024 }] },
+    });
+    renderWithProviders(<HostedStoresSection />);
+    // An UNpinned store offers the symmetric Pin action, never Unpin; pinning fires the pin RPC.
+    const pinBtn = await screen.findByTestId('control-store-pin');
+    expect(screen.queryByTestId('control-store-unpin')).not.toBeInTheDocument();
+    fireEvent.click(pinBtn);
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'control.hostedStores.pin')).toBe(true),
+    );
+  });
+
   it('HostedStoresSection shows an empty state with no stores', async () => {
     mockControlAuthed({ 'control.hostedStores.list': { stores: [] } });
     renderWithProviders(<HostedStoresSection />);

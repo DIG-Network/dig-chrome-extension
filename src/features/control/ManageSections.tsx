@@ -7,6 +7,7 @@ import {
   useSetUpstreamMutation,
   useListHostedStoresQuery,
   useUnpinStoreMutation,
+  usePinStoreMutation,
   useGetSyncStatusQuery,
   useGetPeerStatusQuery,
 } from '@/features/control/controlApi';
@@ -58,6 +59,7 @@ export function UpstreamSection() {
 export function HostedStoresSection() {
   const q = useListHostedStoresQuery();
   const [unpin] = useUnpinStoreMutation();
+  const [pin] = usePinStoreMutation();
   const stores = q.data?.stores ?? [];
   return (
     <section className="dig-card" data-testid="control-stores" aria-labelledby="control-stores-title">
@@ -95,14 +97,25 @@ export function HostedStoresSection() {
                   <FormattedMessage id="control.stores.pinned" />
                 </StatusPill>
               )}
-              <button
-                type="button"
-                className="dig-btn dig-btn--sm"
-                data-testid="control-store-unpin"
-                onClick={() => void unpin({ store: s.store_id })}
-              >
-                <FormattedMessage id="control.stores.unpin" />
-              </button>
+              {s.pinned ? (
+                <button
+                  type="button"
+                  className="dig-btn dig-btn--sm"
+                  data-testid="control-store-unpin"
+                  onClick={() => void unpin({ store: s.store_id })}
+                >
+                  <FormattedMessage id="control.stores.unpin" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="dig-btn dig-btn--sm"
+                  data-testid="control-store-pin"
+                  onClick={() => void pin({ store: s.store_id })}
+                >
+                  <FormattedMessage id="control.stores.pin" />
+                </button>
+              )}
             </li>
           ))}
         </ul>
