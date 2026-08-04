@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [1.106.0] - 2026-08-04
+
+### Features
+- **ext:** Wire the symmetric pin-store action in the control panel (#1467)
+
+### Refactor
+- **ext:** Extract NFT off-chain metadata fetch into a typed SW sibling (#1945)- **ext:** Extract dexie marketplace handlers into a typed SW sibling (#1945)- **ext:** Route wallet cross-feature imports through a curated barrel (#2011)
+
 ## [1.105.1] - 2026-08-03
 
 ### Features
