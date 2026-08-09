@@ -59,7 +59,8 @@ import { TOOLBAR_ENABLED_KEY, TOOLBAR_ENABLED_DEFAULT, TOOLBAR_TOGGLE_COMMAND } 
 // The TRUSTED-root decision (#226): a rootless ('latest') URN must verify against the store's
 // chain-ANCHORED root, never the literal string 'latest'. These pure helpers own the fail-closed
 // verdict; resolveAnchoredRoot() below fetches the anchored root from the node.
-import { resolveReadRoots, decideVerified, isRootlessRoot } from '@/lib/trusted-root';
+import { resolveReadRoots, isRootlessRoot } from '@/lib/trusted-root';
+import { verifyAndDecrypt } from '@/lib/verified-content';
 
 // Branded, plain-language chia:// error page (white theme; never leaks crypto strings).
 import { buildErrorPageHtml } from '@/lib/error-page';
@@ -1043,30 +1044,8 @@ async function resolveAnchoredRootFromCoinset(storeId) {
   return root;
 }
 
-/**
- * Decrypt multi-chunk ciphertext.  Mirrors decryptResourceChunks() in
- * apps/web/lib/dig-client.js.  `chunkLens` are the per-chunk CIPHERTEXT byte
- * lengths (may be null/empty for a single-chunk resource).
- */
-function decryptChunks(dig, keyHex, ciphertext, chunkLens) {
-  const lens = chunkLens && chunkLens.length ? chunkLens : [ciphertext.length];
-  if (lens.length === 1) return dig.decryptChunk(keyHex, ciphertext); // fast path
-  const lensSum = lens.reduce((a, n) => a + n, 0);
-  if (lensSum !== ciphertext.length) {
-    throw new Error('served ciphertext length does not match chunk lengths');
-  }
-  const parts = [];
-  let p = 0;
-  for (const len of lens) {
-    parts.push(dig.decryptChunk(keyHex, ciphertext.subarray(p, p + len)));
-    p += len;
-  }
-  const total = parts.reduce((a, x) => a + x.length, 0);
-  const out = new Uint8Array(total);
-  let q = 0;
-  for (const part of parts) { out.set(part, q); q += part.length; }
-  return out;
-}
+// Multi-chunk ciphertext decryption + the client-side merkle verify (with the #2276 fail-closed gate)
+// now live in ../lib/verified-content.ts (verifyAndDecrypt / decryptChunks) — a pure, unit-tested module.
 
 // ---- Legacy server config constants (kept for updateServerConfig message backward compat)
 const DEFAULT_SERVER_URL = 'rpc.dig.net';
@@ -1129,28 +1108,22 @@ async function fetchContentViaRPC(urn, endpoint) {
     // 4. Fetch ciphertext (chunked, up to 3 MiB windows), pinned to fetchRoot.
     const { ciphertext, proof, chunkLens } = await fetchVerified(ep, storeId, rk, fetchRoot);
 
-    // 5. Verify merkle inclusion against the TRUSTED root (non-throwing; decoys/tamper return false).
-    //    Fail-closed: with no resolvable trusted root, `verified` is false regardless of the proof.
-    let proofOk = false;
-    if (trustedRoot) {
-      try {
-        proofOk = !!dig.verifyInclusion(ciphertext, proof, trustedRoot);
-      } catch {
-        proofOk = false;
-      }
-    }
-    const verified = decideVerified(trustedRoot, proofOk);
-
-    // 6. Derive per-resource AES-256 key (salt is the private-store hex salt, or null)
-    const keyHex = dig.deriveKey(storeId, resourceKey, salt);
-
-    // 7. Decrypt (GCM-SIV tag failure = decoy or wrong key → throw, caller shows error)
-    let bytes;
-    try {
-      bytes = decryptChunks(dig, keyHex, ciphertext, chunkLens);
-    } catch {
-      throw new Error('decrypt failed (decoy or wrong key)');
-    }
+    // 5-7. Verify merkle inclusion against the TRUSTED root, FAIL CLOSED (#2276), then decrypt.
+    //     When a trusted root is RESOLVED (trustedRoot !== null) but the proof does not fold to it,
+    //     verifyAndDecrypt THROWS — the served bytes are refused and never rendered (a spoofed host
+    //     cannot substitute content). The genuine blind case (trustedRoot === null, unresolvable chain
+    //     anchor) is exempt: it still returns bytes, reported unverified (advisory badge). See
+    //     ../lib/verified-content.ts.
+    const { bytes, verified } = verifyAndDecrypt({
+      dig,
+      ciphertext,
+      proof,
+      chunkLens,
+      trustedRoot,
+      storeId,
+      resourceKey,
+      salt,
+    });
 
     // 8. Encode to data URL (chunked btoa to avoid call-stack overflow on large buffers)
     const contentType = ctForPath(resourceKey);
