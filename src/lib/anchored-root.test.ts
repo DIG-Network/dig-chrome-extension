@@ -23,10 +23,13 @@
  *  - The honest control keeps a truthful actor in the fixture: an endpoint AGREEING with the chain must
  *    still yield `verified: true`, which the nearest wrong "never trust anything" implementation fails.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import {
   decideAnchoredRoot,
   resolveCrossCheckedAnchoredRoot,
+  resolveTrustedAnchoredRoot,
   type AnchoredRootSources,
 } from './anchored-root';
 import { resolveReadRoots } from './trusted-root';
@@ -122,6 +125,73 @@ describe('hostile serving endpoint cannot fabricate the anchored root (#2526)', 
   });
 });
 
+describe('resolveTrustedAnchoredRoot — the read-path wiring', () => {
+  /** A raw `dig.getAnchoredRoot` JSON-RPC result, as `rpcCall` returns it. */
+  const rpcResult = (root: string) => ({ root });
+
+  it('lets the coinset walk establish the root while the endpoint only corroborates', async () => {
+    // Load-bearing: the two wirings are SHAPE-asymmetric (raw RPC object vs extracted root string),
+    // so swapping them resolves nothing at all rather than silently restoring endpoint-first trust.
+    await expect(resolveTrustedAnchoredRoot('store-1', {
+      askEndpoint: async () => rpcResult(HONEST_ROOT),
+      walkChain: async () => HONEST_ROOT,
+    })).resolves.toBe(HONEST_ROOT);
+
+    await expect(resolveTrustedAnchoredRoot('store-1', {
+      askEndpoint: async () => rpcResult(FAKE_ROOT),
+      walkChain: async () => null,
+    })).resolves.toBeNull();
+  });
+
+  it('passes the store id to BOTH sources and reports a disagreement to onMismatch', async () => {
+    const askEndpoint = vi.fn(async () => rpcResult(FAKE_ROOT));
+    const walkChain = vi.fn(async () => HONEST_ROOT);
+    const onMismatch = vi.fn();
+
+    await expect(resolveTrustedAnchoredRoot('store-7', { askEndpoint, walkChain, onMismatch }))
+      .resolves.toBe(HONEST_ROOT);
+
+    expect(askEndpoint).toHaveBeenCalledWith('store-7');
+    expect(walkChain).toHaveBeenCalledWith('store-7');
+    expect(onMismatch).toHaveBeenCalledWith('store-7');
+  });
+
+  it('ignores a malformed endpoint result instead of throwing on it', async () => {
+    for (const bogus of [null, undefined, 'a-bare-string', { root: 42 }, {}]) {
+      await expect(resolveTrustedAnchoredRoot('store-1', {
+        askEndpoint: async () => bogus,
+        walkChain: async () => HONEST_ROOT,
+      })).resolves.toBe(HONEST_ROOT);
+    }
+  });
+});
+
+/**
+ * The service worker (`src/background/index.ts`) carries a justified `// @ts-nocheck` and heavy
+ * top-level side effects, so it cannot be imported or type-checked — which leaves its one remaining
+ * security-critical decision, WHICH concrete lookup is wired to WHICH role, asserted nowhere. Swapping
+ * the two would restore the pre-#2526 vulnerability in full while every behavioural test still passed.
+ * This reads the source text to pin that binding; it is the only instrument the file's shape allows.
+ */
+describe('background service-worker wiring (source-level guard)', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/background/index.ts'), 'utf8');
+  const wiring = source.slice(source.indexOf('return resolveTrustedAnchoredRoot(storeId, {'));
+
+  it('is present — the guard fails loudly if the call site is renamed or removed', () => {
+    expect(wiring).not.toBe('');
+    expect(wiring).toContain('askEndpoint:');
+    expect(wiring).toContain('walkChain:');
+  });
+
+  it('wires the UNTRUSTED serving endpoint to askEndpoint (corroboration only)', () => {
+    expect(/askEndpoint:[^\n]*rpcCall\([^\n]*dig\.getAnchoredRoot/.test(wiring)).toBe(true);
+  });
+
+  it('wires the INDEPENDENT coinset walk to walkChain (the only source that may establish trust)', () => {
+    expect(/walkChain:[^\n]*resolveAnchoredRootFromCoinset\(/.test(wiring)).toBe(true);
+  });
+});
+
 describe('decideAnchoredRoot', () => {
   it('never lets the endpoint alone establish a root', () => {
     expect(decideAnchoredRoot(FAKE_ROOT, null)).toEqual({ root: null, trust: 'unconfirmed' });
@@ -155,6 +225,21 @@ describe('resolveCrossCheckedAnchoredRoot', () => {
       fromChain: async () => { throw new Error('coinset unreachable'); },
     });
     expect(blind).toEqual({ root: null, trust: 'unconfirmed' });
+  });
+
+  it('treats a source that throws SYNCHRONOUSLY as an absent answer, not a hard failure', async () => {
+    // `f().catch(...)` catches only a REJECTION. A source that throws before it returns a promise
+    // would escape the resolver entirely and turn an advisory read into a thrown error, breaking the
+    // "non-throwing throughout" contract the read path documents.
+    const throwsSync = (): Promise<string | null> => { throw new Error('offscreen document gone'); };
+
+    await expect(
+      resolveCrossCheckedAnchoredRoot({ fromEndpoint: throwsSync, fromChain: async () => HONEST_ROOT }),
+    ).resolves.toEqual({ root: HONEST_ROOT, trust: 'chain-only' });
+
+    await expect(
+      resolveCrossCheckedAnchoredRoot({ fromEndpoint: async () => HONEST_ROOT, fromChain: throwsSync }),
+    ).resolves.toEqual({ root: null, trust: 'unconfirmed' });
   });
 
   it('queries both sources concurrently — the chain walk is not gated on the endpoint answering', async () => {

@@ -74,14 +74,67 @@ export interface AnchoredRootSources {
  * two lookups in parallel keeps the cross-check from adding a second sequential await window in which
  * that can happen. If teardown does cut the work off, this promise simply never settles — the caller
  * never receives a root, so an incomplete verification can never be mistaken for a completed one. A
- * source that throws is treated exactly as a source that answered nothing.
+ * source that throws is treated exactly as a source that answered nothing — SYNCHRONOUSLY as well as
+ * asynchronously. `f().catch(...)` alone would let a source that throws before returning a promise
+ * escape this function entirely, turning an advisory read into a hard failure and breaking the
+ * non-throwing contract this module's callers rely on.
  */
 export async function resolveCrossCheckedAnchoredRoot(
   sources: AnchoredRootSources,
 ): Promise<AnchoredRootDecision> {
   const [endpointRoot, chainRoot] = await Promise.all([
-    sources.fromEndpoint().catch(() => null),
-    sources.fromChain().catch(() => null),
+    answerOrNothing(sources.fromEndpoint),
+    answerOrNothing(sources.fromChain),
   ]);
   return decideAnchoredRoot(endpointRoot, chainRoot);
+}
+
+/** Invoke a source, mapping ANY failure — sync throw or async rejection — to "answered nothing". */
+async function answerOrNothing(
+  source: () => Promise<string | null | undefined>,
+): Promise<string | null | undefined> {
+  try {
+    return await source();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The concrete read-path wiring behind the two abstract sources. Deliberately SHAPE-ASYMMETRIC: the
+ * endpoint side hands over the RAW `dig.getAnchoredRoot` JSON-RPC result (an object) while the chain
+ * side hands over an already-extracted root string. Mixing the two up therefore cannot silently
+ * survive — the swapped wiring resolves nothing at all (fail closed), and `anchored-root.test.ts`
+ * asserts that it does.
+ */
+export interface AnchoredRootWiring {
+  /** Raw `dig.getAnchoredRoot { store_id }` result from the SERVING endpoint — an untrusted claim. */
+  askEndpoint: (storeId: string) => Promise<unknown>;
+  /** The independent coinset lineage walk — the ONLY source that may establish the trusted root. */
+  walkChain: (storeId: string) => Promise<string | null | undefined>;
+  /** Reports a chain/endpoint disagreement (a spoof signal); the chain's value still wins. */
+  onMismatch?: (storeId: string) => void;
+}
+
+/** Read the claimed root out of a raw `dig.getAnchoredRoot` result; anything else means "no claim". */
+function rootFromRpcResult(result: unknown): string | null {
+  const root = (result as { root?: unknown } | null | undefined)?.root;
+  return typeof root === 'string' ? root : null;
+}
+
+/**
+ * Resolve the trusted anchored root for a rootless read: the coinset walk establishes it, the serving
+ * endpoint may only corroborate it. Returns `null` when nothing independent could be established, which
+ * the caller turns into the advisory (unverified) path. Non-throwing.
+ */
+export async function resolveTrustedAnchoredRoot(
+  storeId: string,
+  wiring: AnchoredRootWiring,
+): Promise<string | null> {
+  const { root, trust } = await resolveCrossCheckedAnchoredRoot({
+    fromEndpoint: async () => rootFromRpcResult(await wiring.askEndpoint(storeId)),
+    fromChain: () => Promise.resolve(wiring.walkChain(storeId)),
+  });
+  if (trust === 'mismatch') wiring.onMismatch?.(storeId);
+  return root;
 }
