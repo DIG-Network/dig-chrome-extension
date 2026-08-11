@@ -58,8 +58,10 @@ import { TOOLBAR_ENABLED_KEY, TOOLBAR_ENABLED_DEFAULT, TOOLBAR_TOGGLE_COMMAND } 
 
 // The TRUSTED-root decision (#226): a rootless ('latest') URN must verify against the store's
 // chain-ANCHORED root, never the literal string 'latest'. These pure helpers own the fail-closed
-// verdict; resolveAnchoredRoot() below fetches the anchored root from the node.
+// verdict; resolveAnchoredRoot() below resolves the anchored root from the INDEPENDENT chain source,
+// cross-checking (never trusting) the serving endpoint's own claim — see @/lib/anchored-root (#2526).
 import { resolveReadRoots, isRootlessRoot } from '@/lib/trusted-root';
+import { resolveTrustedAnchoredRoot } from '@/lib/anchored-root';
 import { verifyAndDecrypt } from '@/lib/verified-content';
 
 // Branded, plain-language chia:// error page (white theme; never leaks crypto strings).
@@ -991,24 +993,27 @@ async function fetchVerified(endpoint, storeId, rk, root) {
 /**
  * Resolve a store's CHAIN-ANCHORED tip root (lowercase 64-hex) — the TRUSTED root a rootless
  * ('latest') URN must verify against (#226). The root MUST come from the chain, NEVER the serving
- * host. Tries the local dig-node's `dig.getAnchoredRoot` first (it walks the store's DataStore
- * singleton lineage on coinset.org SERVER-SIDE and returns `result.root`). The hosted rpc.dig.net
- * gateway does NOT serve this method (it answers -32601), so on the HOSTED tier — no local node
- * reachable/answering — this falls back to resolving the SAME walk directly against coinset.org via
- * the offscreen vault's DataLayer store-coin driver wasm (#228: `resolveAnchoredRootFromCoinset`
- * below), so a rootless read still verifies with NO local node running. Non-throwing throughout: any
- * RPC/transport/walk failure resolves to null and the caller FAILS CLOSED (content still loads, but
- * is reported unverified) — never a silent trust of the URN string or the serving host.
+ * host, so it is established SOLELY by the INDEPENDENT walk against coinset.org, run in the offscreen
+ * vault's DataLayer store-coin driver wasm (#228: `resolveAnchoredRootFromCoinset` below).
+ *
+ * The serving endpoint's own `dig.getAnchoredRoot` is still queried, but only as CORROBORATION: it is
+ * the claim of the very party the verification distrusts, and before #2526 it was asked FIRST and
+ * believed whenever it answered — letting a hostile endpoint pair a fabricated root with content whose
+ * proof folds to it and obtain `verified === true`. A disagreement is now logged as a spoof signal
+ * while the chain's value wins; see ../lib/anchored-root.ts for the full decision table.
+ *
+ * Non-throwing throughout: an unresolvable chain root yields null and the caller FAILS CLOSED (content
+ * still loads, but is reported unverified) — never a silent trust of the URN string or the serving host.
  */
 async function resolveAnchoredRoot(endpoint, storeId) {
-  try {
-    const r = await rpcCall(endpoint, 'dig.getAnchoredRoot', { store_id: storeId });
-    const root = r && typeof r.root === 'string' ? r.root.replace(/^0x/i, '').toLowerCase() : '';
-    if (/^[0-9a-f]{64}$/.test(root)) return root;
-  } catch {
-    // node unreachable / method unavailable (e.g. rpc.dig.net -32601) — fall through to coinset below
-  }
-  return resolveAnchoredRootFromCoinset(storeId);
+  return resolveTrustedAnchoredRoot(storeId, {
+    askEndpoint: (id) => rpcCall(endpoint, 'dig.getAnchoredRoot', { store_id: id }),
+    walkChain: (id) => resolveAnchoredRootFromCoinset(id),
+    onMismatch: (id) => console.warn(
+      'DIG Extension: serving endpoint reported an anchored root that disagrees with the chain for store',
+      id, '— using the chain root; the endpoint may be compromised.',
+    ),
+  });
 }
 
 // #228: a short-lived, SW-lifetime-only cache of the coinset-resolved anchored root, keyed by store
@@ -1099,9 +1104,10 @@ async function fetchContentViaRPC(urn, endpoint) {
     const rk = dig.retrievalKey(storeId, resourceKey);
 
     // 3b. Resolve the TRUSTED root (#226). A rooted URN pins its own generation; a rootless URN's
-    //     trusted root is the store's CHAIN-anchored tip (resolved from the node), NEVER the literal
-    //     'latest'. Content is fetched pinned to the resolved generation so the proof it returns
-    //     folds to the same root we verify against (no 'latest' race).
+    //     trusted root is the store's CHAIN-anchored tip, established SOLELY by the independent
+    //     coinset lineage walk (#2526 — the serving endpoint may only corroborate it, never supply
+    //     it), NEVER the literal 'latest'. Content is fetched pinned to the resolved generation so
+    //     the proof it returns folds to the same root we verify against (no 'latest' race).
     const anchoredRoot = isRootlessRoot(urnRoot) ? await resolveAnchoredRoot(ep, storeId) : null;
     const { trustedRoot, fetchRoot } = resolveReadRoots(urnRoot, anchoredRoot);
 

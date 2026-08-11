@@ -660,17 +660,35 @@ service worker MUST execute, in order:
 6. Resolve the **trusted root** — the root the read is verified against. It MUST come from the
    CHAIN, never the URN string and never the serving host:
    - a **rooted** URN pins a concrete generation → its own `roothash` is the trusted root;
-   - a **rootless** URN's trusted root is the store's chain-ANCHORED tip, resolved via
-     `dig.getAnchoredRoot { store_id }` on the resolved node (which walks the DataStore singleton on
-     coinset.org server-side). The hosted `rpc.dig.net` gateway does NOT serve this method
-     (it answers `-32601`), so on the HOSTED tier — no local node reachable/answering — the
-     extension resolves the SAME walk itself, directly against `api.coinset.org`: it reconstructs
-     each generation's `DataStore` via `@dignetwork/chip35-dl-coin-wasm`'s `dataStoreFromSpend`
-     (loaded in the offscreen document, the only context that can load its wasm-bindgen bundler
-     build) from the store's launcher to the live unspent tip, and reads the tip's committed
-     `metadata.rootHash`. This walk is stateless/keyless — no wallet secret or unlocked wallet is
-     required. Only when BOTH the node RPC and the coinset walk cannot resolve a root is the read
-     treated as UNVERIFIED (fail-closed) — never silently trusted.
+   - a **rootless** URN's trusted root is the store's chain-ANCHORED tip, and it MUST be established
+     SOLELY by the extension's own INDEPENDENT chain walk, performed directly against the configured
+     coinset endpoint (default `api.coinset.org`, the same endpoint the wallet's own chain reads
+     use). The walk reconstructs each generation's `DataStore` via
+     `@dignetwork/chip35-dl-coin-wasm`'s `dataStoreFromSpend` (loaded in the offscreen document, the
+     only context that can load its wasm-bindgen bundler build) from the store's launcher to the live
+     unspent tip, and reads the tip's committed `metadata.rootHash`. The walk is stateless/keyless —
+     no wallet secret or unlocked wallet is required.
+
+     The serving endpoint's `dig.getAnchoredRoot { store_id }` is queried CONCURRENTLY, but it is
+     CORROBORATION ONLY: its answer MUST NOT be able to produce a trusted root on its own, and it MUST
+     NOT override the chain walk's value. The serving endpoint is the party the verification exists to
+     distrust — it hosts the very bytes being checked — so accepting its unconfirmable claim would let
+     it pair a fabricated root with content whose inclusion proof folds to that root and obtain
+     `verified: true` on substituted bytes. The endpoint's answer determines only the diagnostic trust
+     state:
+
+     | Chain walk | Endpoint claim | Trusted root | Trust state |
+     |---|---|---|---|
+     | resolved | equal to it | the chain's root | `confirmed` |
+     | resolved | absent (unreachable, or `-32601` as hosted `rpc.dig.net` answers) | the chain's root | `chain-only` |
+     | resolved | a DIFFERENT root | the chain's root | `mismatch` — a spoof signal; recorded, chain wins |
+     | unresolved | anything, including a well-formed root | none | `unconfirmed` |
+
+     Roots MUST be compared after normalization (`0x` prefix stripped, lower-cased) on BOTH sides.
+     When the chain walk cannot resolve a root the read is UNVERIFIED **regardless of what the
+     endpoint answered**: the content still LOADS and is reported unverified (advisory). That is the
+     deliberate fail direction — a coinset outage degrades a badge, never the ability to read, and it
+     never confers trust.
    The literal string `'latest'` MUST NOT be passed as the trusted root to `verifyInclusion`.
 7. Fetch ciphertext via chunked `dig.getContent` (§5.1), with `root` pinned to the trusted root
    when known (else `'latest'`), so the returned proof folds to the same root that is verified
@@ -1014,7 +1032,8 @@ non-DIG query goes to the chosen fallback, never back through the DIG sentinel.
   `DIG_ERR_DECRYPT_TAG`, never as verified content.
 - `verified` (merkle inclusion against the on-chain root) is reported truthfully. A failed or
   absent proof MUST NOT be rendered as verified.
-- The HOSTED-tier chain-anchored-root walk (§5 step 6, #228) reconstructs `DataStore` singleton
+- The independent chain-anchored-root walk (§5 step 6, #228/#2526 — run on EVERY tier, since it is the
+  only source that may establish the trusted root) reconstructs `DataStore` singleton
   generations via `@dignetwork/chip35-dl-coin-wasm`'s `dataStoreFromSpend` — a plain npm dependency
   loaded ONLY in the offscreen document (its wasm-bindgen "bundler" build needs `vite-plugin-wasm`;
   the esbuild-bundled service worker cannot load it directly, unlike the vendored, SRI-pinned
