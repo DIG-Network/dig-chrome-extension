@@ -120,6 +120,37 @@ test('parseDigRef extracts a ?salt= param and rejects non-DIG refs', () => {
   assert.equal(parseDigRef(`chia://not-hex/a.js`), null);
 });
 
+test('parseDigRef does NOT percent-decode the salt value', () => {
+  // The salt is a DECRYPTION input. A `URLSearchParams`-based read decodes `%61%61` to `aa` and
+  // derives a different AES key than every other parser in the ecosystem — a private store that
+  // silently fails to decrypt, rather than an error. Values are never percent-decoded.
+  assert.equal(parseDigRef(`chia://${STORE}/a.js?salt=%61%61`)!.salt, null);
+});
+
+test('parseDigRef preserves a resource key containing `?` or `#`', () => {
+  // Both are legal key characters (SPEC §4.1). Splitting at the first `?` unconditionally truncated
+  // `report?year=2024.csv` to `report`, deriving a retrieval key that no longer matched the one the
+  // content was published under.
+  assert.equal(
+    parseDigRef(`chia://${STORE}/report?year=2024.csv`)!.resourceKey,
+    'report?year=2024.csv'
+  );
+  assert.equal(parseDigRef(`chia://${STORE}/notes#1.md`)!.resourceKey, 'notes#1.md');
+});
+
+test('parseDigRef agrees with parseURN on the salt-parameter rules', () => {
+  // The two used to be independent implementations; parseDigRef now delegates, so this pins the
+  // delegation rather than re-stating the rules (which is what let them drift apart).
+  assert.equal(parseDigRef(`chia://${STORE}/a.js?SALT=ff00ff00`)!.salt, null, 'name is case-sensitive');
+  assert.equal(
+    parseDigRef(`chia://${STORE}/a.js?SALT=ff00ff00`)!.resourceKey,
+    'a.js?SALT=ff00ff00',
+    'a non-salt query is not a query'
+  );
+  assert.equal(parseDigRef(`chia://${STORE}/a.js?salt=ff00zz`)!.salt, 'ff00', 'leading hex run');
+  assert.equal(parseDigRef(`chia://${STORE}/a.js?salt=`)!.salt, null, 'empty value is not a salt');
+});
+
 // ---------------------------------------------------------------------------
 // classifyReference — the dispatch the interceptor uses per reference
 // ---------------------------------------------------------------------------

@@ -13,11 +13,22 @@
  * interceptor (`services/on.dig.net/assets/dig-embed.js`): it patches fetch/XHR and rewrites DOM
  * src/href in-page. This module is the pure decision core that interceptor consumes.
  *
- * SINGLE SOURCE OF TRUTH: the algorithms mirror on.dig.net `dig-embed.js` / `embed-core`
- * (classifyReference / resolveRelativeResourceKey / contentType) so a store renders identically
- * in the extension and on its `*.on.dig.net` subdomain. Pure + DOM-free so it is unit-tested
- * under `node --test`; the browser glue (store-interceptor + dig-viewer) is Playwright-tested.
+ * SINGLE SOURCE OF TRUTH: the reference-classification algorithms (classifyReference /
+ * resolveRelativeResourceKey / contentType) mirror on.dig.net `dig-embed.js` / `embed-core` so a
+ * store renders identically in the extension and on its `*.on.dig.net` subdomain. Pure + DOM-free
+ * so it is unit-tested under `node --test`; the browser glue (store-interceptor + dig-viewer) is
+ * Playwright-tested.
+ *
+ * URN PARSING IS THE ONE EXCEPTION, and is NOT mirrored here: `parseDigRef` delegates to the
+ * extension's single parser (`parseURN`, SPEC §4), whose salt-parameter rules are pinned against
+ * the shared conformance table. on.dig.net's `dig-embed.js` still carries the older independent
+ * implementation, so the two currently DISAGREE on the URN forms that table covers — tracked in
+ * DIG-Network/dig_ecosystem#2725. Do not restore a local copy to close that gap; the fix belongs
+ * in the sibling repo. Any claim of agreement here would be unverifiable prose, which is what let
+ * the two implementations drift apart in the first place.
  */
+
+import { parseURN } from './dig-urn';
 
 /** A resolved store reference: a capsule (`storeId`[:`root`]) + a resource key (+ optional salt). */
 export interface StoreRef {
@@ -91,33 +102,31 @@ export function resolveRelativeResourceKey(baseKey: string | null | undefined, r
  * Parse an absolute DIG reference — `chia://<storeId>[:<root>]/<resourceKey>[?salt=<hex>]` or the
  * `urn:dig:chia:` form — into `{ storeId, root, resourceKey, salt }`, or `null` if it is not a
  * well-formed DIG ref. `storeId` (and `root`, when present) MUST be 64-hex; a missing resource
- * defaults to `index.html`. Mirrors on.dig.net `dig-embed.js` `parseDigRef`.
+ * defaults to `index.html`.
+ *
+ * DELEGATES to {@link parseURN}, and deliberately holds NO grammar of its own. It used to carry a
+ * second implementation, which disagreed with `parseURN` in two measured ways: it read the salt
+ * through `URLSearchParams` (percent-DECODING it, so `?salt=%61%61` became the key `aa` and
+ * decrypted a private store with a different AES key than every other implementation derives), and
+ * it split at the first `?` unconditionally (truncating the working key `report?year=2024.csv` to
+ * `report`). SPEC §4 requires exactly ONE URN parser in the extension; the salt-parameter rules
+ * live in §4.1a and are verified against the shared conformance table, in one place only.
+ *
+ * This function keeps only what is genuinely its own: the requirement that the reference be
+ * ABSOLUTE. `parseURN` accepts a superset of forms (a bare `<storeId>/…`, leading slashes) that the
+ * in-page interceptor must classify as RELATIVE, so the scheme prefix is checked here first.
  */
 export function parseDigRef(raw: unknown): ParsedDigRef | null {
-  let s = String(raw == null ? '' : raw).trim();
-  if (!s) return null;
-  if (s.indexOf('urn:dig:chia:') === 0) s = s.slice('urn:dig:chia:'.length);
-  else if (s.indexOf('chia://') === 0) s = s.slice('chia://'.length);
-  else return null;
-
-  let salt = null;
-  const qi = s.indexOf('?');
-  if (qi !== -1) {
-    const qs = new URLSearchParams(s.slice(qi + 1));
-    const v = qs.get('salt');
-    salt = v && /^[0-9a-fA-F]+$/.test(v) ? v.toLowerCase() : null;
-    s = s.slice(0, qi);
-  }
-  const slash = s.indexOf('/');
-  const head = slash === -1 ? s : s.slice(0, slash);
-  let resourceKey = slash === -1 ? '' : s.slice(slash + 1);
-  resourceKey = stripQueryHash(resourceKey).replace(/^\/+/, '') || 'index.html';
-  const colon = head.indexOf(':');
-  const storeId = (colon === -1 ? head : head.slice(0, colon)).toLowerCase();
-  const root = colon === -1 ? null : head.slice(colon + 1).toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(storeId)) return null;
-  if (root && !/^[0-9a-f]{64}$/.test(root)) return null;
-  return { storeId, root: root || null, resourceKey, salt };
+  const s = String(raw == null ? '' : raw).trim();
+  if (s.indexOf('urn:dig:chia:') !== 0 && s.indexOf('chia://') !== 0) return null;
+  const parsed = parseURN(s);
+  if (!parsed) return null;
+  return {
+    storeId: parsed.storeId,
+    root: parsed.roothash,
+    resourceKey: parsed.resourceKey.replace(/^\/+/, '') || 'index.html',
+    salt: parsed.salt,
+  };
 }
 
 /** Build the same-capsule relative result, or `external` when there is no store to resolve into. */

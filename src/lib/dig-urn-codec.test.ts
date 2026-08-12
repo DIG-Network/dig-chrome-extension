@@ -198,6 +198,27 @@ test('urnToContentServerUrl: specific capsule -> two-label subdomain URL', () =>
   assert.equal(url, `http://${encStore}.${encRoot}.dig.local/a.css`);
 });
 
+test('urnToContentServerUrl: `#` and `?` in the resource key are percent-encoded, `/` is not', () => {
+  // Both characters are legal in a store key (`notes#1.md` is real, and a `?` key survives the
+  // conditional query split), and both are STRUCTURE to a URL parser. Pasted raw, the content
+  // server would resolve a different resource than the one whose retrieval/decryption keys were
+  // derived from the key — a silent wrong-content read, not an error.
+  const enc = encodeStoreId(STORE);
+  assert.equal(
+    urnToContentServerUrl(`urn:dig:chia:${STORE}/docs/notes#1.md`),
+    `http://${enc}.dig.local/docs/notes%231.md`
+  );
+  assert.equal(
+    urnToContentServerUrl(`urn:dig:chia:${STORE}/report?year=2024.csv`),
+    `http://${enc}.dig.local/report%3Fyear=2024.csv`
+  );
+  // The path separator stays structural: a nested key must not collapse into one segment.
+  assert.equal(
+    urnToContentServerUrl(`urn:dig:chia:${STORE}/a/b/c.png`),
+    `http://${enc}.dig.local/a/b/c.png`
+  );
+});
+
 test('urnToContentServerUrl: a non-default port is appended (and 80 is omitted)', () => {
   const enc = encodeStoreId(STORE);
   assert.equal(

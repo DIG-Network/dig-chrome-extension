@@ -569,7 +569,9 @@ only in the success state, after the four-state branches (loading/error/empty/su
 ## 4. URN grammar (`dig-urn.mjs`)
 
 There MUST be exactly one URN parser (`parseURN`) in the extension; no call site may inline a
-second copy.
+second copy. `parseDigRef` (`src/lib/store-refs.ts`, §8.x) therefore DELEGATES to it, adding only
+the requirement that the reference be absolute (a `chia://` or `urn:dig:chia:` prefix) — it holds no
+grammar of its own, so the salt rules of §4.1a are implemented in exactly one place.
 
 ### 4.1 Canonical form
 
@@ -579,8 +581,41 @@ urn:dig:<chain>:<storeID>[:<rootHash>][/<resourceKey>][?salt=<hex>]
 
 - `<chain>` — lowercase network name; defaults to `chia` when absent.
 - `<storeID>`, `<rootHash>` — exactly 64 hex characters; normalized to lowercase.
-- `<resourceKey>` — everything after the first `/`; MAY be empty.
-- `?salt=<hex>` — optional; lowercased; stripped from the path before component parsing.
+- `<resourceKey>` — everything after the first `/`, minus a salt query (§4.1a); MAY be empty. It MAY
+  contain `#` and `?`: neither is structure here, and `notes#1.md` and `report?year=2024.csv` are
+  real, working, publishable keys.
+- `?salt=<hex>` — optional; lowercased; split off the path before component parsing, per §4.1a.
+
+### 4.1a Salt-parameter rules (NORMATIVE)
+
+`resourceKey` and `salt` feed retrieval-key and decryption-key derivation (§3), so these rules are
+contract, not implementation detail: a parser that differs on any of them derives a different key
+and reads different bytes for the same URN.
+
+1. **The parameter name is CASE-SENSITIVE.** `salt=` is a salt parameter; `SALT=` is not, and a URN
+   carrying one keeps it verbatim in `resourceKey` with `salt === null`. (The hex VALUE class is
+   case-insensitive and is lowercased.)
+2. **The first boundary occurrence carrying a hex value wins.** A `salt=` counts only at a boundary
+   — the start of a query segment, or immediately after an `&` or a `?` inside the chosen query. An
+   earlier empty or non-hex occurrence is skipped.
+3. **An empty or valueless `salt` is `null`.** `?salt=` and `?salt` carry no salt; a bare `?salt`
+   (no `=`) is not a salt parameter at all, so the string is not treated as a query and the key is
+   kept verbatim.
+4. **Values are NEVER percent-decoded.** `?salt=%61%61` is not the hex `aa`; it carries no salt.
+5. The value is the **leading hex run**, ending at the first non-hex character.
+6. A query is split off the resource key **only when it carries a boundary `salt=`**. A `?` is
+   otherwise an ordinary character of the key. The first qualifying `?` wins, because it strips the
+   most — splitting later would leave an earlier `salt=` inside `resourceKey` and derive a key the
+   contract does not name.
+7. A `#` is never stripped from the resource key; a `#` sitting inside a removed query tail goes
+   with the tail.
+
+**The authority for these rules is the machine-readable conformance table shipped by the SDK:
+`@dignetwork/dig-sdk/conformance/urn-parse.json`** (source: `modules/dx/dig-sdk/conformance/`). The
+extension is RUN against it (`src/lib/urn-conformance.test.ts`), reading it from the package rather
+than copying it. Agreement between the DIG URN parsers is verified there and is never asserted in
+prose — an unverifiable claim of agreement is how these parsers drifted apart
+(DIG-Network/dig_ecosystem#2725).
 
 ### 4.2 Accepted inputs
 
@@ -622,7 +657,10 @@ capsule. `salt` is ALWAYS present in the result object (value `null` when absent
   - `<encStoreId>.<encRootHash>.<base>/<resourceKey>` → specific capsule.
   - the bare base with a `/urn:dig:…` or `/<hex64>[/<resourceKey>]` path.
 - `urnToContentServerUrl(urn, {host, port})` is the inverse: it renders a base36 subdomain
-  URL, omitting the port when it is 80.
+  URL, omitting the port when it is 80. It MUST percent-encode `#` → `%23` and `?` → `%3F` in the
+  resource key (both are legal key characters per §4.1 and would otherwise be read by the content
+  server as a fragment/query, resolving a DIFFERENT resource than the one whose keys were derived),
+  and MUST leave `/` intact as the key's path separator.
 
 ### 4.5 `.dig`-scheme host codec (`dig-dns-host.mjs`, #172)
 
