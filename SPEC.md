@@ -569,7 +569,9 @@ only in the success state, after the four-state branches (loading/error/empty/su
 ## 4. URN grammar (`dig-urn.mjs`)
 
 There MUST be exactly one URN parser (`parseURN`) in the extension; no call site may inline a
-second copy.
+second copy. `parseDigRef` (`src/lib/store-refs.ts`, §8.x) therefore DELEGATES to it, adding only
+the requirement that the reference be absolute (a `chia://` or `urn:dig:chia:` prefix) — it holds no
+grammar of its own, so the salt rules of §4.1a are implemented in exactly one place.
 
 ### 4.1 Canonical form
 
