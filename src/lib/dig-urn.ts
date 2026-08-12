@@ -115,6 +115,96 @@ function decodeUrnParam(raw: string | null | undefined): string {
   return v;
 }
 
+// THE PARAMETER NAME. Case-SENSITIVE, deliberately: `?SALT=ff00ff00` is an ordinary resource key,
+// not a salt. Matching it case-insensitively (as this file once did) both strips a working key and
+// reads a salt the contract says is not there — two different derived keys for one URN.
+const SALT_PARAM_NAME = 'salt=';
+
+// The literal the SPLIT decision scans for: a salt parameter introduced by an `&`. The other way a
+// tail can qualify — `salt=` at the very start of the query — is tested with `startsWith` against
+// the ORIGINAL string, because the split loop must never materialise a tail per candidate `?`.
+const SALT_AFTER_AMP = `&${SALT_PARAM_NAME}`;
+
+// The salt VALUE, read from a tail ALREADY judged to be a query. The hex class terminates the value
+// at the first non-hex character, so a trailing `&next=…` or `#fragment` ends it, and an empty or
+// valueless `salt` matches nothing and yields null.
+//
+// ITS SEPARATOR SET (`^`, `&`, `?`) IS DELIBERATELY WIDER THAN THE SPLIT'S (`^`, `&`) — do not
+// unify them, in either direction. They answer different questions:
+//
+//   • the SPLIT asks "does this `?` START the query?", and only a `salt=`/`&salt=` may answer yes.
+//     Widening it to `?` would make `report?year=2024.csv?salt=ff` qualify at its FIRST `?` and
+//     truncate a real, already-published key back to `report`.
+//   • this asks "where is the salt INSIDE the query?" — and once a `?` has been judged to start the
+//     query, every later `?` is inside it and is a separator. Narrowing it to `&` derives NO salt
+//     for `a?salt=zz?salt=ff00ff00`, which is silently undecryptable.
+//
+// The authority for both is the shared conformance table (see `urn-conformance.test.ts`).
+const SALT_QUERY_VALUE_RE = new RegExp(`(?:^|[&?])${SALT_PARAM_NAME}([0-9a-fA-F]+)`);
+
+/**
+ * Split a URN string into its query-free base and the `salt` its query carried, if any.
+ *
+ * The salt is a QUERY PARAMETER, so it is read as one: at any position, with the rest of the query
+ * discarded because no other parameter addresses a resource. Values are never percent-decoded — a
+ * `%61%61` is not the hex `aa`, and reading it as one derives a different decryption key.
+ *
+ * Only a query is removed. Everything before the winning `?` — INCLUDING a `#` — is the resource
+ * key, because a store key may literally contain `#` (`notes#1.md` is a real working key).
+ *
+ * LINEAR, deliberately. The obvious form of this loop takes `s.slice(at + 1)` per candidate `?` —
+ * an O(n) copy plus a full regex scan, i.e. quadratic. dig-sdk measured a 195 KiB adversarial input
+ * blocking its event loop for 2.1 s; this parser reads omnibox and content-script input, so the
+ * same argument binds here. The tail is materialised exactly once, for the `?` that won.
+ *
+ * `ampIdx` MOVES FORWARD rather than being computed once: on `k&salt=?&salt=` the only `&salt=`
+ * before the second `?` sits BEHIND it and must not qualify it. Re-searching only when the index
+ * falls behind keeps the scans disjoint, so the whole loop stays linear.
+ */
+function splitQuery(s: string): { base: string; salt: string | null } {
+  let ampIdx = s.indexOf(SALT_AFTER_AMP);
+  for (let at = s.indexOf('?'); at >= 0; at = s.indexOf('?', at + 1)) {
+    if (ampIdx >= 0 && ampIdx < at) ampIdx = s.indexOf(SALT_AFTER_AMP, at);
+    // THE CONDITIONAL SPLIT — the whole point of this function, and the line a future
+    // simplification would silently regress. A `?` is a LEGAL character in a resource key, so a
+    // tail is a query ONLY when it carries a salt parameter at a boundary. The unconditional
+    // `.replace(/\?.*$/, '')` this replaced truncated `report?year=2024.csv` to `report` and
+    // `data?desalt=9.json` to `data` — real, working, already-published keys whose content then
+    // became unreadable under a retrieval key that no longer matched the published one.
+    //
+    // Presence of the PARAMETER, not of a usable hex VALUE, governs the split: that keeps the
+    // split decision independent of the value alphabet, including a malformed one, so the key is
+    // derived from the same base either way. Whether the value is a usable salt is the separate
+    // question SALT_QUERY_VALUE_RE answers.
+    const isQuery = s.startsWith(SALT_PARAM_NAME, at + 1) || ampIdx > at;
+    if (!isQuery) continue;
+    // The FIRST qualifying `?` wins, not the last, because it strips the most: on
+    // `a?salt=aa?salt=bb` the whole tail goes. Splitting at the last would leave `a?salt=aa` inside
+    // `resourceKey` and derive a key the contract does not name.
+    const m = SALT_QUERY_VALUE_RE.exec(s.slice(at + 1));
+    return { base: s.slice(0, at), salt: m ? m[1].toLowerCase() : null };
+  }
+  return { base: s, salt: null };
+}
+
+/**
+ * Percent-encode the characters that a URL would otherwise read as structure.
+ *
+ * A resource key may legitimately contain `#` (`notes#1.md`) and, since the conditional split
+ * above, `?` (`report?year=2024.csv`). Pasted raw into a content-server URL those become a fragment
+ * and a query — so the server would resolve a DIFFERENT resource than the one whose retrieval and
+ * decryption keys were derived from the key. `/` is left intact: it is the key's own path
+ * separator and is structural in the same way on both sides.
+ *
+ * RESIDUAL AMBIGUITY, deliberately not solved here: a key containing a literal `%` is not escaped,
+ * so `a%23b` and `a#b` reach the server identically. Full `encodeURIComponent` is not the fix —
+ * it would also escape `/` and break every path key. Resolving it needs the content server to
+ * agree on one encoding for the whole key (super-repo #2725 follow-up).
+ */
+function encodeResourceKeyForUrl(resourceKey: string): string {
+  return resourceKey.replace(/#/g, '%23').replace(/\?/g, '%3F');
+}
+
 /**
  * Parse URN: urn:dig:{chain}:{storeId}:{roothash}/{resourceKey}[?salt=<hex>]
  *
@@ -149,14 +239,12 @@ function parseURN(urnString: string): ParsedUrn | null {
   // Remove urn:dig: prefix if present
   urnString = urnString.replace(/^urn:dig:/i, '');
 
-  // Extract optional ?salt=<hex> query parameter before parsing the path
-  let salt = null;
-  const saltMatch = urnString.match(/[?&]salt=([0-9a-f]+)/i);
-  if (saltMatch) {
-    salt = saltMatch[1].toLowerCase();
-  }
-  // Strip salt param (handles ?salt=… or &salt=…) then strip any remaining query string
-  urnString = urnString.replace(/[?&]salt=[0-9a-f]+/i, '').replace(/\?.*$/, '');
+  // Split off an optional `?…salt=<hex>…` query before parsing the path. Conformance with the
+  // sibling parsers is verified by running the shared table (`urn-conformance.test.ts`), never
+  // asserted here.
+  const split = splitQuery(urnString);
+  const salt = split.salt;
+  urnString = split.base;
 
   // Two forms share this string, and they are ambiguous unless the bare form is tried
   // FIRST (super-repo #741):
@@ -295,11 +383,11 @@ function urnToContentServerUrl(urn: string, options: { host?: string; port?: num
   if (parsed.roothash) {
     // Specific version: http://{encodedStoreId}.{encodedRootHash}.{host}:{port}/{resourceKey}
     const encodedRootHash = encodeStoreId(parsed.roothash);
-    const resourceKey = parsed.resourceKey || '';
+    const resourceKey = encodeResourceKeyForUrl(parsed.resourceKey || '');
     url = `http://${encodedStoreId}.${encodedRootHash}.${host}${port !== 80 ? ':' + port : ''}/${resourceKey}`;
   } else {
     // Latest version: http://{encodedStoreId}.{host}:{port}/{resourceKey}
-    const resourceKey = parsed.resourceKey || '';
+    const resourceKey = encodeResourceKeyForUrl(parsed.resourceKey || '');
     url = `http://${encodedStoreId}.${host}${port !== 80 ? ':' + port : ''}/${resourceKey}`;
   }
   
