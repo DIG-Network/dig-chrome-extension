@@ -905,3 +905,9 @@ closed the comment. Any doc-comment prose mentioning a glob/wildcard immediately
 (`chrome.*/foo`, `src/**/*.ts` is fine — three-plus stars are OK, it's specifically `*` + `/`) needs a
 rewrite ("no chrome.* API, no react-intl") rather than an escape (JS block comments have no escape
 for `*/`).
+
+## URN parse conformance (in progress)
+
+Running this repo's URN parsers against the shared conformance fixture published by
+`@dignetwork/dig-sdk` (`@dignetwork/dig-sdk/conformance/urn-parse.json`). See
+DIG-Network/dig_ecosystem#2725.
