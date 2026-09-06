@@ -8,14 +8,16 @@
 # this file supersedes). Releases are no longer cut per merge; they are batched to a nightly cron
 # (+ manual dispatch), across two channels:
 #
-#   • STABLE channel  (job `stable`): the unchanged changelog+tag logic, now driven by the cron
-#     instead of push-to-main. It reads the version from package.json and cuts `vX.Y.Z` ONLY when
+#   • STABLE channel  (job `stable`): the unchanged changelog+tag logic, reachable ONLY from a
+#     manual `workflow_dispatch` selecting `stable`/`both` — NEVER from the schedule cron
+#     (dig_ecosystem#698). A stable `vX.Y.Z` reaches every force-installed browser through the
+#     self-hosted CRX update feed (§19.6), so cutting one is a decision a person makes, not
+#     something a timer does. It reads the version from package.json and cuts `vX.Y.Z` ONLY when
 #     that tag does not already exist — i.e. only when the version file was bumped since the last
 #     release (an unchanged version = the tag exists = a no-op). Cutting the tag = git-cliff
 #     regenerates CHANGELOG.md, commits it to main, tags that commit `vX.Y.Z`, and pushes both with
 #     RELEASE_TOKEN. The pushed `v*` tag then fires the STABLE build+publish (deploy.yml → the
-#     packaged zip on the GitHub Release, and publish-chrome-web-store.yml → the Web Store). This is
-#     the SAME stable path as before — only its trigger changed.
+#     packaged zip on the GitHub Release, and publish-chrome-web-store.yml → the Web Store).
 #
 #   • NIGHTLY channel (job `nightly`): every night it builds `main` HEAD and publishes a GitHub
 #     PRE-release (never `latest`) under a dated tag `nightly-YYYYMMDD` plus a force-moved rolling
@@ -36,7 +38,9 @@
 #
 # 60-day auto-disable (GitHub platform behavior, not this workflow's): GitHub disables a
 # `schedule:` trigger after 60 days with NO repo activity on a public repo, with no auto-re-enable
-# — and since #590 removed the push-to-main trigger, this cron is the ONLY automatic release path.
+# — and since #590 removed the push-to-main trigger, this cron is the ONLY automatic release path
+# of any kind (stable is dispatch-only, always). Only the NIGHTLY channel goes dark if the cron is
+# auto-disabled; stable is unaffected either way, since it never ran off the cron.
 # If nightlies silently stop, check `gh api repos/<owner>/<repo>/actions/workflows/
 # nightly-release.yml --jq .state` and re-enable with `gh workflow enable nightly-release.yml`
 # (see runbooks/release.md + SPEC.md §19).
@@ -76,14 +80,27 @@ jobs:
   # zip to the GitHub Release) and publish-chrome-web-store.yml (upload + publish to the Web Store).
   stable:
     name: Stable — changelog + tag
-    # Run on the schedule (both channels) or when dispatch selects stable/both. The
-    # `!startsWith(...chore(release):...)` guard is preserved from the on-merge era: it is INERT on
-    # schedule/dispatch (there is no `head_commit`), but it keeps the release changelog commit
+    # MANUAL DISPATCH ONLY (CLAUDE.md §3.6-A; dig_ecosystem#698). The midnight cron cuts NIGHTLIES
+    # and nothing else. A stable `vX.Y.Z` is permanent, and it reaches every force-installed browser
+    # through the self-hosted CRX update feed (§19.6), so cutting one is a decision somebody makes —
+    # never something a timer does. This condition used to accept `github.event_name == 'schedule'`
+    # as an ALTERNATIVE to the dispatch inputs, which meant a merged version bump became a published
+    # release at the next midnight with no human step and no gate beyond ordinary CI: `main` could
+    # reach users overnight, making the merge gate the last line of defence rather than the first of
+    # two.
+    #
+    # The consequence to know is that after a merge NOTHING releases until someone dispatches, and
+    # that silence is the intended trade, not a fault — see runbooks/release.md for how to spot an
+    # overdue cut.
+    #
+    # The `!startsWith(...chore(release):...)` guard is preserved from the on-merge era: it is
+    # INERT on dispatch (there is no `head_commit`), but it keeps the release changelog commit
     # self-labelled so the loop stays safe even if a push trigger is ever re-introduced.
     if: >-
       ${{
         !startsWith(github.event.head_commit.message, 'chore(release):') &&
-        (github.event_name == 'schedule' || inputs.channel == 'stable' || inputs.channel == 'both')
+        github.event_name == 'workflow_dispatch' &&
+        (inputs.channel == 'stable' || inputs.channel == 'both')
       }}
     runs-on: ubuntu-latest
     steps:
