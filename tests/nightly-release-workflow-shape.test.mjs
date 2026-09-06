@@ -22,6 +22,9 @@
  *   6. Both channels no-op cleanly without RELEASE_TOKEN (a warning, never a half-release).
  *   7. The STABLE build/publish (deploy.yml + web-store publish) is tag-triggered, NOT on every
  *      merge to main — coherent with #590 ("nothing releases on merge").
+ *   8. The STABLE job's own `if:` requires `workflow_dispatch` explicitly — the schedule cron
+ *      alone can never satisfy it, so a merged version bump only ships at the next MANUAL
+ *      dispatch, never at the next midnight (dig_ecosystem#698).
  *
  * The guard reads the workflows as text (not a YAML parser) on purpose: the invariants are about
  * the literal trigger/step shape a maintainer reads, it has no external dependency, and it fails
@@ -64,6 +67,41 @@ function jobBlock(wf, job) {
       if (inJob) break;
     }
     if (inJob) lines.push(line);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Extract the VALUE of a job's `if:` field only — the `if:` line itself plus every following line
+ * indented strictly more than it (the block-scalar continuation), stopping at the next sibling
+ * field (e.g. `runs-on:`) at the same or shallower indent.
+ *
+ * Scoped to the condition's own lines, deliberately excluding surrounding comments: a comment
+ * explaining why `schedule` is excluded legitimately contains the phrase `event_name == 'schedule'`
+ * in prose, so a whole-block text search would be fooled by prose alone satisfying it without the
+ * actual GitHub Actions expression changing. Testing the expression, not the prose about it, is
+ * the point of this helper.
+ */
+function ifCondition(block) {
+  const lines = [];
+  let inIf = false;
+  let ifIndent = 0;
+  for (const line of block.split('\n')) {
+    const trimmed = line.trimStart();
+    const indent = line.length - trimmed.length;
+    if (!inIf) {
+      if (trimmed.startsWith('if:')) {
+        inIf = true;
+        ifIndent = indent;
+        lines.push(line);
+      }
+      continue;
+    }
+    if (line.trim() === '' || indent > ifIndent) {
+      lines.push(line);
+    } else {
+      break;
+    }
   }
   return lines.join('\n');
 }
@@ -117,6 +155,45 @@ test('manual dispatch exposes the channel + force inputs', () => {
   const on = triggersBlock(nightlyRelease());
   assert.ok(on.includes('channel:'), `workflow_dispatch must expose a \`channel\` input (stable|nightly|both).\n${on}`);
   assert.ok(on.includes('force:'), `workflow_dispatch must expose a \`force\` input (re-cut a stable release).\n${on}`);
+});
+
+test('the stable job is reachable only from manual dispatch, never from the schedule cron', () => {
+  // Property under test: the STABLE job's own `if:` condition requires workflow_dispatch and never
+  // accepts the `schedule` trigger as an alternative (CLAUDE.md §3.6-A; dig_ecosystem#698). A stable
+  // `vX.Y.Z` is permanent and reaches every force-installed browser through the self-hosted CRX
+  // update feed — cutting one must be a decision a person makes, never something the midnight cron
+  // does unattended.
+  //
+  // The NEAREST WRONG implementation is the pre-fix condition this test was written against:
+  // `(github.event_name == 'schedule' || inputs.channel == 'stable' || inputs.channel == 'both')`.
+  // That shape still checks `inputs.channel`, so a naive "does it look at the dispatch inputs"
+  // assertion would pass on it too — the discriminator has to be that `schedule` ALONE can satisfy
+  // the condition. Scoping to the job's own `if:` lines (rather than the whole file) also matters:
+  // `schedule:` correctly appears in the top-level `on:` trigger block AND in the `nightly` job's
+  // own condition below, and a whole-file check would be blind to which job it protects.
+  const wf = nightlyRelease();
+  const stableIf = ifCondition(jobBlock(wf, 'stable'));
+
+  assert.ok(
+    stableIf.includes('workflow_dispatch'),
+    `the stable job's \`if:\` must require github.event_name == 'workflow_dispatch'. if: block:\n${stableIf}`,
+  );
+  assert.ok(
+    !stableIf.includes("event_name == 'schedule'"),
+    "the stable job's `if:` must NOT accept the schedule trigger as an alternative to " +
+      'workflow_dispatch — a merged version bump would otherwise reach a published vX.Y.Z at the ' +
+      `next midnight cron with no human step and no gate beyond ordinary CI. if: block:\n${stableIf}`,
+  );
+
+  // This fix scopes to the stable job ONLY. Guard against a fix that goes too far and also disables
+  // the nightly channel's own (correct, load-bearing) schedule reachability — a placement error a
+  // narrower test could not see.
+  const nightlyIf = ifCondition(jobBlock(wf, 'nightly'));
+  assert.ok(
+    nightlyIf.includes("event_name == 'schedule'"),
+    'the nightly job must still trigger on the schedule cron — nightlies are unaffected by this ' +
+      `fix. if: block:\n${nightlyIf}`,
+  );
 });
 
 test('the stable job pins ref: main and keeps the skip-if-already-tagged guard', () => {
