@@ -4270,8 +4270,10 @@ The orchestrator triggers ONLY on:
 - `workflow_dispatch` with two inputs: `channel` (`both` | `stable` | `nightly`, default `both`) and
   `force` (boolean, default `false`).
 
-It MUST NOT trigger on `push` to `main`. A schedule run exercises BOTH channels; a dispatch runs the
-selected channel(s).
+It MUST NOT trigger on `push` to `main`. A schedule run exercises the **nightly channel ONLY** — the
+stable channel is reachable EXCLUSIVELY from a manual `workflow_dispatch` selecting `stable` or
+`both` (§19.2); the midnight cron can never cut a stable `vX.Y.Z` release. A dispatch runs whichever
+channel(s) `inputs.channel` selects.
 
 **60-day auto-disable caveat.** GitHub auto-disables a `schedule:` trigger after 60 days with no
 repo activity on a public repo, with no auto-re-enable — and since this cron is the ONLY automatic
@@ -4347,7 +4349,7 @@ tags/releases.
 
 | Workflow | Trigger | Role |
 |---|---|---|
-| `nightly-release.yml` | `schedule` (midnight UTC) + `workflow_dispatch` | The orchestrator: stable channel (changelog + tag) and nightly channel (build + dated/rolling pre-release zip + **signed CRX3 + updates.xml publish**, §19.6 + prune). |
+| `nightly-release.yml` | `workflow_dispatch` only (stable) · `schedule` (midnight UTC) or `workflow_dispatch` (nightly) | The orchestrator: stable channel (changelog + tag, dispatch-only) and nightly channel (build + dated/rolling pre-release zip + **signed CRX3 + updates.xml publish**, §19.6 + prune). |
 | `deploy.yml` | `push: tags: v*` (+ dispatch canary) | Builds + packages the zip, the **signed STABLE CRX3 + updates.xml** (§19.6), attaches them to the STABLE GitHub Release, and publishes the CRX/updates.xml to `updates.dig.net/ext/stable/`. |
 | `publish-chrome-web-store.yml` | `push: tags: v*` (+ dispatch) | Uploads + publishes the STABLE zip to the Chrome Web Store (graceful no-op without the `CHROME_*` secrets). Deferred optional future migration — the shipping stable channel is self-hosted CRX3, §19.6. |
 | `ci.yml` | PR + push to main | The full lint/typecheck/test/coverage/build gate (pre-merge). |

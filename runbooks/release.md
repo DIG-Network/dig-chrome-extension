@@ -9,9 +9,10 @@ dispatch** (#596, epic #590), NOT cut on every merge to `main`. The normative co
 
 - Releases are **NOT cut on merge to `main`**. They are batched to a **nightly cron at midnight UTC**
   plus **manual dispatch** (`nightly-release.yml`).
-- **Stable** (`vX.Y.Z`): cut automatically when the `package.json` version was bumped (detected as
-  "the `vX.Y.Z` tag doesn't exist yet"), or on demand. `prerelease: false`, marked `latest`. The
-  `v*` tag fires `deploy.yml` (zip on the GitHub Release) + `publish-chrome-web-store.yml` (Web Store).
+- **Stable** (`vX.Y.Z`): cut ONLY by a manual `workflow_dispatch` — never by the cron (CLAUDE.md
+  §3.6-A). The run detects a bump as "the `vX.Y.Z` tag doesn't exist yet" and cuts it.
+  `prerelease: false`, marked `latest`. The `v*` tag fires `deploy.yml` (zip on the GitHub Release) +
+  `publish-chrome-web-store.yml` (Web Store).
 - **Nightly**: built every night from `main` HEAD as a **pre-release** zip under a dated tag
   `nightly-YYYYMMDD` + a rolling `nightly` tag. `prerelease: true`, never `latest`. Keeps the newest
   14 dated nightlies. **Sideload only — never pushed to the Chrome Web Store.**
@@ -30,9 +31,10 @@ dispatch** (#596, epic #590), NOT cut on every merge to `main`. The normative co
 ## If nightlies silently stop — check for the 60-day cron auto-disable
 
 GitHub disables a `schedule:` trigger after **60 days of no repo activity** on a public repo, with
-**no automatic re-enable** — and since this cron is the *only* automatic release trigger (there is
-no more push-to-main tagger), a quiet repo can go dark with no error anywhere. If nightlies (or a
-long-overdue stable release) stop appearing:
+**no automatic re-enable** — and since this cron is the *only* automatic release trigger of any kind
+(stable is dispatch-only, always; there is no more push-to-main tagger), a quiet repo's **nightly**
+channel can go dark with no error anywhere. Stable is unaffected either way — it never ran off the
+cron. If nightlies stop appearing:
 
 ```bash
 gh api repos/DIG-Network/dig-chrome-extension/actions/workflows/nightly-release.yml --jq .state
@@ -43,21 +45,21 @@ gh workflow enable nightly-release.yml --repo DIG-Network/dig-chrome-extension
 Any repo activity (a merged PR, a manual dispatch) resets the 60-day counter, so this normally only
 bites a repo that goes fully quiet for two months.
 
-## Cut a STABLE release (the normal path)
+## Cut a STABLE release (manual dispatch — the ONLY path)
+
+**Nothing releases on merge, and nothing releases at midnight either.** A stable `vX.Y.Z` is cut
+ONLY by a manual dispatch (CLAUDE.md §3.6-A) — the midnight cron runs the nightly channel alone and
+can never cut a stable release, bumped version or not.
 
 1. In your feature PR, bump `.version` in `package.json` per SemVer (the version-increment CI gate
    requires the bump). Merge the PR (squash) as usual.
-2. Nothing releases on merge. At the next **midnight UTC** the `nightly-release.yml` cron runs its
-   **stable** job: it sees the new version has no `vX.Y.Z` tag, regenerates `CHANGELOG.md` with
-   git-cliff, commits `chore(release): vX.Y.Z` to `main`, tags it, and pushes with `RELEASE_TOKEN`.
+2. Dispatch the release: Actions → **Nightly + stable release** → **Run workflow** →
+   `channel: stable` (or `both`) → Run. It sees the new version has no `vX.Y.Z` tag, regenerates
+   `CHANGELOG.md` with git-cliff, commits `chore(release): vX.Y.Z` to `main`, tags it, and pushes
+   with `RELEASE_TOKEN`.
 3. The pushed `v*` tag fires `deploy.yml` (builds + packages the zip, attaches it to the stable
    GitHub Release) and `publish-chrome-web-store.yml` (uploads + publishes to the Web Store when the
    `CHROME_*` secrets are set).
-
-### Cut a stable release NOW (don't wait for midnight)
-
-Actions → **Nightly + stable release** → **Run workflow** → `channel: stable` (or `both`) → Run.
-Same logic as the cron, on demand.
 
 ### Re-cut / re-release the current version (e.g. after a failed build)
 
@@ -108,7 +110,7 @@ moves the rolling `nightly` tag to it, and prunes old nightlies.
 
 | File | Trigger | Role |
 |---|---|---|
-| `nightly-release.yml` | midnight-UTC cron + `workflow_dispatch` | Orchestrator: stable (changelog + tag) + nightly (build + pre-release zip + prune). |
+| `nightly-release.yml` | `workflow_dispatch` only (stable) · midnight-UTC cron or `workflow_dispatch` (nightly) | Orchestrator: stable (changelog + tag, dispatch-only) + nightly (build + pre-release zip + signed CRX3 + updates.xml, prune). |
 | `deploy.yml` | `push: tags: v*` (+ dispatch canary) | Builds + packages the zip and attaches it to the stable Release for a `vX.Y.Z` tag. |
 | `publish-chrome-web-store.yml` | `push: tags: v*` (+ dispatch) | Uploads + publishes the stable zip to the Chrome Web Store (no-op without the `CHROME_*` secrets). |
 | `ci.yml` | PR + push to main | The full lint/typecheck/test/coverage/build gate (pre-merge). |
